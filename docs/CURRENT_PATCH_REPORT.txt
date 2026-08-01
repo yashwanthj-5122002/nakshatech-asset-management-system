@@ -1,0 +1,28 @@
+NakshaTech Asset Management System - Exact Uploaded ZIP Patch
+Date: 2026-07-30
+
+Implemented:
+- Complete Add/Edit Asset form matching all original Excel fields
+- Unique CPU/Asset Tag validation
+- Duplicate MAC and static IP validation
+- IP and MAC format validation
+- Available/Assigned logical validation
+- Assign/Transfer workflow
+- Return workflow
+- Retire workflow
+- Delete QA Test Record control
+- Full asset detail screen
+- Work records linked to asset history
+- Replacement history improvements
+- Non-cached dashboard refresh with visible refresh state
+- Existing NakshaTech Excel-format export retained
+- Database-preserving Windows update script
+- Team usage guide
+
+Verification performed:
+- Backend integration tests: 6 passed, 0 failed
+- Python syntax compilation: passed
+- Changed frontend TypeScript/TSX syntax transpilation: passed
+
+Environment limitation:
+- A full npm production build could not be completed in this sandbox because its npm registry did not provide the pinned React type packages. Docker on the user's internet-connected Windows machine will install the pinned packages during build.

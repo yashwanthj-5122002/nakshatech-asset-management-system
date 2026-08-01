@@ -1,0 +1,31 @@
+NakshaTech Drone and Survey Module - Phase 1 Verification
+=========================================================
+
+Canonical project: root project in the uploaded ZIP
+Duplicate nested project: detected at asset-management-system/ and left unchanged
+Git working branch used: feature/drone-asset-management
+
+Baseline before Drone changes:
+- Existing backend tests: 10 passed
+
+After Drone foundation implementation:
+- Backend tests: 13 passed
+- Python compileall: passed
+- Workbook sheets parsed: 4
+- Named source attributes preserved: 52
+- Parsed records: 135
+- First approved import creates permanent assets: 123
+- Trinity kits: 2
+- Projects created from workbook: 1 (ICON)
+- Airtel connections: 2
+- UIN registrations: 3
+- HDD delivery transactions: 7
+- IT dashboard count after Drone import: unchanged at 183
+- Drone role access to IT dashboard: HTTP 403
+- Legacy GET /api/drones: preserved
+- Frontend TypeScript/TSX syntax parse: 34 files, 0 syntax errors
+- Docker Compose YAML structure: passed through YAML validation
+
+Environment limitations:
+- Docker CLI was not available in the build environment, so containers were not started here.
+- Full Vite build could not be completed because the configured package registry did not provide the pinned React packages. The source was syntax-checked; the included Windows apply script performs the real Docker build on the user's PC.

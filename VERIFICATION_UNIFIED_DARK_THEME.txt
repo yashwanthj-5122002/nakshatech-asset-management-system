@@ -1,0 +1,38 @@
+NAKSHATECH UNIFIED DARK THEME VERIFICATION
+
+Scope: Frontend-only visual update
+Theme: Dark Geospatial Enterprise Glassmorphism
+Roles covered: Admin, Management, IT, Drone
+
+CHANGED FRONTEND FILES
+- frontend/src/styles.css
+- frontend/src/components/Layout.tsx
+- frontend/src/components/Charts.tsx
+- frontend/src/components/DroneMap.tsx
+- frontend/public/geospatial-world-grid.svg (new)
+
+BACKEND PROTECTION
+- Backend source checksum set before change: recorded
+- Backend source checksum set after change: identical
+- Backend files modified: 0
+- API routes modified: 0
+- Database models modified: 0
+- Authentication/permissions modified: 0
+
+VALIDATION
+- Backend regression tests: 14 passed
+- TypeScript/TSX syntax parse: 37 files, 0 syntax failures
+- CSS parser: 0 parse errors
+- CSS brace balance: passed
+- Docker Compose source: unchanged
+- Welcome page component: unchanged
+- Login page component: unchanged
+
+BUILD NOTE
+A complete npm/Vite build could not be executed in the isolated build environment because the internal npm registry did not contain the pinned React type package and the public registry request timed out. The included Windows apply script performs the real Docker frontend build on the target computer.
+
+SAFETY
+- Apply script rebuilds only frontend.
+- Nginx is restarted only.
+- Backend and database services are not recreated.
+- No Docker volume deletion command is included.

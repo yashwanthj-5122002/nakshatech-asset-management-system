@@ -1,0 +1,47 @@
+NAKSHATECH LOCAL HOURLY BACKUP - VERIFICATION REPORT
+
+Source basis:
+- User-provided asset-management-system(7).zip
+
+Scope protection:
+- Frontend directory byte-for-byte comparison: IDENTICAL
+- Frontend files changed: 0
+- Existing routes removed or renamed: 0
+- Existing database tables changed: 0
+- Existing IT/Drone/Admin/Management workflows rewritten: 0
+
+Backup additions:
+- Protected read-only API health endpoint
+- Protected current-month Excel endpoint for IT, Drone, Management and Admin
+- Dedicated backup token; endpoint disabled by default
+- Password hashes excluded from Admin Excel
+- Formula-injection protection for exported text
+- SHA-256 response checksum
+- Windows local backup agent
+- Five-minute application/API health monitoring
+- Hourly backup at minute 55
+- Atomic current-file replacement
+- Frozen completed-month files
+- Crash incident package and recovery logging
+- E:\NakshaTech_Backups role-separated storage
+
+Automated checks:
+- Existing backend regression tests: 14 passed, 1 backup test deselected
+- New local-backup API test: 1 passed
+- Python module syntax/import checks: passed
+- Docker Compose YAML parse: passed
+- Role workbook content/permission checks: passed
+- Unauthorized token check: passed
+- Admin password-hash exclusion check: passed
+- XLSX ZIP signature check: passed
+
+Important deployment condition:
+- The Windows agent cannot be fully executed in this Linux build environment.
+- Run the included installer on Windows 10 Pro after the final HTTPS subdomain and matching server token are configured.
+- The installer performs the first real endpoint/download validation before reporting success.
+
+Expected local destination:
+E:\NakshaTech_Backups
+
+Expected PC:
+DESKTOP-SF003TK / Windows 10 Pro 64-bit

@@ -1,0 +1,18 @@
+Modified frontend files:
+frontend/src/styles.css
+frontend/src/components/Layout.tsx
+
+Added release/support files:
+APPLY_LIGHT_ENTERPRISE_THEME_WINDOWS.cmd
+APPLY_LIGHT_ENTERPRISE_THEME_WINDOWS.ps1
+ROLLBACK_LIGHT_ENTERPRISE_THEME_WINDOWS.cmd
+ROLLBACK_LIGHT_ENTERPRISE_THEME_WINDOWS.ps1
+docs/LIGHT_ENTERPRISE_THEME_IMPLEMENTATION.md
+docs/LIGHT_ENTERPRISE_THEME_MANUAL_TEST.md
+VERIFICATION_LIGHT_ENTERPRISE_THEME.txt
+FILES_CHANGED_LIGHT_ENTERPRISE_THEME.txt
+
+Backend files modified: 0
+WelcomePage.tsx modified: No
+LoginPage.tsx modified: No
+App.tsx/routes modified: No

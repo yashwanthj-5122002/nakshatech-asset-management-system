@@ -1,0 +1,56 @@
+NakshaTech Backup & Historical Excel - Verification
+===================================================
+
+Source reviewed
+---------------
+asset-management-system(7).zip
+
+Implemented
+-----------
+- Day-wise Excel export
+- Month-wise Excel export
+- Current-month live Excel export
+- Calendar-year Excel export
+- Financial-year Excel export
+- Full-current backup workbook
+- Admin server-side Excel + PostgreSQL backup
+- Role-specific export permissions
+- External backup directory
+- Backup history, SHA-256 manifests and file sizes
+- Independent cPanel/Linux cron runner
+- Windows/Docker apply, run-now and verification scripts
+- Manual restore helper with explicit confirmation
+
+Automated verification
+----------------------
+Python compileall: PASS
+Backend end-to-end tests: 15 passed
+Backup API and permission tests: PASS
+Backup server-file creation: PASS
+Rapid consecutive backup-code uniqueness: PASS
+Scheduled CLI runner: PASS
+Generated workbook: 23 sheets
+Generated workbook formula cells: 0
+User/password account sheet in Excel: Not included
+TypeScript/TSX parse: 39 files, 0 syntax errors
+CSS brace validation: PASS
+Docker Compose YAML parse: PASS
+cPanel shell scripts bash -n: PASS
+
+Frontend build limitation in this environment
+---------------------------------------------
+The full npm/Vite production build could not be run because the available internal npm registry returned 404 for @types/react@18.3.18. The TypeScript/TSX source was syntax-parsed successfully. The included Docker/Windows apply script performs the real build on the deployment machine.
+
+Deployment safety
+-----------------
+- No docker compose down -v command is used.
+- Existing PostgreSQL, Redis and MinIO volumes are preserved.
+- Backup writes are atomic.
+- Overlapping backup runs are locked.
+- Database restore is not exposed in the browser.
+- Backup paths are restricted to BACKUP_ROOT.
+- cPanel backup folder is documented outside public_html.
+
+Important cPanel condition
+--------------------------
+The backup scheduler is cPanel Cron compatible. Full application parity on shared cPanel still requires the hosting provider to support the FastAPI/ASGI runtime, WebSockets, PostgreSQL, Redis and MinIO/external equivalents. The backup feature does not remove those hosting requirements.

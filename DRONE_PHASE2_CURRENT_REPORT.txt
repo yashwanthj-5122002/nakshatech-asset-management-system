@@ -1,0 +1,27 @@
+CURRENT RELEASE: Drone Operational Phase 2
+
+The Drone module now supports real connected operations rather than register-only viewing.
+
+A dispatch or assignment creates:
+1. operation header and item records
+2. current asset/kit project, custodian, location and status updates
+3. movement records
+4. automatic Drone work record
+5. project-detail timeline updates
+6. dashboard active-operation and recent-movement updates
+
+Return supports full or partial quantities. Transfer preserves previous custody in movement history. Quantity-managed assets show total, allocated and available quantities.
+
+IT remains separate:
+- IT Work Records stays at /work and is not shown to Drone role
+- Drone Work Records is at /drone/work-records
+- Drone Operations is at /drone/operations
+- IT role cannot access Drone operational APIs
+
+Next planned phase:
+- maintenance
+- calibration
+- physical verification and missing items
+- UIN compliance workflow
+- HDD delivery chain of custody
+- Drone monthly/yearly reports and frozen snapshots

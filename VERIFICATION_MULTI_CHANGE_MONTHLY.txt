@@ -1,0 +1,27 @@
+NAKSHATECH ASSET MANAGEMENT SYSTEM
+MULTI-CHANGE AND MONTHLY REPORTING VERIFICATION
+
+Automated backend acceptance tests: 9 passed
+Failures: 0
+
+Verified:
+- Existing four-role login and permissions
+- July 2026 seed counts: 183 assets / 153 computers / 28 laptops / 2 smartphones
+- Asset validation and unique tag handling
+- Single component replacement compatibility
+- Multi-item atomic batch update
+- Upgrade / Replacement / Upgrade + Replacement classification
+- One batch and one work record across multiple items
+- Live Asset Register updates
+- Separate old-to-new history
+- Current month Asset Register Excel
+- Month-wise Upgrade & Replacement Excel
+- Monthly movement summary Excel
+- Finalized monthly snapshot
+- Historical abbreviated sheet names such as OCT 2025 and May-2024
+- Existing work and complete asset replacement workflows
+
+Frontend TS/TSX syntax transpilation: passed
+Frontend project type validation with temporary external-package shims: passed
+
+Note: npm package installation cannot be completed inside this environment because the configured registry does not contain the pinned public packages. The supplied Docker apply script builds against the user's normal internet-connected Docker environment and unchanged package versions.

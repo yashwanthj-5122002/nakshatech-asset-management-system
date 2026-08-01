@@ -1,0 +1,70 @@
+NakshaTech Asset Management System
+Drone Operational Phase 2 - Verification Report
+Generated: 2026-07-31
+
+SCOPE IMPLEMENTED
+- Separate Drone dispatch workflow
+- Employee/custodian assignment workflow
+- Full and partial return workflow
+- Project/custodian/location transfer workflow
+- Permanent Drone movement history
+- Separate Drone work records
+- Project detail page with current custody and timelines
+- Automatic linked updates across Drone assets, kits, projects, dashboard, work records and movements
+- Quantity allocation and remaining-quantity validation
+- Closed-project protection
+- IT-role isolation from Drone operational APIs
+
+NEW DATABASE TABLES (ADDITIVE)
+- drone_operations
+- drone_operation_items
+- drone_asset_movements
+- drone_work_records
+
+NEW BACKEND ENDPOINTS
+- GET    /api/drone/projects/{project_id}
+- PATCH  /api/drone/projects/{project_id}
+- GET    /api/drone/operations
+- GET    /api/drone/operations/{operation_id}
+- POST   /api/drone/operations/dispatch
+- POST   /api/drone/operations/assign
+- POST   /api/drone/operations/return
+- POST   /api/drone/operations/transfer
+- GET    /api/drone/movements
+- GET    /api/drone/work-records
+- POST   /api/drone/work-records
+- PATCH  /api/drone/work-records/{record_id}
+
+NEW FRONTEND ROUTES
+- /drone/operations
+- /drone/work-records
+- /drone/movements
+- /drone/projects/:id
+
+BACKEND RESULTS
+- Python compileall: PASSED
+- Backend regression and Phase 2 tests: 14 passed
+- Existing Phase 1 and IT tests remained passing
+- IT dashboard seed count remains asserted at 183
+- IT role forbidden from /api/drone/operations and /api/drone/work-records
+
+FRONTEND RESULTS
+- TS/TSX parser/type-check: no non-dependency diagnostics
+- CSS brace/structure check: PASSED (1009 opening / 1009 closing)
+- Responsive CSS added for desktop, tablet and mobile
+- Full npm/Vite build was not executable in this environment because the internal package registry returned 404 for @types/react@18.3.18
+
+DOCKER RESULTS
+- docker-compose.yml parsed successfully as YAML
+- Docker runtime/build was not executed because Docker CLI is unavailable in this environment
+- APPLY_DRONE_OPERATIONS_PHASE2_WINDOWS.cmd performs backup, compose validation, backend/frontend build, safe service recreation and health checks on the user's Windows system
+
+DATA SAFETY
+- No docker compose down -v command is used
+- No IT model, IT API, IT table or IT report implementation was modified
+- All new operational records are stored in separate Drone tables
+- Existing Drone Phase 1 permanent assets, projects, kits and Excel import logic are preserved
+
+KNOWN PHASE BOUNDARY
+- Maintenance ticket workflow, calibration workflow, physical verification, UIN compliance operations, HDD chain-of-custody UI and final monthly/yearly Drone Excel reports are not part of Phase 2
+- Real telemetry still depends on an external compatible telemetry source; no GPS data is invented

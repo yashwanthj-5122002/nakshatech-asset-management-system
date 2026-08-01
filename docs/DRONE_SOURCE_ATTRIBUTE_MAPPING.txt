@@ -1,0 +1,66 @@
+Exact Source Attribute Registry - 52 Named Attributes
+=====================================================
+
+May-2026 main inventory (19)
+1. S. NO
+2. DGPS Details
+3. QTY
+4. Equipment Manufacturer
+5. Model Number
+6. Serial No
+7. Date of Initial Verification
+8. Instrument | Equipment (ID Number)
+9. Calibration Required
+10. Maintenance Required
+11. Frequency
+12. Responsible Function
+13. Calibrated by
+14. Last Calibration Date
+15. Next Calibration Date
+16. Location of Location
+17. Location of Equipment
+18. Equipment Tolerance
+19. Remarks
+
+Embedded UAV/UIN table (8)
+20. Application Number
+21. Serial Number
+22. Category
+23. UIN Status
+24. UIN
+25. UAV
+26. Issue Date
+27. Class
+
+Trinity Equipment details (8)
+28. S. No
+29. Model
+30. Description
+31. Unit No
+32. Serial No
+33. UIN No
+34. Qty 
+35. Remarks
+
+Amrut 2.0_Inventroy Sheet (8)
+36. S. No
+37. Assisgn Name
+38. Equipment Name
+39. Serial No
+40. Quantity
+41. Storage 
+42. Working
+43. Remarks
+
+Hard disk delivered to SoI (9)
+44. S.No
+45. Date
+46. Ulbs
+47. Sq.Km
+48. Hdd Serial Number
+49. Storage
+50. Courier Name
+51. Courier Details
+52. Remarks
+
+The source sheet, original header text, source row, original raw payload and cleaned normalized field are stored separately. Misspellings and trailing spaces are intentionally preserved in source metadata.

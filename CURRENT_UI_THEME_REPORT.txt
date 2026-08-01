@@ -1,0 +1,12 @@
+CURRENT RELEASE: UNIFIED DARK GEOSPATIAL ENTERPRISE THEME
+
+Welcome and Login: preserved
+Admin: themed
+Management: themed
+IT: themed
+Drone: themed
+Shared sidebar/header/forms/tables/cards/statuses/modals: themed
+Backend and business logic: unchanged
+
+Run APPLY_UNIFIED_DARK_THEME_WINDOWS.cmd after extracting the release.
+Open http://localhost:3100 and press Ctrl+Shift+R.

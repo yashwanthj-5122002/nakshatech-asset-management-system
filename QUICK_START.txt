@@ -1,0 +1,38 @@
+NAKSHATECH ASSET MANAGEMENT SYSTEM - QUICK START
+
+1. Install Docker Desktop and make sure Docker is running.
+2. Extract the ZIP.
+3. Double-click START_WINDOWS.cmd.
+4. Wait until the frontend and backend are ready.
+5. Open http://localhost:3100
+
+MANUAL COMMAND
+  docker compose up --build
+
+IMPORTANT
+  Port 3000 is not used.
+  Frontend runs on port 3100.
+  The first Docker build needs internet to download images and packages.
+
+URLS
+  Frontend:       http://localhost:3100
+  Unified app:    http://localhost:8088
+  Backend:        http://localhost:8100
+  API Docs:       http://localhost:8100/docs
+  MinIO Console:  http://localhost:9005
+
+DEVELOPMENT LOGINS
+  Admin:       admin@nakshatech.com / Admin@123
+  Management:  management@nakshatech.com / Manager@123
+  IT:          it@nakshatech.com / IT@123456
+  Drone:       drone@nakshatech.com / Drone@123
+
+STOP
+  Double-click STOP_WINDOWS.cmd
+  or run: docker compose down
+
+DELETE ALL DEVELOPMENT DATA AND RESTART
+  Double-click RESET_AND_START_WINDOWS.cmd
+  or run:
+    docker compose down -v
+    docker compose up --build

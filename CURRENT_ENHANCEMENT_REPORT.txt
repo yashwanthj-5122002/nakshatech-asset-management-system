@@ -1,0 +1,29 @@
+NAKSHATECH ASSET MANAGEMENT SYSTEM
+CURRENT ENHANCEMENT REPORT
+
+Implemented:
+1. Full-page Add IT Asset route: /assets/new
+2. Full-page Edit Asset route: /assets/{id}/edit
+3. Removed the Add/Edit tabbed popup workflow
+4. Single scrolling form containing all original Excel fields
+5. CPU / Physical Asset Tag + Workstation shown as primary identification
+6. Asset Register search text prioritizes CPU tag and workstation
+7. Asset list displays CPU tag and workstation before internal NT code
+8. Work Records has Component / Configuration Change mode
+9. Supports component, hardware, network, software and selected record-field changes
+10. Missing old component values stored as Not Previously Recorded
+11. Current Asset Register updates immediately to the new value
+12. Automatic completed IT work record created for each change
+13. Asset timeline stores old value, new value, user and reason
+14. Separate Replacement History database table and API
+15. Separate Replacement History Excel download
+16. Current Asset Excel contains latest current values only
+17. Full CPU/laptop replacement still uses formal management approval
+18. Replacement selectors display CPU tag + workstation first
+19. Available assets may retain a workstation placement but cannot have an employee
+20. Assigned/in-use/WFH/field assets require employee, department and workstation
+
+Verification:
+- Backend automated integration tests: 7/7 passed
+- Frontend TypeScript/TSX syntax transpilation: passed
+- Full npm production build: not executed in this environment because the configured package registry did not provide the pinned packages

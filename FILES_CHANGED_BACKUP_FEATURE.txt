@@ -1,0 +1,45 @@
+NakshaTech Backup Feature - Files Changed
+========================================
+
+Added (19)
+----------
+APPLY_BACKUP_FEATURE_WINDOWS.cmd
+BACKUP_FEATURE_CURRENT_REPORT.txt
+RUN_BACKUP_NOW_WINDOWS.cmd
+VERIFY_BACKUP_FEATURE_WINDOWS.cmd
+backend/app/modules/backup/__init__.py
+backend/app/modules/backup/models.py
+backend/app/modules/backup/router.py
+backend/app/modules/backup/schemas.py
+backend/app/modules/backup/service.py
+backend/scripts/restore_database.py
+backend/scripts/run_backup.py
+cpanel/backend.env.example
+cpanel/cron/README.txt
+cpanel/cron/run_scheduled_backup.sh
+cpanel/preflight_check.sh
+docs/BACKUP_FEATURE_IMPLEMENTATION.md
+docs/BACKUP_FEATURE_MANUAL_TEST.md
+docs/CPANEL_DEPLOYMENT_AND_BACKUP.md
+frontend/src/pages/BackupCenterPage.tsx
+
+Modified (11)
+-------------
+.env.example
+README.md
+backend/Dockerfile
+backend/app/core/config.py
+backend/app/main.py
+backend/tests/test_end_to_end.py
+docker-compose.yml
+frontend/src/App.tsx
+frontend/src/components/Layout.tsx
+frontend/src/styles.css
+frontend/src/types.ts
+
+Removed
+-------
+None
+
+Existing IT, Drone, authentication, report and database tables were not deleted or renamed.
+The only new table is the additive backup_runs table.

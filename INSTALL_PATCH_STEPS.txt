@@ -1,0 +1,27 @@
+NAKSHATECH ASSET MANAGEMENT - APPLY THIS PATCH TO YOUR CURRENT FOLDER
+
+Current folder:
+E:\BEST_ASSEST_MANAGEMENT_SYSTEM\asset-management-system
+
+1. Keep Docker Desktop running.
+2. In the old folder, double-click BACKUP_DATABASE_WINDOWS.cmd if present, or copy the old folder as a backup.
+3. Stop the application with STOP_WINDOWS.cmd. Do NOT use RESET_AND_START_WINDOWS.cmd.
+4. Rename the old folder to:
+   asset-management-system-before-asset-fix
+5. Extract this ZIP into:
+   E:\BEST_ASSEST_MANAGEMENT_SYSTEM
+6. Confirm the final path is:
+   E:\BEST_ASSEST_MANAGEMENT_SYSTEM\asset-management-system
+7. Double-click APPLY_ASSET_FIX_WINDOWS.cmd.
+8. Open http://localhost:3100
+9. Press Ctrl+Shift+R once.
+
+The Docker Compose project name is unchanged, so the new code reconnects to the existing PostgreSQL volume and keeps current records.
+
+FIRST MANUAL CHECK
+- Open Asset Register.
+- Search QA-PC-001.
+- Open each duplicate row using the arrow.
+- Click Delete QA Test Record on the duplicate you do not want.
+- Create one new Available asset with a unique QA tag and no employee.
+- Try the same tag again. The second save must be rejected.

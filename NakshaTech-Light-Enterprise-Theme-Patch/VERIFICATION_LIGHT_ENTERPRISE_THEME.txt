@@ -1,0 +1,19 @@
+NakshaTech Light Enterprise Theme Verification
+
+Source reviewed: asset-management-system(6).zip
+Theme: Dark Navy Corporate Shell + Soft White Workspace + Cyan-Blue Accents
+
+Backend tree comparison: IDENTICAL (46 files)
+WelcomePage.tsx SHA-256 unchanged: YES
+LoginPage.tsx SHA-256 unchanged: YES
+App.tsx/routes SHA-256 unchanged: YES
+TypeScript/TSX syntax transpile: 37 files, 0 syntax errors
+CSS parser: 0 parse errors
+CSS brace count: balanced
+
+Backend pytest result in this environment:
+- 13 passed
+- 1 failed because the existing test hard-codes "July 2026" while the current runtime month is August 2026.
+- The failure is date-sensitive and unrelated to this frontend-only theme change.
+
+Full Vite production build was not available in this environment because the package registry does not provide the pinned Vite package. The Windows apply script builds the existing frontend image locally through Docker.
