@@ -1,20 +1,22 @@
 import {
-  CalendarDays, CheckCircle2, FileDown, FileSpreadsheet, History,
-  LayoutDashboard, LockKeyhole, RefreshCw, UploadCloud,
+  CalendarDays, CheckCircle2, FileClock, FileDown, FileSpreadsheet, History,
+  LayoutDashboard, LockKeyhole, RefreshCw, RotateCcw, UploadCloud,
 } from 'lucide-react'
 import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
+import { useITMonthUrl } from '../context/ITMonthContext'
+import { isFullAccessRole } from '../lib/roles'
 import { apiFetch, downloadFile, uploadExcel } from '../lib/api'
 import type { ReportMonth } from '../types'
 
 export function ReportsPage() {
   const { user } = useAuth()
+  const { selectedMonth, setSelectedMonth, presentMonth, returnToPresent } = useITMonthUrl()
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [months, setMonths] = useState<ReportMonth[]>([])
-  const [selectedMonth, setSelectedMonth] = useState('')
 
   const selected = useMemo(
     () => months.find(item => item.key === selectedMonth),
@@ -25,7 +27,6 @@ export function ReportsPage() {
     try {
       const data = await apiFetch<ReportMonth[]>('/reports/months')
       setMonths(data)
-      setSelectedMonth(current => current || data[0]?.key || '')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load report months')
     }
@@ -78,14 +79,14 @@ export function ReportsPage() {
       <DashboardHeader
         eyebrow="REPORTING CENTRE"
         title="Excel Downloads & Monthly Records"
-        description="Choose a month and download its exact Asset Register, upgrade/replacement history and monthly movement summary. Current month is live; finalized months remain frozen."
+        description="The selected IT reporting month stays active across pages and controls where new IT activities are reported. The actual server-recorded date and time are preserved separately for audit."
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
       <section className="panel monthly-report-control">
         <div className="monthly-report-heading">
-          <div><span className="section-kicker">MONTH-WISE CONTROL</span><h2>Select the reporting month</h2><p>The selected month controls all three monthly Excel downloads below.</p></div>
+          <div><span className="section-kicker">MONTH-WISE CONTROL</span><h2>Select the reporting month</h2><p>The selected month controls new IT activity reporting and all four monthly Excel downloads below.</p></div>
           <div className={`month-state ${selected?.status || 'live'}`}>
             {selected?.status === 'live' ? <RefreshCw size={18} /> : <LockKeyhole size={18} />}
             <span>{selected?.status === 'live' ? 'Live current register' : selected?.status === 'finalized' ? 'Finalized system snapshot' : 'Original historical Excel'}</span>
@@ -94,7 +95,8 @@ export function ReportsPage() {
         <div className="monthly-report-selector">
           <label><CalendarDays size={18} /><span>Month</span><select value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)}>{months.map(month => <option key={month.key} value={month.key}>{month.label} — {month.status}</option>)}</select></label>
           <div className="month-count-summary"><strong>{selected?.closing_count ?? '—'}</strong><span>{selected?.closing_count !== undefined ? 'Closing assets' : selected?.status === 'live' ? 'Live register' : 'Historical workbook'}</span></div>
-          {user?.role === 'admin' && selected?.status === 'live' && <button className="secondary-button" onClick={() => void finalizeSelectedMonth()} disabled={!!busy}><CheckCircle2 size={17} /> {busy === 'finalize' ? 'Finalizing…' : 'Finalize Selected Month'}</button>}
+          {selectedMonth !== presentMonth && <button className="secondary-button" type="button" onClick={returnToPresent}><RotateCcw size={17} /> Return to Present Month</button>}
+          {user && isFullAccessRole(user.role) && selected?.status === 'live' && <button className="secondary-button" onClick={() => void finalizeSelectedMonth()} disabled={!!busy}><CheckCircle2 size={17} /> {busy === 'finalize' ? 'Finalizing…' : 'Finalize Selected Month'}</button>}
         </div>
       </section>
 
@@ -109,29 +111,37 @@ export function ReportsPage() {
 
         <article className="report-card">
           <History size={34} />
-          <span className="section-kicker">OLD → NEW HISTORY</span>
-          <h2>{monthLabel} Upgrade & Replacement History</h2>
-          <p>Downloads a separate workbook containing every component/configuration item changed during the month, grouped by batch and work record, plus complete computer/laptop replacements.</p>
-          <button className="secondary-button" onClick={() => void download(`/reports/monthly-changes.xlsx?month=${monthQuery}`, `NakshaTech Upgrade Replacement History - ${monthLabel}.xlsx`, 'monthly-changes')} disabled={!selectedMonth || !!busy}><FileDown size={17} /> {busy === 'monthly-changes' ? 'Preparing History…' : 'Download Monthly Change History'}</button>
+          <span className="section-kicker">USER + DATE/TIME AUDIT</span>
+          <h2>{monthLabel} IT Asset Changes</h2>
+          <p>Downloads every Full Edit and component operation assigned to the selected reporting month, with the effective month, actual system-recorded date/time, user, role, batch ID, reason, activity remark, and field-by-field old → new values.</p>
+          <button className="secondary-button" onClick={() => void download(`/reports/monthly-changes.xlsx?month=${monthQuery}`, `NakshaTech IT Asset Changes - ${monthLabel}.xlsx`, 'monthly-changes')} disabled={!selectedMonth || !!busy}><FileDown size={17} /> {busy === 'monthly-changes' ? 'Preparing Changes…' : 'Download Monthly Asset Changes'}</button>
         </article>
 
         <article className="report-card">
           <LayoutDashboard size={34} />
           <span className="section-kicker">MONTH MOVEMENT</span>
           <h2>{monthLabel} Asset Summary</h2>
-          <p>Shows opening/imported baseline, manually added PCs and laptops, component upgrades, component replacements, complete asset replacements, returns, retirement and closing count.</p>
+          <p>Shows opening/imported baseline, manually added PCs and laptops, component upgrades, replacements, downgrades, complete asset replacements, returns, retirement and closing count.</p>
           <button className="secondary-button" onClick={() => void download(`/reports/monthly-summary.xlsx?month=${monthQuery}`, `NakshaTech Monthly Asset Summary - ${monthLabel}.xlsx`, 'monthly-summary')} disabled={!selectedMonth || !!busy}><FileDown size={17} /> {busy === 'monthly-summary' ? 'Preparing Summary…' : 'Download Monthly Summary'}</button>
+        </article>
+
+        <article className="report-card">
+          <FileClock size={34} />
+          <span className="section-kicker">COMPLETE MONTHLY IT ACTIVITY</span>
+          <h2>{monthLabel} Full Tracking Workbook</h2>
+          <p>Combines asset edits, component changes, laptop and desktop handover/return records, purchase details and user activity assigned to the selected reporting month. Each row keeps the actual system-recorded timestamp separately.</p>
+          <button className="primary-button" onClick={() => void download(`/it-activity/monthly.xlsx?month=${monthQuery}`, `NakshaTech IT Monthly Activity - ${monthLabel}.xlsx`, 'it-activity')} disabled={!selectedMonth || !!busy}><FileDown size={17} /> {busy === 'it-activity' ? 'Preparing Activity…' : 'Download Complete Monthly Activity'}</button>
         </article>
       </section>
 
       <section className="report-grid">
         <article className="report-card"><FileSpreadsheet size={34} /><span className="section-kicker">LIVE MASTER WORKBOOK</span><h2>NakshaTech Asset Details</h2><p>Downloads the complete live register and preserves the original historical monthly sheets from the workbook provided by your IT team.</p><button className="secondary-button" onClick={() => void download('/reports/nakshatech-assets.xlsx', 'NakshaTech Asset Details.xlsx', 'assets')} disabled={!!busy}><FileDown size={17} /> {busy === 'assets' ? 'Preparing Excel…' : 'Download Complete Asset Excel'}</button></article>
         <article className="report-card"><LayoutDashboard size={34} /><span className="section-kicker">MANAGEMENT REPORT</span><h2>IT Dashboard Workbook</h2><p>Includes KPI summary, current asset register, status and department charts, work records and data-quality checks.</p><button className="secondary-button" onClick={() => void download('/reports/dashboard.xlsx', 'NakshaTech IT Dashboard.xlsx', 'dashboard')} disabled={!!busy}><FileDown size={17} /> Download Dashboard Excel</button></article>
-        <article className="report-card"><History size={34} /><span className="section-kicker">ALL-TIME HISTORY</span><h2>Complete Replacement History</h2><p>Downloads all component/configuration changes and complete asset replacements across every month.</p><button className="secondary-button" onClick={() => void download('/reports/replacement-history.xlsx', 'NakshaTech Replacement History.xlsx', 'replacement-history')} disabled={!!busy}><FileDown size={17} /> {busy === 'replacement-history' ? 'Preparing History…' : 'Download All-Time History'}</button></article>
-        {user?.role === 'admin' && <article className="report-card"><UploadCloud size={34} /><span className="section-kicker">ADMIN ONLY</span><h2>Import Updated Excel</h2><p>Upload the NakshaTech workbook. Existing assets are matched using CPU tags or system names, and new records receive system asset IDs.</p><label className="secondary-button file-button"><UploadCloud size={17} /> {busy === 'import' ? 'Importing…' : 'Select Excel File'}<input hidden type="file" accept=".xlsx" onChange={event => void importFile(event)} /></label><button className="text-button" onClick={() => void download('/reports/upload-template.xlsx', 'NakshaTech IT Asset Upload Template.xlsx', 'template')}>Download blank upload template</button></article>}
+        <article className="report-card"><History size={34} /><span className="section-kicker">ALL-TIME COMPONENT HISTORY</span><h2>Complete Component Change History</h2><p>Downloads all upgrades, replacements, downgrades and complete asset replacements across every month. Monthly Full Edit audits are available from the selected-month report above.</p><button className="secondary-button" onClick={() => void download('/reports/replacement-history.xlsx', 'NakshaTech Component Change History.xlsx', 'replacement-history')} disabled={!!busy}><FileDown size={17} /> {busy === 'replacement-history' ? 'Preparing History…' : 'Download All-Time History'}</button></article>
+        {user && isFullAccessRole(user.role) && <article className="report-card"><UploadCloud size={34} /><span className="section-kicker">FULL ACCESS ONLY</span><h2>Import Updated Excel</h2><p>Upload the NakshaTech workbook. Existing assets are matched using CPU tags or system names, and new records receive system asset IDs.</p><label className="secondary-button file-button"><UploadCloud size={17} /> {busy === 'import' ? 'Importing…' : 'Select Excel File'}<input hidden type="file" accept=".xlsx" onChange={event => void importFile(event)} /></label><button className="text-button" onClick={() => void download('/reports/upload-template.xlsx', 'NakshaTech IT Asset Upload Template.xlsx', 'template')}>Download blank upload template</button></article>}
       </section>
 
-      <section className="panel report-notes"><h2>How month continuity works</h2><div className="check-grid"><span>✓ CPU / Asset Tag + Workstation identify the system</span><span>✓ Current register always shows latest active values</span><span>✓ Multiple changes can share one batch and work record</span><span>✓ Old values remain in separate history</span><span>✓ July closing values carry into August opening</span><span>✓ Finalized past months do not change silently</span><span>✓ User can select any available month</span><span>✓ Asset Register and History remain separate Excel files</span><span>✓ New manually added assets appear in monthly summary</span><span>✓ Complete live workbook remains available</span></div></section>
+      <section className="panel report-notes"><h2>How reporting-month continuity works</h2><div className="check-grid"><span>✓ The selected month remains active across all IT pages</span><span>✓ Current register always shows the latest live asset values</span><span>✓ New actions are assigned to the selected reporting month</span><span>✓ Actual system-recorded date and time remain immutable</span><span>✓ Present-month activity totals are not increased by a historical-month entry</span><span>✓ Activity remarks stay only with that individual activity and month</span><span>✓ Activity remarks never carry automatically into the next month</span><span>✓ Asset Master Remarks remain separate and persist only when intentionally edited</span><span>✓ Multiple component changes can share one batch and work record</span><span>✓ Old values remain in separate history</span><span>✓ Return to Present Month is the deliberate reset action</span><span>✓ Monthly Excel includes effective month and actual recorded timestamp</span></div></section>
     </>
   )
 }

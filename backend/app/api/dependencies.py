@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.entities import User
+from app.core.roles import role_is_allowed
 
 security = HTTPBearer()
 
@@ -31,7 +32,7 @@ def require_roles(*roles: str):
     allowed = set(roles)
 
     def checker(user: User = Depends(get_current_user)) -> User:
-        if user.role not in allowed:
+        if not role_is_allowed(user.role, allowed):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
         return user
 

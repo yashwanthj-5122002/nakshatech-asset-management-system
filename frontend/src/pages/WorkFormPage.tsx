@@ -5,7 +5,11 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
+import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
+import { formatIndiaDateTime } from '../lib/date'
+import { isFullAccessRole } from '../lib/roles'
+import { monthLabel, withITMonth } from '../lib/itMonth'
 import type {
   Asset, ComponentChangeBatchResponse, ComponentReplacementRecord, WorkRecord,
 } from '../types'
@@ -13,7 +17,7 @@ import type {
 const componentOptions = [
   'Monitor', 'Mouse', 'Keyboard', 'Processor', 'Memory', 'SSD', 'HDD', 'Graphics Card',
   'Network Type', 'IP Address', 'MAC Address', 'Operating System', 'Antivirus',
-  'Used By', 'Department', 'Workstation No.', 'Price', 'Approved By', 'Remarks',
+  'Used By', 'Department', 'Workstation No.', 'Price', 'Approved By', 'Asset Master Remarks',
 ]
 
 const componentField: Record<string, keyof Asset> = {
@@ -22,10 +26,10 @@ const componentField: Record<string, keyof Asset> = {
   'Graphics Card': 'graphics_card', 'Network Type': 'network_type', 'IP Address': 'ip_address',
   'MAC Address': 'mac_address', 'Operating System': 'operating_system', Antivirus: 'antivirus',
   'Used By': 'used_by', Department: 'department', 'Workstation No.': 'workstation_no',
-  Price: 'price', 'Approved By': 'approved_by', Remarks: 'remarks',
+  Price: 'price', 'Approved By': 'approved_by', 'Asset Master Remarks': 'remarks',
 }
 
-type ChangeType = 'upgrade' | 'replacement' | 'upgrade_replacement'
+type ChangeType = 'upgrade' | 'replacement' | 'downgrade' | 'upgrade_replacement'
 type ChangeRow = {
   rowId: string
   component_type: string
@@ -59,6 +63,7 @@ export function WorkFormPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { selectedMonth } = useITMonthUrl()
   const preselectedAssetId = searchParams.get('asset')
   const assetLockedFromRegister = Boolean(preselectedAssetId)
   const defaultModule = user?.role === 'drone' ? 'drone' : 'it'
@@ -185,6 +190,7 @@ export function WorkFormPage() {
     try {
       const payload = {
         ...form,
+        reporting_month: form.module === 'it' ? selectedMonth : null,
         asset_id: form.asset_id ? Number(form.asset_id) : null,
         expected_completion_date: form.expected_completion_date || null,
       }
@@ -206,6 +212,7 @@ export function WorkFormPage() {
         method: 'POST',
         body: JSON.stringify({
           ...changeForm,
+          reporting_month: selectedMonth,
           asset_id: Number(changeForm.asset_id),
           approved_by: changeForm.approved_by || null,
           remarks: changeForm.remarks || null,
@@ -232,7 +239,7 @@ export function WorkFormPage() {
     try {
       await apiFetch(`/work-records/${record.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, approval_status: status === 'completed' ? 'pending' : record.approval_status }),
+        body: JSON.stringify({ status, approval_status: status === 'completed' ? 'pending' : record.approval_status, reporting_month: selectedMonth }),
       })
       setMessage(`${record.work_code} updated to ${status.replaceAll('_', ' ')}.`)
       await load()
@@ -243,7 +250,7 @@ export function WorkFormPage() {
     try {
       await apiFetch(`/work-records/${record.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ approval_status: approvalStatus, status: approvalStatus === 'approved' ? 'closed' : 'in_progress' }),
+        body: JSON.stringify({ approval_status: approvalStatus, status: approvalStatus === 'approved' ? 'closed' : 'in_progress', reporting_month: selectedMonth }),
       })
       setMessage(`${record.work_code} ${approvalStatus}.`)
       await load()
@@ -255,15 +262,15 @@ export function WorkFormPage() {
       <DashboardHeader
         eyebrow="CONTROLLED WORKFLOW"
         title="Work Records & Component Changes"
-        description="Identify every system by CPU / Asset Tag and Workstation. Record one or many upgrades and replacements, update the live register, and preserve month-wise old-to-new history."
+        description={`Identify every system by CPU / Asset Tag and Workstation. IT activity saved here is reported in ${monthLabel(selectedMonth)}; the actual server date and time remain preserved.`}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
       {defaultModule === 'it' && <div className="work-mode-switch panel">
         <button className={mode === 'work' ? 'active' : ''} onClick={() => setMode('work')}><ClipboardPlus size={17} /> Normal Work Record</button>
-        <button className={mode === 'component' ? 'active' : ''} onClick={() => setMode('component')}><Repeat2 size={17} /> Upgrade / Replacement</button>
-        <p>{mode === 'work' ? 'Inspection, repair, installation, maintenance and general IT work.' : 'Search the system, select Upgrade, Replacement or Both, then add one or many component rows.'}</p>
+        <button className={mode === 'component' ? 'active' : ''} onClick={() => setMode('component')}><Repeat2 size={17} /> Component Changes</button>
+        <p>{mode === 'work' ? 'Inspection, repair, installation, maintenance and general IT work.' : 'Search the system, select Upgrade, Replacement, Downgrade or Both, then add one or many component rows.'}</p>
       </div>}
 
       <section className={`dashboard-grid work-layout ${mode === 'component' ? 'multi-change-layout' : ''}`}>
@@ -271,7 +278,7 @@ export function WorkFormPage() {
           {mode === 'work' || defaultModule === 'drone' ? <>
             <div className="panel-heading"><div><span className="section-kicker">NEW WORK RECORD</span><h2>Start Work</h2></div><ClipboardPlus /></div>
             <form className="data-form form-grid" onSubmit={submit}>
-              {(user?.role === 'admin' || user?.role === 'management') && <label>Department Module<select value={form.module} onChange={e => setForm({ ...form, module: e.target.value })}><option value="it">IT</option><option value="drone">Drone</option></select></label>}
+              {((user && isFullAccessRole(user.role)) || user?.role === 'management') && <label>Department Module<select value={form.module} onChange={e => setForm({ ...form, module: e.target.value })}><option value="it">IT</option><option value="drone">Drone</option></select></label>}
               <label>Work Type<select value={form.work_type} onChange={e => setForm({ ...form, work_type: e.target.value })}><option>Inspection</option><option>New System Installation</option><option>Hardware Repair</option><option>System Upgrade</option><option>Software Installation</option><option>Network Configuration</option><option>Asset Transfer</option><option>Employee Handover</option><option>Asset Return</option><option>Flight Planning</option><option>Drone Maintenance</option></select></label>
               {form.module === 'it' && <label className="full-span">System — CPU / Asset Tag + Workstation<select value={form.asset_id} onChange={e => { const asset = assets.find(item => item.id === Number(e.target.value)); setForm({ ...form, asset_id: e.target.value, assigned_to: asset?.used_by || form.assigned_to }) }}><option value="">Select the system</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No CPU tag'} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · {asset.asset_code}</option>)}</select></label>}
               <label className="full-span">Work Title<input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Example: Inspect system not powering on" /></label>
@@ -286,7 +293,7 @@ export function WorkFormPage() {
               <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Saving…' : 'Create Work Record'}</button>
             </form>
           </> : <>
-            <div className="panel-heading"><div><span className="section-kicker">ONE WORK ACTIVITY · MULTIPLE CHANGES</span><h2>Record Upgrade / Replacement</h2></div><Repeat2 /></div>
+            <div className="panel-heading"><div><span className="section-kicker">ONE WORK ACTIVITY · MULTIPLE CHANGES</span><h2>Record Component Change</h2></div><Repeat2 /></div>
             <div className="form-guidance component-rule">Search by CPU / Asset Tag, Workstation, employee, department or system name. Every saved row updates the current Asset Register. Old and new values remain in a separate month-wise history.</div>
             <form className="data-form multi-change-form" onSubmit={submitComponentChange}>
               {!assetLockedFromRegister && <div className="asset-search-block">
@@ -307,7 +314,7 @@ export function WorkFormPage() {
                   <strong>{selectedChangeAsset.cpu_asset_tag || selectedChangeAsset.asset_code} / {selectedChangeAsset.workstation_no || 'Workstation not recorded'}</strong>
                   <span>{selectedChangeAsset.used_by || 'Unassigned'} · {selectedChangeAsset.department || 'Department not recorded'} · {selectedChangeAsset.system_name || 'System name not recorded'} · Internal {selectedChangeAsset.asset_code}</span>
                 </div>
-                {assetLockedFromRegister && <div className="locked-asset-actions"><span><LockKeyhole size={15} /> Preselected from Asset Register</span><button type="button" className="secondary-button" onClick={() => navigate('/assets')}><ArrowLeft size={15} /> Change Selected Asset</button></div>}
+                {assetLockedFromRegister && <div className="locked-asset-actions"><span><LockKeyhole size={15} /> Preselected from Asset Register</span><button type="button" className="secondary-button" onClick={() => navigate(withITMonth('/assets', selectedMonth))}><ArrowLeft size={15} /> Change Selected Asset</button></div>}
               </div>}
 
               <div className="change-batch-header">
@@ -315,7 +322,7 @@ export function WorkFormPage() {
                   const value = e.target.value as ChangeType
                   setChangeForm({ ...changeForm, change_type: value })
                   setChangeRows(rows => rows.map(row => ({ ...row, change_type: value === 'upgrade_replacement' ? row.change_type : value })))
-                }}><option value="upgrade">Upgrade</option><option value="replacement">Replacement</option><option value="upgrade_replacement">Upgrade + Replacement</option></select></label>
+                }}><option value="upgrade">Upgrade</option><option value="replacement">Replacement</option><option value="downgrade">Downgrade</option><option value="upgrade_replacement">Upgrade + Replacement</option></select></label>
                 <label>Technician<input value={changeForm.technician} onChange={e => setChangeForm({ ...changeForm, technician: e.target.value })} /></label>
                 <label>Change Date<input type="date" value={changeForm.replacement_date} onChange={e => setChangeForm({ ...changeForm, replacement_date: e.target.value })} /></label>
                 <label>Approved By<input value={changeForm.approved_by} onChange={e => setChangeForm({ ...changeForm, approved_by: e.target.value })} placeholder="Optional approver" /></label>
@@ -335,14 +342,14 @@ export function WorkFormPage() {
                       {row.component_type === 'Monitor' && monitors.length ? <label>Current / Old Monitor<select value={row.old_value || monitors[0]} onChange={e => updateRow(row.rowId, { old_value: e.target.value })}>{monitors.map(tag => <option key={tag}>{tag}</option>)}<option value="Not Previously Recorded">Add another newly tagged monitor</option></select></label> : <label>Current / Old Value<input readOnly value={oldDisplay} /></label>}
                       <label>New Value / New Tag<input required value={row.new_value} onChange={e => updateRow(row.rowId, { new_value: e.target.value })} placeholder="Enter new active tag, capacity, model or value" /></label>
                       <label>Old Condition<input value={row.old_condition} onChange={e => updateRow(row.rowId, { old_condition: e.target.value })} /></label>
-                      <label className="wide-field">Reason for This Change<textarea required rows={2} value={row.reason} onChange={e => updateRow(row.rowId, { reason: e.target.value })} placeholder="Why was this component upgraded or replaced?" /></label>
+                      <label className="wide-field">Reason for This Change<textarea required rows={2} value={row.reason} onChange={e => updateRow(row.rowId, { reason: e.target.value })} placeholder="Why was this component upgraded, replaced or downgraded?" /></label>
                     </div>
                     <div className="item-change-preview"><span>{row.change_type.replaceAll('_', ' ')}</span><strong>{row.component_type}: {oldDisplay} → {row.new_value || 'Enter new value'}</strong></div>
                   </article>
                 })}
               </div>
 
-              <label className="batch-remarks">Overall Remarks<textarea rows={3} value={changeForm.remarks} onChange={e => setChangeForm({ ...changeForm, remarks: e.target.value })} placeholder="Common remarks for this work activity" /></label>
+              <label className="batch-remarks">Overall Remarks<textarea rows={3} value={changeForm.remarks} onChange={e => setChangeForm({ ...changeForm, remarks: e.target.value })} placeholder="Activity remark for this selected reporting month only; it will not carry forward" /></label>
               <div className="change-preview"><span>After Save</span><strong>{changeRows.length} item(s) will update the live register under {selectedChangeAsset?.cpu_asset_tag || 'selected CPU tag'} / {selectedChangeAsset?.workstation_no || 'selected workstation'}.</strong><small>One work record and one batch ID will group all changes. Month-wise Asset Register shows latest values; month-wise History Excel shows every old-to-new item.</small></div>
               <button className="primary-button batch-save-button" disabled={busy}><Save size={17} /> {busy ? 'Updating…' : `Save ${changeRows.length} Change Item${changeRows.length === 1 ? '' : 's'} & Update Asset Register`}</button>
             </form>
@@ -350,10 +357,10 @@ export function WorkFormPage() {
         </article>
 
         <article className="panel work-record-panel">
-          <div className="panel-heading"><div><span className="section-kicker">OPERATION HISTORY</span><h2>{mode === 'component' ? 'Upgrade & Replacement History' : 'Current Work Records'}</h2></div><span className="count-chip">{mode === 'component' ? componentRecords.length : records.length}</span></div>
+          <div className="panel-heading"><div><span className="section-kicker">OPERATION HISTORY</span><h2>{mode === 'component' ? 'Component Change History' : 'Current Work Records'}</h2></div><span className="count-chip">{mode === 'component' ? componentRecords.length : records.length}</span></div>
           {mode === 'component' ? <div className="record-list detailed-records">
-            {componentRecords.map(record => <article key={record.id}><div className="record-top"><div><strong>{record.batch_code || record.replacement_code} · {record.replacement_code}</strong><span>{record.cpu_asset_tag || record.asset_code} / {record.workstation_no || 'No workstation'}</span></div><span className="status completed">{record.change_type?.replaceAll('_', ' ') || 'replacement'}</span></div><h3>{record.component_type}</h3><p><strong>{record.old_value || 'Not Previously Recorded'}</strong> → <strong>{record.new_value}</strong></p><div className="record-meta"><span>{record.reason}</span><span>{record.technician || 'IT Department'}</span><span>{record.work_code || 'Work record linked'}</span><span>{new Date(record.created_at).toLocaleDateString()}</span></div></article>)}
-            {!componentRecords.length && <div className="empty-state">No upgrade or replacement change has been recorded.</div>}
+            {componentRecords.map(record => <article key={record.id}><div className="record-top"><div><strong>{record.batch_code || record.replacement_code} · {record.replacement_code}</strong><span>{record.cpu_asset_tag || record.asset_code} / {record.workstation_no || 'No workstation'}</span></div><span className="status completed">{record.change_type?.replaceAll('_', ' ') || 'replacement'}</span></div><h3>{record.component_type}</h3><p><strong>{record.old_value || 'Not Previously Recorded'}</strong> → <strong>{record.new_value}</strong></p><div className="record-meta"><span>{record.reason}</span><span>{record.technician || 'IT Department'}</span><span>{record.work_code || 'Work record linked'}</span><span>{formatIndiaDateTime(record.created_at)}</span><span>{record.performed_by || 'System'}{record.performed_by_role ? ` · ${record.performed_by_role.replaceAll('_', ' ')}` : ''}</span></div></article>)}
+            {!componentRecords.length && <div className="empty-state">No upgrade, replacement or downgrade change has been recorded.</div>}
           </div> : <div className="record-list detailed-records">
             {records.map(record => <article key={record.id}>
               <div className="record-top"><div><strong>{record.work_code}</strong><span>{record.asset_code || record.project || record.module.toUpperCase()}</span></div><span className={`status ${record.status}`}>{record.status.replaceAll('_', ' ')}</span></div>
@@ -362,13 +369,13 @@ export function WorkFormPage() {
               <div className="record-actions">
                 {record.status === 'open' && <button className="secondary-button" onClick={() => void changeStatus(record, 'in_progress')}><Play size={15} /> Start</button>}
                 {record.status === 'in_progress' && <button className="primary-button" onClick={() => void changeStatus(record, 'completed')}><CheckCircle2 size={15} /> Complete</button>}
-                {record.status === 'completed' && record.approval_status === 'pending' && (user?.role === 'admin' || user?.role === 'management') && <><button className="primary-button" onClick={() => void decideWork(record, 'approved')}><CheckCircle2 size={15} /> Approve & Close</button><button className="danger-button" onClick={() => void decideWork(record, 'rejected')}>Return to IT</button></>}
-                {['completed', 'closed'].includes(record.status) && !(record.status === 'completed' && record.approval_status === 'pending' && (user?.role === 'admin' || user?.role === 'management')) && <span className="approval-note"><Wrench size={15} /> Approval: {record.approval_status.replaceAll('_', ' ')}</span>}
+                {record.status === 'completed' && record.approval_status === 'pending' && ((user && isFullAccessRole(user.role)) || user?.role === 'management') && <><button className="primary-button" onClick={() => void decideWork(record, 'approved')}><CheckCircle2 size={15} /> Approve & Close</button><button className="danger-button" onClick={() => void decideWork(record, 'rejected')}>Return to IT</button></>}
+                {['completed', 'closed'].includes(record.status) && !(record.status === 'completed' && record.approval_status === 'pending' && ((user && isFullAccessRole(user.role)) || user?.role === 'management')) && <span className="approval-note"><Wrench size={15} /> Approval: {record.approval_status.replaceAll('_', ' ')}</span>}
               </div>
             </article>)}
             {!records.length && <div className="empty-state">No work records have been created for this module.</div>}
           </div>}
-          {mode === 'component' && <div className="history-download-note"><History size={18} /><span>Use Excel & Reports, select a month, then download the month-wise Upgrade & Replacement History separately from the Asset Register.</span></div>}
+          {mode === 'component' && <div className="history-download-note"><History size={18} /><span>Use Excel & Reports, select a month, then download IT Asset Changes to see component operations and Full Edit audits with user, exact date/time and old → new values.</span></div>}
         </article>
       </section>
     </>

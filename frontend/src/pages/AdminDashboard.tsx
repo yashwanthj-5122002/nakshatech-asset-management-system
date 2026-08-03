@@ -1,4 +1,4 @@
-import { BarChart3, FileSpreadsheet, HardDrive, KeyRound, Settings, ShieldCheck, Users } from 'lucide-react'
+import { BarChart3, FileSpreadsheet, HardDrive, Settings, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DroneIcon as Drone } from '../components/DroneIcon'
 import { Link } from 'react-router-dom'
@@ -6,20 +6,22 @@ import { DashboardHeader } from '../components/DashboardHeader'
 import { StatCard } from '../components/StatCard'
 import { apiFetch } from '../lib/api'
 import type { DashboardSummary } from '../types'
-
-const credentials = [
-  ['Admin', 'admin@nakshatech.com', 'Admin@123'],
-  ['Management', 'management@nakshatech.com', 'Manager@123'],
-  ['IT', 'it@nakshatech.com', 'IT@123456'],
-  ['Drone', 'drone@nakshatech.com', 'Drone@123'],
-]
+import { useAuth } from '../context/AuthContext'
 
 export function AdminDashboard() {
+  const { user } = useAuth()
+  const softwareTeam = user?.role === 'software_team'
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   useEffect(() => { void apiFetch<DashboardSummary>('/dashboard/summary').then(setSummary) }, [])
   return (
     <>
-      <DashboardHeader eyebrow="FULL ACCESS & CONTROL" title="Admin Control Centre" description="Manage all IT, drone and management modules. Development accounts are enabled now; branch email accounts can replace them during production rollout." />
+      <DashboardHeader
+        eyebrow={softwareTeam ? "SOFTWARE TEAM · FULL TECHNICAL ACCESS" : "ADMIN · ORGANIZATION CONTROL"}
+        title={softwareTeam ? "Software Team Control Centre" : "Admin Control Centre"}
+        description={softwareTeam
+          ? "Maintain and support every IT, drone, management, reporting and backup module without changing department workflows."
+          : "Review Management, IT and Drone operations through a clear department-wise workspace."}
+      />
       <section className="stats-grid">
         <StatCard icon={HardDrive} label="IT Assets" value={summary?.assets_total ?? '—'} />
         <StatCard icon={Drone} label="Drones" value={summary?.drones_total ?? '—'} tone="cyan" />
@@ -33,7 +35,6 @@ export function AdminDashboard() {
         <Link className="module-card" to="/reports"><FileSpreadsheet /><h3>Excel Control</h3><p>Import or export NakshaTech monthly asset files.</p></Link>
         <Link className="module-card" to="/future"><Settings /><h3>Future Modules</h3><p>Extend without changing the main architecture.</p></Link>
       </section>
-      <section className="panel credential-panel"><div className="panel-heading"><div><span className="section-kicker">DEVELOPMENT ACCESS</span><h2>Temporary Credentials</h2><p>Replace these with branch and employee email IDs before production.</p></div><KeyRound /></div><div className="credential-grid">{credentials.map(([role, email, password]) => <article key={role}><strong>{role}</strong><span>{email}</span><code>{password}</code></article>)}</div></section>
     </>
   )
 }

@@ -14,10 +14,14 @@ import {
   X,
 } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
+import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
+import { formatIndiaDateTime, isCurrentIndiaMonth } from '../lib/date'
+import { isFullAccessRole } from '../lib/roles'
+import { withITMonth } from '../lib/itMonth'
 import type { Asset, ReportMonth } from '../types'
 
 const statusOptions = [
@@ -26,12 +30,56 @@ const statusOptions = [
   'for_parts', 'disposal_pending', 'disposed',
 ]
 
+const auditFieldLabels: Record<string, string> = {
+  used_by: 'Used By', workstation_no: 'Workstation Number', department: 'Department',
+  cpu_asset_tag: 'CPU / Asset Tag', monitor_asset_tags: 'Monitor Asset Tag(s)',
+  mouse_asset_tag: 'Mouse Asset Tag', keyboard_asset_tag: 'Keyboard Asset Tag',
+  system_name: 'System Name', device_type: 'Device Type', processor: 'Processor',
+  memory_gb: 'Memory', ssd: 'SSD', hdd: 'HDD', ip_address: 'IP Address',
+  mac_address: 'MAC Address', graphics_card: 'Graphics Card', operating_system: 'Operating System',
+  antivirus: 'Antivirus', network_type: 'Network Type', approved_by: 'Approved By',
+  price: 'Price', remarks: 'Remarks', asset_date: 'Asset Record Date', location: 'Location',
+  work_mode: 'Work Mode', status: 'Status',
+}
+
+type AssetHistoryItem = NonNullable<Asset['history']>[number]
+
+function parseAuditObject(raw?: string): Record<string, unknown> {
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function auditPairs(item: AssetHistoryItem) {
+  const oldValues = parseAuditObject(item.old_value)
+  const newValues = parseAuditObject(item.new_value)
+  const keys = Array.from(new Set([...Object.keys(oldValues), ...Object.keys(newValues)]))
+  if (!keys.length) return []
+  return keys.map(key => ({
+    field: auditFieldLabels[key] || key.replaceAll('_', ' '),
+    oldValue: oldValues[key],
+    newValue: newValues[key],
+  })).filter(pair => String(pair.oldValue ?? '') !== String(pair.newValue ?? ''))
+}
+
+function formatAuditDate(value?: string) {
+  return formatIndiaDateTime(value)
+}
+
+function changedThisMonth(value?: string) {
+  return isCurrentIndiaMonth(value)
+}
+
 export function AssetsPage() {
   const { user } = useAuth()
-  const canEdit = user?.role === 'admin' || user?.role === 'it'
+  const canEdit = Boolean(user && (isFullAccessRole(user.role) || user.role === 'it'))
   const navigate = useNavigate()
   const location = useLocation()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { selectedMonth, presentMonth, returnToPresent } = useITMonthUrl()
   const [assets, setAssets] = useState<Asset[]>([])
   const [months, setMonths] = useState<ReportMonth[]>([])
   const [selected, setSelected] = useState<Asset | null>(null)
@@ -45,11 +93,8 @@ export function AssetsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const selectedMonth = searchParams.get('month') || ''
-  const now = new Date()
-  const presentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const monthInfo = months.find(item => item.key === selectedMonth)
-  const historical = Boolean(selectedMonth && selectedMonth !== presentKey)
+  const historicalReporting = selectedMonth !== presentMonth
 
   async function loadMonths() {
     try { setMonths(await apiFetch<ReportMonth[]>('/reports/months')) }
@@ -62,12 +107,11 @@ export function AssetsPage() {
     if (search.trim()) params.set('search', search.trim())
     if (status) params.set('status', status)
     if (device) params.set('device_type', device)
-    if (selectedMonth) params.set('month', selectedMonth)
     params.set('limit', '1000')
     try {
       const data = await apiFetch<Asset[]>(`/assets?${params.toString()}`)
       setAssets(data)
-      if (openAssetId && !historical) await openAsset(openAssetId)
+      if (openAssetId) await openAsset(openAssetId)
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load assets') }
   }
 
@@ -84,18 +128,8 @@ export function AssetsPage() {
   const departments = useMemo(() => Array.from(new Set(assets.map(asset => asset.department).filter(Boolean))).sort(), [assets])
 
   async function openAsset(id: number) {
-    if (historical) {
-      setSelected(assets.find(item => item.id === id) || null)
-      return
-    }
     try { setSelected(await apiFetch<Asset>(`/assets/${id}`)) }
     catch (err) { setError(err instanceof Error ? err.message : 'Unable to open asset') }
-  }
-
-  function returnToPresent() {
-    const next = new URLSearchParams(searchParams)
-    next.delete('month')
-    setSearchParams(next)
   }
 
   async function assignAsset(event: FormEvent) {
@@ -103,7 +137,7 @@ export function AssetsPage() {
     if (!selected) return
     setBusy(true); setError(''); setMessage('')
     try {
-      const updated = await apiFetch<Asset>(`/assets/${selected.id}/assign`, { method: 'POST', body: JSON.stringify(assignment) })
+      const updated = await apiFetch<Asset>(`/assets/${selected.id}/assign`, { method: 'POST', body: JSON.stringify({ ...assignment, reporting_month: selectedMonth }) })
       setAssignmentOpen(false)
       setMessage(`${updated.cpu_asset_tag || updated.asset_code} assigned to ${updated.used_by} at ${updated.workstation_no || 'workstation not recorded'}.`)
       await load(); await openAsset(updated.id)
@@ -116,7 +150,7 @@ export function AssetsPage() {
     if (!selected) return
     setBusy(true); setError(''); setMessage('')
     try {
-      const updated = await apiFetch<Asset>(`/assets/${selected.id}/return`, { method: 'POST', body: JSON.stringify(returnForm) })
+      const updated = await apiFetch<Asset>(`/assets/${selected.id}/return`, { method: 'POST', body: JSON.stringify({ ...returnForm, reporting_month: selectedMonth }) })
       setReturnOpen(false)
       setMessage(`${updated.cpu_asset_tag || updated.asset_code} returned. Current status: ${updated.status.replaceAll('_', ' ')}.`)
       await load(); await openAsset(updated.id)
@@ -127,7 +161,7 @@ export function AssetsPage() {
   async function archiveAsset() {
     if (!selected || !window.confirm(`Retire CPU / Asset Tag ${selected.cpu_asset_tag || selected.asset_code}? The record and history will remain available.`)) return
     try {
-      const updated = await apiFetch<Asset>(`/assets/${selected.id}/archive`, { method: 'PATCH' })
+      const updated = await apiFetch<Asset>(`/assets/${selected.id}/archive?reporting_month=${encodeURIComponent(selectedMonth)}`, { method: 'PATCH' })
       setMessage(`${updated.cpu_asset_tag || updated.asset_code} retired and preserved in history.`); await load(); await openAsset(updated.id)
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to retire asset') }
   }
@@ -155,13 +189,13 @@ export function AssetsPage() {
       <DashboardHeader
         eyebrow="IT INVENTORY"
         title={`Asset Register${monthInfo ? ` — ${monthInfo.label}` : ''}`}
-        description={historical ? 'Historical month-end snapshot. Search and review records; editing is disabled.' : 'Search by CPU / Physical Asset Tag or Workstation Number, then manage the complete current configuration and history.'}
+        description={`This is the live Asset Register. New edits are assigned to ${monthInfo?.label || selectedMonth}; the actual system date and time are also preserved separately.`}
         actions={<>
-          {historical && <button className="secondary-button" onClick={returnToPresent}><RotateCcw size={17} /> Return to Present</button>}
-          {canEdit && !historical && <button className="primary-button" onClick={() => navigate('/assets/new')}><Plus size={17} /> Add IT Asset</button>}
+          {historicalReporting && <button className="secondary-button" onClick={returnToPresent}><RotateCcw size={17} /> Return to Present</button>}
+          {canEdit && <button className="primary-button" onClick={() => navigate(withITMonth('/assets/new', selectedMonth))}><Plus size={17} /> Add IT Asset</button>}
         </>}
       />
-      {monthInfo && <div className={`register-month-banner ${historical ? 'historical' : 'live'}`}><CalendarDays size={18} /><strong>{monthInfo.label}</strong><span>{historical ? 'Read-only historical register' : 'Live current register'}</span></div>}
+      {monthInfo && <div className={`register-month-banner ${historicalReporting ? 'historical' : 'live'}`}><CalendarDays size={18} /><strong>Reporting activity to {monthInfo.label}</strong><span>Live asset values remain current; remarks stay only on the saved activity unless the Asset Master Remarks field itself is edited.</span></div>}
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
@@ -179,20 +213,25 @@ export function AssetsPage() {
         <article className="panel asset-table-panel">
           <div className="table-wrap">
             <table className="asset-table">
-              <thead><tr><th>CPU / Asset Tag</th><th>Workstation</th><th>Used By</th><th>Department</th><th>Device</th><th>System Name</th><th>Location</th><th>Status</th><th /></tr></thead>
-              <tbody>{assets.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>{historical ? `Historical row: ${asset.source_row || '—'}` : `Internal: ${asset.asset_code}`}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.system_name || '—'}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td><ChevronRight size={17} /></td></tr>)}</tbody>
+              <thead><tr><th>CPU / Asset Tag</th><th>Workstation</th><th>Used By</th><th>Department</th><th>Device</th><th>System Name</th><th>Location</th><th>Status</th><th>Last Change</th><th /></tr></thead>
+              <tbody>{assets.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>Internal: {asset.asset_code}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.system_name || '—'}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td className="asset-last-change">{asset.last_change_at ? <><strong>{formatAuditDate(asset.last_change_at)}</strong><small>{asset.last_changed_by || 'System'}{changedThisMonth(asset.last_change_at) ? ' · Updated this month' : ''}</small></> : <span className="muted">No system edit</span>}</td><td><ChevronRight size={17} /></td></tr>)}</tbody>
             </table>
           </div>
         </article>
 
         {selected && <aside className="asset-detail panel">
           <button className="icon-button close-detail" onClick={() => setSelected(null)}><X size={19} /></button>
-          <span className="section-kicker">{historical ? 'HISTORICAL SYSTEM PROFILE' : 'CURRENT SYSTEM PROFILE'}</span><h2>{selected.cpu_asset_tag || selected.asset_code}</h2><p>Workstation: <strong>{selected.workstation_no || 'Not recorded'}</strong> · Internal reference: {selected.asset_code}</p>
-          <div className="asset-detail-status"><span className={`status ${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><small>Last updated {new Date(selected.updated_at).toLocaleString()}</small></div>
-          {canEdit && !historical && <div className="asset-action-grid">
-            <button className="secondary-button" onClick={() => navigate(`/assets/${selected.id}/edit`)}><Pencil size={15} /> Edit Full Record</button>
+          <span className="section-kicker">CURRENT LIVE SYSTEM PROFILE</span><h2>{selected.cpu_asset_tag || selected.asset_code}</h2><p>Workstation: <strong>{selected.workstation_no || 'Not recorded'}</strong> · Internal reference: {selected.asset_code}</p>
+          <div className="asset-detail-status"><span className={`status ${selected.status}`}>{selected.status.replaceAll('_', ' ')}</span><small>{selected.last_change_at ? `Last changed ${formatAuditDate(selected.last_change_at)} by ${selected.last_changed_by || 'System'}` : `Record updated ${formatAuditDate(selected.updated_at)}`}</small></div>
+          {selected.last_change_at && <section className="asset-audit-summary">
+            <div><strong>{selected.last_field_count || 1}</strong><span>field{selected.last_field_count === 1 ? '' : 's'} in last change</span></div>
+            <p><b>{selected.last_change_type?.replaceAll('_', ' ') || 'Asset change'}</b>{selected.last_change_reason ? ` · ${selected.last_change_reason}` : ''}</p>
+            <small>{selected.last_changed_by || 'System'} · {(selected.last_changed_by_role || '').replaceAll('_', ' ') || 'Role not recorded'} · {formatAuditDate(selected.last_change_at)}</small>
+          </section>}
+          {canEdit && <div className="asset-action-grid">
+            <button className="secondary-button" onClick={() => navigate(withITMonth(`/assets/${selected.id}/edit`, selectedMonth))}><Pencil size={15} /> Edit Full Record</button>
             <button className="secondary-button" onClick={openAssignment}><ArrowRightLeft size={15} /> Assign / Transfer</button>
-            <button className="secondary-button" onClick={() => navigate(`/work?mode=component&asset=${selected.id}`)}><Repeat2 size={15} /> Change Component</button>
+            <button className="secondary-button" onClick={() => navigate(withITMonth(`/work?mode=component&asset=${selected.id}`, selectedMonth))}><Repeat2 size={15} /> Change Component</button>
             <button className="secondary-button" onClick={() => setReturnOpen(true)} disabled={!selected.used_by}><RotateCcw size={15} /> Return</button>
             <button className="secondary-button" onClick={() => void archiveAsset()}><Archive size={15} /> Retire</button>
             {selected.can_delete_test_record && <button className="danger-button full-action" onClick={() => void deleteTestAsset()}><Trash2 size={15} /> Delete QA Test Record</button>}
@@ -210,17 +249,21 @@ export function AssetsPage() {
             <div><dt>MAC address</dt><dd>{selected.mac_address || '—'}</dd></div><div><dt>Operating system</dt><dd>{selected.operating_system || '—'}</dd></div>
             <div><dt>Antivirus</dt><dd>{selected.antivirus || '—'}</dd></div><div><dt>Location</dt><dd>{selected.location || '—'}</dd></div>
             <div><dt>Price</dt><dd>{selected.price === undefined || selected.price === null ? '—' : `₹${selected.price.toLocaleString('en-IN')}`}</dd></div><div><dt>Approved by</dt><dd>{selected.approved_by || 'Pending / not recorded'}</dd></div>
-            <div><dt>Performed by</dt><dd>{selected.performed_by || '—'}</dd></div><div><dt>Remarks</dt><dd>{selected.remarks || '—'}</dd></div>
+            <div><dt>Performed by</dt><dd>{selected.performed_by || '—'}</dd></div><div><dt>Asset Master Remarks</dt><dd>{selected.remarks || '—'}</dd></div>
+            <div><dt>Original asset date</dt><dd>{selected.original_asset_date || selected.asset_date || '—'}</dd></div><div><dt>Last successful change</dt><dd>{selected.last_change_at ? formatAuditDate(selected.last_change_at) : 'No system edit recorded'}</dd></div>
           </dl>
 
-          {!historical && <><h3>Component and configuration changes</h3>
-          <div className="linked-records">{selected.component_replacements?.length ? selected.component_replacements.map(record => <div key={record.id}><strong>{record.replacement_code} · {record.component_type}</strong><span>{record.old_value || 'Not Previously Recorded'} → {record.new_value}</span><small>{record.workstation_no || 'No workstation'} · {record.work_code || 'No work code'} · {new Date(record.created_at).toLocaleDateString()}</small></div>) : <div className="empty-state">No component or configuration change recorded yet.</div>}</div>
+          <><h3>Component and configuration changes</h3>
+          <div className="linked-records">{selected.component_replacements?.length ? selected.component_replacements.map(record => <div key={record.id}><strong>{record.replacement_code} · {record.change_type.replaceAll('_', ' ')} · {record.component_type}</strong><span>{record.old_value || 'Not Previously Recorded'} → {record.new_value}</span><small>{record.workstation_no || 'No workstation'} · {record.work_code || 'No work code'} · {formatAuditDate(record.created_at)} · {record.performed_by || 'System'}</small><em>{record.reason}</em></div>) : <div className="empty-state">No component or configuration change recorded yet.</div>}</div>
 
           <h3>Linked work records</h3>
           <div className="linked-records">{selected.work_records?.length ? selected.work_records.map(work => <div key={work.id}><strong>{work.work_code}</strong><span>{work.title}</span><small>{work.status.replaceAll('_', ' ')} · {new Date(work.created_at).toLocaleDateString()}</small></div>) : <div className="empty-state">No work record linked to this asset.</div>}</div>
 
           <h3>Asset timeline</h3>
-          <div className="timeline">{selected.history?.length ? selected.history.map((item, index) => <div key={index}><i /><p><strong>{item.action}</strong><span>{item.remarks || `${item.old_value || '—'} → ${item.new_value || '—'}`}</span><small>{new Date(item.created_at).toLocaleString()} · {item.changed_by || 'System'}</small></p></div>) : <div className="empty-state">No manual change history yet. Imported from {selected.source_sheet || 'manual entry'}.</div>}</div></>}
+          <div className="timeline">{selected.history?.length ? selected.history.map((item, index) => {
+            const pairs = auditPairs(item)
+            return <div key={`${item.batch_code || index}-${item.created_at}`}><i /><p><strong>{item.action}{item.field_count ? ` · ${item.field_count} field${item.field_count === 1 ? '' : 's'}` : ''}</strong><span>{item.reason || item.remarks || 'No reason recorded'}</span>{pairs.length > 0 && <ul className="audit-pair-list">{pairs.map(pair => <li key={pair.field}><b>{pair.field}</b><code>{String(pair.oldValue ?? '—')}</code><span>→</span><code>{String(pair.newValue ?? '—')}</code></li>)}</ul>}<small>Effective {item.reporting_month || selectedMonth} · Recorded {formatAuditDate(item.created_at)} · {item.changed_by_name || item.changed_by || 'System'} · {(item.changed_by_role || '').replaceAll('_', ' ') || 'Role not recorded'}{item.batch_code ? ` · ${item.batch_code}` : ''}</small></p></div>
+          }) : <div className="empty-state">No manual change history yet. Imported from {selected.source_sheet || 'manual entry'}.</div>}</div></>
         </aside>}
       </section>
 
@@ -231,7 +274,7 @@ export function AssetsPage() {
         <label>Location<input value={assignment.location} onChange={e => setAssignment({ ...assignment, location: e.target.value })} /></label>
         <label>Work Mode<select value={assignment.work_mode} onChange={e => setAssignment({ ...assignment, work_mode: e.target.value })}><option value="office">Office</option><option value="wfh">Work From Home</option><option value="field">Field</option></select></label>
         <label>Assignment Date<input type="date" value={assignment.assigned_date} onChange={e => setAssignment({ ...assignment, assigned_date: e.target.value })} /></label>
-        <label className="full-span">Remarks<textarea rows={3} value={assignment.remarks} onChange={e => setAssignment({ ...assignment, remarks: e.target.value })} /></label>
+        <label className="full-span">Assignment Activity Remarks — Selected Month Only<textarea rows={3} value={assignment.remarks} onChange={e => setAssignment({ ...assignment, remarks: e.target.value })} /></label>
         <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Assigning...' : 'Confirm Assignment'}</button>
       </form></section></div>}
 
@@ -240,7 +283,7 @@ export function AssetsPage() {
         <label>Return Date<input type="date" value={returnForm.return_date} onChange={e => setReturnForm({ ...returnForm, return_date: e.target.value })} /></label>
         <label>Condition<select value={returnForm.condition} onChange={e => setReturnForm({ ...returnForm, condition: e.target.value })}><option value="working">Working</option><option value="minor_damage">Minor damage</option><option value="not_working">Not working</option><option value="destroyed">Destroyed</option></select></label>
         <label className="checkbox-label"><input type="checkbox" checked={returnForm.all_components_returned} onChange={e => setReturnForm({ ...returnForm, all_components_returned: e.target.checked })} /> All components returned</label>
-        <label className="full-span">Return Remarks<textarea rows={3} value={returnForm.remarks} onChange={e => setReturnForm({ ...returnForm, remarks: e.target.value })} /></label>
+        <label className="full-span">Return Activity Remarks — Selected Month Only<textarea rows={3} value={returnForm.remarks} onChange={e => setReturnForm({ ...returnForm, remarks: e.target.value })} /></label>
         <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Saving...' : 'Complete Return'}</button>
       </form></section></div>}
     </>

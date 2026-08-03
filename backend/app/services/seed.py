@@ -9,12 +9,24 @@ from app.models.entities import Asset, Drone, DroneLocation, ReplacementRecord, 
 from app.services.excel_import_service import import_nakshatech_workbook
 
 
-DEVELOPMENT_USERS = [
-    ("admin@nakshatech.com", "System Administrator", "Admin@123", "admin"),
-    ("management@nakshatech.com", "Management User", "Manager@123", "management"),
-    ("it@nakshatech.com", "IT Department", "IT@123456", "it"),
-    ("drone@nakshatech.com", "Drone Department", "Drone@123", "drone"),
-]
+def development_users() -> list[tuple[str, str, str, str]]:
+    users = [
+        # Keep using the legacy SEED_ADMIN_* names so existing .env files and passwords remain valid.
+        (settings.seed_admin_email, "Software Team", settings.seed_admin_password, "software_team"),
+        (settings.seed_management_email, "Management User", settings.seed_management_password, "management"),
+        (settings.seed_it_email, "IT Department", settings.seed_it_password, "it"),
+        (settings.seed_drone_email, "Drone Department", settings.seed_drone_password, "drone"),
+    ]
+    if settings.seed_organization_admin_email.strip() and settings.seed_organization_admin_password:
+        users.append(
+            (
+                settings.seed_organization_admin_email.strip(),
+                settings.seed_organization_admin_name.strip() or "NakshaTech Administrator",
+                settings.seed_organization_admin_password,
+                "admin",
+            )
+        )
+    return users
 
 
 def seed_database(db: Session) -> None:
@@ -28,7 +40,7 @@ def seed_database(db: Session) -> None:
                     role=role,
                     branch="Head Office",
                 )
-                for email, name, password, role in DEVELOPMENT_USERS
+                for email, name, password, role in development_users()
             ]
         )
         db.commit()

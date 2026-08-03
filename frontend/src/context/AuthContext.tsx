@@ -1,29 +1,38 @@
 import { createContext, type ReactNode, useContext, useMemo, useState } from 'react'
 import { apiFetch } from '../lib/api'
-import type { AuthUser, Role } from '../types'
+import type { AuthUser } from '../types'
 
 interface AuthContextValue {
   user: AuthUser | null
-  login: (email: string, password: string, role: Role) => Promise<AuthUser>
+  login: (email: string, password: string, remember: boolean) => Promise<AuthUser>
   logout: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const raw = localStorage.getItem('asset_user')
-    if (!raw) return null
-    try { return JSON.parse(raw) as AuthUser } catch { return null }
-  })
+function readStoredUser(): AuthUser | null {
+  const raw = localStorage.getItem('asset_user') ?? sessionStorage.getItem('asset_user')
+  if (!raw) return null
+  try { return JSON.parse(raw) as AuthUser } catch { return null }
+}
 
-  async function login(email: string, password: string, role: Role) {
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(readStoredUser)
+
+  async function login(email: string, password: string, remember: boolean) {
     const result = await apiFetch<{ access_token: string; user: AuthUser }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password, role }),
+      body: JSON.stringify({ email, password }),
     })
-    localStorage.setItem('asset_token', result.access_token)
-    localStorage.setItem('asset_user', JSON.stringify(result.user))
+
+    localStorage.removeItem('asset_token')
+    localStorage.removeItem('asset_user')
+    sessionStorage.removeItem('asset_token')
+    sessionStorage.removeItem('asset_user')
+
+    const storage = remember ? localStorage : sessionStorage
+    storage.setItem('asset_token', result.access_token)
+    storage.setItem('asset_user', JSON.stringify(result.user))
     setUser(result.user)
     return result.user
   }
@@ -31,6 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     localStorage.removeItem('asset_token')
     localStorage.removeItem('asset_user')
+    sessionStorage.removeItem('asset_token')
+    sessionStorage.removeItem('asset_user')
     setUser(null)
   }
 

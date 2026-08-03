@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, require_roles
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.roles import is_admin_equivalent
 from app.models.entities import User
 from app.modules.backup.models import BackupRun
 from app.modules.backup.schemas import BackupRunResponse, BackupStatusResponse
@@ -31,7 +32,7 @@ router = APIRouter(tags=["backups"])
 
 
 def _allowed_scope(user: User, requested: str | None) -> str:
-    if user.role in {"admin", "management"}:
+    if is_admin_equivalent(user.role) or user.role == "management":
         scope = requested or "all"
         if scope not in VALID_SCOPES:
             raise HTTPException(status_code=400, detail="Scope must be all, it or drone")
@@ -48,7 +49,7 @@ def _allowed_scope(user: User, requested: str | None) -> str:
 
 
 def _can_access_run(user: User, run: BackupRun) -> bool:
-    if user.role in {"admin", "management"}:
+    if is_admin_equivalent(user.role) or user.role == "management":
         return True
     return run.scope == user.role
 
@@ -73,7 +74,7 @@ def backup_status(
         notes.append("pg_dump is not currently available in this runtime; configure PG_DUMP_BIN on the production server.")
     return BackupStatusResponse(
         root_configured=bool(settings.backup_root),
-        storage_root=str(backup_root()) if user.role == "admin" else None,
+        storage_root=str(backup_root()) if is_admin_equivalent(user.role) else None,
         storage_writable=storage_writable(),
         last_success=BackupRunResponse.model_validate(last_success) if last_success else None,
         last_attempt=BackupRunResponse.model_validate(last_attempt) if last_attempt else None,
@@ -95,7 +96,7 @@ def backup_history(
 ) -> list[BackupRunResponse]:
     allowed_scope = _allowed_scope(user, scope)
     query = select(BackupRun).order_by(desc(BackupRun.created_at)).limit(limit)
-    if user.role not in {"admin", "management"} or allowed_scope != "all":
+    if not (is_admin_equivalent(user.role) or user.role == "management") or allowed_scope != "all":
         query = query.where(BackupRun.scope == allowed_scope)
     rows = db.scalars(query).all()
     return [BackupRunResponse.model_validate(row) for row in rows]
@@ -119,7 +120,7 @@ def export_backup_excel(
             allowed_scope,
             period,
             user.email,
-            include_admin_data=user.role == "admin" and allowed_scope == "all",
+            include_admin_data=is_admin_equivalent(user.role) and allowed_scope == "all",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -175,8 +176,8 @@ def download_saved_backup(
         raise HTTPException(status_code=404, detail="Backup record not found")
     if not _can_access_run(user, run):
         raise HTTPException(status_code=403, detail="Insufficient permission")
-    if file_type in {"database", "minio", "manifest"} and user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only Admin can download disaster-recovery files")
+    if file_type in {"database", "minio", "manifest"} and not is_admin_equivalent(user.role):
+        raise HTTPException(status_code=403, detail="Only Admin or Software Team can download disaster-recovery files")
     try:
         path = resolve_backup_file(run, file_type)
     except (FileNotFoundError, PermissionError) as exc:

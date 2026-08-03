@@ -35,6 +35,7 @@ from app.models.entities import (
     utc_now,
 )
 from app.modules.backup.models import BackupRun
+from app.modules.it_activity.models import ITHandoverRecord, ITPurchaseRecord
 from app.modules.drone.models import (
     DroneAssetKit,
     DroneAssetMovement,
@@ -87,6 +88,8 @@ EXPORT_SPECS: tuple[ExportSpec, ...] = (
     ExportSpec("IT Component Changes", ComponentReplacement, "it", date_field="created_at"),
     ExportSpec("IT Replacements", ReplacementRecord, "it", date_field="created_at"),
     ExportSpec("IT Asset History", AssetHistory, "it", date_field="created_at"),
+    ExportSpec("IT Handover Return", ITHandoverRecord, "it", date_field="activity_date"),
+    ExportSpec("IT Purchase Records", ITPurchaseRecord, "it", date_field="purchase_date"),
     ExportSpec("IT Monthly Snapshots", MonthlySnapshotRun, "it", date_field="month_start"),
     ExportSpec("Drone Asset Register", DroneSurveyAsset, "drone", master=True, exclude=("original_raw_payload", "original_header_map")),
     ExportSpec("Drone Kits", DroneAssetKit, "drone", master=True, exclude=("original_raw_payload",)),

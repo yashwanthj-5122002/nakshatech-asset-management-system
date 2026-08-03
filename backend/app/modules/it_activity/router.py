@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from datetime import date
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import require_roles
+from app.core.database import get_db
+from app.models.entities import User
+from app.modules.it_activity.excel_service import EXCEL_MIME, build_monthly_it_activity_workbook
+from app.modules.it_activity.import_service import import_handover_workbook, import_purchase_workbook
+from app.modules.it_activity.models import ITHandoverRecord, ITPurchaseRecord
+from app.modules.it_activity.schemas import HandoverCreate, HandoverResponse, PurchaseCreate, PurchaseResponse
+from app.modules.it_activity.service import create_handover_record, create_purchase_record, month_bounds, monthly_activity_data
+
+router = APIRouter(tags=["IT Activity"])
+
+
+@router.get("/summary")
+def activity_summary(
+    month: str = Query(..., description="YYYY-MM"),
+    department: str | None = None,
+    device_category: str | None = None,
+    changed_by: str | None = None,
+    action_type: str | None = None,
+    search: str | None = None,
+    limit: int = Query(default=500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> dict:
+    return monthly_activity_data(
+        db,
+        month,
+        department=department,
+        device_category=device_category,
+        changed_by=changed_by,
+        action_type=action_type,
+        search=search,
+        limit=limit,
+    )
+
+
+@router.get("/handover-records", response_model=list[HandoverResponse])
+def list_handover_records(
+    month: str | None = None,
+    device_category: str | None = None,
+    action_type: str | None = None,
+    search: str | None = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> list[ITHandoverRecord]:
+    query = select(ITHandoverRecord)
+    if month:
+        start, end, _utc_start, _utc_end = month_bounds(month)
+        query = query.where(or_(
+            ITHandoverRecord.reporting_month == month,
+            and_(ITHandoverRecord.reporting_month.is_(None), ITHandoverRecord.activity_date >= start, ITHandoverRecord.activity_date <= end),
+        ))
+    if device_category:
+        query = query.where(ITHandoverRecord.device_category == device_category.strip().lower())
+    if action_type:
+        query = query.where(ITHandoverRecord.action_type == action_type.strip().lower())
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(or_(
+            ITHandoverRecord.activity_code.ilike(pattern),
+            ITHandoverRecord.employee_name.ilike(pattern),
+            ITHandoverRecord.dc_number.ilike(pattern),
+            ITHandoverRecord.internal_asset_no.ilike(pattern),
+            ITHandoverRecord.serial_number.ilike(pattern),
+            ITHandoverRecord.department.ilike(pattern),
+        ))
+    return list(db.scalars(
+        query.order_by(ITHandoverRecord.activity_date.desc(), ITHandoverRecord.activity_time.desc(), ITHandoverRecord.id.desc()).limit(limit)
+    ).all())
+
+
+@router.post("/handover-records", response_model=HandoverResponse)
+def add_handover_record(
+    payload: HandoverCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> ITHandoverRecord:
+    return create_handover_record(db, payload, user)
+
+
+@router.get("/purchases", response_model=list[PurchaseResponse])
+def list_purchases(
+    month: str | None = None,
+    search: str | None = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> list[ITPurchaseRecord]:
+    query = select(ITPurchaseRecord)
+    if month:
+        start, end, _utc_start, _utc_end = month_bounds(month)
+        query = query.where(or_(
+            ITPurchaseRecord.reporting_month == month,
+            and_(ITPurchaseRecord.reporting_month.is_(None), ITPurchaseRecord.purchase_date >= start, ITPurchaseRecord.purchase_date <= end),
+        ))
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.where(or_(
+            ITPurchaseRecord.purchase_code.ilike(pattern),
+            ITPurchaseRecord.po_number.ilike(pattern),
+            ITPurchaseRecord.asset_number.ilike(pattern),
+            ITPurchaseRecord.supplier_name.ilike(pattern),
+            ITPurchaseRecord.item_description.ilike(pattern),
+            ITPurchaseRecord.warranty_number.ilike(pattern),
+            ITPurchaseRecord.department.ilike(pattern),
+        ))
+    return list(db.scalars(query.order_by(ITPurchaseRecord.purchase_date.desc(), ITPurchaseRecord.id.desc()).limit(limit)).all())
+
+
+@router.post("/purchases", response_model=PurchaseResponse)
+def add_purchase(
+    payload: PurchaseCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> ITPurchaseRecord:
+    return create_purchase_record(db, payload, user)
+
+
+@router.post("/imports/handover.xlsx")
+async def import_handover_excel(
+    device_category: str = Query(..., pattern="^(laptop|desktop)$"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Upload an .xlsx workbook")
+    content = await file.read()
+    return import_handover_workbook(db, content, file.filename or "handover.xlsx", device_category, user)
+
+
+@router.post("/imports/purchases.xlsx")
+async def import_purchase_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Upload an .xlsx workbook")
+    content = await file.read()
+    return import_purchase_workbook(db, content, file.filename or "purchases.xlsx", user)
+
+
+@router.get("/monthly.xlsx")
+def download_monthly_activity(
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+):
+    stream, counts = build_monthly_it_activity_workbook(db, month)
+    start, _end, _utc_start, _utc_end = month_bounds(month)
+    filename = f"NakshaTech IT Monthly Activity - {start.strftime('%B %Y')}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type=EXCEL_MIME,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            "X-Row-Counts": ",".join(f"{key}:{value}" for key, value in counts.items()),
+        },
+    )

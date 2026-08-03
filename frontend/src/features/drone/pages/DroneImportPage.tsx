@@ -3,6 +3,7 @@ import { ChangeEvent, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch, downloadFile, uploadExcel } from '../../../lib/api'
+import { isFullAccessRole } from '../../../lib/roles'
 import type { DroneImportBatch } from '../../../types'
 
 export function DroneImportPage() {
@@ -39,10 +40,20 @@ export function DroneImportPage() {
     finally { setLoading(false) }
   }
 
-  if (user?.role !== 'admin') return <><DashboardHeader eyebrow="DRONE IMPORT" title="Workbook Reconciliation" description="Only Admin can upload and commit the permanent Drone master. Management and Drone users can use the approved records." /><div className="panel empty-state">Admin permission is required to preview and approve the source workbook.</div></>
+  if (!user || !isFullAccessRole(user.role)) return <><DashboardHeader eyebrow="DRONE IMPORT" title="Workbook Reconciliation" description="Only Admin or Software Team can upload and commit the permanent Drone master. Management and Drone users can use the approved records." /><div className="panel empty-state">Admin or Software Team permission is required to preview and approve the source workbook.</div></>
 
   const summary = batch?.summary || {}
   const issueCounts = (summary.issue_counts || {}) as Record<string, number>
+  const summaryCards: Array<[string, unknown]> = [
+    ['Total parsed records', summary.total_records],
+    ['Main inventory', summary.main_inventory_records],
+    ['Trinity components', summary.trinity_components],
+    ['Amrut custody rows', summary.amrut_assignment_records],
+    ['UIN registrations', summary.uin_registrations],
+    ['Airtel connections', summary.telecom_connections],
+    ['HDD deliveries', summary.hdd_delivery_transactions],
+    ['Named attributes', summary.named_source_attributes],
+  ]
   return <>
     <DashboardHeader eyebrow="LOSSLESS EXCEL IMPORT" title="Drone Workbook Import & Reconciliation" description="The workbook is never written directly into the permanent master. First preview all four sheets, 52 source attributes, quality issues and exact source rows; then approve the batch." actions={<button className="secondary-button" onClick={() => void downloadFile('/drone/reports/source-template.xlsx', 'Hardware-Inventory Sheets - Preserved Template.xlsx')}><FileSpreadsheet size={17} /> Download Preserved Template</button>} />
     {error && <div className="error-message">{error}</div>}{message && <div className="success-message">{message}</div>}
@@ -52,10 +63,7 @@ export function DroneImportPage() {
     </section>
     {batch && <>
       <section className="stats-grid import-summary-grid">
-        {[
-          ['Total parsed records', summary.total_records], ['Main inventory', summary.main_inventory_records], ['Trinity components', summary.trinity_components], ['Amrut custody rows', summary.amrut_assignment_records],
-          ['UIN registrations', summary.uin_registrations], ['Airtel connections', summary.telecom_connections], ['HDD deliveries', summary.hdd_delivery_transactions], ['Named attributes', summary.named_source_attributes],
-        ].map(([label, value]) => <article className="panel mini-stat" key={String(label)}><span>{label}</span><strong>{String(value ?? 0)}</strong></article>)}
+        {summaryCards.map(([label, value]) => <article className="panel mini-stat" key={label}><span>{label}</span><strong>{String(value ?? 0)}</strong></article>)}
       </section>
       <section className="dashboard-grid import-review-grid">
         <article className="panel"><div className="panel-heading"><div><span className="section-kicker">QUALITY REVIEW</span><h2>Detected Exceptions</h2></div><ShieldAlert /></div><div className="issue-list">{Object.entries(issueCounts).map(([name, count]) => <div key={name}><span>{name.replaceAll('_', ' ')}</span><strong>{count}</strong></div>)}{Object.keys(issueCounts).length === 0 && <div className="empty-state">No import warnings detected.</div>}</div></article>

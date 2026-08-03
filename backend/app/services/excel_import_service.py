@@ -216,6 +216,8 @@ def import_nakshatech_workbook(db: Session, source: bytes | str | Path) -> dict:
         )
 
         if existing:
+            if existing.original_asset_date is None:
+                existing.original_asset_date = existing.asset_date or payload.get("asset_date")
             for key, value in payload.items():
                 setattr(existing, key, value)
             result["updated"] += 1
@@ -223,7 +225,7 @@ def import_nakshatech_workbook(db: Session, source: bytes | str | Path) -> dict:
             prefix = _code_prefix(device_type)
             asset_code = f"{prefix}-{counters[prefix]:04d}"
             counters[prefix] += 1
-            db.add(Asset(asset_code=asset_code, **payload))
+            db.add(Asset(asset_code=asset_code, original_asset_date=payload.get("asset_date"), **payload))
             result["created"] += 1
 
     db.commit()

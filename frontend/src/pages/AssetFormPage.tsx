@@ -5,6 +5,7 @@ import {
   CircleDollarSign,
   Cpu,
   HardDrive,
+  History,
   Network,
   Save,
   ShieldCheck,
@@ -14,7 +15,10 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
+import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
+import { formatIndiaDateTime } from '../lib/date'
+import { monthLabel, withITMonth } from '../lib/itMonth'
 import type { Asset } from '../types'
 
 const statusOptions = [
@@ -51,6 +55,17 @@ type AssetForm = {
   asset_date: string
   location: string
   work_mode: string
+}
+
+const fieldLabels: Record<keyof AssetForm, string> = {
+  device_type: 'Device Type', status: 'Status', used_by: 'Used By', department: 'Department',
+  workstation_no: 'Workstation Number', cpu_asset_tag: 'CPU / Asset Tag',
+  monitor_asset_tags: 'Monitor Asset Tag(s)', mouse_asset_tag: 'Mouse Asset Tag',
+  keyboard_asset_tag: 'Keyboard Asset Tag', system_name: 'System Name', processor: 'Processor',
+  memory_gb: 'Memory', ssd: 'SSD', hdd: 'HDD', ip_address: 'IP Address',
+  mac_address: 'MAC Address', graphics_card: 'Graphics Card', operating_system: 'Operating System',
+  antivirus: 'Antivirus', network_type: 'Network Type', approved_by: 'Approved By', price: 'Price',
+  remarks: 'Remarks', asset_date: 'Asset Record Date', location: 'Location', work_mode: 'Work Mode',
 }
 
 function emptyAssetForm(): AssetForm {
@@ -136,7 +151,11 @@ export function AssetFormPage() {
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { selectedMonth } = useITMonthUrl()
   const [form, setForm] = useState<AssetForm>(emptyAssetForm())
+  const [originalForm, setOriginalForm] = useState<AssetForm | null>(null)
+  const [auditReason, setAuditReason] = useState('')
+  const [auditRemarks, setAuditRemarks] = useState('')
   const [assetCode, setAssetCode] = useState('Generated automatically after save')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
@@ -148,7 +167,9 @@ export function AssetFormPage() {
     void (async () => {
       try {
         const asset = await apiFetch<Asset>(`/assets/${id}`)
-        setForm(formFromAsset(asset))
+        const loadedForm = formFromAsset(asset)
+        setForm(loadedForm)
+        setOriginalForm(loadedForm)
         setAssetCode(asset.asset_code)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load asset')
@@ -163,6 +184,15 @@ export function AssetFormPage() {
     const ws = form.workstation_no.trim() || 'Workstation not entered'
     return `${cpu} / ${ws}`
   }, [form.cpu_asset_tag, form.workstation_no])
+
+  const changedFields = useMemo(() => {
+    if (!isEdit || !originalForm) return [] as Array<keyof AssetForm>
+    return (Object.keys(form) as Array<keyof AssetForm>).filter(key => {
+      const current = String(form[key] ?? '').trim()
+      const original = String(originalForm[key] ?? '').trim()
+      return current !== original
+    })
+  }, [form, isEdit, originalForm])
 
   function update<K extends keyof AssetForm>(key: K, value: AssetForm[K]) {
     setForm(current => {
@@ -197,6 +227,10 @@ export function AssetFormPage() {
       errors.push('Static network type requires an IP Address.')
     }
     if (form.price && Number.isNaN(Number(form.price))) errors.push('Price must be a valid number.')
+    if (isEdit && changedFields.length === 0) errors.push('No asset details were changed.')
+    if (isEdit && changedFields.length > 0 && auditReason.trim().length < 3) {
+      errors.push('Reason for Edit is required and must contain at least 3 characters.')
+    }
     return errors
   }
 
@@ -211,15 +245,26 @@ export function AssetFormPage() {
     }
     setBusy(true)
     try {
+      const requestPayload = payloadFromForm(form) as ReturnType<typeof payloadFromForm> & {
+        reporting_month: string
+        audit_reason?: string
+        audit_remarks?: string
+      }
+      requestPayload.reporting_month = selectedMonth
+      if (isEdit) {
+        requestPayload.audit_reason = auditReason.trim()
+        requestPayload.audit_remarks = auditRemarks.trim()
+      }
       const saved = await apiFetch<Asset>(isEdit ? `/assets/${id}` : '/assets', {
         method: isEdit ? 'PATCH' : 'POST',
-        body: JSON.stringify(payloadFromForm(form)),
+        body: JSON.stringify(requestPayload),
       })
-      navigate('/assets', {
+      const savedAt = formatIndiaDateTime(saved.updated_at)
+      navigate(withITMonth('/assets', selectedMonth), {
         replace: true,
         state: {
           message: isEdit
-            ? `${saved.asset_code} updated successfully.`
+            ? `${saved.cpu_asset_tag || saved.asset_code} updated successfully. ${changedFields.length} field${changedFields.length === 1 ? '' : 's'} changed by ${user?.full_name || 'the logged-in user'} on ${savedAt}.`
             : `${saved.asset_code} created successfully. CPU / Asset Tag ${saved.cpu_asset_tag || 'not recorded'} is now in the live register.`,
           openAssetId: saved.id,
         },
@@ -239,8 +284,8 @@ export function AssetFormPage() {
       <DashboardHeader
         eyebrow={isEdit ? 'UPDATE INVENTORY' : 'NEW INVENTORY'}
         title={isEdit ? `Edit ${assetCode}` : 'Add IT Asset'}
-        description="Complete one full form. CPU / Physical Asset Tag and Workstation Number identify the system used by the IT team."
-        actions={<button className="secondary-button" onClick={() => navigate('/assets')}><ArrowLeft size={17} /> Back to Register</button>}
+        description={`Complete one full form. This activity will be reported in ${monthLabel(selectedMonth)}, while the actual server save date and time remain unchanged.`}
+        actions={<button className="secondary-button" onClick={() => navigate(withITMonth('/assets', selectedMonth))}><ArrowLeft size={17} /> Back to Register</button>}
       />
 
       {(error || validationErrors.length > 0) && <div className="asset-form-alerts">
@@ -298,13 +343,23 @@ export function AssetFormPage() {
           <label className="full-span">Antivirus<input value={form.antivirus} onChange={e => update('antivirus', e.target.value)} placeholder="Product / enabled status / expiry" /></label>
         </FormSection>
 
-        <FormSection icon={<CircleDollarSign size={22} />} title="6. Financial, Approval and Notes" description="Record cost, approval and remarks while preserving who performed the entry automatically.">
+        <FormSection icon={<CircleDollarSign size={22} />} title="6. Financial, Approval and Permanent Notes" description="Record cost and approval. Asset Master Remarks are permanent live-register notes and should not be used for a one-month activity comment.">
           <label>Price (₹)<input type="number" min="0" step="0.01" value={form.price} onChange={e => update('price', e.target.value)} placeholder="65000" /></label>
           <label>Approved By<input value={form.approved_by} onChange={e => update('approved_by', e.target.value)} placeholder="Manager / approver" /></label>
           <div className="form-info-card"><strong>Performed By</strong><span>{user?.full_name || 'Logged-in user'} — automatic from login</span></div>
           <div className="form-info-card"><strong>Audit behavior</strong><span>Every later edit, assignment, return, work record and replacement is written to the asset timeline.</span></div>
-          <label className="full-span">Remarks<textarea value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={5} placeholder="Condition, ownership, warranty, reason, special notes…" /></label>
+          <label className="full-span">Asset Master Remarks — Permanent<textarea value={form.remarks} onChange={e => update('remarks', e.target.value)} rows={5} placeholder="Permanent condition, ownership or warranty note. This remains until intentionally edited." /><small>Do not enter a monthly activity comment here. Use Edit Activity Remarks below.</small></label>
         </FormSection>
+
+        {isEdit && <FormSection icon={<History size={22} />} title="7. Monthly Edit Activity Details" description="Explain this specific edit. Its activity remark stays only with this audit entry and selected reporting month; it does not carry into later months.">
+          <label className="full-span">Reason for Edit <span>*</span><input required value={auditReason} onChange={event => setAuditReason(event.target.value)} placeholder="Example: Employee transfer, inventory correction, network update or approved hardware change" /></label>
+          <label className="full-span">Edit Activity Remarks — This Month Only<textarea rows={3} value={auditRemarks} onChange={event => setAuditRemarks(event.target.value)} placeholder="Approval reference, ticket number or explanation for this activity only" /></label>
+          <div className="full-span asset-change-preview">
+            <div><strong>{changedFields.length}</strong><span>field{changedFields.length === 1 ? '' : 's'} changed</span></div>
+            <p>{changedFields.length ? changedFields.map(field => fieldLabels[field]).join(' · ') : 'Change any field above to create an audit entry.'}</p>
+            <small>Effective reporting month: {monthLabel(selectedMonth)} · Changed by {user?.full_name || 'logged-in user'} · Actual date and time are generated by the server in Asia/Kolkata timezone.</small>
+          </div>
+        </FormSection>}
 
         <section className="asset-form-review panel">
           <div><ShieldCheck size={24} /><div><h2>Final Review</h2><p>Confirm the CPU / Asset Tag and Workstation first. The downloaded Asset Register Excel will contain the latest values entered here.</p></div></div>
@@ -318,8 +373,8 @@ export function AssetFormPage() {
         </section>
 
         <div className="asset-form-sticky-actions">
-          <button type="button" className="secondary-button" onClick={() => navigate('/assets')}><ArrowLeft size={17} /> Cancel</button>
-          <span><CheckCircle2 size={17} /> One page · all Excel fields · complete audit trail</span>
+          <button type="button" className="secondary-button" onClick={() => navigate(withITMonth('/assets', selectedMonth))}><ArrowLeft size={17} /> Cancel</button>
+          <span><CheckCircle2 size={17} /> {isEdit ? `${changedFields.length} changed fields · user/date/time tracked` : 'One page · all Excel fields · complete audit trail'}</span>
           <button className="primary-button" disabled={busy}><Save size={17} /> {busy ? 'Saving Asset…' : isEdit ? 'Save Changes' : 'Save Asset'}</button>
         </div>
       </form>

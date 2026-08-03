@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from ipaddress import ip_address as parse_ip_address
 import json
 import re
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_roles
+from app.core.roles import VALID_ROLES, role_display_name
 from app.core.database import get_db
 from app.core.security import create_access_token, verify_password
+from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import Asset, AssetHistory, ComponentReplacement, Drone, DroneLocation, MonthlySnapshotRun, ReplacementRecord, User, WorkRecord
 from app.schemas.asset import (
     AssetAssignment, AssetCreate, AssetResponse, AssetReturn, AssetStatusUpdate, AssetUpdate,
@@ -34,9 +38,10 @@ from app.services.monthly_snapshot_service import (
     assets_for_month, available_months, ensure_previous_month_snapshot, finalize_month_snapshot,
     month_end, month_start, parse_month_key,
 )
+from app.services.asset_drilldown_service import build_asset_drilldown_workbook, query_asset_drilldown
 
 router = APIRouter()
-VALID_ROLES = {"admin", "management", "it", "drone"}
+IST = ZoneInfo("Asia/Kolkata")
 VALID_WORK_MODULES = {"it", "drone"}
 VALID_STATUSES = {
     "available", "assigned", "in_use", "wfh", "field_deployment", "under_inspection", "repair",
@@ -68,6 +73,7 @@ COMPONENT_FIELD_MAP = {
     "price": "price",
     "approved by": "approved_by",
     "remarks": "remarks",
+    "asset master remarks": "remarks",
 }
 COMPONENT_TAG_FIELDS = {"monitor_asset_tags", "mouse_asset_tag", "keyboard_asset_tag"}
 
@@ -100,6 +106,28 @@ def _asset_response(asset: Asset) -> dict:
     return AssetResponse.model_validate(asset).model_dump(mode="json")
 
 
+def _attach_audit_summary(payload: dict, history: AssetHistory | None) -> dict:
+    if history is None:
+        payload.update({
+            "last_change_at": None,
+            "last_changed_by": None,
+            "last_changed_by_role": None,
+            "last_change_type": None,
+            "last_change_reason": None,
+            "last_field_count": 0,
+        })
+        return payload
+    payload.update({
+        "last_change_at": history.created_at.isoformat(),
+        "last_changed_by": history.changed_by_name or history.changed_by,
+        "last_changed_by_role": history.changed_by_role,
+        "last_change_type": history.change_type,
+        "last_change_reason": history.reason,
+        "last_field_count": history.field_count or _count_changed_fields(history.old_value, history.new_value),
+    })
+    return payload
+
+
 def _work_response(work: WorkRecord) -> dict:
     payload = WorkRecordResponse.model_validate(work).model_dump(mode="json")
     payload["asset_code"] = work.asset.asset_code if work.asset else None
@@ -128,10 +156,13 @@ def _component_replacement_response(record: ComponentReplacement) -> dict:
         technician=record.technician,
         replacement_date=record.replacement_date,
         performed_by=record.performed_by,
+        performed_by_email=record.performed_by_email,
+        performed_by_role=record.performed_by_role,
         approved_by=record.approved_by,
         remarks=record.remarks,
         work_record_id=record.work_record_id,
         work_code=record.work_record.work_code if record.work_record else None,
+        reporting_month=record.reporting_month,
         created_at=record.created_at,
     ).model_dump(mode="json")
 
@@ -150,7 +181,12 @@ def _replacement_response(record: ReplacementRecord) -> dict:
         approval_status=record.approval_status,
         final_action=record.final_action,
         requested_by=record.requested_by,
+        requested_by_email=record.requested_by_email,
+        requested_by_role=record.requested_by_role,
         approved_by=record.approved_by,
+        approved_by_email=record.approved_by_email,
+        approved_by_role=record.approved_by_role,
+        reporting_month=record.reporting_month,
         created_at=record.created_at,
         approved_at=record.approved_at,
     ).model_dump(mode="json")
@@ -246,25 +282,64 @@ def _validate_asset_data(db: Session, values: dict, exclude_asset_id: int | None
         ensure_unique(Asset.ip_address, ip_value, "Static IP address")
 
 
+def _audit_batch_code(prefix: str = "AUD") -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    return f"{prefix}-{timestamp}-{uuid4().hex[:8].upper()}"
+
+
+def _count_changed_fields(old_value: str | None, new_value: str | None) -> int:
+    for raw in (new_value, old_value):
+        if not raw:
+            continue
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, dict):
+            return len(parsed)
+    return 1 if old_value != new_value else 0
+
+
 def _record_history(
     db: Session,
     asset: Asset,
     action: str,
-    changed_by: str,
+    changed_by: User | str,
     old_value: str | None = None,
     new_value: str | None = None,
     remarks: str | None = None,
-) -> None:
-    db.add(
-        AssetHistory(
-            asset_id=asset.id,
-            action=action,
-            old_value=old_value,
-            new_value=new_value,
-            remarks=remarks,
-            changed_by=changed_by,
-        )
+    *,
+    change_type: str = "asset_activity",
+    reason: str | None = None,
+    batch_code: str | None = None,
+    field_count: int | None = None,
+    reporting_month: str | None = None,
+) -> AssetHistory:
+    if isinstance(changed_by, User):
+        changed_by_email = changed_by.email
+        changed_by_name = changed_by.full_name
+        changed_by_role = changed_by.role
+    else:
+        changed_by_email = changed_by
+        changed_by_name = None
+        changed_by_role = None
+    history = AssetHistory(
+        asset_id=asset.id,
+        action=action,
+        change_type=change_type,
+        batch_code=batch_code or _audit_batch_code(),
+        old_value=old_value,
+        new_value=new_value,
+        remarks=remarks,
+        reason=reason,
+        changed_by=changed_by_email,
+        changed_by_name=changed_by_name,
+        changed_by_role=changed_by_role,
+        field_count=field_count if field_count is not None else _count_changed_fields(old_value, new_value),
+        reporting_month=normalize_reporting_month(reporting_month),
     )
+    db.add(history)
+    return history
 
 
 @router.get("/health")
@@ -281,7 +356,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if requested_role and user.role != requested_role:
-        raise HTTPException(status_code=403, detail=f"This account is registered as {user.role.title()}, not {requested_role.title()}")
+        raise HTTPException(status_code=403, detail=f"This account is registered as {role_display_name(user.role)}, not {role_display_name(requested_role)}")
     token = create_access_token(user.email, user.role)
     return LoginResponse(
         access_token=token,
@@ -331,23 +406,41 @@ def it_dashboard(
         raise HTTPException(status_code=404, detail="No asset register is available for the selected month")
 
     selected_end = month_end(selected_start)
-    start_dt = datetime.combine(selected_start, datetime.min.time())
-    end_dt = datetime.combine(selected_end + (date.resolution), datetime.min.time())
+    start_local = datetime.combine(selected_start, datetime.min.time(), tzinfo=IST)
+    end_local = datetime.combine(selected_end + timedelta(days=1), datetime.min.time(), tzinfo=IST)
+    start_dt = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_dt = end_local.astimezone(timezone.utc).replace(tzinfo=None)
     is_live = selected_start == month_start()
+    selected_key = selected_start.strftime("%Y-%m")
+    work_month_filter = or_(
+        WorkRecord.reporting_month == selected_key,
+        and_(WorkRecord.reporting_month.is_(None), WorkRecord.created_at >= start_dt, WorkRecord.created_at < end_dt),
+    )
+    replacement_month_filter = or_(
+        ReplacementRecord.reporting_month == selected_key,
+        and_(ReplacementRecord.reporting_month.is_(None), ReplacementRecord.created_at >= start_dt, ReplacementRecord.created_at < end_dt),
+    )
+    component_month_filter = or_(
+        ComponentReplacement.reporting_month == selected_key,
+        and_(ComponentReplacement.reporting_month.is_(None), ComponentReplacement.created_at >= start_dt, ComponentReplacement.created_at < end_dt),
+    )
+    history_month_filter = or_(
+        AssetHistory.reporting_month == selected_key,
+        and_(AssetHistory.reporting_month.is_(None), AssetHistory.created_at >= start_dt, AssetHistory.created_at < end_dt),
+    )
 
     work_query = (
         select(WorkRecord)
         .where(
             WorkRecord.module == "it",
-            WorkRecord.created_at >= start_dt,
-            WorkRecord.created_at < end_dt,
+            work_month_filter,
         )
         .order_by(WorkRecord.created_at.desc())
         .limit(8)
     )
     replacement_query = (
         select(ReplacementRecord)
-        .where(ReplacementRecord.created_at >= start_dt, ReplacementRecord.created_at < end_dt)
+        .where(replacement_month_filter)
         .order_by(ReplacementRecord.created_at.desc())
         .limit(6)
     )
@@ -366,34 +459,41 @@ def it_dashboard(
     pending_approvals = 0
     component_changes = 0
     complete_replacements = 0
+    asset_edit_operations = 0
+    assets_edited = 0
     new_assets = 0
     if source != "template":
         pending_approvals = db.scalar(
             select(func.count(WorkRecord.id)).where(
                 WorkRecord.module == "it",
                 WorkRecord.approval_status == "pending",
-                WorkRecord.created_at >= start_dt,
-                WorkRecord.created_at < end_dt,
+                work_month_filter,
             )
         ) or 0
         component_changes = db.scalar(
-            select(func.count(ComponentReplacement.id)).where(
-                ((ComponentReplacement.replacement_date >= selected_start) & (ComponentReplacement.replacement_date <= selected_end))
-                | ((ComponentReplacement.replacement_date.is_(None)) & (ComponentReplacement.created_at >= start_dt) & (ComponentReplacement.created_at < end_dt))
+            select(func.count(ComponentReplacement.id)).where(component_month_filter)
+        ) or 0
+        asset_edit_operations = db.scalar(
+            select(func.count(AssetHistory.id)).where(
+                AssetHistory.change_type == "full_edit",
+                history_month_filter,
+            )
+        ) or 0
+        assets_edited = db.scalar(
+            select(func.count(func.distinct(AssetHistory.asset_id))).where(
+                AssetHistory.change_type == "full_edit",
+                history_month_filter,
             )
         ) or 0
         complete_replacements = db.scalar(
-            select(func.count(ReplacementRecord.id)).where(
-                ReplacementRecord.created_at >= start_dt,
-                ReplacementRecord.created_at < end_dt,
+            select(func.count(ReplacementRecord.id)).where(replacement_month_filter)
+        ) or 0
+        new_assets = db.scalar(
+            select(func.count(func.distinct(AssetHistory.asset_id))).where(
+                AssetHistory.change_type == "asset_created",
+                history_month_filter,
             )
         ) or 0
-        new_assets = sum(
-            not getattr(asset, "source_sheet", None)
-            and getattr(asset, "created_at", start_dt) >= start_dt
-            and getattr(asset, "created_at", start_dt) < end_dt
-            for asset in assets
-        )
 
     alerts = [
         {"severity": "high", "title": "Replacement pending", "count": status_counts.get("replacement_pending", 0), "filter": "replacement_pending"},
@@ -432,6 +532,8 @@ def it_dashboard(
             "work_records": len(work_records),
             "component_changes": component_changes,
             "complete_replacements": complete_replacements,
+            "asset_edit_operations": asset_edit_operations,
+            "assets_edited": assets_edited,
         },
         "device_distribution": [{"name": key, "value": value} for key, value in device_counts.most_common()],
         "status_distribution": [{"name": key.replace("_", " ").title(), "value": value} for key, value in status_counts.most_common()],
@@ -443,6 +545,51 @@ def it_dashboard(
         "recent_work": [_work_response(work) for work in work_records],
         "recent_replacements": [_replacement_response(record) for record in replacements],
     }
+
+
+@router.get("/dashboard/it/assets")
+def it_dashboard_asset_drilldown(
+    month: str = Query(..., description="Reporting month in YYYY-MM format"),
+    scope: str = Query(default="all", description="all, device, status or department"),
+    scope_value: str | None = None,
+    search: str | None = None,
+    department: str | None = None,
+    device_type: str | None = None,
+    status: str | None = None,
+    location: str | None = None,
+    work_mode: str | None = None,
+    sort_by: str = "asset_code",
+    sort_dir: str = "asc",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> dict:
+    try:
+        result = query_asset_drilldown(
+            db,
+            month_key=month,
+            scope=scope,
+            scope_value=scope_value,
+            search=search,
+            department=department,
+            device_type=device_type,
+            status=status,
+            location=location,
+            work_mode=work_mode,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if "No asset register" in detail else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    result["assets"] = [_asset_response(asset) for asset in result["assets"]]
+    result.pop("all_filtered_assets", None)
+    return result
 
 
 @router.get("/assets")
@@ -480,7 +627,18 @@ def list_assets(
         if work_mode:
             query = query.where(Asset.work_mode == work_mode)
         query = query.order_by(Asset.asset_code).limit(limit)
-        return [_asset_response(asset) for asset in db.scalars(query).all()]
+        live_assets = list(db.scalars(query).all())
+        asset_ids = [asset.id for asset in live_assets]
+        latest_history: dict[int, AssetHistory] = {}
+        if asset_ids:
+            rows = db.scalars(
+                select(AssetHistory)
+                .where(AssetHistory.asset_id.in_(asset_ids), AssetHistory.change_type != "asset_created")
+                .order_by(AssetHistory.created_at, AssetHistory.id)
+            ).all()
+            for row in rows:
+                latest_history[row.asset_id] = row
+        return [_attach_audit_summary(_asset_response(asset), latest_history.get(asset.id)) for asset in live_assets]
 
     try:
         selected_start = parse_month_key(month)
@@ -508,7 +666,7 @@ def list_assets(
             continue
         if work_mode and asset.work_mode != work_mode:
             continue
-        result.append(_asset_response(asset))
+        result.append(_attach_audit_summary(_asset_response(asset), None))
         if len(result) >= limit:
             break
     return result
@@ -544,14 +702,22 @@ def get_asset(
             .order_by(ReplacementRecord.created_at.desc())
         ).all()
     )
-    payload = _asset_response(asset)
+    latest_operational_history = next((item for item in history if item.change_type != "asset_created"), None)
+    payload = _attach_audit_summary(_asset_response(asset), latest_operational_history)
     payload["history"] = [
         {
             "action": item.action,
+            "change_type": item.change_type,
+            "batch_code": item.batch_code,
             "old_value": item.old_value,
             "new_value": item.new_value,
             "remarks": item.remarks,
+            "reason": item.reason,
             "changed_by": item.changed_by,
+            "changed_by_name": item.changed_by_name,
+            "changed_by_role": item.changed_by_role,
+            "field_count": item.field_count,
+            "reporting_month": item.reporting_month,
             "created_at": item.created_at.isoformat(),
         }
         for item in history
@@ -580,6 +746,7 @@ def create_asset(
     user: User = Depends(require_roles("admin", "it")),
 ) -> Asset:
     values = payload.model_dump()
+    reporting_month = normalize_reporting_month(values.pop("reporting_month", None))
     values["status"] = str(values.get("status") or "available").lower()
     values["work_mode"] = str(values.get("work_mode") or "office").lower()
     values["performed_by"] = user.full_name
@@ -590,16 +757,19 @@ def create_asset(
         values["device_type"].lower(), "NT-IT"
     )
     code = _next_code(db, Asset, Asset.asset_code, prefix)
-    asset = Asset(asset_code=code, **values)
+    asset = Asset(asset_code=code, original_asset_date=values.get("asset_date"), **values)
     db.add(asset)
     db.flush()
     _record_history(
         db,
         asset,
         "Asset created",
-        user.email,
+        user,
         new_value=_serialise_changes({"asset_code": code, **values}),
         remarks="Manual asset registration",
+        change_type="asset_created",
+        reason="Manual asset registration",
+        reporting_month=reporting_month,
     )
     db.commit()
     db.refresh(asset)
@@ -616,31 +786,50 @@ def update_asset(
     asset = db.get(Asset, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+
     updates = payload.model_dump(exclude_unset=True)
+    reporting_month = normalize_reporting_month(updates.pop("reporting_month", None))
+    audit_reason = _normalised(updates.pop("audit_reason", None))
+    audit_remarks = _normalised(updates.pop("audit_remarks", None))
     if not updates:
         return asset
+
     before = _asset_state(asset)
     merged = {**before, **updates}
     merged["status"] = str(merged.get("status") or "available").lower()
     merged["work_mode"] = str(merged.get("work_mode") or "office").lower()
     _validate_asset_data(db, merged, exclude_asset_id=asset.id)
-    changed = {}
+
+    changed: dict[str, dict] = {}
     for key, value in updates.items():
         old = getattr(asset, key)
         if old != value:
             changed[key] = {"from": old, "to": value}
-            setattr(asset, key, value)
+
+    if not changed:
+        return asset
+    if not audit_reason:
+        raise HTTPException(status_code=400, detail="Reason for Edit is required when asset details are changed")
+
+    for key, values in changed.items():
+        setattr(asset, key, values["to"])
     asset.performed_by = user.full_name
-    if changed:
-        _record_history(
-            db,
-            asset,
-            "Asset details updated",
-            user.email,
-            old_value=_serialise_changes({key: value["from"] for key, value in changed.items()}),
-            new_value=_serialise_changes({key: value["to"] for key, value in changed.items()}),
-            remarks=f"Updated fields: {', '.join(changed)}",
-        )
+    asset.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    batch_code = _audit_batch_code("EDIT")
+    _record_history(
+        db,
+        asset,
+        "Asset details updated",
+        user,
+        old_value=_serialise_changes({key: value["from"] for key, value in changed.items()}),
+        new_value=_serialise_changes({key: value["to"] for key, value in changed.items()}),
+        remarks=audit_remarks or f"Updated fields: {', '.join(changed)}",
+        change_type="full_edit",
+        reason=audit_reason,
+        batch_code=batch_code,
+        field_count=len(changed),
+        reporting_month=reporting_month,
+    )
     db.commit()
     db.refresh(asset)
     return asset
@@ -662,16 +851,19 @@ def update_asset_status(
     _validate_asset_data(db, merged, exclude_asset_id=asset.id)
     old_status = asset.status
     asset.status = next_status
-    if payload.remarks:
-        asset.remarks = f"{asset.remarks or ''} | {payload.remarks}".strip(" |")
+    # Status remarks are activity-level audit notes. They must not be copied into
+    # the permanent Asset Master Remarks field or carried into later months.
     _record_history(
         db,
         asset,
         "Status changed",
-        user.email,
+        user,
         old_value=old_status,
         new_value=next_status,
         remarks=payload.remarks,
+        change_type="status_change",
+        reason=payload.remarks or "Asset status updated",
+        reporting_month=payload.reporting_month,
     )
     db.commit()
     db.refresh(asset)
@@ -713,7 +905,7 @@ def assign_asset(
         db,
         asset,
         "Asset assigned / transferred",
-        user.email,
+        user,
         old_value=_serialise_changes(old_assignment),
         new_value=_serialise_changes({
             "used_by": asset.used_by,
@@ -724,6 +916,9 @@ def assign_asset(
             "status": asset.status,
         }),
         remarks=payload.remarks,
+        change_type="assignment_transfer",
+        reason=payload.remarks or "Asset assigned or transferred",
+        reporting_month=payload.reporting_month,
     )
     db.commit()
     db.refresh(asset)
@@ -757,15 +952,19 @@ def return_asset(
     note = f"Returned on {payload.return_date or date.today()}; condition: {payload.condition}; all components returned: {'Yes' if payload.all_components_returned else 'No'}"
     if payload.remarks:
         note = f"{note}; {payload.remarks}"
-    asset.remarks = f"{asset.remarks or ''} | {note}".strip(" |")
+    # Return notes belong only to this return activity. Asset Master Remarks are
+    # changed only through an explicit full asset edit.
     _record_history(
         db,
         asset,
         "Asset returned",
-        user.email,
+        user,
         old_value=_serialise_changes(old_assignment),
         new_value=_serialise_changes({"used_by": None, "workstation_no": None, "status": final_status}),
         remarks=note,
+        change_type="asset_returned",
+        reason=payload.remarks or f"Asset returned in {payload.condition} condition",
+        reporting_month=payload.reporting_month,
     )
     db.commit()
     db.refresh(asset)
@@ -775,6 +974,7 @@ def return_asset(
 @router.patch("/assets/{asset_id}/archive", response_model=AssetResponse)
 def archive_asset(
     asset_id: int,
+    reporting_month: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> Asset:
@@ -785,7 +985,12 @@ def archive_asset(
     asset.status = "retired"
     asset.used_by = None
     asset.workstation_no = None
-    _record_history(db, asset, "Asset archived / retired", user.email, old_value=old_status, new_value="retired")
+    _record_history(
+        db, asset, "Asset archived / retired", user,
+        old_value=old_status, new_value="retired",
+        change_type="asset_retired", reason="Asset retired from active inventory",
+        reporting_month=reporting_month,
+    )
     db.commit()
     db.refresh(asset)
     return asset
@@ -851,9 +1056,11 @@ def create_work_record(
     if payload.asset_id and not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     prefix = "ITW" if module == "it" else "DRW"
+    values = payload.model_dump()
+    values["reporting_month"] = normalize_reporting_month(values.get("reporting_month")) if module == "it" else None
     work = WorkRecord(
         work_code=_next_code(db, WorkRecord, WorkRecord.work_code, prefix),
-        **payload.model_dump(),
+        **values,
         status="open",
     )
     db.add(work)
@@ -863,9 +1070,12 @@ def create_work_record(
             db,
             asset,
             "Work record created",
-            user.email,
+            user,
             new_value=work.work_code,
             remarks=f"{work.work_type}: {work.title}",
+            change_type="work_record_created",
+            reason=work.issue_description or work.title,
+            reporting_month=work.reporting_month,
         )
     db.commit()
     db.refresh(work)
@@ -885,6 +1095,10 @@ def update_work_record(
     if user.role in {"it", "drone"} and work.module != user.role:
         raise HTTPException(status_code=403, detail="You cannot update another department's work")
     values = payload.model_dump(exclude_unset=True)
+    if "reporting_month" in values and work.module == "it":
+        values["reporting_month"] = normalize_reporting_month(values["reporting_month"])
+    elif work.module != "it":
+        values.pop("reporting_month", None)
     old_status = work.status
     changed = {}
     for key, value in values.items():
@@ -899,10 +1113,13 @@ def update_work_record(
             db,
             work.asset,
             "Work record updated",
-            user.email,
+            user,
             old_value=_serialise_changes({"work_code": work.work_code, "status": old_status}),
             new_value=_serialise_changes({"work_code": work.work_code, **{k: v["to"] for k, v in changed.items()}}),
             remarks=work.resolution or work.issue_description,
+            change_type="work_record_updated",
+            reason=work.resolution or work.issue_description or "Work record updated",
+            reporting_month=work.reporting_month,
         )
     db.commit()
     db.refresh(work)
@@ -944,6 +1161,7 @@ def create_component_change_batch(
     asset = db.get(Asset, payload.asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+    reporting_month = normalize_reporting_month(payload.reporting_month)
 
     batch_code = _next_code(db, ComponentReplacement, ComponentReplacement.batch_code, "CHG")
     state = _asset_state(asset)
@@ -963,7 +1181,7 @@ def create_component_change_batch(
         row_change_type = item.change_type or payload.change_type
         if payload.change_type != "upgrade_replacement":
             row_change_type = payload.change_type
-        if row_change_type not in {"upgrade", "replacement", "upgrade_replacement"}:
+        if row_change_type not in {"upgrade", "replacement", "downgrade", "upgrade_replacement"}:
             raise HTTPException(status_code=400, detail="Invalid change type")
 
         new_value_text = str(item.new_value).strip()
@@ -1030,6 +1248,7 @@ def create_component_change_batch(
     work_type_label = {
         "upgrade": "Multi-component Upgrade",
         "replacement": "Multi-component Replacement",
+        "downgrade": "Multi-component Downgrade",
         "upgrade_replacement": "Upgrade and Replacement",
     }[payload.change_type]
     work = WorkRecord(
@@ -1050,6 +1269,7 @@ def create_component_change_batch(
         approval_status="not_required",
         start_date=payload.replacement_date or date.today(),
         completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        reporting_month=reporting_month,
     )
     db.add(work)
     db.flush()
@@ -1074,8 +1294,11 @@ def create_component_change_batch(
             technician=payload.technician or user.full_name,
             replacement_date=payload.replacement_date or date.today(),
             performed_by=user.full_name,
+            performed_by_email=user.email,
+            performed_by_role=user.role,
             approved_by=payload.approved_by,
             remarks=payload.remarks,
+            reporting_month=reporting_month,
         )
         db.add(record)
         db.flush()
@@ -1087,14 +1310,20 @@ def create_component_change_batch(
         changed_fields[field_name] = {"from": row["old_value"], "to": row["new_value"]}
         setattr(asset, field_name, state[field_name])
     asset.performed_by = user.full_name
+    asset.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     _record_history(
         db,
         asset,
-        "Multi-component upgrade / replacement",
-        user.email,
+        work_type_label,
+        user,
         old_value=_serialise_changes({key: value["from"] for key, value in changed_fields.items()}),
         new_value=_serialise_changes({key: value["to"] for key, value in changed_fields.items()}),
         remarks=f"Batch {batch_code}; Work record {work.work_code}; {payload.remarks or work_type_label}",
+        change_type=f"component_{payload.change_type}",
+        reason="; ".join(f"{row['component_type']}: {row['reason']}" for row in prepared),
+        batch_code=batch_code,
+        field_count=len(prepared),
+        reporting_month=reporting_month,
     )
     db.commit()
     for record in records:
@@ -1120,6 +1349,7 @@ def create_component_replacement(
     asset = db.get(Asset, payload.asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+    reporting_month = normalize_reporting_month(payload.reporting_month)
 
     component_key = payload.component_type.strip().lower()
     field_name = COMPONENT_FIELD_MAP.get(component_key)
@@ -1200,6 +1430,7 @@ def create_component_replacement(
         approval_status="not_required",
         start_date=payload.replacement_date or date.today(),
         completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        reporting_month=reporting_month,
     )
     db.add(work)
     db.flush()
@@ -1222,20 +1453,29 @@ def create_component_replacement(
         technician=payload.technician or user.full_name,
         replacement_date=payload.replacement_date or date.today(),
         performed_by=user.full_name,
+        performed_by_email=user.email,
+        performed_by_role=user.role,
         approved_by=payload.approved_by,
         remarks=payload.remarks,
+        reporting_month=reporting_month,
     )
     db.add(record)
     setattr(asset, field_name, updated_value)
     asset.performed_by = user.full_name
+    asset.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     _record_history(
         db,
         asset,
         "Component / configuration changed",
-        user.email,
+        user,
         old_value=_serialise_changes({field_name: old_value_for_history}),
         new_value=_serialise_changes({field_name: new_value_text}),
         remarks=f"{payload.component_type}: {payload.reason}; Work record {work.work_code}",
+        change_type=f"component_{payload.change_type}",
+        reason=payload.reason,
+        batch_code=record.batch_code or record.replacement_code,
+        field_count=1,
+        reporting_month=reporting_month,
     )
     db.commit()
     db.refresh(record)
@@ -1265,25 +1505,33 @@ def create_replacement(
         raise HTTPException(status_code=400, detail="Old asset and replacement asset cannot be the same")
     if new_asset and new_asset.status != "available":
         raise HTTPException(status_code=400, detail="Selected replacement asset is not available")
+    replacement_values = payload.model_dump()
+    replacement_values["reporting_month"] = normalize_reporting_month(replacement_values.get("reporting_month"))
     record = ReplacementRecord(
         replacement_code=_next_code(db, ReplacementRecord, ReplacementRecord.replacement_code, "RPL"),
-        **payload.model_dump(),
-        requested_by=user.email,
+        **replacement_values,
+        requested_by=user.full_name,
+        requested_by_email=user.email,
+        requested_by_role=user.role,
         approval_status="pending",
     )
     old_status = old_asset.status
     old_asset.status = "replacement_pending"
     db.add(record)
     db.flush()
-    db.add(
-        AssetHistory(
-            asset_id=old_asset.id,
-            action="Replacement requested",
-            old_value=old_status,
-            new_value="replacement_pending",
-            remarks=payload.reason,
-            changed_by=user.email,
-        )
+    _record_history(
+        db,
+        old_asset,
+        "Replacement requested",
+        user,
+        old_value=old_status,
+        new_value="replacement_pending",
+        remarks=payload.reason,
+        change_type="replacement_requested",
+        reason=payload.reason,
+        batch_code=record.replacement_code,
+        field_count=1,
+        reporting_month=record.reporting_month,
     )
     db.commit()
     db.refresh(record)
@@ -1301,7 +1549,9 @@ def approve_replacement(
     if not record:
         raise HTTPException(status_code=404, detail="Replacement record not found")
     record.approval_status = payload.approval_status
-    record.approved_by = user.email
+    record.approved_by = user.full_name
+    record.approved_by_email = user.email
+    record.approved_by_role = user.role
     record.approved_at = datetime.now(timezone.utc).replace(tzinfo=None)
     if payload.new_asset_id is not None:
         new_asset = db.get(Asset, payload.new_asset_id)
@@ -1331,20 +1581,27 @@ def approve_replacement(
                 db,
                 record.new_asset,
                 "Assigned as replacement asset",
-                user.email,
+                user,
                 old_value="available",
                 new_value="assigned",
                 remarks=f"Replaces {record.old_asset.asset_code}",
+                change_type="complete_asset_replacement",
+                reason=record.reason,
+                reporting_month=record.reporting_month,
             )
-        db.add(
-            AssetHistory(
-                asset_id=record.old_asset.id,
-                action="Replacement approved",
-                old_value="replacement_pending",
-                new_value="replaced",
-                remarks=payload.remarks,
-                changed_by=user.email,
-            )
+        _record_history(
+            db,
+            record.old_asset,
+            "Replacement approved",
+            user,
+            old_value="replacement_pending",
+            new_value="replaced",
+            remarks=payload.remarks,
+            change_type="replacement_approved",
+            reason=payload.remarks or record.reason,
+            batch_code=record.replacement_code,
+            field_count=1,
+            reporting_month=record.reporting_month,
         )
     elif payload.approval_status == "rejected":
         previous_status = "assigned" if record.old_asset.used_by else "available"
@@ -1353,10 +1610,15 @@ def approve_replacement(
             db,
             record.old_asset,
             "Replacement rejected",
-            user.email,
+            user,
             old_value="replacement_pending",
             new_value=previous_status,
             remarks=payload.remarks,
+            change_type="replacement_rejected",
+            reason=payload.remarks or record.reason,
+            batch_code=record.replacement_code,
+            field_count=1,
+            reporting_month=record.reporting_month,
         )
 
     db.commit()
@@ -1414,6 +1676,54 @@ def finalize_month(
     }
 
 
+@router.get("/reports/it-dashboard-assets.xlsx")
+def it_dashboard_asset_drilldown_excel(
+    month: str = Query(..., description="Reporting month in YYYY-MM format"),
+    scope: str = Query(default="all", description="all, device, status or department"),
+    scope_value: str | None = None,
+    search: str | None = None,
+    department: str | None = None,
+    device_type: str | None = None,
+    status: str | None = None,
+    location: str | None = None,
+    work_mode: str | None = None,
+    sort_by: str = "asset_code",
+    sort_dir: str = "asc",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> StreamingResponse:
+    try:
+        result = query_asset_drilldown(
+            db,
+            month_key=month,
+            scope=scope,
+            scope_value=scope_value,
+            search=search,
+            department=department,
+            device_type=device_type,
+            status=status,
+            location=location,
+            work_mode=work_mode,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            page=1,
+            page_size=100,
+        )
+        stream = build_asset_drilldown_workbook(result)
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if "No asset register" in detail else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    safe_scope = re.sub(r"[^A-Za-z0-9_-]+", "-", result["scope"]["label"]).strip("-") or "Assets"
+    filename = f"NakshaTech {safe_scope} - {result['month']['label']}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/reports/monthly-assets.xlsx")
 def monthly_asset_excel_report(
     month: str = Query(..., description="Month in YYYY-MM format"),
@@ -1445,7 +1755,7 @@ def monthly_changes_excel_report(
         stream = build_monthly_change_history_report(db, month)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    filename = f"NakshaTech Upgrade Replacement History - {start.strftime('%B %Y')}.xlsx"
+    filename = f"NakshaTech IT Asset Changes - {start.strftime('%B %Y')}.xlsx"
     return StreamingResponse(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

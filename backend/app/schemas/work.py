@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class WorkRecordCreate(BaseModel):
+    reporting_month: str | None = None
     module: str = "it"
     asset_id: int | None = None
     title: str
@@ -19,6 +20,7 @@ class WorkRecordCreate(BaseModel):
 
 
 class WorkRecordUpdate(BaseModel):
+    reporting_month: str | None = None
     status: str | None = None
     technician: str | None = None
     root_cause: str | None = None

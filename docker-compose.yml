@@ -1,22 +1,22 @@
-name: nakshatech_asset_management
+name: nakshatech_asset_management_local_master
 
 services:
   db:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-asset_management}
-      POSTGRES_USER: ${POSTGRES_USER:-asset_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-asset_password}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5434:5432"
     volumes:
-      - asset_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-asset_user} -d ${POSTGRES_DB:-asset_management}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
 
   redis:
     image: redis:7-alpine
@@ -24,20 +24,20 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - asset_redis_data:/data
+      - redis_data:/data
 
   minio:
     image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9004:9000"
       - "9005:9001"
     volumes:
-      - asset_minio_data:/data
+      - minio_data:/data
 
   backend:
     build:
@@ -45,31 +45,49 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://asset_user:asset_password@db:5432/asset_management}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-before-production-with-at-least-32-characters}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-480}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3100,http://localhost:8088}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-      MINIO_BUCKET: ${MINIO_BUCKET:-asset-files}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: development
+      API_PREFIX: /api
+      ROOT_PATH: ""
+      DOCS_ENABLED: "true"
+      ENABLE_BACKGROUND_WATCHER: "true"
+      SEED_DEFAULT_USERS: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_MINUTES: 480
+      CORS_ORIGINS: http://localhost:3100,http://localhost:8088
+      TRUSTED_HOSTS: localhost,127.0.0.1,backend
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_ORGANIZATION_ADMIN_NAME: ${SEED_ORGANIZATION_ADMIN_NAME:-NakshaTech Administrator}
+      SEED_ORGANIZATION_ADMIN_EMAIL: ${SEED_ORGANIZATION_ADMIN_EMAIL:-}
+      SEED_ORGANIZATION_ADMIN_PASSWORD: ${SEED_ORGANIZATION_ADMIN_PASSWORD:-}
+      SEED_MANAGEMENT_EMAIL: ${SEED_MANAGEMENT_EMAIL}
+      SEED_MANAGEMENT_PASSWORD: ${SEED_MANAGEMENT_PASSWORD}
+      SEED_IT_EMAIL: ${SEED_IT_EMAIL}
+      SEED_IT_PASSWORD: ${SEED_IT_PASSWORD}
+      SEED_DRONE_EMAIL: ${SEED_DRONE_EMAIL}
+      SEED_DRONE_PASSWORD: ${SEED_DRONE_PASSWORD}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: asset-files
+      REDIS_URL: redis://redis:6379/0
       BACKUP_ROOT: /backups
-      BACKUP_TIMEZONE: ${BACKUP_TIMEZONE:-Asia/Kolkata}
-      BACKUP_DATABASE_ENABLED: ${BACKUP_DATABASE_ENABLED:-true}
-      BACKUP_MINIO_ENABLED: ${BACKUP_MINIO_ENABLED:-false}
-      BACKUP_DAILY_RETENTION_DAYS: ${BACKUP_DAILY_RETENTION_DAYS:-90}
-      BACKUP_DATABASE_RETENTION_DAYS: ${BACKUP_DATABASE_RETENTION_DAYS:-30}
-      BACKUP_COMMAND_TIMEOUT_SECONDS: ${BACKUP_COMMAND_TIMEOUT_SECONDS:-1800}
-      PG_DUMP_BIN: ${PG_DUMP_BIN:-pg_dump}
-      LOCAL_BACKUP_AGENT_ENABLED: ${LOCAL_BACKUP_AGENT_ENABLED:-false}
-      LOCAL_BACKUP_AGENT_TOKEN: ${LOCAL_BACKUP_AGENT_TOKEN:-}
+      BACKUP_TIMEZONE: Asia/Kolkata
+      BACKUP_DATABASE_ENABLED: "true"
+      BACKUP_MINIO_ENABLED: "false"
+      BACKUP_DAILY_RETENTION_DAYS: 90
+      BACKUP_DATABASE_RETENTION_DAYS: 30
+      BACKUP_COMMAND_TIMEOUT_SECONDS: 1800
+      PG_DUMP_BIN: pg_dump
+      LOCAL_BACKUP_AGENT_ENABLED: "false"
+      LOCAL_BACKUP_AGENT_TOKEN: ${LOCAL_BACKUP_AGENT_TOKEN}
     ports:
       - "8100:8000"
     volumes:
       - ./backend:/app
-      - ${BACKUP_HOST_PATH:-../NAKSHA_BACKUPS}:/backups
+      - ./local-backups:/backups
     depends_on:
       db:
         condition: service_healthy
@@ -82,7 +100,7 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 30
 
   frontend:
     build:
@@ -93,7 +111,7 @@ services:
       - "3100:3100"
     volumes:
       - ./frontend:/app
-      - asset_node_modules:/app/node_modules
+      - node_modules:/app/node_modules
     depends_on:
       backend:
         condition: service_healthy
@@ -111,7 +129,7 @@ services:
       - backend
 
 volumes:
-  asset_postgres_data:
-  asset_redis_data:
-  asset_minio_data:
-  asset_node_modules:
+  postgres_data:
+  redis_data:
+  minio_data:
+  node_modules:

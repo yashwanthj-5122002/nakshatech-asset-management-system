@@ -69,12 +69,12 @@ def local_backup_health(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/export.xlsx", dependencies=[Depends(require_backup_agent_token)])
 def export_local_backup(
-    role: str = Query(..., description="admin, management, it or drone"),
+    role: str = Query(..., description="software_team, admin, management, it or drone"),
     db: Session = Depends(get_db),
 ) -> Response:
     normalized_role = role.strip().lower()
     if normalized_role not in VALID_BACKUP_ROLES:
-        raise HTTPException(status_code=400, detail="Role must be admin, management, it or drone")
+        raise HTTPException(status_code=400, detail="Role must be software_team, admin, management, it or drone")
 
     data, period, row_counts = build_current_month_workbook(db, normalized_role)
     checksum = content_sha256(data)

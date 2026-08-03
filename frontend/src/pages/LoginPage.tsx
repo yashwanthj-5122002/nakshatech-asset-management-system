@@ -2,58 +2,25 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
-  Laptop,
   LockKeyhole,
   ShieldCheck,
   User,
-  Users,
 } from 'lucide-react'
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { DroneIcon as Drone, type AppIcon } from '../components/DroneIcon'
+import { type ChangeEvent, type FormEvent, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import type { Role } from '../types'
-
-const credentialMap: Record<Role, { email: string; password: string; label: string; icon: AppIcon }> = {
-  admin: { email: 'admin@nakshatech.com', password: 'Admin@123', label: 'Admin', icon: ShieldCheck },
-  management: { email: 'management@nakshatech.com', password: 'Manager@123', label: 'Management', icon: Users },
-  it: { email: 'it@nakshatech.com', password: 'IT@123456', label: 'IT', icon: Laptop },
-  drone: { email: 'drone@nakshatech.com', password: 'Drone@123', label: 'Drone', icon: Drone },
-}
-
-function isRole(value: string | null): value is Role {
-  return value === 'admin' || value === 'management' || value === 'it' || value === 'drone'
-}
+import { roleHomePath } from '../lib/roles'
 
 export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const requestedRole = searchParams.get('role')
-  const initialRole: Role = isRole(requestedRole) ? requestedRole : 'admin'
-  const [role, setRole] = useState<Role>(initialRole)
-  const [email, setEmail] = useState(credentialMap[initialRole].email)
-  const [password, setPassword] = useState(credentialMap[initialRole].password)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [remember, setRemember] = useState(true)
+  const [remember, setRemember] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(false)
-  const roleItems = useMemo(() => Object.entries(credentialMap) as Array<[Role, typeof credentialMap.admin]>, [])
-
-  useEffect(() => {
-    if (isRole(requestedRole)) selectRole(requestedRole)
-    // requestedRole is stable for this route load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedRole])
-
-  function selectRole(nextRole: Role) {
-    setRole(nextRole)
-    setEmail(credentialMap[nextRole].email)
-    setPassword(credentialMap[nextRole].password)
-    setError('')
-    setNotice('')
-  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -61,9 +28,8 @@ export function LoginPage() {
     setError('')
     setNotice('')
     try {
-      const user = await login(email.trim(), password, role)
-      if (!remember) localStorage.removeItem('asset_user')
-      navigate(`/${user.role}`)
+      const user = await login(email.trim(), password, remember)
+      navigate(roleHomePath(user.role))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -91,7 +57,7 @@ export function LoginPage() {
           <p>Manage IT assets, drone operations, workflows, and admin visibility — all in one intelligent platform.</p>
         </section>
 
-        <section className="final-login-panel-zone" aria-label="Secure role login">
+        <section className="final-login-panel-zone" aria-label="Authorized employee login">
           <form className="final-login-panel" onSubmit={submit}>
             <Link className="final-login-back" to="/">
               <ArrowLeft size={17} aria-hidden="true" />
@@ -99,43 +65,29 @@ export function LoginPage() {
             </Link>
 
             <div className="final-login-heading">
-              <span>Secure Role Access</span>
+              <span>Authorized Employee Access</span>
               <h2>Welcome Back</h2>
-              <p>Sign in to continue to your account</p>
+              <p>Enter the credentials provided by the NakshaTech administrator.</p>
             </div>
 
-            <fieldset className="final-login-role-fieldset">
-              <legend>Select Role</legend>
-              <div className="final-login-role-selector">
-                {roleItems.map(([key, item]) => {
-                  const Icon = item.icon
-                  const selected = role === key
-                  return (
-                    <button
-                      type="button"
-                      key={key}
-                      className={selected ? 'selected' : ''}
-                      onClick={() => selectRole(key)}
-                      aria-pressed={selected}
-                    >
-                      <Icon size={22} strokeWidth={1.8} aria-hidden="true" />
-                      <span>{item.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </fieldset>
+            <div className="final-login-notice" role="status">
+              <ShieldCheck size={18} aria-hidden="true" />
+              <span>Your permitted department is selected automatically from your account.</span>
+            </div>
 
             <label className="final-login-field" htmlFor="login-email">
-              <span>Email or Username</span>
+              <span>Official Email</span>
               <div className="final-login-input-shell">
                 <User size={19} aria-hidden="true" />
                 <input
                   id="login-email"
+                  type="email"
                   value={email}
                   onChange={(event: ChangeEvent<HTMLInputElement>) => setEmail(event.target.value)}
-                  placeholder="Enter your email or username"
+                  placeholder="Enter your official email"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                 />
               </div>
@@ -171,7 +123,7 @@ export function LoginPage() {
                   checked={remember}
                   onChange={(event: ChangeEvent<HTMLInputElement>) => setRemember(event.target.checked)}
                 />
-                <span>Remember me</span>
+                <span>Remember me on this device</span>
               </label>
               <button
                 type="button"

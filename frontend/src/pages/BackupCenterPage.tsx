@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
+import { isFullAccessRole } from '../lib/roles'
 import { apiFetch, downloadFile } from '../lib/api'
 import type { BackupRun, BackupStatus, BackupType } from '../types'
 
@@ -72,8 +73,8 @@ export function BackupCenterPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  const canChooseScope = user?.role === 'admin' || user?.role === 'management'
-  const canRunServerBackup = user?.role === 'admin'
+  const canChooseScope = Boolean(user && (isFullAccessRole(user.role) || user.role === 'management'))
+  const canRunServerBackup = Boolean(user && isFullAccessRole(user.role))
 
   const periodInput = useMemo(() => {
     if (backupType === 'daily') return { type: 'date', value: period || todayKey() }
@@ -236,13 +237,13 @@ export function BackupCenterPage() {
                   <td>{formatDate(run.completed_at || run.created_at)}</td>
                   <td><div className="backup-file-actions">
                     {run.excel_filename && <button title="Download Excel" onClick={() => void downloadSaved(run, 'excel')} disabled={!!busy}><FileSpreadsheet size={16} /></button>}
-                    {user?.role === 'admin' && run.database_filename && <button title="Download database dump" onClick={() => void downloadSaved(run, 'database')} disabled={!!busy}><Database size={16} /></button>}
-                    {user?.role === 'admin' && run.minio_filename && <button title="Download uploaded-file archive" onClick={() => void downloadSaved(run, 'minio')} disabled={!!busy}><Download size={16} /></button>}
-                    {user?.role === 'admin' && run.manifest_filename && <button title="Download manifest" onClick={() => void downloadSaved(run, 'manifest')} disabled={!!busy}><FileJson size={16} /></button>}
+                    {user && isFullAccessRole(user.role) && run.database_filename && <button title="Download database dump" onClick={() => void downloadSaved(run, 'database')} disabled={!!busy}><Database size={16} /></button>}
+                    {user && isFullAccessRole(user.role) && run.minio_filename && <button title="Download uploaded-file archive" onClick={() => void downloadSaved(run, 'minio')} disabled={!!busy}><Download size={16} /></button>}
+                    {user && isFullAccessRole(user.role) && run.manifest_filename && <button title="Download manifest" onClick={() => void downloadSaved(run, 'manifest')} disabled={!!busy}><FileJson size={16} /></button>}
                   </div></td>
                 </tr>
               ))}
-              {!history.length && <tr><td colSpan={8}><div className="backup-empty-state"><CalendarDays size={28} /><strong>No saved backups yet</strong><span>Admin can create the first server backup, or the cPanel cron job will create it automatically.</span></div></td></tr>}
+              {!history.length && <tr><td colSpan={8}><div className="backup-empty-state"><CalendarDays size={28} /><strong>No saved backups yet</strong><span>Admin or Software Team can create the first server backup, or the cPanel cron job will create it automatically.</span></div></td></tr>}
             </tbody>
           </table>
         </div>

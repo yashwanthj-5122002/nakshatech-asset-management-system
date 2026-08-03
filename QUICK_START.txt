@@ -1,38 +1,43 @@
-NAKSHATECH ASSET MANAGEMENT SYSTEM - QUICK START
+NAKSHA TECH ASSET MANAGEMENT - CLEAN LOCAL MASTER
 
-1. Install Docker Desktop and make sure Docker is running.
-2. Extract the ZIP.
-3. Double-click START_WINDOWS.cmd.
-4. Wait until the frontend and backend are ready.
-5. Open http://localhost:3100
+THIS IS THE FOLDER TO USE FROM NOW ON.
+Do not mix it with the old cPanel builder, crm_backend, or previous asset-management-system folders.
 
-MANUAL COMMAND
-  docker compose up --build
+FIRST RUN ON WINDOWS
+1. Install and start Docker Desktop.
+2. Extract this ZIP to:
+   E:\NakshaTech_Asset_Management_Local_Master
+3. Double-click:
+   SETUP_AND_START_LOCAL_WINDOWS.cmd
+4. Enter the local Admin email/password when requested.
+5. Open:
+   http://localhost:3100
 
-IMPORTANT
-  Port 3000 is not used.
-  Frontend runs on port 3100.
-  The first Docker build needs internet to download images and packages.
-
-URLS
-  Frontend:       http://localhost:3100
-  Unified app:    http://localhost:8088
-  Backend:        http://localhost:8100
-  API Docs:       http://localhost:8100/docs
-  MinIO Console:  http://localhost:9005
-
-DEVELOPMENT LOGINS
-  Admin:       admin@nakshatech.com / Admin@123
-  Management:  management@nakshatech.com / Manager@123
-  IT:          it@nakshatech.com / IT@123456
-  Drone:       drone@nakshatech.com / Drone@123
+NORMAL DAILY START
+  Double-click START_LOCAL_WINDOWS.cmd
 
 STOP
-  Double-click STOP_WINDOWS.cmd
-  or run: docker compose down
+  Double-click STOP_LOCAL_WINDOWS.cmd
 
-DELETE ALL DEVELOPMENT DATA AND RESTART
-  Double-click RESET_AND_START_WINDOWS.cmd
-  or run:
-    docker compose down -v
-    docker compose up --build
+AFTER CODE CHANGES
+  Double-click REBUILD_LOCAL_WINDOWS.cmd
+  Then press Ctrl+Shift+R in Chrome.
+
+LOCAL URLS
+  Frontend:      http://localhost:3100
+  Unified app:   http://localhost:8088
+  Backend API:   http://localhost:8100
+  API Docs:      http://localhost:8100/docs
+  MinIO Console: http://localhost:9005
+
+SOURCE CODE
+  Frontend: frontend\src
+  Backend:  backend\app
+  Docker:   docker-compose.yml
+
+IMPORTANT
+- .env and LOCAL_LOGIN_CREDENTIALS.txt are local-only and must not be uploaded.
+- The current secure login page has blank email/password fields and no automatic role login.
+- User roles are selected by the backend account.
+- This package does not change or connect to the cPanel production database.
+- RESET_FRESH_LOCAL_DATA_WINDOWS.cmd deletes only this package's local Docker data.

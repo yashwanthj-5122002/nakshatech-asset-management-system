@@ -15,6 +15,7 @@ from sqlalchemy import Date, DateTime, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.roles import backup_role
 from app.models.entities import (
     Asset,
     AssetHistory,
@@ -44,7 +45,7 @@ from app.modules.drone.models import (
 
 
 EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-VALID_BACKUP_ROLES = {"it", "drone", "management", "admin"}
+VALID_BACKUP_ROLES = {"it", "drone", "management", "admin", "software_team"}
 MAX_EXCEL_TEXT = 32000
 
 
@@ -329,6 +330,7 @@ def _write_summary_sheet(
 
 
 def _include_spec(role: str, spec: ExportSpec) -> bool:
+    role = backup_role(role)
     if spec.admin_only:
         return role == "admin"
     if role == "it":
@@ -347,8 +349,9 @@ def build_current_month_workbook(
 ) -> tuple[bytes, CurrentMonthPeriod, dict[str, int]]:
     role = role.strip().lower()
     if role not in VALID_BACKUP_ROLES:
-        raise ValueError("Role must be admin, management, it or drone")
+        raise ValueError("Role must be software_team, admin, management, it or drone")
 
+    role = backup_role(role)
     period = current_month_period()
     workbook = Workbook()
     row_counts: dict[str, int] = {}

@@ -4,10 +4,11 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-ChangeType = Literal["upgrade", "replacement", "upgrade_replacement"]
+ChangeType = Literal["upgrade", "replacement", "downgrade", "upgrade_replacement"]
 
 
 class ComponentReplacementCreate(BaseModel):
+    reporting_month: str | None = None
     asset_id: int
     component_type: str = Field(min_length=2)
     change_type: ChangeType = "replacement"
@@ -50,6 +51,7 @@ class ComponentChangeItem(BaseModel):
 
 
 class ComponentChangeBatchCreate(BaseModel):
+    reporting_month: str | None = None
     asset_id: int
     change_type: ChangeType
     items: list[ComponentChangeItem] = Field(min_length=1, max_length=25)
@@ -94,10 +96,13 @@ class ComponentReplacementResponse(BaseModel):
     technician: str | None = None
     replacement_date: date | None = None
     performed_by: str | None = None
+    performed_by_email: str | None = None
+    performed_by_role: str | None = None
     approved_by: str | None = None
     remarks: str | None = None
     work_record_id: int | None = None
     work_code: str | None = None
+    reporting_month: str | None = None
     created_at: datetime
 
 

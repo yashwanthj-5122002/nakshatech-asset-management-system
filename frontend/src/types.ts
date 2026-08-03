@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'management' | 'it' | 'drone'
+export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone'
 
 export interface AuthUser {
   id: number
@@ -21,6 +21,49 @@ export interface DashboardSummary {
 export interface DistributionItem {
   name: string
   value: number
+  key?: string
+}
+
+export type ActivityMetricKey =
+  | 'total_activities'
+  | 'asset_edit_operations'
+  | 'component_changes'
+  | 'handover_operations'
+  | 'return_operations'
+  | 'purchases_recorded'
+
+export interface ActivityTrendPoint {
+  month: string
+  label: string
+  total_activities: number
+  asset_edit_operations: number
+  component_changes: number
+  handover_operations: number
+  return_operations: number
+  purchases_recorded: number
+}
+
+export interface ITActivitySummaryData {
+  month: {
+    key: string
+    label: string
+  }
+  summary: {
+    assets_edited: number
+    asset_edit_operations: number
+    component_changes: number
+    upgrades: number
+    replacements: number
+    downgrades: number
+    combined_changes: number
+    laptop_handovers: number
+    desktop_handovers: number
+    handover_operations: number
+    return_operations: number
+    purchases_recorded: number
+    purchase_value: number
+    total_activities: number
+  }
 }
 
 export interface AlertItem {
@@ -56,21 +99,37 @@ export interface Asset {
   antivirus?: string
   network_type?: string
   performed_by?: string
+  performed_by_email?: string
+  performed_by_role?: string
   approved_by?: string
   price?: number
   remarks?: string
   asset_date?: string
+  original_asset_date?: string
   location?: string
   work_mode: string
   status: string
   created_at: string
   updated_at: string
+  last_change_at?: string
+  last_changed_by?: string
+  last_changed_by_role?: string
+  last_change_type?: string
+  last_change_reason?: string
+  last_field_count?: number
   history?: Array<{
     action: string
+    change_type?: string
+    batch_code?: string
     old_value?: string
     new_value?: string
     remarks?: string
+    reason?: string
     changed_by?: string
+    changed_by_name?: string
+    changed_by_role?: string
+    field_count?: number
+    reporting_month?: string
     created_at: string
   }>
   work_records?: WorkRecord[]
@@ -103,6 +162,7 @@ export interface WorkRecord {
   start_date?: string
   expected_completion_date?: string
   completed_at?: string
+  reporting_month?: string
   created_at: string
   updated_at: string
 }
@@ -126,10 +186,13 @@ export interface ComponentReplacementRecord {
   technician?: string
   replacement_date?: string
   performed_by?: string
+  performed_by_email?: string
+  performed_by_role?: string
   approved_by?: string
   remarks?: string
   work_record_id?: number
   work_code?: string
+  reporting_month?: string
   created_at: string
 }
 
@@ -146,7 +209,12 @@ export interface ReplacementRecord {
   approval_status: string
   final_action: string
   requested_by?: string
+  requested_by_email?: string
+  requested_by_role?: string
   approved_by?: string
+  approved_by_email?: string
+  approved_by_role?: string
+  reporting_month?: string
   created_at: string
   approved_at?: string
 }
@@ -165,6 +233,8 @@ export interface ITDashboardData {
     work_records: number
     component_changes: number
     complete_replacements: number
+    asset_edit_operations: number
+    assets_edited: number
   }
   kpis: {
     total: number
@@ -590,4 +660,193 @@ export interface BackupStatus {
   database_backup_enabled: boolean
   minio_backup_enabled: boolean
   notes: string[]
+}
+
+export interface ITActivityItem {
+  activity_id: string
+  source_type: 'asset_edit' | 'component_change' | 'handover_return' | 'purchase' | string
+  record_id: number
+  asset_id?: number
+  asset_code?: string
+  cpu_asset_tag?: string
+  workstation_no?: string
+  device_category?: string
+  department?: string
+  action_type: string
+  action_label: string
+  field_or_component?: string
+  old_value?: unknown
+  new_value?: unknown
+  reason?: string
+  remarks?: string
+  performed_by?: string
+  performed_by_email?: string
+  performed_by_role?: string
+  batch_code?: string
+  activity_date?: string
+  activity_time?: string
+  timestamp?: string
+  reporting_month?: string
+  system_recorded_at?: string
+  time_recorded: boolean
+  condition?: string
+  accessories?: string
+  supplier_name?: string
+  po_number?: string
+  quantity?: number
+  total_price?: number
+}
+
+export interface ITActivitySummary {
+  month: { key: string; label: string; start: string; end: string; timezone: string }
+  summary: {
+    assets_edited: number
+    asset_edit_operations: number
+    component_changes: number
+    upgrades: number
+    replacements: number
+    downgrades: number
+    combined_changes: number
+    laptop_handovers: number
+    desktop_handovers: number
+    handover_operations: number
+    return_operations: number
+    purchases_recorded: number
+    purchase_value: number
+    total_activities: number
+  }
+  visual_summary: DistributionItem[]
+  user_activity: DistributionItem[]
+  timeline: ITActivityItem[]
+  items: ITActivityItem[]
+  total: number
+  filters: {
+    departments: string[]
+    users: string[]
+    device_categories: string[]
+    action_types: string[]
+  }
+}
+
+export interface ITHandoverRecord {
+  id: number
+  activity_code: string
+  asset_id?: number
+  asset_code_snapshot?: string
+  device_category: 'laptop' | 'desktop'
+  employee_name?: string
+  dc_number?: string
+  department?: string
+  work_mode?: string
+  internal_asset_no?: string
+  specification?: string
+  serial_number?: string
+  accessories_provided?: string
+  condition?: string
+  action_type: string
+  action_raw?: string
+  activity_date: string
+  activity_time?: string
+  issued_by?: string
+  remarks?: string
+  asset_updated_status?: string
+  source_file?: string
+  source_sheet?: string
+  source_row?: number
+  imported: boolean
+  performed_by?: string
+  performed_by_email?: string
+  performed_by_role?: string
+  reporting_month?: string
+  created_at: string
+}
+
+export interface ITPurchaseRecord {
+  id: number
+  purchase_code: string
+  linked_asset_id?: number
+  linked_asset_code_snapshot?: string
+  purchase_date: string
+  po_number?: string
+  asset_number?: string
+  supplier_name: string
+  supplier_contact?: string
+  item_description: string
+  warranty_number?: string
+  quantity: number
+  unit_price?: number
+  total_price?: number
+  received_date?: string
+  inspection_status?: string
+  approved_by?: string
+  department?: string
+  remarks?: string
+  source_file?: string
+  source_sheet?: string
+  source_row?: number
+  imported: boolean
+  created_by?: string
+  created_by_email?: string
+  created_by_role?: string
+  reporting_month?: string
+  created_at: string
+}
+
+export type ITAssetDrilldownScope = 'all' | 'device' | 'status' | 'department'
+
+export interface ITAssetDrilldownSelection {
+  scope: ITAssetDrilldownScope
+  value?: string
+}
+
+export interface ITAssetDrilldownData {
+  month: {
+    key: string
+    label: string
+    source: string
+    is_live: boolean
+  }
+  scope: {
+    type: ITAssetDrilldownScope
+    value?: string
+    label: string
+  }
+  scope_total: number
+  filtered_total: number
+  page: number
+  page_size: number
+  pages: number
+  summary: {
+    total: number
+    computers: number
+    laptops: number
+    smartphones: number
+    assigned: number
+    available: number
+    repair: number
+    replacement_pending: number
+  }
+  filtered_summary: {
+    total: number
+    computers: number
+    laptops: number
+    smartphones: number
+    assigned: number
+    available: number
+    repair: number
+    replacement_pending: number
+  }
+  visuals: {
+    device_distribution: DistributionItem[]
+    status_distribution: DistributionItem[]
+    department_distribution: DistributionItem[]
+  }
+  filter_options: {
+    devices: string[]
+    departments: string[]
+    statuses: string[]
+    locations: string[]
+    work_modes: string[]
+  }
+  assets: Asset[]
 }

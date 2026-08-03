@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 class ReplacementCreate(BaseModel):
+    reporting_month: str | None = None
     old_asset_id: int
     new_asset_id: int | None = None
     reason: str
@@ -32,6 +33,11 @@ class ReplacementResponse(BaseModel):
     approval_status: str
     final_action: str
     requested_by: str | None = None
+    requested_by_email: str | None = None
+    requested_by_role: str | None = None
     approved_by: str | None = None
+    approved_by_email: str | None = None
+    approved_by_role: str | None = None
+    reporting_month: str | None = None
     created_at: datetime
     approved_at: datetime | None = None

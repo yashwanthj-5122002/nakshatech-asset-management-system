@@ -50,10 +50,14 @@ class AssetFields(BaseModel):
 
 
 class AssetCreate(AssetFields):
-    pass
+    reporting_month: str | None = None
+
 
 
 class AssetUpdate(BaseModel):
+    reporting_month: str | None = None
+    audit_reason: str | None = None
+    audit_remarks: str | None = None
     used_by: str | None = None
     workstation_no: str | None = None
     department: str | None = None
@@ -85,7 +89,7 @@ class AssetUpdate(BaseModel):
         "used_by", "workstation_no", "department", "cpu_asset_tag", "monitor_asset_tags",
         "mouse_asset_tag", "keyboard_asset_tag", "system_name", "processor", "memory_gb",
         "ssd", "hdd", "ip_address", "mac_address", "graphics_card", "operating_system",
-        "antivirus", "network_type", "approved_by", "remarks", "location",
+        "audit_reason", "audit_remarks", "antivirus", "network_type", "approved_by", "remarks", "location",
         mode="before",
     )
     @classmethod
@@ -99,9 +103,11 @@ class AssetUpdate(BaseModel):
 class AssetStatusUpdate(BaseModel):
     status: str
     remarks: str | None = None
+    reporting_month: str | None = None
 
 
 class AssetAssignment(BaseModel):
+    reporting_month: str | None = None
     used_by: str = Field(min_length=2)
     department: str = Field(min_length=1)
     workstation_no: str | None = None
@@ -112,6 +118,7 @@ class AssetAssignment(BaseModel):
 
 
 class AssetReturn(BaseModel):
+    reporting_month: str | None = None
     final_status: str = "available"
     return_date: date | None = None
     condition: str = "working"
@@ -122,6 +129,7 @@ class AssetReturn(BaseModel):
 class AssetResponse(AssetFields):
     id: int
     asset_code: str
+    original_asset_date: date | None = None
     source_sheet: str | None = None
     source_row: int | None = None
     created_at: datetime

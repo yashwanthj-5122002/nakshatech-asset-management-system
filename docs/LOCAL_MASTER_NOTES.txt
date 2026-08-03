@@ -1,0 +1,10 @@
+SOURCE ASSEMBLY
+- Frontend: current secure cPanel frontend source, also compatible with local Vite proxy.
+- Backend: verified current backend including Passenger startup and cPanel script-path fixes.
+- Local infrastructure: Docker Compose with PostGIS, Redis, MinIO, FastAPI, React/Vite and Nginx.
+
+LOCAL DATA
+- The first fresh database imports the bundled NakshaTech workbook and creates the current role accounts.
+- Credentials are taken from the locally generated .env file.
+- Changing .env seed credentials after the database already exists will not rewrite existing users.
+  Use CHANGE_LOCAL_USER_PASSWORD_WINDOWS.cmd or reset the local volumes deliberately.

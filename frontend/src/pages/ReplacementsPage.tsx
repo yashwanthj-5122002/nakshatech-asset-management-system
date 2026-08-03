@@ -2,11 +2,15 @@ import { Check, Repeat2, Save, XCircle } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
+import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
+import { isFullAccessRole } from '../lib/roles'
+import { monthLabel } from '../lib/itMonth'
 import type { Asset, ReplacementRecord } from '../types'
 
 export function ReplacementsPage() {
   const { user } = useAuth()
+  const { selectedMonth } = useITMonthUrl()
   const [assets, setAssets] = useState<Asset[]>([])
   const [records, setRecords] = useState<ReplacementRecord[]>([])
   const [message, setMessage] = useState('')
@@ -25,7 +29,7 @@ export function ReplacementsPage() {
   async function submit(event: FormEvent) {
     event.preventDefault(); setMessage(''); setError('')
     try {
-      const created = await apiFetch<ReplacementRecord>('/replacements', { method: 'POST', body: JSON.stringify({ ...form, old_asset_id: Number(form.old_asset_id), new_asset_id: form.new_asset_id ? Number(form.new_asset_id) : null }) })
+      const created = await apiFetch<ReplacementRecord>('/replacements', { method: 'POST', body: JSON.stringify({ ...form, old_asset_id: Number(form.old_asset_id), new_asset_id: form.new_asset_id ? Number(form.new_asset_id) : null, reporting_month: selectedMonth }) })
       setMessage(`${created.replacement_code} created and sent for approval.`); setForm({ ...form, old_asset_id: '', new_asset_id: '', reason: '', inspection_finding: '' }); await load()
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create replacement request') }
   }
@@ -45,11 +49,11 @@ export function ReplacementsPage() {
   const availableAssets = assets.filter(asset => asset.status === 'available')
   return (
     <>
-      <DashboardHeader eyebrow="ASSET LIFECYCLE" title="Complete CPU / Laptop Replacement" description="Identify systems by CPU / Physical Asset Tag and Workstation Number. Use this page only when the complete computer, laptop or major independent asset must be replaced." />
+      <DashboardHeader eyebrow="ASSET LIFECYCLE" title="Complete CPU / Laptop Replacement" description={`Complete replacement requests created here are reported in ${monthLabel(selectedMonth)}. Approval keeps the request's original reporting month, while actual server timestamps remain unchanged.`} />
       {message && <div className="success-message">{message}</div>}{error && <div className="error-message">{error}</div>}
       <section className="dashboard-grid replacement-layout">
-        {(user?.role === 'admin' || user?.role === 'it') && <article className="panel">
-          <div className="panel-heading"><div><span className="section-kicker">NEW REQUEST</span><h2>Raise Replacement</h2></div><Repeat2 /></div>
+        {((user && isFullAccessRole(user.role)) || user?.role === 'it') && <article className="panel">
+          <div className="panel-heading"><div><span className="section-kicker">NEW REQUEST · {monthLabel(selectedMonth).toUpperCase()}</span><h2>Raise Replacement</h2></div><Repeat2 /></div>
           <form className="data-form" onSubmit={submit}>
             <label>Old / Failed CPU or Laptop<select required value={form.old_asset_id} onChange={e => setForm({ ...form, old_asset_id: e.target.value })}><option value="">Select by CPU tag and workstation</option>{assets.filter(asset => !['disposed', 'replaced'].includes(asset.status)).map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No physical tag'} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · Internal {asset.asset_code}</option>)}</select></label>
             <label>Available New CPU or Laptop (optional)<select value={form.new_asset_id} onChange={e => setForm({ ...form, new_asset_id: e.target.value })}><option value="">Assign after approval</option>{availableAssets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No physical tag'} · {asset.workstation_no || 'Unplaced'} · {asset.device_type} · {asset.processor || 'No processor'} · Internal {asset.asset_code}</option>)}</select></label>
@@ -64,11 +68,11 @@ export function ReplacementsPage() {
           <div className="panel-heading"><div><span className="section-kicker">TRACEABLE HISTORY</span><h2>Replacement Records</h2></div><span className="count-chip">{records.length}</span></div>
           <div className="replacement-workflow-list">
             {records.map(record => { const oldAsset = assets.find(asset => asset.id === record.old_asset_id); const newAsset = assets.find(asset => asset.id === record.new_asset_id); return <article key={record.id}>
-              <div className="record-top"><div><strong>{record.replacement_code}</strong><span>{new Date(record.created_at).toLocaleDateString()}</span></div><span className={`status ${record.approval_status}`}>{record.approval_status}</span></div>
+              <div className="record-top"><div><strong>{record.replacement_code}</strong><span>Effective: {monthLabel(record.reporting_month || selectedMonth)} · Recorded: {new Date(record.created_at).toLocaleString()}</span></div><span className={`status ${record.approval_status}`}>{record.approval_status}</span></div>
               <div className="replacement-link"><span>{oldAsset?.cpu_asset_tag || record.old_asset_code}<small>{oldAsset?.workstation_no || 'No workstation'} · Internal {record.old_asset_code}</small></span><i>replaced by</i><span>{newAsset?.cpu_asset_tag || record.new_asset_code || 'Not assigned'}<small>{newAsset?.workstation_no || oldAsset?.workstation_no || 'Workstation pending'}{record.new_asset_code ? ` · Internal ${record.new_asset_code}` : ''}</small></span></div>
               <p>{record.reason}</p><small>{record.damage_category.replaceAll('_', ' ')} · {record.final_action.replaceAll('_', ' ')}</small>
               {record.inspection_finding && <blockquote>{record.inspection_finding}</blockquote>}
-              {(user?.role === 'admin' || user?.role === 'management') && record.approval_status === 'pending' && <div className="approval-selection"><label>Replacement asset<select value={replacementSelections[record.id] || (record.new_asset_id ? String(record.new_asset_id) : '')} onChange={event => setReplacementSelections({ ...replacementSelections, [record.id]: event.target.value })}><option value="">Select available asset</option>{availableAssets.filter(asset => asset.id !== record.old_asset_id).map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No physical tag'} · {asset.workstation_no || 'Unplaced'} · {asset.device_type} · {asset.processor || 'Specification not recorded'} · Internal {asset.asset_code}</option>)}</select></label><div className="record-actions"><button className="primary-button" onClick={() => void decide(record, 'approved')}><Check size={15} /> Approve & Assign</button><button className="danger-button" onClick={() => void decide(record, 'rejected')}><XCircle size={15} /> Reject</button></div></div>}
+              {((user && isFullAccessRole(user.role)) || user?.role === 'management') && record.approval_status === 'pending' && <div className="approval-selection"><label>Replacement asset<select value={replacementSelections[record.id] || (record.new_asset_id ? String(record.new_asset_id) : '')} onChange={event => setReplacementSelections({ ...replacementSelections, [record.id]: event.target.value })}><option value="">Select available asset</option>{availableAssets.filter(asset => asset.id !== record.old_asset_id).map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No physical tag'} · {asset.workstation_no || 'Unplaced'} · {asset.device_type} · {asset.processor || 'Specification not recorded'} · Internal {asset.asset_code}</option>)}</select></label><div className="record-actions"><button className="primary-button" onClick={() => void decide(record, 'approved')}><Check size={15} /> Approve & Assign</button><button className="danger-button" onClick={() => void decide(record, 'rejected')}><XCircle size={15} /> Reject</button></div></div>}
             </article> })}
             {!records.length && <div className="empty-state">No replacement requests yet.</div>}
           </div>

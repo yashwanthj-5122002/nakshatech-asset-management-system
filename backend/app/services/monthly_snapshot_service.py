@@ -21,7 +21,7 @@ SNAPSHOT_FIELDS = [
     "cpu_asset_tag", "monitor_asset_tags", "mouse_asset_tag", "keyboard_asset_tag", "system_name",
     "device_type", "processor", "memory_gb", "ssd", "hdd", "ip_address", "mac_address",
     "graphics_card", "operating_system", "antivirus", "network_type", "performed_by", "approved_by",
-    "price", "remarks", "asset_date", "location", "work_mode", "status", "created_at", "updated_at",
+    "price", "remarks", "asset_date", "original_asset_date", "location", "work_mode", "status", "created_at", "updated_at",
 ]
 MONTH_FORMATS = ("%B %Y", "%b %Y", "%B-%Y", "%b-%Y")
 
@@ -73,7 +73,7 @@ def _serialise_asset(asset: Asset) -> str:
 
 def _snapshot_namespace(payload: str) -> SimpleNamespace:
     values = json.loads(payload)
-    for field in ("asset_date",):
+    for field in ("asset_date", "original_asset_date"):
         if values.get(field):
             values[field] = date.fromisoformat(values[field])
     for field in ("created_at", "updated_at"):
@@ -257,6 +257,7 @@ def template_assets(start: date) -> list[SimpleNamespace]:
             price=price,
             remarks=remarks,
             asset_date=asset_date,
+            original_asset_date=asset_date,
             location=location,
             work_mode=work_mode,
             status=_template_asset_status(used_by, remarks),
