@@ -5,6 +5,7 @@ SOFTWARE_TEAM_ROLE = "software_team"
 MANAGEMENT_ROLE = "management"
 IT_ROLE = "it"
 DRONE_ROLE = "drone"
+EMPLOYEE_ROLE = "employee"
 
 VALID_ROLES = {
     ADMIN_ROLE,
@@ -12,6 +13,7 @@ VALID_ROLES = {
     MANAGEMENT_ROLE,
     IT_ROLE,
     DRONE_ROLE,
+    EMPLOYEE_ROLE,
 }
 
 ADMIN_EQUIVALENT_ROLES = {ADMIN_ROLE, SOFTWARE_TEAM_ROLE}
@@ -37,6 +39,7 @@ def role_display_name(role: str) -> str:
         MANAGEMENT_ROLE: "Management",
         IT_ROLE: "IT Department",
         DRONE_ROLE: "Drone Department",
+        EMPLOYEE_ROLE: "Employee Support",
     }
     return labels.get(normalized, normalized.replace("_", " ").title())
 

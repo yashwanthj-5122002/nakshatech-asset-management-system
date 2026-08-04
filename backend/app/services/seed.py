@@ -39,6 +39,9 @@ def seed_database(db: Session) -> None:
                     password_hash=hash_password(password),
                     role=role,
                     branch="Head Office",
+                    email_verified=True,
+                    account_status="active",
+                    mfa_required=False,
                 )
                 for email, name, password, role in development_users()
             ]

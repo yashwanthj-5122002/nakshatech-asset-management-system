@@ -44,6 +44,28 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3100,http://localhost:8088"
     trusted_hosts: str = "localhost,127.0.0.1"
 
+    # Employee portal authentication and ticketing. Existing department logins
+    # continue to work when these features are not yet configured.
+    employee_portal_enabled: bool = True
+    allowed_email_domains: str = "nakshatech.com"
+    email_delivery_mode: str = "console"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "no-reply@nakshatech.com"
+    smtp_from_name: str = "NakshaTech CRM"
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    email_otp_expiry_minutes: int = 10
+    email_otp_resend_seconds: int = 60
+    email_otp_max_attempts: int = 5
+    email_otp_max_requests_per_hour: int = 5
+    temporary_token_minutes: int = 15
+    totp_issuer: str = "NakshaTech CRM"
+    totp_encryption_key: str = ""
+    totp_valid_window: int = 1
+
     seed_excel_path: str = str(Path(__file__).resolve().parents[1] / "data" / "nakshatech_asset_template.xlsx")
 
     # Historical/server backup settings.
@@ -82,6 +104,10 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.trusted_hosts.split(",") if item.strip()]
 
     @property
+    def allowed_email_domain_list(self) -> list[str]:
+        return [item.strip().lower().lstrip("@") for item in self.allowed_email_domains.split(",") if item.strip()]
+
+    @property
     def docs_url(self) -> str | None:
         return "/docs" if self.docs_enabled else None
 
@@ -107,6 +133,17 @@ class Settings(BaseSettings):
             raise RuntimeError("CORS_ORIGINS must include the production frontend origin")
         if self.local_backup_agent_enabled and len(self.local_backup_agent_token.strip()) < 32:
             raise RuntimeError("LOCAL_BACKUP_AGENT_TOKEN must be at least 32 characters when enabled")
+        if self.employee_portal_enabled:
+            if not self.allowed_email_domain_list:
+                raise RuntimeError("ALLOWED_EMAIL_DOMAINS must contain at least one organization domain")
+            if self.email_delivery_mode.strip().lower() != "smtp":
+                raise RuntimeError("EMAIL_DELIVERY_MODE must be smtp when the employee portal is enabled in production")
+            if not self.smtp_host.strip() or not self.smtp_from_email.strip():
+                raise RuntimeError("SMTP_HOST and SMTP_FROM_EMAIL are required when EMAIL_DELIVERY_MODE=smtp")
+            if self.smtp_use_ssl and self.smtp_use_tls:
+                raise RuntimeError("Enable only one of SMTP_USE_SSL or SMTP_USE_TLS")
+            if len(self.totp_encryption_key.strip()) < 32:
+                raise RuntimeError("TOTP_ENCRYPTION_KEY must be a separate production secret of at least 32 characters")
 
 
 @lru_cache

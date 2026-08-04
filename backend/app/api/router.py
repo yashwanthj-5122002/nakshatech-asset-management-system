@@ -9,15 +9,15 @@ import re
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user, require_roles
+from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
 from app.core.roles import VALID_ROLES, role_display_name
 from app.core.database import get_db
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_temporary_token, verify_password
 from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import Asset, AssetHistory, ComponentReplacement, Drone, DroneLocation, MonthlySnapshotRun, ReplacementRecord, User, WorkRecord
 from app.schemas.asset import (
@@ -39,6 +39,13 @@ from app.services.monthly_snapshot_service import (
     month_end, month_start, parse_month_key,
 )
 from app.services.asset_drilldown_service import build_asset_drilldown_workbook, query_asset_drilldown
+from app.modules.employee_portal.service import (
+    ensure_allowed_email,
+    get_confirmed_authenticator,
+    issue_access_for_user,
+    record_audit,
+)
+from app.modules.employee_portal.models import Branch
 
 router = APIRouter()
 IST = ZoneInfo("Asia/Kolkata")
@@ -348,16 +355,73 @@ def health() -> dict:
 
 
 @router.post("/auth/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     requested_role = payload.role.lower().strip() if payload.role else None
     if requested_role and requested_role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role selected")
-    user = db.scalar(select(User).where(func.lower(User.email) == payload.email.lower()))
+    email = ensure_allowed_email(str(payload.email))
+    user = db.scalar(select(User).where(func.lower(User.email) == email))
     if not user or not verify_password(payload.password, user.password_hash):
+        record_audit(
+            db,
+            event_type="LOGIN_FAILED",
+            request=request,
+            actor_email=email,
+            result="failed",
+            module="authentication",
+            details={"reason": "invalid_credentials"},
+        )
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.is_active or user.account_status not in {"active", ""}:
+        record_audit(
+            db,
+            event_type="LOGIN_FAILED",
+            request=request,
+            user=user,
+            result="failed",
+            module="authentication",
+            details={"reason": "inactive_account", "status": user.account_status},
+        )
+        db.commit()
+        raise HTTPException(status_code=403, detail="This account is not active")
     if requested_role and user.role != requested_role:
         raise HTTPException(status_code=403, detail=f"This account is registered as {role_display_name(user.role)}, not {role_display_name(requested_role)}")
-    token = create_access_token(user.email, user.role)
+
+    credential = get_confirmed_authenticator(db, user.id)
+    if user.mfa_required and credential is None:
+        from app.modules.employee_portal.service import create_or_replace_authenticator
+        _credential, uri, qr = create_or_replace_authenticator(db, user)
+        setup_token = create_temporary_token(user.email, "mfa_setup", role=user.role, extra={"uid": user.id})
+        return LoginResponse(
+            user=UserResponse(
+                id=user.id, email=user.email, full_name=user.full_name, role=user.role, branch=user.branch,
+                employee_id=user.employee_id, department=user.department, designation=user.designation,
+                email_verified=user.email_verified, mfa_enabled=False,
+            ),
+            mfa_setup_required=True,
+            mfa_setup_token=setup_token,
+            otpauth_uri=uri,
+            qr_code_data_uri=qr,
+        )
+    if credential is not None:
+        pre_auth = create_temporary_token(
+            user.email,
+            "pre_auth",
+            role=user.role,
+            extra={"uid": user.id, "ver": user.token_version},
+        )
+        return LoginResponse(
+            user=UserResponse(
+                id=user.id, email=user.email, full_name=user.full_name, role=user.role, branch=user.branch,
+                employee_id=user.employee_id, department=user.department, designation=user.designation,
+                email_verified=user.email_verified, mfa_enabled=True,
+            ),
+            requires_mfa=True,
+            pre_auth_token=pre_auth,
+        )
+
+    token, _session = issue_access_for_user(db, user=user, request=request)
     return LoginResponse(
         access_token=token,
         user=UserResponse(
@@ -366,17 +430,34 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             full_name=user.full_name,
             role=user.role,
             branch=user.branch,
+            employee_id=user.employee_id,
+            department=user.department,
+            designation=user.designation,
+            email_verified=user.email_verified,
+            mfa_enabled=False,
         ),
+        branch_selection_required=user.role == "employee",
     )
 
 
 @router.get("/auth/me", response_model=UserResponse)
-def me(user: User = Depends(get_current_user)) -> UserResponse:
-    return UserResponse(id=user.id, email=user.email, full_name=user.full_name, role=user.role, branch=user.branch)
+def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_db)) -> UserResponse:
+    branch_id = auth.claims.get("branch_id")
+    branch = db.get(Branch, int(branch_id)) if branch_id is not None else None
+    user = auth.user
+    return UserResponse(
+        id=user.id, email=user.email, full_name=user.full_name, role=user.role,
+        branch=branch.name if branch else user.branch, employee_id=user.employee_id,
+        department=user.department, designation=user.designation,
+        selected_branch_id=branch.id if branch else None,
+        selected_branch_name=branch.name if branch else None,
+        email_verified=user.email_verified,
+        mfa_enabled=get_confirmed_authenticator(db, user.id) is not None,
+    )
 
 
 @router.get("/dashboard/summary")
-def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
+def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "management", "it", "drone"))) -> dict:
     assets = list(db.scalars(select(Asset)).all())
     drones = list(db.scalars(select(Drone)).all())
     pending_work = db.scalar(select(func.count(WorkRecord.id)).where(WorkRecord.status.in_(["open", "pending", "in_progress"]))) or 0
@@ -1030,7 +1111,7 @@ def delete_test_asset(
 def list_work_records(
     module: str | None = None,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "management", "it", "drone")),
 ) -> list[dict]:
     query = select(WorkRecord).order_by(WorkRecord.created_at.desc())
     effective_module = module
@@ -1045,7 +1126,7 @@ def list_work_records(
 def create_work_record(
     payload: WorkRecordCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "management", "it", "drone")),
 ) -> dict:
     module = payload.module.strip().lower()
     if module not in VALID_WORK_MODULES:
@@ -1087,7 +1168,7 @@ def update_work_record(
     work_id: int,
     payload: WorkRecordUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "management", "it", "drone")),
 ) -> dict:
     work = db.get(WorkRecord, work_id)
     if not work:

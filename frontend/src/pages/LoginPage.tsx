@@ -28,8 +28,14 @@ export function LoginPage() {
     setError('')
     setNotice('')
     try {
-      const user = await login(email.trim(), password, remember)
-      navigate(roleHomePath(user.role))
+      const result = await login(email.trim(), password, remember)
+      if (result.requires_mfa || result.mfa_setup_required) {
+        navigate('/verify-authenticator')
+      } else if (result.branch_selection_required) {
+        navigate('/select-branch')
+      } else if (result.user) {
+        navigate(roleHomePath(result.user.role))
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -67,12 +73,12 @@ export function LoginPage() {
             <div className="final-login-heading">
               <span>Authorized Employee Access</span>
               <h2>Welcome Back</h2>
-              <p>Enter the credentials provided by the NakshaTech administrator.</p>
+              <p>Use your organization email and CRM password. New employees can create an account using email OTP.</p>
             </div>
 
             <div className="final-login-notice" role="status">
               <ShieldCheck size={18} aria-hidden="true" />
-              <span>Your permitted department is selected automatically from your account.</span>
+              <span>Organization email access is protected by role permissions and optional phone Authenticator verification.</span>
             </div>
 
             <label className="final-login-field" htmlFor="login-email">
@@ -125,15 +131,7 @@ export function LoginPage() {
                 />
                 <span>Remember me on this device</span>
               </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setError('')
-                  setNotice('Please contact the NakshaTech system administrator to reset your password.')
-                }}
-              >
-                Forgot password?
-              </button>
+              <Link to="/forgot-password">Forgot password?</Link>
             </div>
 
             {notice && <div className="final-login-notice" role="status">{notice}</div>}
@@ -143,6 +141,11 @@ export function LoginPage() {
               <span>{loading ? 'Signing in...' : 'Login'}</span>
               <i aria-hidden="true">→</i>
             </button>
+
+            <div className="final-login-create-account">
+              <span>First time using the CRM?</span>
+              <Link to="/register">Create account with organization email</Link>
+            </div>
 
             <footer>© {new Date().getFullYear()} NakshaTech. All rights reserved.</footer>
           </form>

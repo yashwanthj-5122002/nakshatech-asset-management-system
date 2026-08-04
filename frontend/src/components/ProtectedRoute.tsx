@@ -5,9 +5,10 @@ import type { Role } from '../types'
 import { canAccessRole, roleHomePath } from '../lib/roles'
 
 export function ProtectedRoute({ children, roles }: { children: ReactNode; roles?: Role[] }) {
-  const { user } = useAuth()
+  const { user, needsBranchSelection } = useAuth()
   const location = useLocation()
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (needsBranchSelection) return <Navigate to="/select-branch" replace />
   if (!canAccessRole(user.role, roles)) return <Navigate to={roleHomePath(user.role)} replace />
   return <>{children}</>
 }

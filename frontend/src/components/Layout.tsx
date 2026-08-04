@@ -11,6 +11,9 @@ import {
   HardDrive,
   History,
   LayoutDashboard,
+  LifeBuoy,
+  MessageSquarePlus,
+  Activity,
   LogOut,
   Menu,
   PackageCheck,
@@ -32,13 +35,14 @@ import type { Role } from '../types'
 import { Logo } from './Logo'
 import { canAccessRole, isFullAccessRole, roleDisplayName } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
+import { apiFetch } from '../lib/api'
 
 interface NavItem {
   to: string
   label: string
   icon: AppIcon
   roles: Role[]
-  group: 'overview' | 'management' | 'it' | 'drone' | 'system'
+  group: 'overview' | 'support' | 'management' | 'it' | 'drone' | 'system'
 }
 
 interface NavGroupDefinition {
@@ -48,6 +52,7 @@ interface NavGroupDefinition {
 
 const navGroups: NavGroupDefinition[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'support', label: 'Employee Support' },
   { id: 'management', label: 'Management' },
   { id: 'it', label: 'IT Department' },
   { id: 'drone', label: 'Drone Department' },
@@ -55,6 +60,10 @@ const navGroups: NavGroupDefinition[] = [
 ]
 
 const navItems: NavItem[] = [
+  { to: '/support', label: 'Support Dashboard', icon: LifeBuoy, roles: ['employee'], group: 'support' },
+  { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
+  { to: '/tickets', label: 'Support Tickets', icon: ClipboardList, roles: ['employee', 'it', 'drone', 'management', 'software_team'], group: 'support' },
+  { to: '/software-team/security', label: 'Users & Audit', icon: Activity, roles: ['software_team'], group: 'system' },
   { to: '/software-team', label: 'Software Team Overview', icon: Code2, roles: ['software_team'], group: 'overview' },
   { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management' },
@@ -84,6 +93,7 @@ const roleLabels: Record<Role, { name: string; subtitle: string }> = {
   management: { name: 'Management', subtitle: 'Oversight & approvals' },
   it: { name: 'IT Department', subtitle: 'Head Office' },
   drone: { name: 'Drone Department', subtitle: 'Survey operations' },
+  employee: { name: 'Employee Support', subtitle: 'Organization ticket access' },
 }
 
 function isPathInItem(pathname: string, item: NavItem): boolean {
@@ -111,6 +121,7 @@ export function Layout({ children }: { children: ReactNode }) {
     management: false,
     it: false,
     drone: false,
+    support: true,
     system: false,
   })
 
@@ -120,6 +131,14 @@ export function Layout({ children }: { children: ReactNode }) {
     if (activeItem) {
       setOpenGroups(current => ({ ...current, [activeItem.group]: true }))
     }
+  }, [location.pathname, user])
+
+  useEffect(() => {
+    if (!user) return
+    void apiFetch('/audit/page-view', {
+      method: 'POST',
+      body: JSON.stringify({ path: location.pathname, title: document.title }),
+    }).catch(() => undefined)
   }, [location.pathname, user])
 
   if (!user) return null
@@ -194,7 +213,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="topbar">
           <div className="topbar-status"><span className="system-indicator" /><span>System online</span></div>
           <div className="topbar-actions">
-            <span className="topbar-context"><PackageCheck size={17} />{user.role === 'drone' ? 'Drone operations workspace' : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
+            <span className="topbar-context"><PackageCheck size={17} />{user.role === 'drone' ? 'Drone operations workspace' : user.role === 'employee' ? `Branch: ${user.selected_branch_name || user.branch}` : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
             <span className="topbar-user"><Users size={17} /><b>{roleDisplayName(user.role).toUpperCase()}</b><small>{roleMeta.name}</small></span>
           </div>
         </div>

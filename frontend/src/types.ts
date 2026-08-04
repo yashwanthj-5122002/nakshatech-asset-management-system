@@ -1,4 +1,4 @@
-export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone'
+export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'employee'
 
 export interface AuthUser {
   id: number
@@ -6,6 +6,118 @@ export interface AuthUser {
   full_name: string
   role: Role
   branch: string
+  employee_id?: string
+  department?: string
+  designation?: string
+  selected_branch_id?: number
+  selected_branch_name?: string
+  email_verified?: boolean
+  mfa_enabled?: boolean
+}
+
+export interface AuthLoginResponse {
+  access_token?: string
+  token_type: string
+  user?: AuthUser
+  requires_mfa: boolean
+  mfa_setup_required: boolean
+  pre_auth_token?: string
+  mfa_setup_token?: string
+  otpauth_uri?: string
+  qr_code_data_uri?: string
+  branch_selection_required: boolean
+}
+
+export interface Branch {
+  id: number
+  code: string
+  name: string
+  address?: string
+}
+
+export type TicketDepartment = 'it' | 'drone' | 'software_team' | 'management'
+export type TicketPriority = 'low' | 'medium' | 'high' | 'critical'
+export type TicketStatus = 'new' | 'assigned' | 'in_progress' | 'waiting_for_employee' | 'resolved' | 'closed' | 'reopened'
+
+export interface SupportTicketSummary {
+  id: number
+  ticket_code: string
+  requester_name: string
+  requester_email: string
+  branch_id: number
+  branch_name: string
+  department: TicketDepartment
+  category?: string
+  title: string
+  priority: TicketPriority
+  status: TicketStatus
+  assigned_to_name?: string
+  created_at: string
+  updated_at: string
+  can_handle: boolean
+}
+
+export interface TicketMessage {
+  id: number
+  author_id: number
+  author_name: string
+  author_email: string
+  author_role: Role
+  message: string
+  created_at: string
+}
+
+export interface SupportTicket extends SupportTicketSummary {
+  description: string
+  location?: string
+  asset_number?: string
+  resolution?: string
+  messages: TicketMessage[]
+}
+
+export interface TicketNotification {
+  id: number
+  ticket_id: number
+  ticket_code: string
+  notification_type: string
+  title: string
+  message: string
+  is_read: boolean
+  created_at: string
+}
+
+export interface SoftwareUser {
+  id: number
+  full_name: string
+  email: string
+  employee_id?: string
+  department?: string
+  designation?: string
+  phone_masked?: string
+  role: Role
+  branch: string
+  email_verified: boolean
+  account_status: string
+  mfa_enabled: boolean
+  is_active: boolean
+  last_login_at?: string
+  last_logout_at?: string
+  created_at: string
+}
+
+export interface AuditEvent {
+  id: number
+  actor_email?: string
+  event_type: string
+  result: string
+  branch_name?: string
+  module?: string
+  target_type?: string
+  target_id?: string
+  details?: string
+  ip_address?: string
+  user_agent?: string
+  created_at: string
 }
 
 export interface DashboardSummary {

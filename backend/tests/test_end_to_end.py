@@ -257,6 +257,7 @@ def test_manual_asset_validation_assignment_return_edit_and_cleanup(client: Test
             "monitor_asset_tags": "QA-MON-NEW-001",
             "graphics_card": "NVIDIA Test GPU",
             "approved_by": "QA Management",
+            "audit_reason": "QA asset edit verification",
         },
     )
     assert edited.status_code == 200, edited.text
@@ -514,7 +515,7 @@ def test_multi_item_change_batch_and_monthly_reports(client: TestClient) -> None
     assert updated["memory_gb"] == "16 GB"
     assert updated["ssd"] == "512 GB"
     assert len(updated["component_replacements"]) == 3
-    assert any(item["action"] == "Multi-component upgrade / replacement" for item in updated["history"])
+    assert any(item["action"] == "Upgrade and Replacement" for item in updated["history"])
 
     months = client.get("/api/reports/months", headers=it_headers)
     assert months.status_code == 200, months.text
@@ -544,9 +545,9 @@ def test_multi_item_change_batch_and_monthly_reports(client: TestClient) -> None
     change_book = load_workbook(BytesIO(monthly_changes.content), read_only=True, data_only=True)
     assert "Component Changes" in change_book.sheetnames
     change_rows = list(change_book["Component Changes"].iter_rows(min_row=2, values_only=True))
-    matching = [row for row in change_rows if row[3] == "QA-BATCH-CPU-001"]
+    matching = [row for row in change_rows if row[4] == "QA-BATCH-CPU-001"]
     assert len(matching) == 3
-    assert {row[5] for row in matching} == {"Replacement", "Upgrade", "Upgrade Replacement"}
+    assert {row[6] for row in matching} == {"Replacement", "Upgrade", "Upgrade Replacement"}
 
     monthly_summary = client.get(
         f"/api/reports/monthly-summary.xlsx?month={month_key}", headers=it_headers
@@ -922,7 +923,7 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
     assert health.status_code == 200, health.text
     assert health.json()["status"] == "healthy"
     assert health.json()["reporting_month"].count("-") == 1
-    assert health.json()["roles"] == ["admin", "drone", "it", "management"]
+    assert health.json()["roles"] == ["admin", "drone", "it", "management", "software_team"]
 
     expected = {
         "it": {
@@ -938,6 +939,10 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
             "absent": {"System Users"},
         },
         "admin": {
+            "present": {"Backup Summary", "IT Asset Register", "Drone Asset Register", "System Users"},
+            "absent": set(),
+        },
+        "software_team": {
             "present": {"Backup Summary", "IT Asset Register", "Drone Asset Register", "System Users"},
             "absent": set(),
         },
@@ -962,7 +967,8 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
             summary.cell(row, 1).value: summary.cell(row, 2).value
             for row in range(1, min(summary.max_row, 30) + 1)
         }
-        assert summary_values["Backup Role"] == role.upper()
+        expected_backup_role = "ADMIN" if role == "software_team" else role.upper()
+        assert summary_values["Backup Role"] == expected_backup_role
         assert "Reporting Month" in summary_values
 
         if role == "admin":
@@ -975,3 +981,235 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
     invalid = client.get("/api/local-backup/export.xlsx?role=unknown", headers=agent_headers)
     assert invalid.status_code == 400
 
+
+
+def test_employee_registration_authenticator_branch_and_ticket_routing(client: TestClient) -> None:
+    from urllib.parse import parse_qs, urlparse
+
+    from app.core.config import settings
+    from app.modules.employee_portal.service import totp_code
+
+    branch_response = client.get("/api/auth/branches")
+    assert branch_response.status_code == 200, branch_response.text
+    branch_id = branch_response.json()[0]["id"]
+
+    email = f"employee.portal.{uuid.uuid4().hex[:8]}@nakshatech.com"
+    employee_id = f"NT-PORTAL-{uuid.uuid4().hex[:8].upper()}"
+    otp_response = client.post("/api/auth/register/request-otp", json={"email": email})
+    assert otp_response.status_code == 200, otp_response.text
+    otp = otp_response.json().get("development_otp")
+    assert otp, "Development OTP must be returned only in non-production console email mode"
+
+    verified = client.post("/api/auth/register/verify-otp", json={"email": email, "otp": otp})
+    assert verified.status_code == 200, verified.text
+
+    completed = client.post(
+        "/api/auth/register/complete",
+        json={
+            "registration_token": verified.json()["registration_token"],
+            "full_name": "Portal Test Employee",
+            "employee_id": employee_id,
+            "department": "Operations",
+            "designation": "Worker",
+            "branch_id": branch_id,
+            "password": "PortalStrong@123",
+        },
+    )
+    assert completed.status_code == 200, completed.text
+    setup = completed.json()
+    secret = parse_qs(urlparse(setup["otpauth_uri"]).query)["secret"][0]
+
+    confirmed = client.post(
+        "/api/auth/mfa/confirm",
+        json={"mfa_setup_token": setup["mfa_setup_token"], "code": totp_code(secret)},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["branch_selection_required"] is True
+
+    employee_headers = {"Authorization": f"Bearer {confirmed.json()['access_token']}"}
+    selected = client.post(
+        "/api/auth/select-branch",
+        headers=employee_headers,
+        json={"branch_id": branch_id},
+    )
+    assert selected.status_code == 200, selected.text
+    employee_headers = {"Authorization": f"Bearer {selected.json()['access_token']}"}
+
+    # Employee support accounts must remain isolated from existing department data and workflows.
+    assert client.get("/api/dashboard/summary", headers=employee_headers).status_code == 403
+    assert client.get("/api/dashboard/it", headers=employee_headers).status_code == 403
+    assert client.get("/api/assets", headers=employee_headers).status_code == 403
+    assert client.get("/api/work-records", headers=employee_headers).status_code == 403
+    assert client.get("/api/backups/status", headers=employee_headers).status_code == 403
+
+    created = client.post(
+        "/api/tickets",
+        headers=employee_headers,
+        json={
+            "department": "it",
+            "title": "Portal test laptop issue",
+            "description": "The test laptop cannot connect to the office network.",
+            "priority": "high",
+            "location": "Head Office",
+        },
+    )
+    assert created.status_code == 200, created.text
+    ticket_id = created.json()["id"]
+
+    it_headers = login(client, "it", settings.seed_it_email, settings.seed_it_password)
+    it_queue = client.get("/api/tickets", headers=it_headers)
+    assert it_queue.status_code == 200
+    assert any(item["id"] == ticket_id for item in it_queue.json())
+
+    drone_headers = login(client, "drone", settings.seed_drone_email, settings.seed_drone_password)
+    drone_queue = client.get("/api/tickets", headers=drone_headers)
+    assert drone_queue.status_code == 200
+    assert all(item["id"] != ticket_id for item in drone_queue.json())
+
+    software_headers = login(client, "software_team", settings.seed_admin_email, settings.seed_admin_password)
+    software_view = client.get(f"/api/tickets/{ticket_id}", headers=software_headers)
+    assert software_view.status_code == 200
+    software_reply = client.post(
+        f"/api/tickets/{ticket_id}/messages",
+        headers=software_headers,
+        json={"message": "Read-only monitoring must not allow a Software Team reply to an IT ticket."},
+    )
+    assert software_reply.status_code == 403
+
+    returning = client.post("/api/auth/login", json={"email": email, "password": "PortalStrong@123"})
+    assert returning.status_code == 200
+    assert returning.json()["requires_mfa"] is True
+    verified_login = client.post(
+        "/api/auth/mfa/verify-login",
+        json={"pre_auth_token": returning.json()["pre_auth_token"], "code": totp_code(secret)},
+    )
+    assert verified_login.status_code == 200
+    assert verified_login.json()["branch_selection_required"] is True
+
+
+def test_employee_password_reset_and_software_ticket_handling(client: TestClient) -> None:
+    from urllib.parse import parse_qs, urlparse
+
+    from app.core.config import settings
+    from app.modules.employee_portal.service import totp_code
+
+    branch_id = client.get("/api/auth/branches").json()[0]["id"]
+    email = f"employee.recovery.{uuid.uuid4().hex[:8]}@nakshatech.com"
+    initial_password = "PortalStart@123"
+    new_password = "PortalReset@456"
+
+    otp_response = client.post("/api/auth/register/request-otp", json={"email": email})
+    assert otp_response.status_code == 200, otp_response.text
+    registration_otp = otp_response.json().get("development_otp")
+    verified = client.post(
+        "/api/auth/register/verify-otp",
+        json={"email": email, "otp": registration_otp},
+    )
+    assert verified.status_code == 200, verified.text
+
+    completed = client.post(
+        "/api/auth/register/complete",
+        json={
+            "registration_token": verified.json()["registration_token"],
+            "full_name": "Recovery Test Employee",
+            "employee_id": f"NT-REC-{uuid.uuid4().hex[:8].upper()}",
+            "department": "Operations",
+            "designation": "Worker",
+            "branch_id": branch_id,
+            "password": initial_password,
+        },
+    )
+    assert completed.status_code == 200, completed.text
+    secret = parse_qs(urlparse(completed.json()["otpauth_uri"]).query)["secret"][0]
+    confirmed = client.post(
+        "/api/auth/mfa/confirm",
+        json={
+            "mfa_setup_token": completed.json()["mfa_setup_token"],
+            "code": totp_code(secret),
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    selected = client.post(
+        "/api/auth/select-branch",
+        headers={"Authorization": f"Bearer {confirmed.json()['access_token']}"},
+        json={"branch_id": branch_id},
+    )
+    assert selected.status_code == 200, selected.text
+    employee_headers = {"Authorization": f"Bearer {selected.json()['access_token']}"}
+
+    created = client.post(
+        "/api/tickets",
+        headers=employee_headers,
+        json={
+            "department": "software_team",
+            "title": "CRM test page is unavailable",
+            "description": "The employee test account cannot open a CRM page during verification.",
+            "priority": "medium",
+            "location": "Head Office",
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["ticket_code"].startswith("NT-SW-")
+    ticket_id = created.json()["id"]
+
+    software_headers = login(client, "software_team", settings.seed_admin_email, settings.seed_admin_password)
+    software_reply = client.post(
+        f"/api/tickets/{ticket_id}/messages",
+        headers=software_headers,
+        json={"message": "Software Team accepted this test ticket."},
+    )
+    assert software_reply.status_code == 200, software_reply.text
+    software_update = client.patch(
+        f"/api/tickets/{ticket_id}",
+        headers=software_headers,
+        json={
+            "assign_to_self": True,
+            "status": "resolved",
+            "resolution": "Test resolution recorded by Software Team.",
+        },
+    )
+    assert software_update.status_code == 200, software_update.text
+    assert software_update.json()["status"] == "resolved"
+
+    it_headers = login(client, "it", settings.seed_it_email, settings.seed_it_password)
+    assert client.get(f"/api/tickets/{ticket_id}", headers=it_headers).status_code == 404
+
+    reset_request = client.post("/api/auth/forgot-password/request-otp", json={"email": email})
+    assert reset_request.status_code == 200, reset_request.text
+    reset_otp = reset_request.json().get("development_otp")
+    assert reset_otp
+    reset_verified = client.post(
+        "/api/auth/forgot-password/verify-otp",
+        json={"email": email, "otp": reset_otp},
+    )
+    assert reset_verified.status_code == 200, reset_verified.text
+    reset = client.post(
+        "/api/auth/forgot-password/reset",
+        json={"reset_token": reset_verified.json()["reset_token"], "new_password": new_password},
+    )
+    assert reset.status_code == 200, reset.text
+
+    assert client.post("/api/auth/login", json={"email": email, "password": initial_password}).status_code == 401
+    returning = client.post("/api/auth/login", json={"email": email, "password": new_password})
+    assert returning.status_code == 200, returning.text
+    assert returning.json()["requires_mfa"] is True
+    verified_login = client.post(
+        "/api/auth/mfa/verify-login",
+        json={"pre_auth_token": returning.json()["pre_auth_token"], "code": totp_code(secret)},
+    )
+    assert verified_login.status_code == 200, verified_login.text
+
+    users = client.get("/api/software/users", headers=software_headers)
+    assert users.status_code == 200, users.text
+    employee_row = next(item for item in users.json() if item["email"] == email)
+    assert employee_row["mfa_enabled"] is True
+    assert employee_row["email_verified"] is True
+
+    audit = client.get(
+        f"/api/software/audit?user_email={email}&limit=200",
+        headers=software_headers,
+    )
+    assert audit.status_code == 200, audit.text
+    events = {item["event_type"] for item in audit.json()}
+    assert "PASSWORD_RESET_COMPLETED" in events
+    assert "TICKET_CREATED" in events

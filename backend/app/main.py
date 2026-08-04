@@ -20,6 +20,12 @@ from app.modules.drone.router import router as drone_router
 from app.modules.local_backup.router import router as local_backup_router
 from app.modules.it_activity import models as it_activity_models  # noqa: F401
 from app.modules.it_activity.router import router as it_activity_router
+from app.modules.employee_portal import models as employee_portal_models  # noqa: F401
+from app.modules.employee_portal.router import router as employee_portal_router
+from app.modules.employee_portal.service import ensure_default_branch
+from app.modules.employee_portal.models import UserBranchAccess
+from app.models.entities import User
+from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
 from app.services.seed import seed_database
 
@@ -30,6 +36,31 @@ _initialized = False
 
 def ensure_schema_compatibility() -> None:
     """Add non-destructive columns required by newer releases to existing databases."""
+    inspector = inspect(engine)
+    if "users" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("users")}
+        additions = {
+            "employee_id": "VARCHAR(80)",
+            "department": "VARCHAR(120)",
+            "designation": "VARCHAR(160)",
+            "phone_number": "VARCHAR(40)",
+            "email_verified": "BOOLEAN DEFAULT FALSE",
+            "account_status": "VARCHAR(40) DEFAULT 'active'",
+            "mfa_required": "BOOLEAN DEFAULT FALSE",
+            "token_version": "INTEGER DEFAULT 0",
+            "last_login_at": "TIMESTAMP",
+            "last_logout_at": "TIMESTAMP",
+        }
+        with engine.begin() as connection:
+            for name, sql_type in additions.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE users ADD COLUMN {name} {sql_type}"))
+            connection.execute(text("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"))
+            connection.execute(text("UPDATE users SET token_version = 0 WHERE token_version IS NULL"))
+            connection.execute(text("UPDATE users SET mfa_required = FALSE WHERE mfa_required IS NULL"))
+            connection.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL OR email_verified = FALSE"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_employee_id ON users (employee_id)"))
+
     inspector = inspect(engine)
     if "component_replacements" in inspector.get_table_names():
         existing = {column["name"] for column in inspector.get_columns("component_replacements")}
@@ -153,6 +184,21 @@ def initialize_application() -> None:
         with SessionLocal() as db:
             if settings.seed_default_users:
                 seed_database(db)
+            default_branch = ensure_default_branch(db)
+            for user in db.scalars(select(User)).all():
+                if not user.branch:
+                    user.branch = default_branch.name
+                if not user.account_status:
+                    user.account_status = "active"
+                existing_access = db.scalar(
+                    select(UserBranchAccess.id).where(
+                        UserBranchAccess.user_id == user.id,
+                        UserBranchAccess.branch_id == default_branch.id,
+                    )
+                )
+                if existing_access is None:
+                    db.add(UserBranchAccess(user_id=user.id, branch_id=default_branch.id, is_default=True))
+            db.commit()
             ensure_previous_month_snapshot(db)
         _initialized = True
 
@@ -213,6 +259,7 @@ app.include_router(drone_router, prefix=f"{settings.api_prefix}/drone")
 app.include_router(backup_router, prefix=f"{settings.api_prefix}/backups")
 app.include_router(local_backup_router, prefix=settings.api_prefix)
 app.include_router(it_activity_router, prefix=f"{settings.api_prefix}/it-activity")
+app.include_router(employee_portal_router, prefix=settings.api_prefix)
 
 
 @app.middleware("http")

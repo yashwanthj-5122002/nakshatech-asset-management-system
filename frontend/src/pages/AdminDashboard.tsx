@@ -1,4 +1,4 @@
-import { BarChart3, FileSpreadsheet, HardDrive, Settings, ShieldCheck, Users } from 'lucide-react'
+import { Activity, BarChart3, FileSpreadsheet, HardDrive, LifeBuoy, Settings, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DroneIcon as Drone } from '../components/DroneIcon'
 import { Link } from 'react-router-dom'
@@ -33,6 +33,8 @@ export function AdminDashboard() {
         <Link className="module-card" to="/drone"><Drone /><h3>Drone Operations</h3><p>Drone fleet, projects, pilot allocation and live location.</p></Link>
         <Link className="module-card" to="/management"><Users /><h3>Management View</h3><p>Combined oversight and approval workflows.</p></Link>
         <Link className="module-card" to="/reports"><FileSpreadsheet /><h3>Excel Control</h3><p>Import or export NakshaTech monthly asset files.</p></Link>
+        {softwareTeam && <Link className="module-card" to="/tickets"><LifeBuoy /><h3>All Ticket Monitoring</h3><p>Monitor every department ticket and directly handle Software Team issues.</p></Link>}
+        {softwareTeam && <Link className="module-card" to="/software-team/security"><Activity /><h3>Users & Audit</h3><p>Review account creation, logins, branch selection, resets, and module activity.</p></Link>}
         <Link className="module-card" to="/future"><Settings /><h3>Future Modules</h3><p>Extend without changing the main architecture.</p></Link>
       </section>
     </>

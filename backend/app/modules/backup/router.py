@@ -57,7 +57,7 @@ def _can_access_run(user: User, run: BackupRun) -> bool:
 @router.get("/status", response_model=BackupStatusResponse)
 def backup_status(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("admin", "management", "it", "drone")),
 ) -> BackupStatusResponse:
     last_attempt = db.scalar(select(BackupRun).order_by(desc(BackupRun.created_at)).limit(1))
     last_success = db.scalar(
