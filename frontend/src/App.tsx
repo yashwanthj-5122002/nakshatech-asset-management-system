@@ -21,6 +21,8 @@ import { FutureFeaturesPage } from './pages/FutureFeaturesPage'
 import { ITDashboard } from './pages/ITDashboard'
 import { LoginPage } from './pages/LoginPage'
 import { ManagementDashboard } from './pages/ManagementDashboard'
+import { ManagementApprovalCenter } from './pages/ManagementApprovalCenter'
+import { ManagementITWorkReadOnlyPage } from './pages/ManagementITWorkReadOnlyPage'
 import { ReplacementsPage } from './pages/ReplacementsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { NakshaCopilotPage } from './features/naksha_copilot/NakshaCopilotPage'
@@ -46,6 +48,11 @@ import { AgentMonitorPage } from './features/agent_monitor/AgentMonitorPage'
 
 function WithLayout({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
+}
+
+function ITWorkRoute() {
+  const { user } = useAuth()
+  return user?.role === 'management' ? <ManagementITWorkReadOnlyPage /> : <WorkFormPage />
 }
 
 export default function App() {
@@ -88,9 +95,10 @@ export default function App() {
       <Route path="/drone/kits" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneKitsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/import" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneImportPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementDashboard /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/approvals" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team" element={<ProtectedRoute roles={['software_team']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute roles={['admin']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
-      <Route path="/work" element={<ProtectedRoute roles={['it', 'drone', 'management', 'admin']}><WithLayout><WorkFormPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/work" element={<ProtectedRoute roles={['it', 'drone', 'management', 'admin']}><WithLayout><ITWorkRoute /></WithLayout></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ReportsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/data-quality" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><DataQualityCentrePage /></WithLayout></ProtectedRoute>} />
       <Route path="/naksha-copilot" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><NakshaCopilotPage /></WithLayout></ProtectedRoute>} />

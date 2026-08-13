@@ -1,0 +1,166 @@
+.management-control-kpis {
+  margin-bottom: 22px;
+}
+
+.management-control-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.8fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.management-approval-queue {
+  min-width: 0;
+}
+
+.management-filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.management-filter-tabs button {
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.22));
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  border-radius: 999px;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+
+.management-filter-tabs button.active {
+  background: rgba(99, 102, 241, 0.16);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.management-approval-list,
+.management-control-side,
+.management-risk-list,
+.management-decision-history {
+  display: grid;
+  gap: 14px;
+}
+
+.management-approval-card {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.management-approval-card header,
+.management-approval-meta,
+.management-decision-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.management-approval-card header {
+  justify-content: space-between;
+}
+
+.management-approval-card header span,
+.management-approval-meta,
+.management-decision-remarks span,
+.management-approved-amount span {
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.management-approval-card h3 {
+  margin: 3px 0 0;
+}
+
+.management-approval-meta {
+  margin: 10px 0;
+}
+
+.management-approval-meta span {
+  padding-right: 10px;
+  border-right: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.management-approval-meta span:last-child {
+  border-right: 0;
+}
+
+.management-decision-remarks,
+.management-approved-amount {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.management-decision-remarks textarea,
+.management-approved-amount input {
+  width: 100%;
+}
+
+.management-decision-actions {
+  margin-top: 14px;
+}
+
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+  opacity: 0.8;
+  padding: 8px 10px;
+}
+
+.management-risk-list a {
+  text-decoration: none;
+  color: inherit;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.management-risk-list a.breached {
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.management-risk-list a.warning {
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
+.management-risk-list a div,
+.management-decision-history p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.management-risk-list small,
+.management-decision-history span,
+.management-decision-history small {
+  opacity: 0.7;
+}
+
+.management-decision-history > div {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.management-decision-history i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  margin-top: 6px;
+  opacity: 0.5;
+}
+
+@media (max-width: 1100px) {
+  .management-control-grid {
+    grid-template-columns: 1fr;
+  }
+}

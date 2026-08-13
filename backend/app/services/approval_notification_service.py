@@ -25,6 +25,8 @@ _DECISION_LABELS = {
     "sent_back": "sent back by Management",
 }
 
+MANAGEMENT_APPROVAL_WORKFLOWS = {"purchase_request"}
+
 
 def _event_token(value: datetime | str | None) -> str:
     if isinstance(value, datetime):
@@ -50,11 +52,15 @@ def notify_management_approval_required(
     event_token: datetime | str | None,
     resubmitted: bool = False,
 ) -> None:
-    """Notify active Management users that an approval item needs review.
+    """Notify Management only for workflows that truly require permission.
 
-    Notification rows are added to the caller's current transaction and are not
-    committed here, keeping the approval state and its notification atomic.
+    Final Batch 4 authority is intentionally narrow: Purchase Requests require
+    Management approval; IT Work and Asset Replacement are operational IT
+    workflows. The guard also prevents an older call site from accidentally
+    reviving obsolete Management approval notifications.
     """
+    if workflow not in MANAGEMENT_APPROVAL_WORKFLOWS:
+        return
 
     label = _WORKFLOW_LABELS[workflow]
     action = "resubmitted" if resubmitted else "submitted"
@@ -90,12 +96,13 @@ def notify_approval_decision(
     recipient_user_id: int | None,
     fallback_role: str = "it",
 ) -> None:
-    """Notify the responsible IT role and, when available, the original requester.
+    """Notify IT/requester about a real Management purchase decision.
 
-    Including the concrete requester preserves ownership while role fan-out keeps
-    the IT team aware of Management decisions. The notification service de-dupes
-    overlapping recipients automatically.
+    IT Work and Asset Replacement no longer have a Management decision in the
+    final Batch 4 model, so legacy callers for those workflows are ignored.
     """
+    if workflow not in MANAGEMENT_APPROVAL_WORKFLOWS:
+        return
 
     label = _WORKFLOW_LABELS[workflow]
     outcome_label = _DECISION_LABELS[outcome]

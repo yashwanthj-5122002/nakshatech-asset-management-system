@@ -1,7 +1,9 @@
 import type { Asset } from '../types'
 
+export type CustodyAction = 'handover' | 'transfer' | 'return' | 'other'
+
 const ASSIGNED_STATUSES = new Set(['assigned', 'in_use', 'wfh', 'field_deployment', 'issued', 'permanently_issued'])
-export const CUSTODY_ACTIONS = new Set(['handover', 'transfer', 'return'])
+export const CUSTODY_ACTIONS: ReadonlySet<string> = new Set(['handover', 'transfer', 'return'])
 
 function normalizedAssetStatus(asset: Asset | null) {
   return (asset?.status || '').trim().toLowerCase().replaceAll('-', '_').replaceAll(' ', '_')
@@ -20,7 +22,7 @@ export function canHandoverAsset(asset: Asset | null) {
   return normalizedAssetStatus(asset) === 'available' && !asset.used_by?.trim()
 }
 
-export function defaultCustodyAction(asset: Asset) {
+export function defaultCustodyAction(asset: Asset): CustodyAction {
   if (hasRecordedCustodian(asset)) return 'transfer'
   if (canHandoverAsset(asset)) return 'handover'
   return 'other'

@@ -1,5 +1,5 @@
 import {
-  ArrowLeft, CheckCircle2, ClipboardPlus, History, LockKeyhole, Play, Plus, Repeat2, Save, Search, Trash2, Wrench,
+  ArrowLeft, CheckCircle2, ClipboardPlus, History, LockKeyhole, Play, Plus, Repeat2, Save, Search, Trash2,
 } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -74,7 +74,6 @@ export function WorkFormPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [decisionComments, setDecisionComments] = useState<Record<number, string>>({})
   const [form, setForm] = useState({
     module: defaultModule, asset_id: '', title: '', work_type: 'Inspection', project: '',
     assigned_to: '', technician: user?.full_name || '', priority: 'medium', issue_description: '',
@@ -243,24 +242,10 @@ export function WorkFormPage() {
         body: JSON.stringify({ status, reporting_month: selectedMonth }),
       })
       setMessage(status === 'completed'
-        ? `${record.work_code} completed and sent for Management approval.`
+        ? `${record.work_code} completed by IT. No Management approval is required.`
         : `${record.work_code} updated to ${status.replaceAll('_', ' ')}.`)
       await load()
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to update work') }
-  }
-
-  async function decideWork(record: WorkRecord, action: 'approve' | 'return') {
-    try {
-      await apiFetch(`/work-records/${record.id}/decision`, {
-        method: 'POST',
-        body: JSON.stringify({ action, comments: decisionComments[record.id] || null }),
-      })
-      setDecisionComments(current => ({ ...current, [record.id]: '' }))
-      setMessage(action === 'approve'
-        ? `${record.work_code} approved and closed by Management.`
-        : `${record.work_code} returned to IT for correction.`)
-      await load()
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to record Management decision') }
   }
 
   return (
@@ -268,7 +253,7 @@ export function WorkFormPage() {
       <DashboardHeader
         eyebrow="CONTROLLED WORKFLOW"
         title="Work Records & Component Changes"
-        description={`Identify every system by CPU / Asset Tag and Workstation. IT activity saved here is reported in ${monthLabel(selectedMonth)}; the actual server date and time remain preserved.`}
+        description={`Identify every system by CPU / Asset Tag and Workstation. IT controls operational completion; activity saved here is reported in ${monthLabel(selectedMonth)} with actual server date and time preserved.`}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
@@ -281,11 +266,7 @@ export function WorkFormPage() {
 
       <section className={`dashboard-grid work-layout ${mode === 'component' ? 'multi-change-layout' : ''}`}>
         <article className="panel work-form-panel">
-          {user?.role === 'management' ? <div className="management-review-callout">
-            <span className="section-kicker">MANAGEMENT REVIEW MODE</span>
-            <h2>Operational changes are controlled by IT</h2>
-            <p>Review pending completed IT work in the history panel and use Approve & Close or Return to IT. Management cannot create or perform operational IT work.</p>
-          </div> : mode === 'work' || defaultModule === 'drone' ? <>
+          {mode === 'work' || defaultModule === 'drone' ? <>
             <div className="panel-heading"><div><span className="section-kicker">NEW WORK RECORD</span><h2>Start Work</h2></div><ClipboardPlus /></div>
             <form className="data-form form-grid" onSubmit={submit}>
               {(user && isFullAccessRole(user.role)) && <label>Department Module<select value={form.module} onChange={e => setForm({ ...form, module: e.target.value })}><option value="it">IT</option><option value="drone">Drone</option></select></label>}
@@ -379,14 +360,8 @@ export function WorkFormPage() {
               <div className="record-actions">
                 {record.status === 'open' && (user?.role === 'it' || user?.role === 'admin') && <button className="secondary-button" onClick={() => void changeStatus(record, 'in_progress')}><Play size={15} /> Start</button>}
                 {record.status === 'in_progress' && (user?.role === 'it' || user?.role === 'admin') && <button className="primary-button" onClick={() => void changeStatus(record, 'completed')}><CheckCircle2 size={15} /> Complete</button>}
-                {record.status === 'completed' && record.approval_status === 'pending' && user?.role === 'management' && <div className="management-inline-approval">
-                  <input value={decisionComments[record.id] || ''} onChange={event => setDecisionComments(current => ({ ...current, [record.id]: event.target.value }))} placeholder="Management comments (required when returning)" />
-                  <button className="primary-button" onClick={() => void decideWork(record, 'approve')}><CheckCircle2 size={15} /> Approve & Close</button>
-                  <button className="danger-button" onClick={() => void decideWork(record, 'return')}>Return to IT</button>
-                </div>}
-                {record.status === 'completed' && record.approval_status === 'pending' && user?.role !== 'management' && <span className="approval-note"><Wrench size={15} /> Pending · Management Approval</span>}
-                {record.approval_status === 'returned' && <span className="approval-note"><Wrench size={15} /> Returned by Management{record.approval_comments ? ` · ${record.approval_comments}` : ''}</span>}
-                {record.status === 'closed' && <span className="approval-note"><Wrench size={15} /> Approved by {record.approved_by_name || 'Management'}</span>}
+                {record.status === 'completed' && <span className="approval-note"><CheckCircle2 size={15} /> Completed by IT · no Management approval required</span>}
+                {record.status === 'closed' && <span className="approval-note"><CheckCircle2 size={15} /> Closed legacy work record</span>}
               </div>
             </article>)}
             {!records.length && <div className="empty-state">No work records have been created for this module.</div>}

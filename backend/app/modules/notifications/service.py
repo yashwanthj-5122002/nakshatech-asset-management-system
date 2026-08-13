@@ -161,6 +161,14 @@ def create_global_notification(
     return created
 
 
+def _exclude_event_prefixes(query, prefixes: Iterable[str] | None):
+    for prefix in prefixes or ():
+        clean_prefix = str(prefix or "").strip()
+        if clean_prefix:
+            query = query.where(~GlobalNotification.event_type.startswith(clean_prefix))
+    return query
+
+
 def list_notifications_for_user(
     db: Session,
     *,
@@ -169,8 +177,10 @@ def list_notifications_for_user(
     category: str | None = None,
     limit: int = 100,
     offset: int = 0,
+    excluded_event_prefixes: Iterable[str] | None = None,
 ) -> list[GlobalNotification]:
     query = select(GlobalNotification).where(GlobalNotification.recipient_user_id == user_id)
+    query = _exclude_event_prefixes(query, excluded_event_prefixes)
     if unread_only:
         query = query.where(GlobalNotification.is_read.is_(False))
     if category:
@@ -195,16 +205,18 @@ def get_notification_for_user(db: Session, *, user_id: int, notification_id: int
     return notification
 
 
-def unread_count_for_user(db: Session, *, user_id: int) -> int:
-    return int(
-        db.scalar(
-            select(func.count(GlobalNotification.id)).where(
-                GlobalNotification.recipient_user_id == user_id,
-                GlobalNotification.is_read.is_(False),
-            )
-        )
-        or 0
+def unread_count_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    excluded_event_prefixes: Iterable[str] | None = None,
+) -> int:
+    query = select(func.count(GlobalNotification.id)).where(
+        GlobalNotification.recipient_user_id == user_id,
+        GlobalNotification.is_read.is_(False),
     )
+    query = _exclude_event_prefixes(query, excluded_event_prefixes)
+    return int(db.scalar(query) or 0)
 
 
 def mark_notification_read(

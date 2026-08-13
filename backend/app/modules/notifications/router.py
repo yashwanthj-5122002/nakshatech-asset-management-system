@@ -22,6 +22,18 @@ from app.services.ticket_sla_service import ensure_critical_sla_breach_notificat
 
 router = APIRouter(prefix="/notifications/global", tags=["notifications"])
 
+# Final Batch 4 authority no longer asks Management to approve IT Work or Asset
+# Replacement. Keep historical rows in the database for audit, but do not show
+# those obsolete approval prompts in the current Management notification feed.
+_MANAGEMENT_OBSOLETE_APPROVAL_PREFIXES = (
+    "approval.it_work.",
+    "approval.replacement.",
+)
+
+
+def _excluded_prefixes(auth: CurrentAuth) -> tuple[str, ...]:
+    return _MANAGEMENT_OBSOLETE_APPROVAL_PREFIXES if auth.effective_role == "management" else ()
+
 
 @router.get("", response_model=list[GlobalNotificationResponse])
 def list_global_notifications(
@@ -39,6 +51,7 @@ def list_global_notifications(
         category=category,
         limit=limit,
         offset=offset,
+        excluded_event_prefixes=_excluded_prefixes(auth),
     )
 
 
@@ -47,7 +60,13 @@ def global_notification_unread_count(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> NotificationUnreadCountResponse:
-    return NotificationUnreadCountResponse(unread_count=unread_count_for_user(db, user_id=auth.user.id))
+    return NotificationUnreadCountResponse(
+        unread_count=unread_count_for_user(
+            db,
+            user_id=auth.user.id,
+            excluded_event_prefixes=_excluded_prefixes(auth),
+        )
+    )
 
 
 @router.post("/refresh-ticket-sla", response_model=NotificationRefreshResponse)
