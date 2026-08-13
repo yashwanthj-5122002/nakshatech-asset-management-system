@@ -17,7 +17,7 @@ from app.modules.batch4.it_control import (
 )
 from app.modules.batch4.schemas import ITReplacementProcess, ManagementPurchaseDecision
 from app.modules.batch4.service import build_management_control_workbook, management_control_center
-from app.modules.it_activity.schemas import PurchaseRequestDecision
+from app.modules.it_activity.schemas import PurchaseRequestDecision, PurchaseRequestResponse
 from app.modules.it_activity.service import decide_purchase_request, purchase_request_to_dict
 from app.schemas.replacement import ReplacementCreate, ReplacementResubmit
 from app.schemas.work import WorkApprovalDecision, WorkRecordUpdate
@@ -51,7 +51,10 @@ def management_control_center_excel(
     )
 
 
-@router.post("/management/approvals/{workflow}/{record_id}/decision")
+@router.post(
+    "/management/approvals/{workflow}/{record_id}/decision",
+    response_model=PurchaseRequestResponse,
+)
 def management_purchase_approval_decision(
     workflow: str,
     record_id: int,
@@ -77,7 +80,14 @@ def management_purchase_approval_decision(
         ),
         user,
     )
-    return purchase_request_to_dict(request, include_history=True)
+    # The Management endpoint commits the decision before returning. Convert the
+    # response through the same PurchaseRequestResponse model used by the normal
+    # Purchase Request routes so SQLAlchemy history objects cannot fail FastAPI's
+    # post-commit response serialization and leave the browser showing stale data.
+    response = PurchaseRequestResponse.model_validate(
+        purchase_request_to_dict(request, include_history=True)
+    )
+    return response.model_dump(mode="json")
 
 
 @router.post("/replacements")
