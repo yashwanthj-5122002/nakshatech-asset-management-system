@@ -26,6 +26,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.batch4_main import app  # noqa: E402
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.models.entities import Asset, AssetHistory, ReplacementRecord, User, WorkRecord  # noqa: E402
+from app.modules.batch3.purchase_completion import create_purchase_record_batch3  # noqa: E402
 from app.modules.batch4.it_control import (  # noqa: E402
     create_replacement_without_management_approval,
     resubmit_legacy_replacement_as_it_controlled,
@@ -35,7 +36,7 @@ from app.modules.batch4.router import management_purchase_approval_decision  # n
 from app.modules.batch4.schemas import ManagementPurchaseDecision  # noqa: E402
 from app.modules.batch4.service import build_management_control_workbook, management_control_center  # noqa: E402
 from app.modules.it_activity.models import ITPurchaseRequest  # noqa: E402
-from app.modules.it_activity.schemas import HandoverCreate  # noqa: E402
+from app.modules.it_activity.schemas import HandoverCreate, PurchaseCreate  # noqa: E402
 from app.modules.it_activity.service import create_handover_record  # noqa: E402
 from app.modules.notifications.models import GlobalNotification  # noqa: E402
 from app.schemas.replacement import ReplacementCreate, ReplacementResubmit  # noqa: E402
@@ -466,6 +467,51 @@ def test_batch4_final_purchase_only_management_authority():
             assert len(refreshed["purchase_requests"]) == 1
             assert refreshed["purchase_requests"][0]["status"] == "approved"
             assert refreshed["purchase_requests"][0]["approved_amount"] == 48000
+
+            # IT completes the approved procurement using an Available matching
+            # Smartphone. The same Management Purchase Request remains visible
+            # as Purchase Completed, and the linked replacement is finalized.
+            purchased_phone = _asset(db, "B4-NEW-MOB", "Smartphone", "available")
+            db.commit()
+            purchase_record = create_purchase_record_batch3(
+                db,
+                PurchaseCreate(
+                    reporting_month=month,
+                    purchase_request_id=request.id,
+                    linked_asset_id=purchased_phone.id,
+                    purchase_date=date.today(),
+                    po_number="QA-PO-B4-001",
+                    asset_number=purchased_phone.cpu_asset_tag,
+                    supplier_name="QA Supplier",
+                    item_description="Replacement Smartphone",
+                    quantity=1,
+                    unit_price=48000,
+                    total_price=48000,
+                    received_date=date.today(),
+                    inspection_status="Passed",
+                    department="IT",
+                    remarks="Batch 4 procurement lifecycle QA",
+                ),
+                it_user,
+            )
+            assert purchase_record.purchase_request_id == request.id
+            assert db.get(ITPurchaseRequest, request.id).status == "purchase_completed"
+            assert db.get(Asset, old_phone.id).status == "replaced"
+            allocated_phone = db.get(Asset, purchased_phone.id)
+            assert allocated_phone.status == "assigned"
+            assert allocated_phone.used_by == "Phone Employee"
+
+            completed_center = management_control_center(db, month)
+            assert completed_center["executive"]["pending_purchase_requests"] == 0
+            assert completed_center["purchase_summary"]["pending_approval"] == 0
+            assert completed_center["purchase_summary"]["approved"] == 0
+            assert completed_center["purchase_summary"]["purchase_completed"] == 1
+            assert completed_center["purchase_summary"]["approved_purchase_value"] == 48000
+            assert len(completed_center["purchase_requests"]) == 1
+            completed_request = completed_center["purchase_requests"][0]
+            assert completed_request["status"] == "purchase_completed"
+            assert completed_request["purchase_code"] == purchase_record.purchase_code
+            assert completed_request["actual_purchase_amount"] == 48000
     finally:
         engine.dispose()
         TEST_DB.unlink(missing_ok=True)
