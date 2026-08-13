@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
 from app.core.database import get_db
-from app.models.entities import User
+from app.models.entities import Asset, User
 from app.modules.it_activity.excel_service import (
     EXCEL_MIME,
     build_monthly_it_activity_workbook,
@@ -41,6 +41,7 @@ from app.modules.it_activity.service import (
     purchase_request_to_dict,
     resubmit_purchase_request,
 )
+from app.services.asset_lifecycle_service import canonical_device_type
 
 router = APIRouter(tags=["IT Activity"])
 
@@ -112,6 +113,24 @@ def add_handover_record(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> ITHandoverRecord:
+    # The live custody screen is deliberately limited to Laptop/Desktop assets.
+    # Historical Excel imports use their own import endpoint and remain untouched.
+    asset = db.get(Asset, payload.asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Linked asset was not found")
+    canonical = canonical_device_type(asset.device_type)
+    if canonical not in {"Computer", "Laptop"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Laptop & Desktop Handover / Return accepts only Laptop and Desktop / Computer assets",
+        )
+    expected_category = "laptop" if canonical == "Laptop" else "desktop"
+    if payload.device_category != expected_category:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Device category must be {expected_category} for the selected asset",
+        )
+
     record = create_handover_record(db, payload, user)
     return hydrate_handover_custody_movements(db, [record])[0]
 
@@ -158,7 +177,7 @@ def download_purchase_requests(
         stream,
         media_type=EXCEL_MIME,
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            "Content-Disposition": f'attachment; filename*=UTF-8\'\'{quote(filename)}',
             "X-Row-Counts": f"purchase_requests:{count}",
         },
     )
@@ -309,7 +328,7 @@ def download_monthly_activity(
         stream,
         media_type=EXCEL_MIME,
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            "Content-Disposition": f'attachment; filename*=UTF-8\'\'{quote(filename)}',
             "X-Row-Counts": ",".join(f"{key}:{value}" for key, value in counts.items()),
         },
     )
