@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 from fastapi import HTTPException
-from fastapi.routing import APIRoute
+from fastapi.routing import iter_route_contexts
 
 TEST_DB = Path(tempfile.gettempdir()) / f"nakshatech_batch4_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{TEST_DB}"
@@ -75,15 +75,21 @@ def _asset(db, code: str, device_type: str, status: str, used_by: str | None = N
     return row
 
 
-def _matching_route_count(path: str, method: str) -> int:
+def _matching_route_contexts(path: str, method: str):
     method = method.upper()
-    return sum(
-        1
-        for route in app.router.routes
-        if isinstance(route, APIRoute)
-        and route.path == path
-        and method in (route.methods or set())
-    )
+    return [
+        context
+        for context in iter_route_contexts(app.router.routes)
+        if context.path == path and method in (context.methods or set())
+    ]
+
+
+def _assert_authoritative_route(path: str, method: str, endpoint_name: str) -> None:
+    matches = _matching_route_contexts(path, method)
+    assert len(matches) == 1, f"Expected one effective {method} {path} route, found {len(matches)}"
+    endpoint = matches[0].endpoint
+    assert endpoint is not None
+    assert endpoint.__name__ == endpoint_name
 
 
 def test_batch4_final_purchase_only_management_authority():
@@ -94,14 +100,27 @@ def test_batch4_final_purchase_only_management_authority():
             it_user = _user(db, "batch4-it@nakshatech.com", "it", "Batch 4 IT")
             manager = _user(db, "batch4-manager@nakshatech.com", "management", "Batch 4 Manager")
 
-            # Runtime dispatch must expose one authoritative Batch 4 handler for
-            # every superseded Batch 3 route. Duplicate route registration would
-            # allow an older approval workflow to win based on route order.
-            assert _matching_route_count("/api/replacements", "POST") == 1
-            assert _matching_route_count("/api/replacements/{replacement_id}", "PATCH") == 1
-            assert _matching_route_count("/api/replacements/{replacement_id}/resubmit", "PUT") == 1
-            assert _matching_route_count("/api/work-records/{work_id}", "PATCH") == 1
-            assert _matching_route_count("/api/work-records/{work_id}/decision", "POST") == 1
+            # FastAPI 0.137+ uses nested router trees. Validate the effective
+            # runtime routes, not the internal top-level route representation.
+            # Each superseded operation must resolve exactly once to Batch 4.
+            _assert_authoritative_route("/api/replacements", "POST", "create_replacement_batch4")
+            _assert_authoritative_route(
+                "/api/replacements/{replacement_id}", "PATCH", "process_legacy_replacement_batch4"
+            )
+            _assert_authoritative_route(
+                "/api/replacements/{replacement_id}/resubmit", "PUT", "resubmit_legacy_replacement_batch4"
+            )
+            _assert_authoritative_route(
+                "/api/work-records/{work_id}", "PATCH", "update_work_record_batch4"
+            )
+            _assert_authoritative_route(
+                "/api/work-records/{work_id}/decision", "POST", "disabled_it_work_management_decision"
+            )
+            _assert_authoritative_route(
+                "/api/management/approvals/{workflow}/{record_id}/decision",
+                "POST",
+                "management_purchase_approval_decision",
+            )
 
             # IT Work is operational: IT completes it directly and no Management
             # approval state or approval notification is created.
