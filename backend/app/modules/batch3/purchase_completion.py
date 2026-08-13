@@ -134,6 +134,13 @@ def create_purchase_record_batch3(
         created_by_role=user.role,
         reporting_month=normalize_reporting_month(payload.reporting_month),
     )
+    if purchase_request is not None:
+        # Keep the bidirectional SQLAlchemy relationship synchronized in the
+        # current Session as soon as procurement creates the purchase record.
+        # Setting only purchase_request_id writes the correct FK, but an already
+        # loaded request.purchase_record could otherwise remain cached as None
+        # until a new Session/explicit expiry.
+        record.purchase_request = purchase_request
     db.add(record)
     db.flush()
 
