@@ -42,6 +42,41 @@ def _history_month_filter(month: str | None):
     return and_(*conditions)
 
 
+def _purchase_item(request: ITPurchaseRequest) -> dict[str, Any]:
+    purchase = request.purchase_record
+    return {
+        "workflow": "purchase_request",
+        "id": request.id,
+        "code": request.request_code,
+        "title": request.item_name,
+        "submitted_by": request.requested_by_name,
+        "submitted_at": request.requested_at,
+        "department": request.requesting_department,
+        "priority": request.priority,
+        "amount": request.estimated_total_amount,
+        "reason": request.business_reason,
+        "status": request.status,
+        "target_url": "/it/purchase-requests",
+        "reporting_month": request.reporting_month,
+        "approved_amount": request.approved_amount,
+        "management_remarks": request.management_remarks,
+        "decided_by": request.decided_by_name,
+        "decided_at": request.decided_at,
+        "purchase_completed_at": request.purchase_completed_at,
+        "purchase_record_id": purchase.id if purchase else None,
+        "purchase_code": purchase.purchase_code if purchase else None,
+        "actual_purchase_amount": purchase.total_price if purchase else None,
+        "purchase_date": purchase.purchase_date if purchase else None,
+        "metadata": {
+            "requested_employee": request.requested_employee,
+            "quantity": request.quantity,
+            "item_type": request.item_type,
+            "required_by_date": request.required_by_date,
+            "it_remarks": request.it_remarks,
+        },
+    }
+
+
 def management_control_center(db: Session, month: str | None = None) -> dict[str, Any]:
     assets = list(db.scalars(select(Asset)).all())
     primary_assets = [asset for asset in assets if is_primary_device_type(asset.device_type)]
@@ -66,37 +101,28 @@ def management_control_center(db: Session, month: str | None = None) -> dict[str
         replacement_query = replacement_query.where(replacement_filter)
     active_replacements = int(db.scalar(replacement_query) or 0)
 
-    purchase_query = select(ITPurchaseRequest).where(ITPurchaseRequest.status == "pending_approval")
+    purchase_query = select(ITPurchaseRequest)
     if purchase_filter is not None:
         purchase_query = purchase_query.where(purchase_filter)
-    pending_purchases = list(db.scalars(
-        purchase_query.order_by(ITPurchaseRequest.requested_at.asc(), ITPurchaseRequest.id.asc())
-    ).all())
+    purchase_requests = list(db.scalars(
+        purchase_query.order_by(ITPurchaseRequest.requested_at.desc(), ITPurchaseRequest.id.desc())
+    ).unique().all())
+    pending_purchases = [request for request in purchase_requests if request.status == "pending_approval"]
+    purchase_items = [_purchase_item(request) for request in purchase_requests]
+    approval_items = [_purchase_item(request) for request in pending_purchases]
 
-    approval_items: list[dict[str, Any]] = []
-    for request in pending_purchases:
-        approval_items.append({
-            "workflow": "purchase_request",
-            "id": request.id,
-            "code": request.request_code,
-            "title": request.item_name,
-            "submitted_by": request.requested_by_name,
-            "submitted_at": request.requested_at,
-            "department": request.requesting_department,
-            "priority": request.priority,
-            "amount": request.estimated_total_amount,
-            "reason": request.business_reason,
-            "status": request.status,
-            "target_url": "/it/purchase-requests",
-            "reporting_month": request.reporting_month,
-            "metadata": {
-                "requested_employee": request.requested_employee,
-                "quantity": request.quantity,
-                "item_type": request.item_type,
-                "required_by_date": request.required_by_date,
-                "it_remarks": request.it_remarks,
-            },
-        })
+    status_counts = {
+        "pending_approval": sum(request.status == "pending_approval" for request in purchase_requests),
+        "approved": sum(request.status == "approved" for request in purchase_requests),
+        "sent_back": sum(request.status == "sent_back" for request in purchase_requests),
+        "rejected": sum(request.status == "rejected" for request in purchase_requests),
+        "purchase_completed": sum(request.status == "purchase_completed" for request in purchase_requests),
+    }
+    approved_purchase_value = round(sum(
+        float(request.approved_amount or 0)
+        for request in purchase_requests
+        if request.status in {"approved", "purchase_completed"}
+    ), 2)
 
     open_tickets = list(db.scalars(
         select(SupportTicket)
@@ -143,13 +169,6 @@ def management_control_center(db: Session, month: str | None = None) -> dict[str
     )
     recent_history = list(db.scalars(history_query).all())
 
-    purchase_value_query = select(func.coalesce(func.sum(ITPurchaseRequest.approved_amount), 0)).where(
-        ITPurchaseRequest.status.in_(["approved", "purchase_completed"])
-    )
-    if purchase_filter is not None:
-        purchase_value_query = purchase_value_query.where(purchase_filter)
-    approved_purchase_value = float(db.scalar(purchase_value_query) or 0)
-
     return {
         "generated_at": datetime.now(timezone.utc).replace(tzinfo=None),
         "month": month,
@@ -164,11 +183,17 @@ def management_control_center(db: Session, month: str | None = None) -> dict[str
             "active_replacements": active_replacements,
             "pending_approvals": len(pending_purchases),
             "pending_purchase_requests": len(pending_purchases),
-            "approved_purchase_value": round(approved_purchase_value, 2),
+            "approved_purchase_value": approved_purchase_value,
             "open_critical_tickets": len(critical_tickets),
             "sla_warnings": len(warning_tickets),
             "sla_breaches": len(breached_tickets),
         },
+        "purchase_summary": {
+            "total": len(purchase_requests),
+            **status_counts,
+            "approved_purchase_value": approved_purchase_value,
+        },
+        "purchase_requests": purchase_items,
         "approvals": approval_items,
         "risk_tickets": ticket_items,
         "recent_decisions": [
@@ -198,16 +223,20 @@ def build_management_control_workbook(data: dict[str, Any]) -> bytes:
     for key, value in data["executive"].items():
         summary.append([key.replace("_", " ").title(), value])
 
-    approvals = workbook.create_sheet("Purchase Approvals")
-    approvals.append([
-        "Request", "Item", "Submitted By", "Submitted At", "Department",
-        "Priority", "Estimated Amount", "Business Reason", "Reporting Month",
+    purchases = workbook.create_sheet("Purchase Requests")
+    purchases.append([
+        "Request", "Item", "Status", "Submitted By", "Submitted At", "Department",
+        "Priority", "Estimated Amount", "Approved Amount", "Management Remarks",
+        "Decided By", "Decided At", "Purchase Code", "Purchase Date", "Actual Amount",
+        "Business Reason", "Reporting Month",
     ])
-    for item in data["approvals"]:
-        approvals.append([
-            item["code"], item["title"], item["submitted_by"], item["submitted_at"],
-            item["department"], item["priority"], item["amount"], item["reason"],
-            item["reporting_month"],
+    for item in data.get("purchase_requests", []):
+        purchases.append([
+            item["code"], item["title"], item["status"], item["submitted_by"], item["submitted_at"],
+            item["department"], item["priority"], item["amount"], item.get("approved_amount"),
+            item.get("management_remarks"), item.get("decided_by"), item.get("decided_at"),
+            item.get("purchase_code"), item.get("purchase_date"), item.get("actual_purchase_amount"),
+            item["reason"], item["reporting_month"],
         ])
 
     decisions = workbook.create_sheet("Purchase Decisions")
