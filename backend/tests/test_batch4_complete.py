@@ -10,6 +10,7 @@ import uuid
 import pytest
 from fastapi import HTTPException
 from fastapi.routing import iter_route_contexts
+from pydantic import ValidationError
 
 TEST_DB = Path(tempfile.gettempdir()) / f"nakshatech_batch4_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{TEST_DB}"
@@ -24,7 +25,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.batch4_main import app  # noqa: E402
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
-from app.models.entities import Asset, ReplacementRecord, User, WorkRecord  # noqa: E402
+from app.models.entities import Asset, AssetHistory, ReplacementRecord, User, WorkRecord  # noqa: E402
 from app.modules.batch4.it_control import (  # noqa: E402
     create_replacement_without_management_approval,
     resubmit_legacy_replacement_as_it_controlled,
@@ -34,9 +35,12 @@ from app.modules.batch4.router import management_purchase_approval_decision  # n
 from app.modules.batch4.schemas import ManagementPurchaseDecision  # noqa: E402
 from app.modules.batch4.service import build_management_control_workbook, management_control_center  # noqa: E402
 from app.modules.it_activity.models import ITPurchaseRequest  # noqa: E402
+from app.modules.it_activity.schemas import HandoverCreate  # noqa: E402
+from app.modules.it_activity.service import create_handover_record  # noqa: E402
 from app.modules.notifications.models import GlobalNotification  # noqa: E402
 from app.schemas.replacement import ReplacementCreate, ReplacementResubmit  # noqa: E402
 from app.schemas.work import WorkRecordUpdate  # noqa: E402
+from app.services.asset_lifecycle_service import inventory_summary  # noqa: E402
 
 
 def _user(db, email: str, role: str, name: str) -> User:
@@ -121,6 +125,163 @@ def test_batch4_final_purchase_only_management_authority():
                 "POST",
                 "management_purchase_approval_decision",
             )
+
+            # Live custody is deliberately narrow. Historical imports may still
+            # preserve older labels, but new software entries must be linked to
+            # one Asset Register row and may only Handover, Transfer or Return.
+            with pytest.raises(ValidationError):
+                HandoverCreate(
+                    asset_id=1,
+                    device_category="desktop",
+                    action_type="hire",
+                    activity_date=date.today(),
+                )
+            with pytest.raises(ValidationError):
+                HandoverCreate(
+                    asset_id=1,
+                    device_category="desktop",
+                    action_type="return",
+                    return_status="repair",
+                    activity_date=date.today(),
+                )
+            with pytest.raises(ValidationError):
+                HandoverCreate(
+                    device_category="desktop",
+                    action_type="handover",
+                    activity_date=date.today(),
+                )
+            with pytest.raises(ValidationError):
+                HandoverCreate(
+                    asset_id=1,
+                    device_category="desktop",
+                    action_type="handover",
+                    apply_to_asset=False,
+                    activity_date=date.today(),
+                )
+
+            # Real custody lifecycle: Available -> Employee A -> Employee B ->
+            # Available -> Employee A again. The physical asset total never
+            # changes, while Assigned/Available reconcile on every movement.
+            custody_asset = _asset(db, "B4-CUSTODY-001", "Computer", "available")
+            db.commit()
+            initial_inventory = inventory_summary([db.get(Asset, custody_asset.id)])
+            assert initial_inventory["total"] == 1
+            assert initial_inventory["assigned"] == 0
+            assert initial_inventory["available"] == 1
+
+            create_handover_record(
+                db,
+                HandoverCreate(
+                    reporting_month=month,
+                    asset_id=custody_asset.id,
+                    device_category="desktop",
+                    employee_name="QA Old Employee",
+                    dc_number="QA-WS-OLD-001",
+                    department="GIS / Mobile Mapping",
+                    work_mode="office",
+                    internal_asset_no=custody_asset.cpu_asset_tag,
+                    action_type="handover",
+                    activity_date=date.today(),
+                    remarks="Initial QA handover",
+                ),
+                it_user,
+            )
+            assigned_a = db.get(Asset, custody_asset.id)
+            assert assigned_a.status == "assigned"
+            assert assigned_a.used_by == "QA Old Employee"
+            after_handover = inventory_summary([assigned_a])
+            assert after_handover["total"] == 1
+            assert after_handover["assigned"] == 1
+            assert after_handover["available"] == 0
+
+            create_handover_record(
+                db,
+                HandoverCreate(
+                    reporting_month=month,
+                    asset_id=custody_asset.id,
+                    device_category="desktop",
+                    employee_name="QA New Joiner B",
+                    dc_number="QA-WS-NEW-B-001",
+                    department="GIS / Mobile Mapping",
+                    work_mode="office",
+                    internal_asset_no=custody_asset.cpu_asset_tag,
+                    action_type="transfer",
+                    activity_date=date.today(),
+                    remarks="Direct employee transfer QA",
+                ),
+                it_user,
+            )
+            assigned_b = db.get(Asset, custody_asset.id)
+            assert assigned_b.status == "assigned"
+            assert assigned_b.used_by == "QA New Joiner B"
+            after_transfer = inventory_summary([assigned_b])
+            assert after_transfer["total"] == 1
+            assert after_transfer["assigned"] == 1
+            assert after_transfer["available"] == 0
+
+            create_handover_record(
+                db,
+                HandoverCreate(
+                    reporting_month=month,
+                    asset_id=custody_asset.id,
+                    device_category="desktop",
+                    employee_name="QA New Joiner B",
+                    dc_number="QA-WS-NEW-B-001",
+                    department="GIS / Mobile Mapping",
+                    work_mode="office",
+                    internal_asset_no=custody_asset.cpu_asset_tag,
+                    action_type="return",
+                    return_status="available",
+                    activity_date=date.today(),
+                    remarks="Employee returned asset to IT",
+                ),
+                it_user,
+            )
+            returned = db.get(Asset, custody_asset.id)
+            assert returned.status == "available"
+            assert returned.used_by is None
+            assert returned.workstation_no is None
+            after_return = inventory_summary([returned])
+            assert after_return["total"] == 1
+            assert after_return["assigned"] == 0
+            assert after_return["available"] == 1
+
+            create_handover_record(
+                db,
+                HandoverCreate(
+                    reporting_month=month,
+                    asset_id=custody_asset.id,
+                    device_category="desktop",
+                    employee_name="QA Old Employee",
+                    dc_number="QA-WS-OLD-002",
+                    department="GIS / Mobile Mapping",
+                    work_mode="office",
+                    internal_asset_no=custody_asset.cpu_asset_tag,
+                    action_type="handover",
+                    activity_date=date.today(),
+                    remarks="Same returned asset reissued QA",
+                ),
+                it_user,
+            )
+            reissued = db.get(Asset, custody_asset.id)
+            assert reissued.status == "assigned"
+            assert reissued.used_by == "QA Old Employee"
+            assert reissued.workstation_no == "QA-WS-OLD-002"
+            after_reissue = inventory_summary([reissued])
+            assert after_reissue["total"] == 1
+            assert after_reissue["assigned"] == 1
+            assert after_reissue["available"] == 0
+
+            custody_history = list(db.query(AssetHistory).filter(
+                AssetHistory.asset_id == custody_asset.id,
+                AssetHistory.change_type.like("handover_%"),
+            ).order_by(AssetHistory.id.asc()).all())
+            assert [row.change_type for row in custody_history] == [
+                "handover_handover",
+                "handover_transfer",
+                "handover_return",
+                "handover_handover",
+            ]
 
             # IT Work is operational: IT completes it directly and no Management
             # approval state or approval notification is created.
@@ -256,14 +417,17 @@ def test_batch4_final_purchase_only_management_authority():
                 )
             assert duplicate_replacement.value.status_code == 409
 
-            # Management Control contains only the Purchase Request in its
-            # approval queue. IT Work and Replacement stay visible elsewhere,
-            # but they are not permission gates.
+            # Management Control keeps the full Purchase Request lifecycle
+            # visible, while only pending requests appear in the actionable queue.
             center = management_control_center(db, month)
             assert center["authority_model"] == "purchase_approval_only"
             assert center["executive"]["pending_approvals"] == 1
             assert center["executive"]["pending_purchase_requests"] == 1
             assert {item["workflow"] for item in center["approvals"]} == {"purchase_request"}
+            assert center["purchase_summary"]["pending_approval"] == 1
+            assert center["purchase_summary"]["approved"] == 0
+            assert len(center["purchase_requests"]) == 1
+            assert center["purchase_requests"][0]["status"] == "pending_approval"
 
             with pytest.raises(HTTPException) as forbidden_replacement_decision:
                 management_purchase_approval_decision(
@@ -295,6 +459,13 @@ def test_batch4_final_purchase_only_management_authority():
             refreshed = management_control_center(db, month)
             assert refreshed["executive"]["pending_approvals"] == 0
             assert refreshed["executive"]["pending_purchase_requests"] == 0
+            assert refreshed["approvals"] == []
+            assert refreshed["purchase_summary"]["pending_approval"] == 0
+            assert refreshed["purchase_summary"]["approved"] == 1
+            assert refreshed["purchase_summary"]["approved_purchase_value"] == 48000
+            assert len(refreshed["purchase_requests"]) == 1
+            assert refreshed["purchase_requests"][0]["status"] == "approved"
+            assert refreshed["purchase_requests"][0]["approved_amount"] == 48000
     finally:
         engine.dispose()
         TEST_DB.unlink(missing_ok=True)
