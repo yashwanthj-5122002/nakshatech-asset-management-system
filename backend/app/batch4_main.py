@@ -12,26 +12,37 @@ from app.core.config import settings
 from app.modules.batch4.router import router as batch4_router
 
 
-_existing_routes = list(app.router.routes)
-app.include_router(batch4_router, prefix=settings.api_prefix)
-_batch4_routes = app.router.routes[len(_existing_routes):]
-
-
 def _route_key(route):
     if not isinstance(route, APIRoute):
         return None
     return route.path, frozenset(route.methods or set())
 
 
-_override_keys = {_route_key(route) for route in _batch4_routes}
-_override_keys.discard(None)
-_kept_routes = []
-for route in _existing_routes:
-    key = _route_key(route)
-    if key is not None and key in _override_keys:
-        continue
-    _kept_routes.append(route)
+def _prefixed_route_key(route):
+    """Return the final FastAPI route key after applying the application prefix."""
+    if not isinstance(route, APIRoute):
+        return None
+    prefix = (settings.api_prefix or "").rstrip("/")
+    path = route.path if route.path.startswith("/") else f"/{route.path}"
+    return f"{prefix}{path}" or "/", frozenset(route.methods or set())
 
-# Batch 4 handlers replace the old IT Work / Replacement approval endpoints so
-# runtime dispatch and OpenAPI expose one unambiguous authority model.
-app.router.routes[:] = [*_kept_routes, *_batch4_routes]
+
+# Determine exactly which existing Batch 3/main handlers Batch 4 supersedes
+# before mutating the FastAPI route table. This is more reliable than slicing
+# app.router.routes after include_router(), and prevents both missing routes and
+# duplicate route-order ambiguity.
+_override_keys = {
+    key
+    for route in batch4_router.routes
+    if (key := _prefixed_route_key(route)) is not None
+}
+
+app.router.routes[:] = [
+    route
+    for route in app.router.routes
+    if _route_key(route) not in _override_keys
+]
+
+# Include the authoritative Batch 4 handlers exactly once after old conflicts
+# have been removed. Non-conflicting Batch 3 and colleague routes are preserved.
+app.include_router(batch4_router, prefix=settings.api_prefix)
