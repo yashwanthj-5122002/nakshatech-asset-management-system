@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class HandoverCreate(BaseModel):
     reporting_month: str | None = None
-    asset_id: int | None = None
+    asset_id: int = Field(gt=0)
     device_category: str
     employee_name: str | None = None
     dc_number: str | None = None
@@ -24,7 +25,7 @@ class HandoverCreate(BaseModel):
     issued_by: str | None = None
     remarks: str | None = None
     asset_updated_status: str | None = None
-    apply_to_asset: bool = True
+    apply_to_asset: Literal[True] = True
 
     @field_validator("device_category")
     @classmethod
