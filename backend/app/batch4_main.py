@@ -3,65 +3,68 @@
 Batch 4 is cumulative: it starts from the authoritative Batch 3 application and
 adds the final Management authority model. Management has read-only operational
 visibility and final approval authority only for Purchase Requests.
+
+FastAPI 0.137+ preserves included APIRouters as a live router tree. Batch 4
+therefore removes superseded operations from their source routers and then
+includes its authoritative router once. It does not rewrite app.router.routes.
 """
 
-from fastapi import APIRouter
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 
 from app.batch3_main import app
+from app.api.router import router as base_api_router
 from app.core.config import settings
+from app.modules.batch3.router import router as batch3_router
 from app.modules.batch4.router import router as batch4_router
 
 
-def _route_key(route):
+def _route_key(route: object) -> tuple[str, frozenset[str]] | None:
     if not isinstance(route, APIRoute):
         return None
     return route.path, frozenset(route.methods or set())
 
 
-# Stage prefixed copies of the Batch 4 routes in an isolated APIRouter first.
-# This avoids relying on FastAPI.include_router() while the live route table is
-# also being rewritten for authoritative endpoint overrides.
-_staged_router = APIRouter()
-_staged_router.include_router(batch4_router, prefix=settings.api_prefix)
-_staged_routes = list(_staged_router.routes)
-_override_keys = {
-    key
-    for route in _staged_routes
-    if (key := _route_key(route)) is not None
-}
+def _remove_exact_route(router, path: str, methods: frozenset[str]) -> None:
+    router.routes[:] = [
+        route
+        for route in router.routes
+        if _route_key(route) != (path, methods)
+    ]
 
-# Remove only exact path+method conflicts from Batch 3/main. Every unrelated
-# colleague route remains untouched.
-app.router.routes[:] = [
-    route
-    for route in app.router.routes
-    if _route_key(route) not in _override_keys
-]
 
-# Append the already-prefixed authoritative Batch 4 APIRoutes directly. This is
-# deterministic and avoids route-loss behavior observed when include_router()
-# and route-table mutation were combined in the same runtime module.
-app.router.routes.extend(_staged_routes)
-
-# Fail loudly during startup/test import if an authoritative Batch 4 route is
-# missing or duplicated. A silent fallback to an older approval workflow is a
-# security/business-rule defect, so the application must not start in that
-# state.
-_final_counts: dict[tuple[str, frozenset[str]], int] = {}
-for route in app.router.routes:
+# Remove the old operational handlers at their source. Replacement operations
+# can exist in both the original API router and Batch 3 router; IT Work lives in
+# the original API router. Unique Management control endpoints simply remove
+# nothing here.
+for route in batch4_router.routes:
     key = _route_key(route)
-    if key is not None:
-        _final_counts[key] = _final_counts.get(key, 0) + 1
+    if key is None:
+        continue
+    path, methods = key
+    _remove_exact_route(batch3_router, path, methods)
+    _remove_exact_route(base_api_router, path, methods)
 
-_invalid = {
-    key: _final_counts.get(key, 0)
-    for key in _override_keys
-    if _final_counts.get(key, 0) != 1
-}
-if _invalid:
-    detail = ", ".join(
-        f"{path} {sorted(methods)} count={count}"
-        for (path, methods), count in sorted(_invalid.items(), key=lambda item: item[0][0])
-    )
-    raise RuntimeError(f"Batch 4 authoritative route registration failed: {detail}")
+app.include_router(batch4_router, prefix=settings.api_prefix)
+
+
+# Public FastAPI route-context traversal is the supported way to inspect the
+# effective route tree in FastAPI 0.137.2+. Fail startup if any authoritative
+# Batch 4 operation is missing or duplicated.
+prefix = (settings.api_prefix or "").rstrip("/")
+for route in batch4_router.routes:
+    key = _route_key(route)
+    if key is None:
+        continue
+    path, methods = key
+    effective_path = f"{prefix}{path}" or "/"
+    matches = [
+        context
+        for context in iter_route_contexts(app.router.routes)
+        if context.path == effective_path
+        and frozenset(context.methods or set()) == methods
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Batch 4 authoritative route registration failed: "
+            f"{effective_path} {sorted(methods)} count={len(matches)}"
+        )
