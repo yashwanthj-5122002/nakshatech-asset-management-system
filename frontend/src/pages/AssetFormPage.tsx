@@ -37,7 +37,8 @@ const statusOptions = [
 ]
 const assignedStatuses = new Set(['assigned', 'in_use', 'wfh', 'field_deployment'])
 const externalHddStatuses = ['available', 'in_use', 'issued', 'permanently_issued', 'returned', 'repair', 'replacement_pending', 'missing', 'retired', 'disposed']
-const supportedRequestedDeviceTypes = new Set(['Computer', 'Laptop', 'Smartphone', 'Printer', 'External HDD'])
+const controlledDeviceTypes = ['Computer', 'Laptop', 'Smartphone', 'Printer', 'External HDD', 'Server', 'Network Device']
+const supportedRequestedDeviceTypes = new Set(controlledDeviceTypes)
 
 type AssetForm = {
   device_type: string
@@ -219,6 +220,8 @@ export function AssetFormPage() {
   const isExternalHdd = form.device_type === 'External HDD'
   const isStandaloneAsset = isPrinter || isExternalHdd
   const quickAddPrimaryDevice = !isEdit && returnToAssetDrawer && ['Laptop', 'Smartphone'].includes(form.device_type) ? form.device_type : null
+  const lockDeviceType = isStandaloneAsset || Boolean(quickAddPrimaryDevice)
+  const legacyDeviceType = !controlledDeviceTypes.includes(form.device_type) ? form.device_type : ''
   const assetDrawerReturnPath = (() => {
     const params = new URLSearchParams({ drawer: 'assets', drawer_scope: returnDrawerScope })
     if (returnDrawerValue) params.set('drawer_value', returnDrawerValue)
@@ -334,7 +337,7 @@ export function AssetFormPage() {
       <FormSection icon={isPrinter ? <Printer size={22} /> : isExternalHdd ? <Database size={22} /> : <Cpu size={22} />} title="1. Asset Identity" description={isPrinter ? 'Record the printer ID, current status and physical floor or location.' : isExternalHdd ? 'Record the portable External HDD ID and its current operational status.' : 'Record the physical asset and where it is placed. These fields appear first in daily IT searches.'}>
         <label>{isPrinter ? 'Printer Asset ID' : isExternalHdd ? 'External HDD Asset ID' : 'CPU / Physical Asset Tag'} <span>*</span><input autoFocus required value={form.cpu_asset_tag} onChange={e => update('cpu_asset_tag', e.target.value)} placeholder={isPrinter ? 'Example: PRN001' : isExternalHdd ? 'Example: HDD001' : 'Example: 3953'} /></label>
         {!isStandaloneAsset && <label>Workstation Number<input value={form.workstation_no} onChange={e => update('workstation_no', e.target.value)} placeholder="Example: NW045 / 2nd Floor" /></label>}
-        <label>Device Type{isStandaloneAsset ? <input value={form.device_type} readOnly aria-readonly="true" /> : <select value={form.device_type} onChange={e => update('device_type', e.target.value)}><option>Computer</option><option>Laptop</option><option>Smartphone</option><option>Printer</option><option>External HDD</option><option>Server</option><option>Network Device</option></select>}</label>
+        <label>Device Type{lockDeviceType ? <input value={form.device_type} readOnly aria-readonly="true" /> : <select value={form.device_type} onChange={e => update('device_type', e.target.value)}>{legacyDeviceType && <option value={legacyDeviceType}>Current legacy value — {legacyDeviceType}</option>}{controlledDeviceTypes.map(device => <option key={device}>{device}</option>)}</select>}</label>
         <label>Status<select value={form.status} onChange={e => update('status', e.target.value)}>{(isExternalHdd ? externalHddStatuses : statusOptions).map(item => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}</select></label>
         {!isStandaloneAsset && <label>System Name<input value={form.system_name} onChange={e => update('system_name', e.target.value)} placeholder="Windows computer name" /></label>}
         {isPrinter && <label>Floor / Location<input value={form.location} onChange={e => update('location', e.target.value)} placeholder="Example: 3rd Floor / Finance" /></label>}
