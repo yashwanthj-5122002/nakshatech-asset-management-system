@@ -34,13 +34,21 @@ class HandoverCreate(BaseModel):
             raise ValueError("Device category must be laptop or desktop")
         return value
 
+    @field_validator("action_type")
+    @classmethod
+    def validate_action_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"handover", "transfer", "return"}:
+            raise ValueError("Live custody action must be handover, transfer or return")
+        return normalized
+
     @field_validator("return_status")
     @classmethod
     def validate_return_status(cls, value: str) -> str:
         normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
-        if normalized not in {"available", "repair", "damaged", "returned"}:
-            raise ValueError("Return status must be available, repair, damaged or returned")
-        return normalized
+        if normalized != "available":
+            raise ValueError("Live Return always uses Available after inspection")
+        return "available"
 
     @field_validator("work_mode")
     @classmethod
