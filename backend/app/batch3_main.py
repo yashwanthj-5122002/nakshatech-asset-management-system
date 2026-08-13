@@ -12,26 +12,37 @@ from app.core.config import settings
 from app.modules.batch3.router import router as batch3_router
 
 
-_existing_routes = list(app.router.routes)
-app.include_router(batch3_router, prefix=settings.api_prefix)
-_batch3_routes = app.router.routes[len(_existing_routes):]
-
-
 def _route_key(route):
     if not isinstance(route, APIRoute):
         return None
     return route.path, frozenset(route.methods or set())
 
 
-_override_keys = {_route_key(route) for route in _batch3_routes}
-_override_keys.discard(None)
-_kept_routes = []
-for route in _existing_routes:
-    key = _route_key(route)
-    if key is not None and key in _override_keys:
-        continue
-    _kept_routes.append(route)
+def _prefixed_route_key(route):
+    if not isinstance(route, APIRoute):
+        return None
+    prefix = (settings.api_prefix or "").rstrip("/")
+    path = route.path if route.path.startswith("/") else f"/{route.path}"
+    return f"{prefix}{path}" or "/", frozenset(route.methods or set())
 
-# New authoritative Batch 3 handlers are unique in the final route table, so
-# runtime dispatch and generated OpenAPI describe the same implementation.
-app.router.routes[:] = [*_kept_routes, *_batch3_routes]
+
+# Determine Batch 3 override keys from the APIRouter itself before mutating the
+# application. The earlier implementation sliced app.router.routes after
+# include_router(); in the cumulative Batch 4 runtime that could discard the
+# application's normal route table. Computing keys first preserves all unrelated
+# colleague routes while still replacing only exact path+method conflicts.
+_override_keys = {
+    key
+    for route in batch3_router.routes
+    if (key := _prefixed_route_key(route)) is not None
+}
+
+app.router.routes[:] = [
+    route
+    for route in app.router.routes
+    if _route_key(route) not in _override_keys
+]
+
+# Register authoritative Batch 3 handlers exactly once after conflicts are
+# removed. Batch 4 can safely build cumulatively on this preserved application.
+app.include_router(batch3_router, prefix=settings.api_prefix)
