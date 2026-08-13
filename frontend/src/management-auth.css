@@ -1,0 +1,288 @@
+/* Scoped Management authentication and password controls. */
+.management-role-picker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.management-role-picker legend {
+  margin-bottom: 8px;
+  color: rgba(215, 230, 240, .78);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.management-role-picker > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.management-role-picker button {
+  min-height: 41px;
+  padding: 7px 8px;
+  border: 1px solid rgba(126, 178, 207, .24);
+  border-radius: 9px;
+  color: rgba(220, 235, 244, .82);
+  background: rgba(7, 31, 55, .52);
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 720;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.management-role-picker button:hover {
+  color: #fff;
+  border-color: rgba(47, 208, 226, .55);
+  background: rgba(25, 91, 133, .38);
+  transform: translateY(-1px);
+}
+
+.management-role-picker button.selected {
+  color: #fff;
+  border-color: rgba(44, 215, 231, .82);
+  background: linear-gradient(135deg, rgba(17, 111, 160, .88), rgba(10, 70, 112, .92));
+  box-shadow: 0 0 0 1px rgba(48, 213, 230, .12), 0 9px 20px rgba(1, 15, 30, .2);
+}
+
+.management-account-select select {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #eaf7fb;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.management-account-select select option {
+  color: #102b43;
+  background: #fff;
+}
+
+.management-provisioned-note {
+  padding: 10px 12px;
+  border: 1px solid rgba(118, 168, 199, .2);
+  border-radius: 9px;
+  color: rgba(197, 218, 231, .72);
+  background: rgba(7, 29, 50, .44);
+  font-size: .72rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.management-success-notice {
+  border-color: rgba(74, 211, 147, .35) !important;
+  color: #bff5d8 !important;
+  background: rgba(28, 113, 75, .22) !important;
+}
+
+.management-password-step-info strong {
+  color: inherit;
+}
+
+.management-password-rules {
+  margin: -2px 0 2px;
+  color: rgba(184, 207, 220, .72);
+  font-size: .72rem;
+  line-height: 1.45;
+}
+
+.management-change-password-button {
+  min-height: 42px;
+  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #cbdce8;
+  border-radius: 11px;
+  color: #0b4f7d;
+  background: #fff;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(17, 67, 101, .08);
+  cursor: pointer;
+}
+
+.management-change-password-button:hover {
+  border-color: #6aa8cc;
+  background: #f5fbff;
+}
+
+.management-password-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 19, 33, .64);
+  backdrop-filter: blur(5px);
+}
+
+.management-password-dialog {
+  width: min(100%, 520px);
+  overflow: hidden;
+  border: 1px solid #d6e4ed;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 26px 70px rgba(3, 22, 39, .28);
+}
+
+.management-password-dialog > header {
+  padding: 21px 23px 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid #e3edf3;
+  background: linear-gradient(135deg, #f8fcff, #edf7fc);
+}
+
+.management-password-dialog > header span {
+  color: #14739f;
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .11em;
+}
+
+.management-password-dialog > header h2 {
+  margin: 5px 0 5px;
+  color: #0d2e49;
+  font-size: 1.35rem;
+}
+
+.management-password-dialog > header p {
+  margin: 0;
+  color: #63798a;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.management-password-dialog > header button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d5e3eb;
+  border-radius: 10px;
+  color: #496578;
+  background: #fff;
+  cursor: pointer;
+}
+
+.management-password-dialog form {
+  padding: 22px 23px 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.management-password-dialog form label {
+  display: grid;
+  gap: 7px;
+}
+
+.management-password-dialog form label > span {
+  color: #294a62;
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.management-password-dialog input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cfdde6;
+  border-radius: 10px;
+  outline: 0;
+  color: #173449;
+  background: #fbfdff;
+  font: inherit;
+}
+
+.management-password-dialog input:focus {
+  border-color: #3d9ec7;
+  box-shadow: 0 0 0 3px rgba(45, 158, 202, .12);
+}
+
+.management-password-dialog-actions {
+  margin-top: 2px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.management-password-dialog-actions button {
+  min-height: 41px;
+  padding: 0 15px;
+  border: 1px solid #cadbe5;
+  border-radius: 10px;
+  color: #31526a;
+  background: #fff;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.management-password-dialog-actions button[type='submit'] {
+  color: #fff;
+  border-color: #0d6896;
+  background: linear-gradient(135deg, #147eae, #07547f);
+}
+
+.management-password-dialog-actions button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+@media (max-width: 620px) {
+  .management-role-picker > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-password-overlay {
+    padding: 12px;
+  }
+
+  .management-password-dialog > header,
+  .management-password-dialog form {
+    padding-left: 17px;
+    padding-right: 17px;
+  }
+
+  .management-change-password-button span {
+    display: none;
+  }
+}
+
+/* LOGIN ROLE ALIGNMENT - 5 ROLE GRID */
+@media (min-width: 721px) {
+  .management-role-picker > div {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .management-role-picker > div > button {
+    grid-column: span 2;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .management-role-picker > div > button:nth-child(4) {
+    grid-column: 2 / span 2;
+  }
+
+  .management-role-picker > div > button:nth-child(5) {
+    grid-column: 4 / span 2;
+  }
+}

@@ -87,10 +87,20 @@ class SupportTicket(Base):
     category: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
+    reporting_manager_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     priority: Mapped[str] = mapped_column(String(20), default="medium", index=True)
     status: Mapped[str] = mapped_column(String(40), default="new", index=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     asset_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True, index=True)
+    asset_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    component: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    component_asset_tag: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    problem_code: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    problem_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    impact_assessment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sla_target_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
@@ -108,6 +118,20 @@ class TicketMessage(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class TicketAttachment(Base):
+    __tablename__ = "ticket_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("ticket_messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    storage_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    mime_type: Mapped[str] = mapped_column(String(80))
+    file_size: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
 

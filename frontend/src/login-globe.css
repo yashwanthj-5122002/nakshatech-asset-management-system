@@ -1,0 +1,348 @@
+/* ==========================================================================
+   NakshaTech interactive 3D globe login
+   Full-screen visual layer for /login and /employee-login. Authentication,
+   routing, sessions and business modules remain completely outside this layer.
+   ========================================================================== */
+.final-login-shell--globe {
+  grid-template-columns: minmax(420px, 1.08fr) minmax(500px, .82fr);
+  column-gap: clamp(36px, 5.5vw, 94px);
+}
+
+.final-login-shell--globe .final-login-header,
+.final-login-shell--globe .final-login-copy,
+.final-login-shell--globe .final-login-panel-zone {
+  position: relative;
+}
+
+.final-login-shell--globe .final-login-header { z-index: 5; }
+
+.final-login-shell--globe .final-login-copy {
+  z-index: 4;
+  grid-column: 1;
+  grid-row: 2;
+  width: min(100%, 570px);
+  padding-left: clamp(2px, .35vw, 7px);
+}
+
+.final-login-shell--globe .final-login-panel-zone {
+  z-index: 6;
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/*
+ * The globe owns the whole login shell instead of a narrow middle column.
+ * React-globe.gl receives the real viewport width/height, so Three.js controls
+ * the aspect ratio. The canvas is never independently squeezed by CSS.
+ */
+.naksha-login-globe {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 100svh;
+  overflow: visible;
+  touch-action: none;
+  overscroll-behavior: contain;
+  isolation: isolate;
+}
+
+.naksha-login-globe::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 3% 4% 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 42% 55%, rgba(7, 151, 213, .16), transparent 31%),
+    radial-gradient(circle at 43% 56%, rgba(14, 215, 230, .075), transparent 47%);
+  filter: blur(11px);
+}
+
+.naksha-login-globe::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: .25;
+  background-image:
+    radial-gradient(circle, rgba(84, 208, 240, .66) 0 1px, transparent 1.25px),
+    radial-gradient(circle, rgba(61, 126, 214, .55) 0 .8px, transparent 1.05px);
+  background-position: 13px 17px, 63px 51px;
+  background-size: 137px 137px, 181px 181px;
+  mask-image: radial-gradient(ellipse at 43% 52%, #000 0 58%, rgba(0,0,0,.62) 76%, transparent 96%);
+}
+
+.naksha-login-globe-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border-radius: 0;
+  filter: drop-shadow(0 28px 48px rgba(0, 0, 0, .38));
+  transform: translateX(clamp(-150px, -7vw, -54px));
+  transform-origin: center center;
+}
+
+.naksha-login-globe-stage > div,
+.naksha-login-globe-stage canvas {
+  display: block;
+  max-width: none;
+  max-height: none;
+  outline: none;
+}
+
+.naksha-login-globe-chrome {
+  position: absolute;
+  z-index: 3;
+  left: 42%;
+  bottom: clamp(18px, 2.8vh, 34px);
+  width: max-content;
+  max-width: min(78vw, 360px);
+  display: grid;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.naksha-login-globe-status,
+.naksha-login-globe-actions button,
+.naksha-login-globe-city-chip {
+  border: 1px solid rgba(63, 189, 222, .28);
+  background: linear-gradient(145deg, rgba(3, 24, 42, .90), rgba(3, 15, 29, .78));
+  box-shadow: 0 15px 34px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter: blur(14px) saturate(122%);
+}
+
+.naksha-login-globe-status {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 11px;
+}
+
+.naksha-login-globe-pulse {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #21dfe7;
+  box-shadow: 0 0 0 5px rgba(33, 223, 231, .08), 0 0 16px rgba(33, 223, 231, .44);
+  animation: naksha-globe-pulse 2.1s ease-in-out infinite;
+}
+
+.naksha-login-globe-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.naksha-login-globe-status strong {
+  overflow: hidden;
+  color: #ebfcff;
+  font-size: .76rem;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.naksha-login-globe-status small {
+  overflow: hidden;
+  color: rgba(193, 222, 235, .68);
+  font-size: .61rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.naksha-login-globe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  pointer-events: auto;
+}
+
+.naksha-login-globe-actions button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: rgba(220, 244, 250, .88);
+  font: inherit;
+  font-size: .65rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.naksha-login-globe-actions button:hover {
+  border-color: rgba(70, 225, 239, .56);
+  color: #efffff;
+  background: rgba(5, 53, 78, .90);
+  transform: translateY(-1px);
+}
+
+.naksha-login-globe-city-chip {
+  position: absolute;
+  z-index: 3;
+  top: 16%;
+  left: 42%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: #e9fdff;
+  font-size: .68rem;
+  font-weight: 680;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.naksha-login-globe-loader {
+  position: absolute;
+  z-index: 3;
+  left: 63%;
+  bottom: 58px;
+  color: #53e4f2;
+  animation: naksha-globe-spin .9s linear infinite;
+  pointer-events: none;
+}
+
+.naksha-login-globe-source {
+  position: absolute;
+  z-index: 3;
+  left: 42%;
+  bottom: 7px;
+  max-width: min(54vw, 480px);
+  overflow: hidden;
+  color: rgba(164, 196, 212, .38);
+  font-size: .51rem;
+  line-height: 1.3;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.naksha-login-globe-fallback {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: rgba(214, 242, 249, .66);
+  text-align: center;
+  background: radial-gradient(circle at 42% 54%, rgba(3, 87, 126, .13), rgba(2, 14, 27, .08) 38%, transparent 66%);
+  pointer-events: none;
+}
+
+.naksha-login-globe-fallback--loading::before {
+  content: "";
+  width: 82px;
+  height: 82px;
+  border: 1px solid rgba(43, 213, 232, .32);
+  border-radius: 50%;
+  box-shadow: 0 0 36px rgba(25, 151, 211, .16), inset 0 0 26px rgba(12, 121, 184, .12);
+  animation: naksha-globe-loading 1.8s ease-in-out infinite;
+}
+
+.naksha-login-globe-fallback > svg { color: #2bd5e8; }
+.naksha-login-globe-fallback strong { color: #effdff; font-size: .82rem; }
+.naksha-login-globe-fallback span { max-width: 260px; color: rgba(192, 216, 228, .66); font-size: .68rem; line-height: 1.45; }
+
+@keyframes naksha-globe-pulse {
+  0%, 100% { opacity: .72; transform: scale(.88); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes naksha-globe-spin { to { transform: rotate(360deg); } }
+@keyframes naksha-globe-loading {
+  0%, 100% { opacity: .42; transform: scale(.94); }
+  50% { opacity: .92; transform: scale(1.04); }
+}
+
+@media (max-width: 1420px) and (min-width: 861px) {
+  .final-login-shell--globe {
+    grid-template-columns: minmax(330px, .90fr) minmax(470px, .86fr);
+    grid-template-rows: clamp(88px, 10vh, 110px) minmax(0, 1fr);
+    column-gap: clamp(26px, 4vw, 54px);
+  }
+
+  .final-login-shell--globe .final-login-header { grid-column: 1 / -1; grid-row: 1; }
+  .final-login-shell--globe .final-login-copy {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+    padding: 0 0 clamp(28px, 5vh, 54px);
+  }
+  .final-login-shell--globe .final-login-panel-zone {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+  }
+  .naksha-login-globe-stage { transform: translateX(-6vw); }
+  .naksha-login-globe-chrome,
+  .naksha-login-globe-city-chip,
+  .naksha-login-globe-source { left: 38%; }
+}
+
+@media (max-width: 860px) {
+  .final-login-shell--globe { display: block; }
+
+  .final-login-shell--globe .final-login-header,
+  .final-login-shell--globe .final-login-copy,
+  .final-login-shell--globe .final-login-panel-zone {
+    position: relative;
+    z-index: 5;
+  }
+
+  .final-login-shell--globe .naksha-login-globe,
+  .final-login-shell--globe .naksha-login-globe-fallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+  }
+
+  .naksha-login-globe-stage {
+    transform: translateY(-5vh);
+    opacity: .56;
+  }
+  .naksha-login-globe::after { opacity: .17; }
+  .naksha-login-globe-chrome { display: none; }
+  .naksha-login-globe-source { display: none; }
+  .naksha-login-globe-loader { left: 50%; bottom: 20px; margin-left: -9px; }
+  .naksha-login-globe-city-chip { top: 13%; left: 50%; font-size: .62rem; }
+}
+
+@media (max-width: 560px) {
+  .naksha-login-globe-stage {
+    transform: translateY(-9vh) scale(.96);
+    opacity: .46;
+  }
+  .naksha-login-globe-loader { bottom: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .naksha-login-globe-pulse,
+  .naksha-login-globe-loader,
+  .naksha-login-globe-fallback--loading::before { animation: none; }
+  .naksha-login-globe-actions button { transition: none; }
+}

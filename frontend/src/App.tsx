@@ -23,11 +23,14 @@ import { LoginPage } from './pages/LoginPage'
 import { ManagementDashboard } from './pages/ManagementDashboard'
 import { ReplacementsPage } from './pages/ReplacementsPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { NakshaCopilotPage } from './features/naksha_copilot/NakshaCopilotPage'
+import { DataQualityCentrePage } from './features/data_quality/DataQualityCentrePage'
 import { WelcomePage } from './pages/WelcomePage'
 import { WorkFormPage } from './pages/WorkFormPage'
 import { RecentChangesPage } from './pages/RecentChangesPage'
 import { HandoverReturnPage } from './pages/HandoverReturnPage'
 import { PurchaseProcurementPage } from './pages/PurchaseProcurementPage'
+import { PurchaseRequestsPage } from './pages/PurchaseRequestsPage'
 import { BackupCenterPage } from './pages/BackupCenterPage'
 import { roleHomePath } from './lib/roles'
 import { RegisterPage } from './features/employee_portal/pages/RegisterPage'
@@ -39,6 +42,7 @@ import { TicketCreatePage } from './features/employee_portal/pages/TicketCreateP
 import { TicketListPage } from './features/employee_portal/pages/TicketListPage'
 import { TicketDetailPage } from './features/employee_portal/pages/TicketDetailPage'
 import { SoftwareSecurityPage } from './features/employee_portal/pages/SoftwareSecurityPage'
+import { AgentMonitorPage } from './features/agent_monitor/AgentMonitorPage'
 
 function WithLayout({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
@@ -50,6 +54,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <WelcomePage />} />
       <Route path="/login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <LoginPage />} />
+      <Route path="/employee-login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <LoginPage mode="employee" />} />
       <Route path="/register" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <RegisterPage />} />
       <Route path="/forgot-password" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <ForgotPasswordPage />} />
       <Route path="/verify-authenticator" element={<AuthenticatorPage />} />
@@ -59,12 +64,15 @@ export default function App() {
       <Route path="/tickets" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketListPage /></WithLayout></ProtectedRoute>} />
       <Route path="/tickets/:id" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/security" element={<ProtectedRoute roles={['software_team']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/software-team/agents" element={<ProtectedRoute roles={['software_team']}><WithLayout><AgentMonitorPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/activity" element={<ProtectedRoute roles={['management']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ITDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/assets" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><AssetsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/assets/new" element={<ProtectedRoute roles={['it', 'admin']}><WithLayout><AssetFormPage /></WithLayout></ProtectedRoute>} />
       <Route path="/assets/:id/edit" element={<ProtectedRoute roles={['it', 'admin']}><WithLayout><AssetFormPage /></WithLayout></ProtectedRoute>} />
       <Route path="/replacements" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ReplacementsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/handover-return" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><HandoverReturnPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/it/purchase-requests" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><PurchaseRequestsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/purchases" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><PurchaseProcurementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/recent-changes" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><RecentChangesPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneDashboardPage /></WithLayout></ProtectedRoute>} />
@@ -84,6 +92,8 @@ export default function App() {
       <Route path="/admin" element={<ProtectedRoute roles={['admin']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/work" element={<ProtectedRoute roles={['it', 'drone', 'management', 'admin']}><WithLayout><WorkFormPage /></WithLayout></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ReportsPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/data-quality" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><DataQualityCentrePage /></WithLayout></ProtectedRoute>} />
+      <Route path="/naksha-copilot" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><NakshaCopilotPage /></WithLayout></ProtectedRoute>} />
       <Route path="/backups" element={<ProtectedRoute roles={['admin', 'management', 'it', 'drone']}><WithLayout><BackupCenterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/future" element={<ProtectedRoute roles={['admin']}><WithLayout><FutureFeaturesPage /></WithLayout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? (needsBranchSelection ? '/select-branch' : roleHomePath(user.role)) : '/'} replace />} />

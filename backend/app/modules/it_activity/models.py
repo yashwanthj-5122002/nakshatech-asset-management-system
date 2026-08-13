@@ -47,11 +47,76 @@ class ITHandoverRecord(Base):
     asset: Mapped[Asset | None] = relationship()
 
 
+class ITPurchaseRequest(Base):
+    __tablename__ = "it_purchase_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    reporting_month: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
+    requesting_department: Mapped[str] = mapped_column(String(160), index=True)
+    requested_employee: Mapped[str] = mapped_column(String(255), index=True)
+    item_type: Mapped[str] = mapped_column(String(40), index=True)
+    item_name: Mapped[str] = mapped_column(String(255), index=True)
+    item_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[float] = mapped_column(Float, default=1)
+    estimated_unit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimated_total_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    business_reason: Mapped[str] = mapped_column(Text)
+    required_by_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    priority: Mapped[str] = mapped_column(String(30), default="medium", index=True)
+    it_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending_approval", index=True)
+    branch: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    requested_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    requested_by_name: Mapped[str] = mapped_column(String(255))
+    requested_by_email: Mapped[str] = mapped_column(String(255), index=True)
+    requested_by_role: Mapped[str] = mapped_column(String(30))
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    approved_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    management_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    decided_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    purchase_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    histories: Mapped[list[ITPurchaseRequestHistory]] = relationship(
+        back_populates="request",
+        cascade="all, delete-orphan",
+        order_by="ITPurchaseRequestHistory.created_at",
+    )
+    purchase_record: Mapped[ITPurchaseRecord | None] = relationship(
+        back_populates="purchase_request",
+        uselist=False,
+    )
+
+
+class ITPurchaseRequestHistory(Base):
+    __tablename__ = "it_purchase_request_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("it_purchase_requests.id"), index=True)
+    action: Mapped[str] = mapped_column(String(50), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(40), index=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    performed_by_name: Mapped[str] = mapped_column(String(255))
+    performed_by_email: Mapped[str] = mapped_column(String(255), index=True)
+    performed_by_role: Mapped[str] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    request: Mapped[ITPurchaseRequest] = relationship(back_populates="histories")
+
+
 class ITPurchaseRecord(Base):
     __tablename__ = "it_purchase_records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     purchase_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    purchase_request_id: Mapped[int | None] = mapped_column(ForeignKey("it_purchase_requests.id"), nullable=True, unique=True, index=True)
     linked_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
     linked_asset_code_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     purchase_date: Mapped[date] = mapped_column(Date, index=True)
@@ -81,3 +146,8 @@ class ITPurchaseRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
     linked_asset: Mapped[Asset | None] = relationship()
+    purchase_request: Mapped[ITPurchaseRequest | None] = relationship(back_populates="purchase_record")
+
+    @property
+    def purchase_request_code(self) -> str | None:
+        return self.purchase_request.request_code if self.purchase_request else None

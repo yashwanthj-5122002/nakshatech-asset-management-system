@@ -5,6 +5,7 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     role: str | None = None
+    access_mode: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -32,4 +33,6 @@ class LoginResponse(BaseModel):
     mfa_setup_token: str | None = None
     otpauth_uri: str | None = None
     qr_code_data_uri: str | None = None
+    password_change_required: bool = False
+    password_change_token: str | None = None
     branch_selection_required: bool = False

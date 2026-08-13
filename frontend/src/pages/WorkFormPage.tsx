@@ -55,7 +55,7 @@ function newChangeRow(index = 0): ChangeRow {
 function assetSearchText(asset: Asset): string {
   return [
     asset.cpu_asset_tag, asset.workstation_no, asset.used_by, asset.department,
-    asset.system_name, asset.asset_code,
+    asset.system_name, asset.brand, asset.model, asset.serial_number, asset.connection_type, asset.asset_code,
   ].filter(Boolean).join(' ')
 }
 
@@ -74,6 +74,7 @@ export function WorkFormPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [decisionComments, setDecisionComments] = useState<Record<number, string>>({})
   const [form, setForm] = useState({
     module: defaultModule, asset_id: '', title: '', work_type: 'Inspection', project: '',
     assigned_to: '', technician: user?.full_name || '', priority: 'medium', issue_description: '',
@@ -239,22 +240,27 @@ export function WorkFormPage() {
     try {
       await apiFetch(`/work-records/${record.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status, approval_status: status === 'completed' ? 'pending' : record.approval_status, reporting_month: selectedMonth }),
+        body: JSON.stringify({ status, reporting_month: selectedMonth }),
       })
-      setMessage(`${record.work_code} updated to ${status.replaceAll('_', ' ')}.`)
+      setMessage(status === 'completed'
+        ? `${record.work_code} completed and sent for Management approval.`
+        : `${record.work_code} updated to ${status.replaceAll('_', ' ')}.`)
       await load()
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to update work') }
   }
 
-  async function decideWork(record: WorkRecord, approvalStatus: 'approved' | 'rejected') {
+  async function decideWork(record: WorkRecord, action: 'approve' | 'return') {
     try {
-      await apiFetch(`/work-records/${record.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ approval_status: approvalStatus, status: approvalStatus === 'approved' ? 'closed' : 'in_progress', reporting_month: selectedMonth }),
+      await apiFetch(`/work-records/${record.id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ action, comments: decisionComments[record.id] || null }),
       })
-      setMessage(`${record.work_code} ${approvalStatus}.`)
+      setDecisionComments(current => ({ ...current, [record.id]: '' }))
+      setMessage(action === 'approve'
+        ? `${record.work_code} approved and closed by Management.`
+        : `${record.work_code} returned to IT for correction.`)
       await load()
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to record approval') }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to record Management decision') }
   }
 
   return (
@@ -275,11 +281,15 @@ export function WorkFormPage() {
 
       <section className={`dashboard-grid work-layout ${mode === 'component' ? 'multi-change-layout' : ''}`}>
         <article className="panel work-form-panel">
-          {mode === 'work' || defaultModule === 'drone' ? <>
+          {user?.role === 'management' ? <div className="management-review-callout">
+            <span className="section-kicker">MANAGEMENT REVIEW MODE</span>
+            <h2>Operational changes are controlled by IT</h2>
+            <p>Review pending completed IT work in the history panel and use Approve & Close or Return to IT. Management cannot create or perform operational IT work.</p>
+          </div> : mode === 'work' || defaultModule === 'drone' ? <>
             <div className="panel-heading"><div><span className="section-kicker">NEW WORK RECORD</span><h2>Start Work</h2></div><ClipboardPlus /></div>
             <form className="data-form form-grid" onSubmit={submit}>
-              {((user && isFullAccessRole(user.role)) || user?.role === 'management') && <label>Department Module<select value={form.module} onChange={e => setForm({ ...form, module: e.target.value })}><option value="it">IT</option><option value="drone">Drone</option></select></label>}
-              <label>Work Type<select value={form.work_type} onChange={e => setForm({ ...form, work_type: e.target.value })}><option>Inspection</option><option>New System Installation</option><option>Hardware Repair</option><option>System Upgrade</option><option>Software Installation</option><option>Network Configuration</option><option>Asset Transfer</option><option>Employee Handover</option><option>Asset Return</option><option>Flight Planning</option><option>Drone Maintenance</option></select></label>
+              {(user && isFullAccessRole(user.role)) && <label>Department Module<select value={form.module} onChange={e => setForm({ ...form, module: e.target.value })}><option value="it">IT</option><option value="drone">Drone</option></select></label>}
+              <label>Work Type<select value={form.work_type} onChange={e => setForm({ ...form, work_type: e.target.value })}><option>Inspection</option><option>New System Installation</option><option>Hardware Repair</option><option>System Upgrade</option><option>Software Installation</option><option>Network Configuration</option><option>Asset Transfer</option><option>Employee Handover</option><option>Asset Return</option><option>Printer Installation</option><option>Printer Repair</option><option>Printer Maintenance</option><option>Print Quality Issue</option><option>Scanner Issue</option><option>Printer Network Configuration</option><option>Toner / Ink Replacement</option><option>Flight Planning</option><option>Drone Maintenance</option></select></label>
               {form.module === 'it' && <label className="full-span">System — CPU / Asset Tag + Workstation<select value={form.asset_id} onChange={e => { const asset = assets.find(item => item.id === Number(e.target.value)); setForm({ ...form, asset_id: e.target.value, assigned_to: asset?.used_by || form.assigned_to }) }}><option value="">Select the system</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No CPU tag'} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · {asset.asset_code}</option>)}</select></label>}
               <label className="full-span">Work Title<input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Example: Inspect system not powering on" /></label>
               <label>Assigned Employee / Team<input value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} /></label>
@@ -367,10 +377,16 @@ export function WorkFormPage() {
               <h3>{record.title}</h3><p>{record.issue_description || record.details}</p>
               <div className="record-meta"><span>{record.work_type}</span><span className={`priority ${record.priority}`}>{record.priority}</span><span>{record.technician || 'Unassigned technician'}</span><span>{new Date(record.created_at).toLocaleDateString()}</span></div>
               <div className="record-actions">
-                {record.status === 'open' && <button className="secondary-button" onClick={() => void changeStatus(record, 'in_progress')}><Play size={15} /> Start</button>}
-                {record.status === 'in_progress' && <button className="primary-button" onClick={() => void changeStatus(record, 'completed')}><CheckCircle2 size={15} /> Complete</button>}
-                {record.status === 'completed' && record.approval_status === 'pending' && ((user && isFullAccessRole(user.role)) || user?.role === 'management') && <><button className="primary-button" onClick={() => void decideWork(record, 'approved')}><CheckCircle2 size={15} /> Approve & Close</button><button className="danger-button" onClick={() => void decideWork(record, 'rejected')}>Return to IT</button></>}
-                {['completed', 'closed'].includes(record.status) && !(record.status === 'completed' && record.approval_status === 'pending' && ((user && isFullAccessRole(user.role)) || user?.role === 'management')) && <span className="approval-note"><Wrench size={15} /> Approval: {record.approval_status.replaceAll('_', ' ')}</span>}
+                {record.status === 'open' && (user?.role === 'it' || user?.role === 'admin') && <button className="secondary-button" onClick={() => void changeStatus(record, 'in_progress')}><Play size={15} /> Start</button>}
+                {record.status === 'in_progress' && (user?.role === 'it' || user?.role === 'admin') && <button className="primary-button" onClick={() => void changeStatus(record, 'completed')}><CheckCircle2 size={15} /> Complete</button>}
+                {record.status === 'completed' && record.approval_status === 'pending' && user?.role === 'management' && <div className="management-inline-approval">
+                  <input value={decisionComments[record.id] || ''} onChange={event => setDecisionComments(current => ({ ...current, [record.id]: event.target.value }))} placeholder="Management comments (required when returning)" />
+                  <button className="primary-button" onClick={() => void decideWork(record, 'approve')}><CheckCircle2 size={15} /> Approve & Close</button>
+                  <button className="danger-button" onClick={() => void decideWork(record, 'return')}>Return to IT</button>
+                </div>}
+                {record.status === 'completed' && record.approval_status === 'pending' && user?.role !== 'management' && <span className="approval-note"><Wrench size={15} /> Pending · Management Approval</span>}
+                {record.approval_status === 'returned' && <span className="approval-note"><Wrench size={15} /> Returned by Management{record.approval_comments ? ` · ${record.approval_comments}` : ''}</span>}
+                {record.status === 'closed' && <span className="approval-note"><Wrench size={15} /> Approved by {record.approved_by_name || 'Management'}</span>}
               </div>
             </article>)}
             {!records.length && <div className="empty-state">No work records have been created for this module.</div>}

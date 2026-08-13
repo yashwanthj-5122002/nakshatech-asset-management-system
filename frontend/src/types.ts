@@ -1,5 +1,11 @@
 export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'employee'
 
+export interface ManagementLoginAccount {
+  display_name: string
+  full_name: string
+  email: string
+}
+
 export interface AuthUser {
   id: number
   email: string
@@ -25,6 +31,8 @@ export interface AuthLoginResponse {
   mfa_setup_token?: string
   otpauth_uri?: string
   qr_code_data_uri?: string
+  password_change_required: boolean
+  password_change_token?: string
   branch_selection_required: boolean
 }
 
@@ -39,6 +47,40 @@ export type TicketDepartment = 'it' | 'drone' | 'software_team' | 'management'
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical'
 export type TicketStatus = 'new' | 'assigned' | 'in_progress' | 'waiting_for_employee' | 'resolved' | 'closed' | 'reopened'
 
+export interface TicketProblemOption {
+  code: string
+  label: string
+}
+
+export interface TicketComponentOption {
+  code: string
+  label: string
+  problems: TicketProblemOption[]
+}
+
+export interface TicketCatalog {
+  components: TicketComponentOption[]
+}
+
+export interface TicketImpactAssessment {
+  work_stopped: boolean
+  alternative_available: boolean
+  multiple_users_affected: boolean
+  data_loss_risk: boolean
+  security_risk: boolean
+  client_delivery_affected: boolean
+  recurring_issue: boolean
+  started_when?: string
+}
+
+export interface TicketPriorityPreview {
+  priority: TicketPriority
+  priority_label: string
+  reason: string
+  sla_target_minutes: number
+  problem_label: string
+}
+
 export interface SupportTicketSummary {
   id: number
   ticket_code: string
@@ -51,10 +93,40 @@ export interface SupportTicketSummary {
   title: string
   priority: TicketPriority
   status: TicketStatus
+  asset_number?: string
+  component?: string
+  component_asset_tag?: string
+  problem_code?: string
+  problem_label?: string
+  priority_reason?: string
+  sla_target_minutes?: number
+  sla_status?: 'not_applicable' | 'on_track' | 'warning' | 'breached' | 'met'
+  sla_due_at?: string
+  sla_warning_at?: string
+  sla_first_response_at?: string
+  sla_remaining_seconds?: number
+  sla_warning?: boolean
+  sla_breached?: boolean
+  sla_escalation_level?: 'none' | 'warning' | 'breach' | 'critical_breach'
   assigned_to_name?: string
+  queue_position?: number
   created_at: string
   updated_at: string
+  resolved_at?: string
+  closed_at?: string
   can_handle: boolean
+}
+
+export interface TicketAttachment {
+  id: number
+  ticket_id: number
+  message_id?: number
+  uploaded_by_id: number
+  uploaded_by_name: string
+  original_filename: string
+  mime_type: string
+  file_size: number
+  created_at: string
 }
 
 export interface TicketMessage {
@@ -67,11 +139,47 @@ export interface TicketMessage {
   created_at: string
 }
 
+export interface TicketAsset {
+  id: number
+  asset_code: string
+  cpu_asset_tag?: string
+  workstation_no?: string
+  used_by?: string
+  department?: string
+  system_name?: string
+  brand?: string
+  model?: string
+  serial_number?: string
+  connection_type?: string
+  capacity?: string
+  ownership?: string
+  client_name?: string
+  project_id?: string
+  current_holder?: string
+  device_type: string
+  processor?: string
+  memory_gb?: string
+  ssd?: string
+  hdd?: string
+  operating_system?: string
+  location?: string
+  work_mode?: string
+  status: string
+  monitor_asset_tags?: string
+  mouse_asset_tag?: string
+  keyboard_asset_tag?: string
+}
+
 export interface SupportTicket extends SupportTicketSummary {
   description: string
+  reporting_manager_email?: string
   location?: string
   asset_number?: string
+  asset_id?: number
+  asset_snapshot?: TicketAsset
+  impact_assessment?: TicketImpactAssessment
   resolution?: string
+  attachments?: TicketAttachment[]
   messages: TicketMessage[]
 }
 
@@ -199,6 +307,15 @@ export interface Asset {
   mouse_asset_tag?: string
   keyboard_asset_tag?: string
   system_name?: string
+  brand?: string
+  model?: string
+  serial_number?: string
+  connection_type?: string
+  capacity?: string
+  ownership?: string
+  client_name?: string
+  project_id?: string
+  current_holder?: string
   device_type: string
   processor?: string
   memory_gb?: string
@@ -271,6 +388,15 @@ export interface WorkRecord {
   replacement_asset_tag?: string
   cost?: number
   approval_status: string
+  submitted_by_name?: string
+  submitted_by_email?: string
+  submitted_by_role?: Role
+  submitted_at?: string
+  approved_by_name?: string
+  approved_by_email?: string
+  approved_by_role?: Role
+  approved_at?: string
+  approval_comments?: string
   start_date?: string
   expected_completion_date?: string
   completed_at?: string
@@ -329,6 +455,8 @@ export interface ReplacementRecord {
   reporting_month?: string
   created_at: string
   approved_at?: string
+  decision_remarks?: string
+  updated_at?: string
 }
 
 export interface ITDashboardData {
@@ -353,6 +481,8 @@ export interface ITDashboardData {
     computers: number
     laptops: number
     smartphones: number
+    printers: number
+    external_hdds: number
     assigned: number
     available: number
     repair: number
@@ -847,6 +977,8 @@ export interface ITHandoverRecord {
   asset_code_snapshot?: string
   device_category: 'laptop' | 'desktop'
   employee_name?: string
+  from_employee_name?: string
+  to_employee_name?: string
   dc_number?: string
   department?: string
   work_mode?: string
@@ -876,6 +1008,8 @@ export interface ITHandoverRecord {
 export interface ITPurchaseRecord {
   id: number
   purchase_code: string
+  purchase_request_id?: number
+  purchase_request_code?: string
   linked_asset_id?: number
   linked_asset_code_snapshot?: string
   purchase_date: string
@@ -904,7 +1038,70 @@ export interface ITPurchaseRecord {
   created_at: string
 }
 
-export type ITAssetDrilldownScope = 'all' | 'device' | 'status' | 'department'
+export type PurchaseRequestStatus = 'pending_approval' | 'approved' | 'rejected' | 'sent_back' | 'purchase_completed'
+
+export interface PurchaseRequestHistory {
+  id: number
+  action: string
+  from_status?: string
+  to_status: PurchaseRequestStatus
+  remarks?: string
+  performed_by_name: string
+  performed_by_email: string
+  performed_by_role: Role
+  created_at: string
+}
+
+export interface ITPurchaseRequest {
+  id: number
+  request_code: string
+  reporting_month?: string
+  requesting_department: string
+  requested_employee: string
+  item_type: 'hardware' | 'software' | 'other'
+  item_name: string
+  item_description?: string
+  quantity: number
+  estimated_unit_price?: number
+  estimated_total_amount?: number
+  business_reason: string
+  required_by_date?: string
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  it_remarks?: string
+  status: PurchaseRequestStatus
+  branch?: string
+  requested_by_name: string
+  requested_by_email: string
+  requested_by_role: Role
+  requested_at: string
+  approved_amount?: number
+  management_remarks?: string
+  decided_by_name?: string
+  decided_by_email?: string
+  decided_by_role?: Role
+  decided_at?: string
+  purchase_completed_at?: string
+  updated_at: string
+  purchase_record_id?: number
+  purchase_code?: string
+  actual_purchase_amount?: number
+  purchase_date?: string
+  histories: PurchaseRequestHistory[]
+}
+
+export interface PurchaseRequestSummary {
+  total: number
+  pending_approval: number
+  approved: number
+  rejected: number
+  sent_back: number
+  purchase_completed: number
+  estimated_value: number
+  approved_value: number
+  departments: string[]
+}
+
+export type ITAssetDrilldownScope = 'all' | 'primary' | 'device' | 'status' | 'department'
 
 export interface ITAssetDrilldownSelection {
   scope: ITAssetDrilldownScope
@@ -933,6 +1130,13 @@ export interface ITAssetDrilldownData {
     computers: number
     laptops: number
     smartphones: number
+    printers: number
+    external_hdds: number
+    nakshatech_owned: number
+    client_owned: number
+    issued: number
+    permanently_issued: number
+    returned: number
     assigned: number
     available: number
     repair: number
@@ -943,6 +1147,13 @@ export interface ITAssetDrilldownData {
     computers: number
     laptops: number
     smartphones: number
+    printers: number
+    external_hdds: number
+    nakshatech_owned: number
+    client_owned: number
+    issued: number
+    permanently_issued: number
+    returned: number
     assigned: number
     available: number
     repair: number
@@ -959,6 +1170,12 @@ export interface ITAssetDrilldownData {
     statuses: string[]
     locations: string[]
     work_modes: string[]
+    ownerships: string[]
+    clients: string[]
+    projects: string[]
+    holders: string[]
+    brands: string[]
+    capacities: string[]
   }
   assets: Asset[]
 }

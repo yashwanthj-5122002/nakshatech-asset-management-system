@@ -21,6 +21,19 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   return response.json() as Promise<T>
 }
 
+export async function apiBlob(path: string): Promise<Blob> {
+  const token = getToken()
+  const response = await fetch(`${API_BASE}${path}`, {
+    cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Request failed' }))
+    throw new Error(error.detail || 'Request failed')
+  }
+  return response.blob()
+}
+
 export async function downloadFile(path: string, fallbackName: string): Promise<void> {
   const token = getToken()
   const response = await fetch(`${API_BASE}${path}`, {

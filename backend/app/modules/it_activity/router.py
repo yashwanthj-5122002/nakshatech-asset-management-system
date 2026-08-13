@@ -11,11 +11,36 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_roles
 from app.core.database import get_db
 from app.models.entities import User
-from app.modules.it_activity.excel_service import EXCEL_MIME, build_monthly_it_activity_workbook
+from app.modules.it_activity.excel_service import (
+    EXCEL_MIME,
+    build_monthly_it_activity_workbook,
+    build_purchase_request_workbook,
+)
 from app.modules.it_activity.import_service import import_handover_workbook, import_purchase_workbook
-from app.modules.it_activity.models import ITHandoverRecord, ITPurchaseRecord
-from app.modules.it_activity.schemas import HandoverCreate, HandoverResponse, PurchaseCreate, PurchaseResponse
-from app.modules.it_activity.service import create_handover_record, create_purchase_record, month_bounds, monthly_activity_data
+from app.modules.it_activity.models import ITHandoverRecord, ITPurchaseRecord, ITPurchaseRequest
+from app.modules.it_activity.schemas import (
+    HandoverCreate,
+    HandoverResponse,
+    PurchaseCreate,
+    PurchaseRequestCreate,
+    PurchaseRequestDecision,
+    PurchaseRequestResponse,
+    PurchaseRequestResubmit,
+    PurchaseResponse,
+)
+from app.modules.it_activity.service import (
+    create_handover_record,
+    hydrate_handover_custody_movements,
+    create_purchase_record,
+    create_purchase_request,
+    decide_purchase_request,
+    month_bounds,
+    monthly_activity_data,
+    purchase_request_query,
+    purchase_request_summary,
+    purchase_request_to_dict,
+    resubmit_purchase_request,
+)
 
 router = APIRouter(tags=["IT Activity"])
 
@@ -75,9 +100,10 @@ def list_handover_records(
             ITHandoverRecord.serial_number.ilike(pattern),
             ITHandoverRecord.department.ilike(pattern),
         ))
-    return list(db.scalars(
+    records = list(db.scalars(
         query.order_by(ITHandoverRecord.activity_date.desc(), ITHandoverRecord.activity_time.desc(), ITHandoverRecord.id.desc()).limit(limit)
     ).all())
+    return hydrate_handover_custody_movements(db, records)
 
 
 @router.post("/handover-records", response_model=HandoverResponse)
@@ -86,7 +112,125 @@ def add_handover_record(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> ITHandoverRecord:
-    return create_handover_record(db, payload, user)
+    record = create_handover_record(db, payload, user)
+    return hydrate_handover_custody_movements(db, [record])[0]
+
+
+@router.get("/purchase-requests/summary")
+def purchase_requests_summary(
+    month: str | None = None,
+    department: str | None = None,
+    priority: str | None = None,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> dict:
+    return purchase_request_summary(
+        db,
+        month,
+        department=department,
+        priority=priority,
+        search=search,
+    )
+
+
+@router.get("/purchase-requests.xlsx")
+def download_purchase_requests(
+    month: str | None = None,
+    status: str | None = None,
+    department: str | None = None,
+    priority: str | None = None,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+):
+    stream, count = build_purchase_request_workbook(
+        db,
+        month=month,
+        status=status,
+        department=department,
+        priority=priority,
+        search=search,
+    )
+    suffix = month or "all-months"
+    filename = f"NakshaTech Purchase Requests - {suffix}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type=EXCEL_MIME,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            "X-Row-Counts": f"purchase_requests:{count}",
+        },
+    )
+
+
+@router.get("/purchase-requests", response_model=list[PurchaseRequestResponse])
+def list_purchase_requests(
+    month: str | None = None,
+    status: str | None = None,
+    department: str | None = None,
+    priority: str | None = None,
+    search: str | None = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> list[dict]:
+    records = list(db.scalars(
+        purchase_request_query(
+            month,
+            status=status,
+            department=department,
+            priority=priority,
+            search=search,
+        )
+        .order_by(ITPurchaseRequest.requested_at.desc(), ITPurchaseRequest.id.desc())
+        .limit(limit)
+    ).unique().all())
+    return [purchase_request_to_dict(record) for record in records]
+
+
+@router.get("/purchase-requests/{request_id}", response_model=PurchaseRequestResponse)
+def get_purchase_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> dict:
+    record = db.get(ITPurchaseRequest, request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Purchase request was not found")
+    return purchase_request_to_dict(record, include_history=True)
+
+
+@router.post("/purchase-requests", response_model=PurchaseRequestResponse)
+def add_purchase_request(
+    payload: PurchaseRequestCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    record = create_purchase_request(db, payload, user)
+    return purchase_request_to_dict(record, include_history=True)
+
+
+@router.put("/purchase-requests/{request_id}/resubmit", response_model=PurchaseRequestResponse)
+def resubmit_request(
+    request_id: int,
+    payload: PurchaseRequestResubmit,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    record = resubmit_purchase_request(db, request_id, payload, user)
+    return purchase_request_to_dict(record, include_history=True)
+
+
+@router.post("/purchase-requests/{request_id}/decision", response_model=PurchaseRequestResponse)
+def make_purchase_request_decision(
+    request_id: int,
+    payload: PurchaseRequestDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("management")),
+) -> dict:
+    record = decide_purchase_request(db, request_id, payload, user)
+    return purchase_request_to_dict(record, include_history=True)
 
 
 @router.get("/purchases", response_model=list[PurchaseResponse])

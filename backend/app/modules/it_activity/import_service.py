@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from hashlib import sha256
 from io import BytesIO
 import re
@@ -184,6 +185,7 @@ def import_handover_workbook(
                 performed_by=_clean_scalar(_cell(sheet, row_idx, mapping, "Issued By")) or user.full_name,
                 performed_by_email=None,
                 performed_by_role="historical_import",
+                reporting_month=activity_date.strftime("%Y-%m"),
             )
             db.add(record)
             created += 1
@@ -258,6 +260,7 @@ def import_purchase_workbook(db: Session, content: bytes, filename: str, user: U
                 created_by=_clean_scalar(_cell(sheet, row_idx, mapping, "Approved By")) or user.full_name,
                 created_by_email=None,
                 created_by_role="historical_import",
+                reporting_month=purchase_date.strftime("%Y-%m"),
             )
             db.add(record)
             created += 1
@@ -267,3 +270,107 @@ def import_purchase_workbook(db: Session, content: bytes, filename: str, user: U
 
     db.commit()
     return {"created": created, "skipped": skipped, "invalid": invalid, "sheets": sheets, "warnings": warnings}
+
+
+def backfill_it_activity_reporting_months(db: Session) -> dict[str, int]:
+    """Populate missing effective months from each record's business date.
+
+    Older imports predate the reporting_month column. Their source dates are the
+    authoritative business dates, so this backfill is deterministic and safe to
+    run repeatedly.
+    """
+    handovers_updated = 0
+    purchases_updated = 0
+
+    handovers = db.scalars(
+        select(ITHandoverRecord).where(
+            or_(
+                ITHandoverRecord.reporting_month.is_(None),
+                func.trim(ITHandoverRecord.reporting_month) == "",
+            )
+        )
+    ).all()
+    for record in handovers:
+        record.reporting_month = record.activity_date.strftime("%Y-%m")
+        handovers_updated += 1
+
+    purchases = db.scalars(
+        select(ITPurchaseRecord).where(
+            or_(
+                ITPurchaseRecord.reporting_month.is_(None),
+                func.trim(ITPurchaseRecord.reporting_month) == "",
+            )
+        )
+    ).all()
+    for record in purchases:
+        record.reporting_month = record.purchase_date.strftime("%Y-%m")
+        purchases_updated += 1
+
+    if handovers_updated or purchases_updated:
+        db.commit()
+
+    return {
+        "handovers_updated": handovers_updated,
+        "purchases_updated": purchases_updated,
+    }
+
+
+def ensure_bundled_it_activity_reference_data(
+    db: Session,
+    data_dir: Path,
+    user: User,
+) -> dict[str, Any]:
+    """Load the bundled historical IT activity workbooks exactly once.
+
+    The importers use stable source keys, and this guard also checks the source
+    filename before opening a workbook. This keeps application startup fast after
+    the first successful import while preserving idempotency.
+    """
+    result: dict[str, Any] = {
+        "backfill": backfill_it_activity_reporting_months(db),
+        "files": {},
+    }
+
+    handover_jobs = (
+        ("laptop", data_dir / "Laptop_Handover_and_Returned.xlsx"),
+        ("desktop", data_dir / "Desktop_Handover_and_Returned.xlsx"),
+    )
+    for category, path in handover_jobs:
+        if not path.exists():
+            result["files"][path.name] = {"status": "missing"}
+            continue
+        already_loaded = db.scalar(
+            select(ITHandoverRecord.id)
+            .where(ITHandoverRecord.source_file == path.name)
+            .limit(1)
+        )
+        if already_loaded is not None:
+            result["files"][path.name] = {"status": "already_loaded"}
+            continue
+        imported = import_handover_workbook(db, path.read_bytes(), path.name, category, user)
+        result["files"][path.name] = {"status": "imported", **imported}
+
+    purchase_path = data_dir / "Purchase_Details.xlsx"
+    if not purchase_path.exists():
+        result["files"][purchase_path.name] = {"status": "missing"}
+    else:
+        already_loaded = db.scalar(
+            select(ITPurchaseRecord.id)
+            .where(ITPurchaseRecord.source_file == purchase_path.name)
+            .limit(1)
+        )
+        if already_loaded is not None:
+            result["files"][purchase_path.name] = {"status": "already_loaded"}
+        else:
+            imported = import_purchase_workbook(
+                db,
+                purchase_path.read_bytes(),
+                purchase_path.name,
+                user,
+            )
+            result["files"][purchase_path.name] = {"status": "imported", **imported}
+
+    # A second backfill also covers any rows created by older importer versions
+    # or records inserted concurrently before this guarded import completed.
+    result["post_import_backfill"] = backfill_it_activity_reporting_months(db)
+    return result

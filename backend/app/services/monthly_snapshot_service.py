@@ -13,13 +13,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.services.asset_lifecycle_service import canonical_device_type, is_supported_device_type
 from app.models.entities import Asset, MonthlyAssetSnapshot, MonthlySnapshotRun
 
 
 SNAPSHOT_FIELDS = [
     "id", "asset_code", "source_sheet", "source_row", "used_by", "workstation_no", "department",
     "cpu_asset_tag", "monitor_asset_tags", "mouse_asset_tag", "keyboard_asset_tag", "system_name",
-    "device_type", "processor", "memory_gb", "ssd", "hdd", "ip_address", "mac_address",
+    "brand", "model", "serial_number", "connection_type", "capacity", "ownership",
+    "client_name", "project_id", "current_holder", "device_type", "processor",
+    "memory_gb", "ssd", "hdd", "ip_address", "mac_address",
     "graphics_card", "operating_system", "antivirus", "network_type", "performed_by", "approved_by",
     "price", "remarks", "asset_date", "original_asset_date", "location", "work_mode", "status", "created_at", "updated_at",
 ]
@@ -199,7 +202,14 @@ def template_assets(start: date) -> list[SimpleNamespace]:
 
     rows: list[SimpleNamespace] = []
     recorded_at = datetime.combine(month_end(start), datetime.min.time())
-    known_devices = {"computer": "Computer", "laptop": "Laptop", "smartphone": "Smartphone", "mobile": "Smartphone"}
+    known_devices = {
+        key: canonical_device_type(key)
+        for key in (
+            "computer", "desktop", "pc", "laptop", "notebook", "smartphone", "mobile",
+            "printer", "server", "network device", "external hdd",
+        )
+        if is_supported_device_type(key)
+    }
     for row_index, row in enumerate(sheet.iter_rows(min_row=2, max_row=min(sheet.max_row or 1000, 1000), max_col=25, values_only=True), start=2):
         values = list(row) + [None] * (25 - len(row))
         serial = _cell_text(values[0])
@@ -241,6 +251,10 @@ def template_assets(start: date) -> list[SimpleNamespace]:
             mouse_asset_tag=_cell_text(values[6]),
             keyboard_asset_tag=_cell_text(values[7]),
             system_name=_cell_text(values[8]),
+            brand=None,
+            model=None,
+            serial_number=None,
+            connection_type=None,
             device_type=device_type,
             processor=_cell_text(values[10]),
             memory_gb=_cell_text(values[11]),

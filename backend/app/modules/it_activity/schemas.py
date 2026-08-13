@@ -19,6 +19,7 @@ class HandoverCreate(BaseModel):
     accessories_provided: str | None = None
     condition: str | None = None
     action_type: str
+    return_status: str = "available"
     activity_date: date
     issued_by: str | None = None
     remarks: str | None = None
@@ -33,6 +34,24 @@ class HandoverCreate(BaseModel):
             raise ValueError("Device category must be laptop or desktop")
         return value
 
+    @field_validator("return_status")
+    @classmethod
+    def validate_return_status(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized not in {"available", "repair", "damaged", "returned"}:
+            raise ValueError("Return status must be available, repair, damaged or returned")
+        return normalized
+
+    @field_validator("work_mode")
+    @classmethod
+    def validate_work_mode(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"office", "wfh", "field"}:
+            raise ValueError("Work mode must be office, wfh or field")
+        return normalized
+
 
 class HandoverResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -43,6 +62,8 @@ class HandoverResponse(BaseModel):
     asset_code_snapshot: str | None = None
     device_category: str
     employee_name: str | None = None
+    from_employee_name: str | None = None
+    to_employee_name: str | None = None
     dc_number: str | None = None
     department: str | None = None
     work_mode: str | None = None
@@ -69,8 +90,113 @@ class HandoverResponse(BaseModel):
     created_at: datetime
 
 
+class PurchaseRequestCreate(BaseModel):
+    reporting_month: str | None = None
+    requesting_department: str = Field(min_length=1)
+    requested_employee: str = Field(min_length=1)
+    item_type: str
+    item_name: str = Field(min_length=1)
+    item_description: str | None = None
+    quantity: float = Field(default=1, gt=0)
+    estimated_unit_price: float | None = Field(default=None, ge=0)
+    estimated_total_amount: float | None = Field(default=None, ge=0)
+    business_reason: str = Field(min_length=1)
+    required_by_date: date | None = None
+    priority: str = "medium"
+    it_remarks: str | None = None
+
+    @field_validator("item_type")
+    @classmethod
+    def validate_item_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"hardware", "software", "other"}:
+            raise ValueError("Item type must be hardware, software or other")
+        return normalized
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"low", "medium", "high", "critical"}:
+            raise ValueError("Priority must be low, medium, high or critical")
+        return normalized
+
+
+class PurchaseRequestResubmit(PurchaseRequestCreate):
+    pass
+
+
+class PurchaseRequestDecision(BaseModel):
+    action: str
+    approved_amount: float | None = Field(default=None, ge=0)
+    management_remarks: str | None = None
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"approve", "reject", "send_back"}:
+            raise ValueError("Decision must be approve, reject or send_back")
+        return normalized
+
+
+class PurchaseRequestHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action: str
+    from_status: str | None = None
+    to_status: str
+    remarks: str | None = None
+    performed_by_name: str
+    performed_by_email: str
+    performed_by_role: str
+    created_at: datetime
+
+
+class PurchaseRequestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    request_code: str
+    reporting_month: str | None = None
+    requesting_department: str
+    requested_employee: str
+    item_type: str
+    item_name: str
+    item_description: str | None = None
+    quantity: float
+    estimated_unit_price: float | None = None
+    estimated_total_amount: float | None = None
+    business_reason: str
+    required_by_date: date | None = None
+    priority: str
+    it_remarks: str | None = None
+    status: str
+    branch: str | None = None
+    requested_by_name: str
+    requested_by_email: str
+    requested_by_role: str
+    requested_at: datetime
+    approved_amount: float | None = None
+    management_remarks: str | None = None
+    decided_by_name: str | None = None
+    decided_by_email: str | None = None
+    decided_by_role: str | None = None
+    decided_at: datetime | None = None
+    purchase_completed_at: datetime | None = None
+    updated_at: datetime
+    purchase_record_id: int | None = None
+    purchase_code: str | None = None
+    actual_purchase_amount: float | None = None
+    purchase_date: date | None = None
+    histories: list[PurchaseRequestHistoryResponse] = Field(default_factory=list)
+
+
 class PurchaseCreate(BaseModel):
     reporting_month: str | None = None
+    purchase_request_id: int | None = None
+    purchase_request_code: str | None = None
     linked_asset_id: int | None = None
     purchase_date: date
     po_number: str | None = None
@@ -94,6 +220,7 @@ class PurchaseResponse(BaseModel):
 
     id: int
     purchase_code: str
+    purchase_request_id: int | None = None
     linked_asset_id: int | None = None
     linked_asset_code_snapshot: str | None = None
     purchase_date: date

@@ -18,17 +18,26 @@ class Settings(BaseSettings):
     enable_background_watcher: bool = True
     seed_default_users: bool = True
 
-    seed_admin_email: str = "software-support@nakshatech.com"
+    # Privileged department accounts are provisioned by NakshaTech and are not
+    # available through public employee registration. Temporary first-login
+    # passwords are stored only in protected environment configuration.
+    seed_admin_email: str = "admin@nakshatech.com"
     seed_admin_password: str = "ChangeMeLocalAdmin@2026!"
-    # The legacy SEED_ADMIN_* variables now preserve the existing Software Team account.
-    # A separate organization Admin can be seeded with the optional variables below.
+    seed_software_team_email: str = "software.team@nakshatech.com"
+    seed_software_team_password: str = "ChangeMeLocalSoftwareTeam@2026!"
+    # Optional additional organization Admin retained for backward compatibility.
     seed_organization_admin_name: str = "NakshaTech Administrator"
     seed_organization_admin_email: str = ""
     seed_organization_admin_password: str = ""
-    seed_management_email: str = "management@nakshatech.com"
-    seed_management_password: str = "ChangeMeLocalManagement@2026!"
-    seed_it_email: str = "it@nakshatech.com"
-    seed_it_password: str = "ChangeMeLocalIT@2026!"
+    # Management access is restricted to the two authoritative accounts in
+    # app.core.management_access. These settings contain only their temporary
+    # first-login passwords; permanent passwords are stored as database hashes.
+    seed_management_email: str = "vinod@nakshatech.com"
+    seed_management_password: str = "ChangeMeLocalVinod@2026!"
+    seed_management_secondary_email: str = "chethan@nakshatech.com"
+    seed_management_secondary_password: str = "ChangeMeLocalChethan@2026!"
+    seed_it_email: str = "it-support@nakshatech.com"
+    seed_it_password: str = "ChangeMeLocalITSupport@2026!"
     seed_drone_email: str = "drone@nakshatech.com"
     seed_drone_password: str = "ChangeMeLocalDrone@2026!"
 
@@ -57,6 +66,9 @@ class Settings(BaseSettings):
     smtp_from_name: str = "NakshaTech CRM"
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
+    it_support_email: str = "software.team@nakshatech.com"
+    ticket_email_heading: str = "NakshaTech IT Support"
+    app_public_url: str = "http://localhost:3100"
     email_otp_expiry_minutes: int = 10
     email_otp_resend_seconds: int = 60
     email_otp_max_attempts: int = 5
@@ -88,6 +100,22 @@ class Settings(BaseSettings):
     # Local Windows backup-agent settings.
     local_backup_agent_enabled: bool = False
     local_backup_agent_token: str = ""
+
+    # Naksha Copilot: backend-only, read-only Gemini integration.
+    naksha_copilot_enabled: bool = False
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
+    naksha_copilot_timeout_seconds: float = 25.0
+    naksha_copilot_requests_per_hour: int = 20
+    naksha_copilot_max_output_tokens: int = 900
+    redis_url: str = "redis://redis:6379/0"
+
+    # Software Team desktop-agent monitoring gateway. The admin key remains
+    # backend-only and is never returned to the browser.
+    agent_monitor_enabled: bool = False
+    agent_monitor_base_url: str = ""
+    agent_monitor_admin_key: str = ""
+    agent_monitor_timeout_seconds: float = 10.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
@@ -133,6 +161,16 @@ class Settings(BaseSettings):
             raise RuntimeError("CORS_ORIGINS must include the production frontend origin")
         if self.local_backup_agent_enabled and len(self.local_backup_agent_token.strip()) < 32:
             raise RuntimeError("LOCAL_BACKUP_AGENT_TOKEN must be at least 32 characters when enabled")
+        privileged_temporary_passwords = (
+            self.seed_management_password.strip(),
+            self.seed_management_secondary_password.strip(),
+            self.seed_software_team_password.strip(),
+            self.seed_it_password.strip(),
+        )
+        if any(len(value) < 10 or value.startswith("ChangeMe") for value in privileged_temporary_passwords):
+            raise RuntimeError(
+                "Management, Software Team, and IT temporary passwords must be replaced with strong private values"
+            )
         if self.employee_portal_enabled:
             if not self.allowed_email_domain_list:
                 raise RuntimeError("ALLOWED_EMAIL_DOMAINS must contain at least one organization domain")

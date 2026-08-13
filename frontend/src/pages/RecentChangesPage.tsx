@@ -1,5 +1,5 @@
 import {
-  ArrowDownToLine, CalendarDays, CheckCircle2, Cpu, FileClock, Laptop, PackageCheck,
+  ArrowDownToLine, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Cpu, FileClock, Laptop, PackageCheck,
   RefreshCw, RotateCcw, Search, ShoppingCart, UserRoundCheck,
 } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
@@ -21,6 +21,25 @@ const sourceColors: Record<string, string> = {
   purchase: '#d97706',
 }
 
+const ACTIVITY_ROWS_PER_PAGE = 10
+type PaginationItem = number | 'start-ellipsis' | 'end-ellipsis'
+
+function getPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1)
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, 'end-ellipsis', totalPages]
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [1, 'start-ellipsis', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+  }
+
+  return [1, 'start-ellipsis', currentPage - 1, currentPage, currentPage + 1, 'end-ellipsis', totalPages]
+}
+
 export function RecentChangesPage() {
   const { selectedMonth, presentMonth, setSelectedMonth, returnToPresent } = useITMonthUrl()
   const [department, setDepartment] = useState('')
@@ -32,6 +51,7 @@ export function RecentChangesPage() {
   const [selected, setSelected] = useState<ITActivityItem | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
   const requestSequence = useRef(0)
 
   async function load(clearExisting = false) {
@@ -59,6 +79,7 @@ export function RecentChangesPage() {
       }
 
       setData(result)
+      setCurrentPage(1)
       setSelected(current => current && result.items.some(item => item.activity_id === current.activity_id) ? current : result.items[0] || null)
     } catch (err) {
       if (requestId !== requestSequence.current) return
@@ -92,6 +113,24 @@ export function RecentChangesPage() {
 
   function resetFilters() {
     setDepartment(''); setDeviceCategory(''); setChangedBy(''); setActionType(''); setSearch('')
+  }
+
+  const totalPages = Math.max(1, Math.ceil((data?.items.length || 0) / ACTIVITY_ROWS_PER_PAGE))
+  const pageStartIndex = (currentPage - 1) * ACTIVITY_ROWS_PER_PAGE
+  const paginatedItems = useMemo(
+    () => data?.items.slice(pageStartIndex, pageStartIndex + ACTIVITY_ROWS_PER_PAGE) || [],
+    [data, pageStartIndex],
+  )
+  const paginationItems = useMemo(() => getPaginationItems(currentPage, totalPages), [currentPage, totalPages])
+  const firstVisibleRecord = data && data.items.length > 0 ? pageStartIndex + 1 : 0
+  const lastVisibleRecord = data ? Math.min(pageStartIndex + ACTIVITY_ROWS_PER_PAGE, data.items.length) : 0
+
+  function selectActivity(item: ITActivityItem) {
+    setSelected(item)
+    const itemIndex = data?.items.findIndex(candidate => candidate.activity_id === item.activity_id) ?? -1
+    if (itemIndex >= 0) {
+      setCurrentPage(Math.floor(itemIndex / ACTIVITY_ROWS_PER_PAGE) + 1)
+    }
   }
 
   const kpis = data ? [
@@ -137,7 +176,7 @@ export function RecentChangesPage() {
             <div className="panel-title-row"><div><span className="section-kicker">RECENT ACTIVITY</span><h2>Activity Timeline</h2></div><span className="record-count">{data.total}</span></div>
             <div className="activity-timeline">
               {data.timeline.length === 0 && <div className="empty-state">No activity is recorded for this month.</div>}
-              {data.timeline.map(item => <button className={`timeline-entry ${selected?.activity_id === item.activity_id ? 'selected' : ''}`} key={item.activity_id} onClick={() => setSelected(item)}>
+              {data.timeline.map(item => <button className={`timeline-entry ${selected?.activity_id === item.activity_id ? 'selected' : ''}`} key={item.activity_id} onClick={() => selectActivity(item)}>
                 <span className="timeline-dot" style={{ background: sourceColors[item.source_type] || '#64748b' }} />
                 <span className="timeline-copy"><small>Effective: {item.reporting_month || selectedMonth} · Recorded: {item.activity_date} {item.activity_time || ''}</small><strong>{item.action_label}</strong><span>{item.cpu_asset_tag || item.asset_code || item.field_or_component || 'General IT activity'}</span><em>{item.performed_by || 'Historical source record'}</em></span>
               </button>)}
@@ -145,10 +184,23 @@ export function RecentChangesPage() {
           </article>
 
           <article className="panel activity-table-panel">
-            <div className="panel-title-row"><div><span className="section-kicker">FIELD-BY-FIELD DETAILS</span><h2>Detailed Monthly Changes</h2></div><span className="record-count">{data.items.length} shown</span></div>
-            <div className="table-scroll"><table className="activity-table"><thead><tr><th>Reporting Month</th><th>System Recorded</th><th>User</th><th>Asset</th><th>Action</th><th>Field / Component</th><th>Old Value</th><th>New Value</th><th>Reason</th></tr></thead><tbody>
-              {data.items.map(item => <tr key={item.activity_id} onClick={() => setSelected(item)} className={selected?.activity_id === item.activity_id ? 'selected-row' : ''}><td>{item.reporting_month || selectedMonth}</td><td>{item.activity_date}<small>{item.activity_time}</small></td><td>{item.performed_by || 'Historical record'}<small>{item.performed_by_role}</small></td><td>{item.cpu_asset_tag || item.asset_code || '—'}<small>{item.workstation_no}</small></td><td><span className={`activity-badge ${item.source_type}`}>{item.action_label}</span></td><td>{item.field_or_component || '—'}</td><td>{displayValue(item.old_value)}</td><td>{displayValue(item.new_value)}</td><td>{item.reason || item.remarks || '—'}</td></tr>)}
+            <div className="panel-title-row"><div><span className="section-kicker">FIELD-BY-FIELD DETAILS</span><h2>Detailed Monthly Changes</h2></div><span className="record-count">{data.items.length} records</span></div>
+            <div className="table-scroll activity-table-scroll"><table className="activity-table"><thead><tr><th>Reporting Month</th><th>System Recorded</th><th>User</th><th>Asset</th><th>Action</th><th>Field / Component</th><th>Old Value</th><th>New Value</th><th>Reason</th></tr></thead><tbody>
+              {paginatedItems.length === 0 && <tr className="activity-empty-row"><td colSpan={9}>No detailed changes match the selected month and filters.</td></tr>}
+              {paginatedItems.map(item => <tr key={item.activity_id} onClick={() => selectActivity(item)} className={selected?.activity_id === item.activity_id ? 'selected-row' : ''}><td>{item.reporting_month || selectedMonth}</td><td>{item.activity_date}<small>{item.activity_time}</small></td><td>{item.performed_by || 'Historical record'}<small>{item.performed_by_role}</small></td><td>{item.cpu_asset_tag || item.asset_code || '—'}<small>{item.workstation_no}</small></td><td><span className={`activity-badge ${item.source_type}`}>{item.action_label}</span></td><td>{item.field_or_component || '—'}</td><td>{displayValue(item.old_value)}</td><td>{displayValue(item.new_value)}</td><td>{item.reason || item.remarks || '—'}</td></tr>)}
             </tbody></table></div>
+            <div className="activity-pagination" aria-label="Detailed monthly changes pagination">
+              <span className="activity-pagination-summary">Showing {firstVisibleRecord}–{lastVisibleRecord} of {data.items.length} records</span>
+              <div className="activity-pagination-controls">
+                <button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1} aria-label="Previous page"><ChevronLeft size={16} /><span>Previous</span></button>
+                <div className="activity-page-numbers">
+                  {paginationItems.map(item => typeof item === 'number' ? (
+                    <button type="button" key={item} className={currentPage === item ? 'active' : ''} onClick={() => setCurrentPage(item)} aria-current={currentPage === item ? 'page' : undefined}>{item}</button>
+                  ) : <span key={item} className="activity-page-ellipsis" aria-hidden="true">…</span>)}
+                </div>
+                <button type="button" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} aria-label="Next page"><span>Next</span><ChevronRight size={16} /></button>
+              </div>
+            </div>
           </article>
 
           <article className="panel activity-visual-panel">

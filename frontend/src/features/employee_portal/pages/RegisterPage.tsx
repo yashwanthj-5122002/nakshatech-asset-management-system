@@ -126,7 +126,7 @@ export function RegisterPage() {
   return (
     <AuthFlowShell
       eyebrow={`FIRST-TIME ACCOUNT · STEP ${step === 'email' ? 1 : step === 'otp' ? 2 : step === 'details' ? 3 : 4} OF 4`}
-      title={step === 'email' ? 'Create your CRM account' : step === 'otp' ? 'Verify organization email' : step === 'details' ? 'Complete employee profile' : 'Secure your account'}
+      title={step === 'email' ? 'Create your account' : step === 'otp' ? 'Verify organization email' : step === 'details' ? 'Complete employee profile' : 'Secure your account'}
       description={step === 'authenticator'
         ? 'Scan the QR code using a free Authenticator app, then enter the current six-digit code.'
         : 'Use only your official @nakshatech.com email. No Software Team approval is required for employee support access.'}

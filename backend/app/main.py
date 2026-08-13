@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 import threading
 from contextlib import asynccontextmanager, suppress
 
@@ -20,18 +21,26 @@ from app.modules.drone.router import router as drone_router
 from app.modules.local_backup.router import router as local_backup_router
 from app.modules.it_activity import models as it_activity_models  # noqa: F401
 from app.modules.it_activity.router import router as it_activity_router
+from app.modules.it_activity.import_service import ensure_bundled_it_activity_reference_data
 from app.modules.employee_portal import models as employee_portal_models  # noqa: F401
 from app.modules.employee_portal.router import router as employee_portal_router
+from app.modules.data_quality.router import router as data_quality_router
+from app.modules.naksha_copilot.router import router as naksha_copilot_router
+from app.modules.agent_monitor.router import router as agent_monitor_router
+from app.modules.notifications import models as notification_models  # noqa: F401
+from app.modules.notifications.router import router as notification_router
 from app.modules.employee_portal.service import ensure_default_branch
 from app.modules.employee_portal.models import UserBranchAccess
 from app.models.entities import User
 from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
-from app.services.seed import seed_database
+from app.services.seed import ensure_management_accounts, seed_database
 
 logger = logging.getLogger(__name__)
 _initialization_lock = threading.Lock()
 _initialized = False
+_IT_ACTIVITY_IMPORT_LOCK = 620260805
+_IT_ACTIVITY_DATA_DIR = Path(__file__).resolve().parent / "data" / "it_activity_imports"
 
 
 def ensure_schema_compatibility() -> None:
@@ -47,6 +56,7 @@ def ensure_schema_compatibility() -> None:
             "email_verified": "BOOLEAN DEFAULT FALSE",
             "account_status": "VARCHAR(40) DEFAULT 'active'",
             "mfa_required": "BOOLEAN DEFAULT FALSE",
+            "must_change_password": "BOOLEAN DEFAULT FALSE",
             "token_version": "INTEGER DEFAULT 0",
             "last_login_at": "TIMESTAMP",
             "last_logout_at": "TIMESTAMP",
@@ -58,8 +68,44 @@ def ensure_schema_compatibility() -> None:
             connection.execute(text("UPDATE users SET account_status = 'active' WHERE account_status IS NULL"))
             connection.execute(text("UPDATE users SET token_version = 0 WHERE token_version IS NULL"))
             connection.execute(text("UPDATE users SET mfa_required = FALSE WHERE mfa_required IS NULL"))
+            connection.execute(text("UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL"))
             connection.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL OR email_verified = FALSE"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_employee_id ON users (employee_id)"))
+
+    inspector = inspect(engine)
+    if "support_tickets" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("support_tickets")}
+        additions = {
+            "asset_id": "INTEGER",
+            "asset_snapshot": "TEXT",
+            "component": "VARCHAR(80)",
+            "component_asset_tag": "VARCHAR(160)",
+            "problem_code": "VARCHAR(120)",
+            "problem_label": "VARCHAR(255)",
+            "impact_assessment": "TEXT",
+            "priority_reason": "TEXT",
+            "sla_target_minutes": "INTEGER",
+            "reporting_manager_email": "VARCHAR(255)",
+        }
+        with engine.begin() as connection:
+            for name, sql_type in additions.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE support_tickets ADD COLUMN {name} {sql_type}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_support_tickets_asset_id ON support_tickets (asset_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_support_tickets_component ON support_tickets (component)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_support_tickets_problem_code ON support_tickets (problem_code)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_support_tickets_reporting_manager_email ON support_tickets (reporting_manager_email)"))
+
+    inspector = inspect(engine)
+    if "it_purchase_records" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("it_purchase_records")}
+        with engine.begin() as connection:
+            if "purchase_request_id" not in existing:
+                connection.execute(text("ALTER TABLE it_purchase_records ADD COLUMN purchase_request_id INTEGER"))
+            connection.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_it_purchase_records_purchase_request_id "
+                "ON it_purchase_records (purchase_request_id)"
+            ))
 
     inspector = inspect(engine)
     if "component_replacements" in inspector.get_table_names():
@@ -77,9 +123,27 @@ def ensure_schema_compatibility() -> None:
     inspector = inspect(engine)
     if "assets" in inspector.get_table_names():
         asset_columns = {column["name"] for column in inspector.get_columns("assets")}
+        asset_additions = {
+            "original_asset_date": "DATE",
+            "brand": "VARCHAR(160)",
+            "model": "VARCHAR(180)",
+            "serial_number": "VARCHAR(255)",
+            "connection_type": "VARCHAR(100)",
+            "capacity": "VARCHAR(80)",
+            "ownership": "VARCHAR(80)",
+            "client_name": "VARCHAR(255)",
+            "project_id": "VARCHAR(120)",
+            "current_holder": "VARCHAR(255)",
+        }
         with engine.begin() as connection:
-            if "original_asset_date" not in asset_columns:
-                connection.execute(text("ALTER TABLE assets ADD COLUMN original_asset_date DATE"))
+            for name, sql_type in asset_additions.items():
+                if name not in asset_columns:
+                    connection.execute(text(f"ALTER TABLE assets ADD COLUMN {name} {sql_type}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_serial_number ON assets (serial_number)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_ownership ON assets (ownership)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_client_name ON assets (client_name)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_project_id ON assets (project_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_current_holder ON assets (current_holder)"))
             connection.execute(text("UPDATE assets SET original_asset_date = asset_date WHERE original_asset_date IS NULL"))
 
     inspector = inspect(engine)
@@ -111,18 +175,51 @@ def ensure_schema_compatibility() -> None:
                     connection.execute(text(f"ALTER TABLE component_replacements ADD COLUMN {name} {sql_type}"))
 
     inspector = inspect(engine)
+    if "work_records" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("work_records")}
+        additions = {
+            "submitted_by_user_id": "INTEGER",
+            "submitted_by_name": "VARCHAR(255)",
+            "submitted_by_email": "VARCHAR(255)",
+            "submitted_by_role": "VARCHAR(30)",
+            "submitted_at": "TIMESTAMP",
+            "approved_by_user_id": "INTEGER",
+            "approved_by_name": "VARCHAR(255)",
+            "approved_by_email": "VARCHAR(255)",
+            "approved_by_role": "VARCHAR(30)",
+            "approved_at": "TIMESTAMP",
+            "approval_comments": "TEXT",
+        }
+        with engine.begin() as connection:
+            for name, sql_type in additions.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE work_records ADD COLUMN {name} {sql_type}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_work_records_submitted_by_user_id ON work_records (submitted_by_user_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_work_records_approved_by_user_id ON work_records (approved_by_user_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_work_records_submitted_at ON work_records (submitted_at)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_work_records_approved_at ON work_records (approved_at)"))
+
+    inspector = inspect(engine)
     if "replacement_records" in inspector.get_table_names():
         existing = {column["name"] for column in inspector.get_columns("replacement_records")}
         additions = {
+            "requested_by_user_id": "INTEGER",
             "requested_by_email": "VARCHAR(255)",
             "requested_by_role": "VARCHAR(30)",
+            "approved_by_user_id": "INTEGER",
             "approved_by_email": "VARCHAR(255)",
             "approved_by_role": "VARCHAR(30)",
+            "decision_remarks": "TEXT",
+            "updated_at": "TIMESTAMP",
         }
         with engine.begin() as connection:
             for name, sql_type in additions.items():
                 if name not in existing:
                     connection.execute(text(f"ALTER TABLE replacement_records ADD COLUMN {name} {sql_type}"))
+            connection.execute(text("UPDATE replacement_records SET updated_at = created_at WHERE updated_at IS NULL"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_replacement_records_requested_by_user_id ON replacement_records (requested_by_user_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_replacement_records_approved_by_user_id ON replacement_records (approved_by_user_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_replacement_records_updated_at ON replacement_records (updated_at)"))
 
     # Reporting month is an effective reporting period. It is separate from
     # created_at, which remains the immutable system audit timestamp.
@@ -133,6 +230,7 @@ def ensure_schema_compatibility() -> None:
         "replacement_records",
         "it_handover_records",
         "it_purchase_records",
+        "it_purchase_requests",
     )
     for table_name in reporting_month_tables:
         inspector = inspect(engine)
@@ -184,6 +282,7 @@ def initialize_application() -> None:
         with SessionLocal() as db:
             if settings.seed_default_users:
                 seed_database(db)
+            ensure_management_accounts(db)
             default_branch = ensure_default_branch(db)
             for user in db.scalars(select(User)).all():
                 if not user.branch:
@@ -199,6 +298,56 @@ def initialize_application() -> None:
                 if existing_access is None:
                     db.add(UserBranchAccess(user_id=user.id, branch_id=default_branch.id, is_default=True))
             db.commit()
+
+            # Historical handover/return and purchase workbooks ship with the
+            # application. Load them once so the six-month activity chart uses
+            # real source dates instead of presenting empty historical periods.
+            # SQLite is used by the isolated test suite, where this production
+            # data import must remain disabled.
+            if engine.dialect.name != "sqlite":
+                import_lock_acquired = True
+                if engine.dialect.name == "postgresql":
+                    import_lock_acquired = bool(db.scalar(text(
+                        f"SELECT pg_try_advisory_lock({_IT_ACTIVITY_IMPORT_LOCK})"
+                    )))
+                try:
+                    if import_lock_acquired:
+                        audit_user = db.scalar(
+                            select(User)
+                            .where(User.role.in_(["it", "admin", "software_team"]))
+                            .order_by(User.id)
+                            .limit(1)
+                        )
+                        if audit_user is not None:
+                            import_result = ensure_bundled_it_activity_reference_data(
+                                db,
+                                _IT_ACTIVITY_DATA_DIR,
+                                audit_user,
+                            )
+                            imported_files = [
+                                name
+                                for name, result in import_result["files"].items()
+                                if result.get("status") == "imported"
+                            ]
+                            if imported_files:
+                                logger.info(
+                                    "Loaded bundled IT activity history: %s",
+                                    ", ".join(imported_files),
+                                )
+                except Exception as exc:  # Keep unrelated application modules available.
+                    db.rollback()
+                    logger.warning("Bundled IT activity history could not be loaded: %s", exc)
+                finally:
+                    if engine.dialect.name == "postgresql" and import_lock_acquired:
+                        try:
+                            db.execute(text(
+                                f"SELECT pg_advisory_unlock({_IT_ACTIVITY_IMPORT_LOCK})"
+                            ))
+                            db.commit()
+                        except SQLAlchemyError as exc:
+                            db.rollback()
+                            logger.warning("IT activity import lock could not be released cleanly: %s", exc)
+
             ensure_previous_month_snapshot(db)
         _initialized = True
 
@@ -260,6 +409,10 @@ app.include_router(backup_router, prefix=f"{settings.api_prefix}/backups")
 app.include_router(local_backup_router, prefix=settings.api_prefix)
 app.include_router(it_activity_router, prefix=f"{settings.api_prefix}/it-activity")
 app.include_router(employee_portal_router, prefix=settings.api_prefix)
+app.include_router(data_quality_router, prefix=settings.api_prefix)
+app.include_router(naksha_copilot_router, prefix=settings.api_prefix)
+app.include_router(agent_monitor_router, prefix=settings.api_prefix)
+app.include_router(notification_router, prefix=settings.api_prefix)
 
 
 @app.middleware("http")

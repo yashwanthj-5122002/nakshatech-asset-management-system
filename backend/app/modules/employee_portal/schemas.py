@@ -70,6 +70,18 @@ class PasswordResetRequest(BaseModel):
     new_password: str = Field(min_length=10, max_length=128)
 
 
+class ManagementPasswordSetupRequest(BaseModel):
+    password_change_token: str
+    new_password: str = Field(min_length=10, max_length=128)
+    confirm_password: str = Field(min_length=10, max_length=128)
+
+
+class ManagementPasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=6, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
+    confirm_password: str = Field(min_length=10, max_length=128)
+
+
 class BranchResponse(BaseModel):
     id: int
     code: str
@@ -81,14 +93,96 @@ class BranchSelectionRequest(BaseModel):
     branch_id: int
 
 
+class TicketAssetResponse(BaseModel):
+    id: int
+    asset_code: str
+    cpu_asset_tag: str | None = None
+    workstation_no: str | None = None
+    used_by: str | None = None
+    department: str | None = None
+    system_name: str | None = None
+    device_type: str
+    processor: str | None = None
+    memory_gb: str | None = None
+    ssd: str | None = None
+    hdd: str | None = None
+    operating_system: str | None = None
+    location: str | None = None
+    work_mode: str | None = None
+    status: str
+    monitor_asset_tags: str | None = None
+    mouse_asset_tag: str | None = None
+    keyboard_asset_tag: str | None = None
+
+
+class TicketProblemOption(BaseModel):
+    code: str
+    label: str
+
+
+class TicketComponentOption(BaseModel):
+    code: str
+    label: str
+    problems: list[TicketProblemOption]
+
+
+class TicketCatalogResponse(BaseModel):
+    components: list[TicketComponentOption]
+
+
+class TicketImpactAssessment(BaseModel):
+    work_stopped: bool = False
+    alternative_available: bool = True
+    multiple_users_affected: bool = False
+    data_loss_risk: bool = False
+    security_risk: bool = False
+    client_delivery_affected: bool = False
+    recurring_issue: bool = False
+    started_when: str | None = Field(default=None, max_length=120)
+
+
+class TicketPriorityPreviewRequest(BaseModel):
+    component: str
+    problem_code: str
+    impact: TicketImpactAssessment
+
+
+class TicketPriorityPreviewResponse(BaseModel):
+    priority: str
+    priority_label: str
+    reason: str
+    sla_target_minutes: int
+    problem_label: str
+
+
 class TicketCreateRequest(BaseModel):
     department: str
+    reporting_manager_email: EmailStr
     category: str | None = Field(default=None, max_length=120)
     title: str = Field(min_length=4, max_length=255)
-    description: str = Field(min_length=8, max_length=10000)
-    priority: str = "medium"
+    description: str = Field(min_length=10, max_length=10000)
+    priority: str | None = "medium"
     location: str | None = Field(default=None, max_length=255)
+    asset_id: int | None = Field(default=None, ge=1)
     asset_number: str | None = Field(default=None, max_length=120)
+    component: str | None = Field(default=None, max_length=80)
+    problem_code: str | None = Field(default=None, max_length=120)
+    impact: TicketImpactAssessment | None = None
+
+    @field_validator("reporting_manager_email")
+    @classmethod
+    def validate_reporting_manager_email(cls, value: EmailStr) -> str:
+        normalized = str(value).strip().lower()
+        if not normalized.endswith("@nakshatech.com"):
+            raise ValueError("Reporting Manager Email must use the @nakshatech.com domain")
+        return normalized
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str) -> str:
+        if len(value.strip()) < 10:
+            raise ValueError("Problem Description must contain at least 10 characters")
+        return value
 
 
 class TicketMessageCreate(BaseModel):
@@ -114,9 +208,27 @@ class TicketSummaryResponse(BaseModel):
     title: str
     priority: str
     status: str
+    asset_number: str | None
+    component: str | None
+    component_asset_tag: str | None
+    problem_code: str | None
+    problem_label: str | None
+    priority_reason: str | None
+    sla_target_minutes: int | None
+    sla_status: str = "not_applicable"
+    sla_due_at: datetime | None = None
+    sla_warning_at: datetime | None = None
+    sla_first_response_at: datetime | None = None
+    sla_remaining_seconds: int | None = None
+    sla_warning: bool = False
+    sla_breached: bool = False
+    sla_escalation_level: str = "none"
     assigned_to_name: str | None
+    queue_position: int | None = None
     created_at: datetime
     updated_at: datetime
+    resolved_at: datetime | None = None
+    closed_at: datetime | None = None
     can_handle: bool
 
 
@@ -130,11 +242,28 @@ class TicketMessageResponse(BaseModel):
     created_at: datetime
 
 
+class TicketAttachmentResponse(BaseModel):
+    id: int
+    ticket_id: int
+    message_id: int | None = None
+    uploaded_by_id: int
+    uploaded_by_name: str
+    original_filename: str
+    mime_type: str
+    file_size: int
+    created_at: datetime
+
+
 class TicketDetailResponse(TicketSummaryResponse):
     description: str
+    reporting_manager_email: EmailStr | None
     location: str | None
     asset_number: str | None
+    asset_id: int | None
+    asset_snapshot: TicketAssetResponse | None
+    impact_assessment: TicketImpactAssessment | None
     resolution: str | None
+    attachments: list[TicketAttachmentResponse]
     messages: list[TicketMessageResponse]
 
 

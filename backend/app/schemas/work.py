@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 from pydantic import BaseModel, Field
+from typing import Literal
 
 
 class WorkRecordCreate(BaseModel):
@@ -31,6 +32,11 @@ class WorkRecordUpdate(BaseModel):
     approval_status: str | None = None
 
 
+class WorkApprovalDecision(BaseModel):
+    action: Literal["approve", "return"]
+    comments: str | None = None
+
+
 class WorkRecordResponse(WorkRecordCreate):
     id: int
     work_code: str
@@ -41,6 +47,15 @@ class WorkRecordResponse(WorkRecordCreate):
     replacement_asset_tag: str | None = None
     cost: float | None = None
     approval_status: str
+    submitted_by_name: str | None = None
+    submitted_by_email: str | None = None
+    submitted_by_role: str | None = None
+    submitted_at: datetime | None = None
+    approved_by_name: str | None = None
+    approved_by_email: str | None = None
+    approved_by_role: str | None = None
+    approved_at: datetime | None = None
+    approval_comments: str | None = None
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

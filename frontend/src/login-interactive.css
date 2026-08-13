@@ -1,0 +1,245 @@
+/*
+ * NakshaTech login interaction layer.
+ * Visual-only: no authentication, routing, credential or API behavior changes.
+ */
+.final-login-shell {
+  --login-panel-x: 50%;
+  --login-panel-y: 50%;
+  --login-tilt-x: 0deg;
+  --login-tilt-y: 0deg;
+}
+
+.final-login-header,
+.final-login-copy,
+.final-login-panel-zone {
+  animation: naksha-login-reveal 520ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.final-login-copy { animation-delay: 70ms; }
+.final-login-panel-zone { animation-delay: 125ms; }
+
+.final-login-panel {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: perspective(1200px) rotateX(var(--login-tilt-x)) rotateY(var(--login-tilt-y));
+  background:
+    radial-gradient(circle 260px at var(--login-panel-x) var(--login-panel-y), rgba(31, 211, 234, .11), transparent 72%),
+    linear-gradient(150deg, rgba(8, 32, 55, .91), rgba(3, 18, 34, .80));
+  transition:
+    transform 150ms ease-out,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+  will-change: transform;
+}
+
+.final-login-panel:hover {
+  border-color: rgba(91, 221, 240, .38);
+  box-shadow:
+    0 34px 86px rgba(0, 0, 0, .42),
+    0 0 0 1px rgba(41, 203, 229, .055),
+    inset 0 1px 0 rgba(255, 255, 255, .10),
+    inset 0 0 46px rgba(38, 126, 197, .045);
+}
+
+.final-login-panel > * {
+  animation: naksha-login-element 420ms cubic-bezier(.2, .75, .25, 1) both;
+}
+.final-login-panel > *:nth-child(1) { animation-delay: 110ms; }
+.final-login-panel > *:nth-child(2) { animation-delay: 145ms; }
+.final-login-panel > *:nth-child(3) { animation-delay: 180ms; }
+.final-login-panel > *:nth-child(4) { animation-delay: 215ms; }
+.final-login-panel > *:nth-child(5) { animation-delay: 250ms; }
+.final-login-panel > *:nth-child(6) { animation-delay: 285ms; }
+.final-login-panel > *:nth-child(7) { animation-delay: 320ms; }
+.final-login-panel > *:nth-child(8) { animation-delay: 355ms; }
+.final-login-panel > *:nth-child(n + 9) { animation-delay: 390ms; }
+
+.management-role-picker button {
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.management-role-picker button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(115deg, transparent 22%, rgba(255,255,255,.14) 48%, transparent 74%);
+  transform: translateX(-115%);
+  transition: transform 360ms ease, opacity 180ms ease;
+}
+
+.management-role-picker button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 112, 190, .15);
+}
+
+.management-role-picker button:hover::after {
+  opacity: 1;
+  transform: translateX(115%);
+}
+
+.management-role-picker button.selected {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(48, 213, 230, .14),
+    0 12px 25px rgba(1, 15, 30, .26),
+    0 0 22px rgba(20, 187, 221, .08);
+}
+
+.final-login-input-shell {
+  transition:
+    border-color 170ms ease,
+    box-shadow 170ms ease,
+    background 170ms ease,
+    transform 170ms ease;
+}
+
+.final-login-input-shell > svg {
+  transition: color 170ms ease, filter 170ms ease, transform 170ms ease;
+}
+
+.final-login-input-shell:hover {
+  border-color: rgba(114, 197, 226, .37);
+  transform: translateY(-1px);
+}
+
+.final-login-input-shell:focus-within {
+  transform: translateY(-1px);
+}
+
+.final-login-input-shell:focus-within > svg {
+  color: #2bd7e8;
+  filter: drop-shadow(0 0 7px rgba(43, 215, 232, .32));
+  transform: scale(1.04);
+}
+
+.final-login-input-shell button {
+  transition: color 160ms ease, transform 160ms ease, filter 160ms ease;
+}
+
+.final-login-input-shell button:hover {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 7px rgba(41, 210, 229, .28));
+}
+
+.final-login-submit {
+  position: relative;
+  overflow: hidden;
+}
+
+.final-login-submit::before {
+  content: '';
+  position: absolute;
+  top: -45%;
+  bottom: -45%;
+  left: -28%;
+  width: 24%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.34), transparent);
+}
+
+.final-login-submit:hover:not(:disabled)::before {
+  opacity: 1;
+  animation: naksha-login-sweep 700ms ease-out;
+}
+
+.final-login-submit i {
+  transition: transform 170ms ease, background 170ms ease, border-color 170ms ease;
+}
+
+.final-login-submit:hover:not(:disabled) i {
+  transform: translateX(3px);
+  border-color: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.06);
+}
+
+.final-login-back,
+.final-login-options a,
+.final-login-create-account a {
+  transition: color 170ms ease, transform 170ms ease, text-shadow 170ms ease;
+}
+
+.final-login-options a:hover,
+.final-login-create-account a:hover {
+  color: #82e8f4;
+  text-shadow: 0 0 12px rgba(50, 212, 232, .20);
+}
+
+@keyframes naksha-login-reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes naksha-login-element {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes naksha-login-sweep {
+  from { left: -28%; }
+  to { left: 112%; }
+}
+
+@media (max-width: 860px), (pointer: coarse) {
+  .final-login-panel {
+    transform: none;
+    will-change: auto;
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .final-login-header,
+  .final-login-copy,
+  .final-login-panel-zone,
+  .final-login-panel > *,
+  .final-login-submit:hover:not(:disabled)::before {
+    animation: none !important;
+  }
+
+  .final-login-panel,
+  .management-role-picker button,
+  .final-login-input-shell,
+  .final-login-input-shell > svg,
+  .final-login-input-shell button,
+  .final-login-submit,
+  .final-login-submit i {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* Clean geospatial motion canvas: terrain contours, survey nodes and data-flow arcs. */
+.login-network-motion-canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: .94;
+  filter: saturate(104%);
+}
+
+@media (max-width: 860px), (pointer: coarse) {
+  .login-network-motion-canvas {
+    opacity: .70;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-network-motion-canvas {
+    opacity: .54;
+  }
+}

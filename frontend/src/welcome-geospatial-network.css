@@ -1,0 +1,125 @@
+/*
+ * Welcome page Reference-2 visual layer.
+ * Rendering-stability revision: terrain, animated network, and interactive UI
+ * are isolated into separate paint layers so Chrome cannot drop/repaint the
+ * header or buttons while SVG routes animate. Visual-only.
+ */
+.welcome-shell.welcome-shell--reference2 {
+  background: #020b15;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* Disable legacy full-shell pseudo overlays on this design. Their large blended
+   paint areas were unnecessary once the terrain became its own stable layer. */
+.welcome-shell.welcome-shell--reference2::before,
+.welcome-shell.welcome-shell--reference2::after {
+  content: none;
+}
+
+/* Static terrain is a dedicated paint layer. It never participates in SVG
+   animation, hover effects, or full-screen pointer repaints. */
+.welcome-terrain-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  overflow: hidden;
+  contain: paint;
+  background:
+    linear-gradient(90deg, rgba(0, 8, 17, .08) 0%, rgba(0, 8, 17, .025) 28%, transparent 48%),
+    linear-gradient(180deg, rgba(0, 5, 12, .05) 0%, transparent 22%, transparent 78%, rgba(0, 5, 12, .11) 100%),
+    url('/welcome-terrain-reference2-world.webp') center center / cover no-repeat;
+}
+
+/* The animated network is isolated behind all normal page content. */
+.welcome-geo-network {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: paint;
+}
+
+.welcome-network-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  shape-rendering: geometricPrecision;
+}
+
+.welcome-network-route-trace,
+.welcome-network-route-energy {
+  fill: none;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A faint permanent alignment trace. */
+.welcome-network-route-trace {
+  stroke: url(#welcome-route-trace-gradient);
+  stroke-width: .9px;
+  opacity: .18;
+}
+
+/* The moving energy remains line-only. Avoid CSS blur/drop-shadow and
+   will-change here: those were forcing large compositor repaints in Chrome. */
+.welcome-network-route-energy {
+  stroke: url(#welcome-route-energy-gradient);
+  stroke-dasharray: 9 91;
+  stroke-dashoffset: 100;
+  animation-name: welcome-network-energy-travel;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Broad translucent stroke supplies the glow without a filter. */
+.welcome-network-route-energy--glow {
+  stroke-width: 5px;
+  opacity: .24;
+}
+
+/* Bright core keeps movement clearly visible. */
+.welcome-network-route-energy--core {
+  stroke-width: 2px;
+  opacity: 1;
+}
+
+@keyframes welcome-network-energy-travel {
+  0% { stroke-dashoffset: 100; opacity: .14; }
+  6% { opacity: 1; }
+  94% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: .14; }
+}
+
+@media (max-width: 1100px) {
+  .welcome-terrain-layer { background-position: 56% center; }
+  .welcome-network-route-energy--glow { stroke-width: 4.4px; }
+  .welcome-network-route-energy--core { stroke-width: 1.8px; }
+}
+
+@media (max-width: 900px) {
+  .welcome-terrain-layer { background-position: 61% center; }
+  .welcome-geo-network { opacity: .82; }
+}
+
+@media (max-width: 640px) {
+  .welcome-terrain-layer { background-position: 67% center; }
+  .welcome-geo-network { opacity: .52; }
+  .welcome-network-route-trace { opacity: .08; }
+  .welcome-network-route-energy--glow { stroke-width: 3.2px; }
+  .welcome-network-route-energy--core { stroke-width: 1.35px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-network-route-energy { animation: none; }
+  .welcome-network-route-energy--glow { opacity: .10; }
+  .welcome-network-route-energy--core {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    opacity: .20;
+  }
+}

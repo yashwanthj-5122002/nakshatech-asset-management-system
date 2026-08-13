@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
@@ -34,7 +34,8 @@ const auditFieldLabels: Record<string, string> = {
   used_by: 'Used By', workstation_no: 'Workstation Number', department: 'Department',
   cpu_asset_tag: 'CPU / Asset Tag', monitor_asset_tags: 'Monitor Asset Tag(s)',
   mouse_asset_tag: 'Mouse Asset Tag', keyboard_asset_tag: 'Keyboard Asset Tag',
-  system_name: 'System Name', device_type: 'Device Type', processor: 'Processor',
+  system_name: 'System Name', brand: 'Brand', model: 'Model', serial_number: 'Serial Number',
+  connection_type: 'Connection Type', device_type: 'Device Type', processor: 'Processor',
   memory_gb: 'Memory', ssd: 'SSD', hdd: 'HDD', ip_address: 'IP Address',
   mac_address: 'MAC Address', graphics_card: 'Graphics Card', operating_system: 'Operating System',
   antivirus: 'Antivirus', network_type: 'Network Type', approved_by: 'Approved By',
@@ -74,12 +75,55 @@ function changedThisMonth(value?: string) {
   return isCurrentIndiaMonth(value)
 }
 
+const qualityFilterLabels: Record<string, string> = {
+  replacement_pending: 'Replacement pending',
+  repair: 'Assets under repair',
+  unassigned: 'Missing employee assignment',
+  missing_mac: 'MAC address not recorded',
+  duplicate_ip: 'Duplicate IP addresses',
+}
+
+function applyQualityFilter(assets: Asset[], qualityFilter: string, qualityValues: string[]): Asset[] {
+  if (!qualityFilter) return assets
+  if (qualityFilter === 'replacement_pending' || qualityFilter === 'repair') {
+    return assets.filter(asset => asset.status === qualityFilter)
+  }
+  if (qualityFilter === 'unassigned') {
+    return assets.filter(asset => !asset.used_by && asset.device_type !== 'External HDD')
+  }
+  if (qualityFilter === 'missing_mac') {
+    return assets.filter(asset => !asset.mac_address && asset.device_type !== 'External HDD')
+  }
+  if (qualityFilter === 'duplicate_ip') {
+    const duplicateIps = qualityValues.length
+      ? new Set(qualityValues)
+      : new Set(
+          Array.from(
+            assets.reduce((counts, asset) => {
+              const ip = (asset.ip_address || '').trim()
+              if (ip && ip !== '-' && ip !== 'Dynamic') counts.set(ip, (counts.get(ip) || 0) + 1)
+              return counts
+            }, new Map<string, number>()),
+          )
+            .filter(([, count]) => count > 1)
+            .map(([ip]) => ip),
+        )
+    return assets.filter(asset => duplicateIps.has((asset.ip_address || '').trim()))
+  }
+  return assets
+}
+
 export function AssetsPage() {
   const { user } = useAuth()
   const canEdit = Boolean(user && (isFullAccessRole(user.role) || user.role === 'it'))
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { selectedMonth, presentMonth, returnToPresent } = useITMonthUrl()
+  const qualityFilter = searchParams.get('quality') || ''
+  const qualityValuesParam = searchParams.get('quality_values') || ''
+  const qualityValues = qualityValuesParam.split(',').map(value => value.trim()).filter(Boolean)
+  const qualityFilterLabel = qualityFilterLabels[qualityFilter]
   const [assets, setAssets] = useState<Asset[]>([])
   const [months, setMonths] = useState<ReportMonth[]>([])
   const [selected, setSelected] = useState<Asset | null>(null)
@@ -110,13 +154,13 @@ export function AssetsPage() {
     params.set('limit', '1000')
     try {
       const data = await apiFetch<Asset[]>(`/assets?${params.toString()}`)
-      setAssets(data)
+      setAssets(applyQualityFilter(data, qualityFilter, qualityValues))
       if (openAssetId) await openAsset(openAssetId)
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load assets') }
   }
 
   useEffect(() => { void loadMonths() }, [])
-  useEffect(() => { setSelected(null); void load() }, [status, device, selectedMonth])
+  useEffect(() => { setSelected(null); void load() }, [status, device, selectedMonth, qualityFilter, qualityValuesParam])
   useEffect(() => {
     const state = location.state as { message?: string; openAssetId?: number } | null
     if (!state) return
@@ -135,13 +179,17 @@ export function AssetsPage() {
   async function assignAsset(event: FormEvent) {
     event.preventDefault()
     if (!selected) return
+    const previousCustodian = selected.used_by || ''
+    const isTransfer = !!previousCustodian
     setBusy(true); setError(''); setMessage('')
     try {
       const updated = await apiFetch<Asset>(`/assets/${selected.id}/assign`, { method: 'POST', body: JSON.stringify({ ...assignment, reporting_month: selectedMonth }) })
       setAssignmentOpen(false)
-      setMessage(`${updated.cpu_asset_tag || updated.asset_code} assigned to ${updated.used_by} at ${updated.workstation_no || 'workstation not recorded'}.`)
+      setMessage(isTransfer
+        ? `${updated.cpu_asset_tag || updated.asset_code} transferred from ${previousCustodian} to ${updated.used_by || 'new custodian'}.`
+        : `${updated.cpu_asset_tag || updated.asset_code} assigned to ${updated.used_by || updated.department || 'shared location'} at ${updated.device_type === 'Printer' ? (updated.location || 'location not recorded') : (updated.workstation_no || 'workstation not recorded')}.`)
       await load(); await openAsset(updated.id)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Assignment failed') }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Assignment / transfer failed') }
     finally { setBusy(false) }
   }
 
@@ -174,10 +222,17 @@ export function AssetsPage() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to delete test asset') }
   }
 
+  function clearQualityFilter() {
+    const next = new URLSearchParams(searchParams)
+    next.delete('quality')
+    next.delete('quality_values')
+    setSearchParams(next, { replace: true })
+  }
+
   function openAssignment() {
     if (!selected) return
     setAssignment({
-      used_by: selected.used_by || '', department: selected.department || '', workstation_no: selected.workstation_no || '',
+      used_by: '', department: selected.department || '', workstation_no: selected.workstation_no || '',
       location: selected.location || 'Head Office', work_mode: selected.work_mode || 'office',
       assigned_date: new Date().toISOString().slice(0, 10), remarks: '',
     })
@@ -196,12 +251,13 @@ export function AssetsPage() {
         </>}
       />
       {monthInfo && <div className={`register-month-banner ${historicalReporting ? 'historical' : 'live'}`}><CalendarDays size={18} /><strong>Reporting activity to {monthInfo.label}</strong><span>Live asset values remain current; remarks stay only on the saved activity unless the Asset Master Remarks field itself is edited.</span></div>}
+      {qualityFilterLabel && <div className="register-month-banner historical"><Filter size={18} /><strong>Alert filter: {qualityFilterLabel}</strong><span>Showing only the assets affected by this dashboard alert.</span><button type="button" className="secondary-button" onClick={clearQualityFilter}>Clear alert filter</button></div>}
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
       <section className="panel filter-panel">
         <form onSubmit={event => { event.preventDefault(); void load() }} className="asset-filters">
-          <div className="search-shell"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search CPU / Asset Tag, workstation, employee, monitor, mouse, keyboard, system, IP or MAC..." /></div>
+          <div className="search-shell"><Search size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search asset tag, employee, brand, model, serial number, connection, workstation, system, IP or MAC..." /></div>
           <select value={device} onChange={event => setDevice(event.target.value)}><option value="">All device types</option><option>Computer</option><option>Laptop</option><option>Smartphone</option><option>Printer</option><option>Server</option><option>Network Device</option><option>Other</option></select>
           <select value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{statusOptions.map(item => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}</select>
           <button className="secondary-button"><Filter size={17} /> Apply</button>
@@ -213,8 +269,8 @@ export function AssetsPage() {
         <article className="panel asset-table-panel">
           <div className="table-wrap">
             <table className="asset-table">
-              <thead><tr><th>CPU / Asset Tag</th><th>Workstation</th><th>Used By</th><th>Department</th><th>Device</th><th>System Name</th><th>Location</th><th>Status</th><th>Last Change</th><th /></tr></thead>
-              <tbody>{assets.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>Internal: {asset.asset_code}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.system_name || '—'}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td className="asset-last-change">{asset.last_change_at ? <><strong>{formatAuditDate(asset.last_change_at)}</strong><small>{asset.last_changed_by || 'System'}{changedThisMonth(asset.last_change_at) ? ' · Updated this month' : ''}</small></> : <span className="muted">No system edit</span>}</td><td><ChevronRight size={17} /></td></tr>)}</tbody>
+              <thead><tr><th>CPU / Asset Tag</th><th>Workstation</th><th>Used By</th><th>Department</th><th>Device</th><th>System / Model</th><th>Location</th><th>Status</th><th>Last Change</th><th /></tr></thead>
+              <tbody>{assets.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>Internal: {asset.asset_code}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.device_type === 'Printer' ? (asset.model || asset.system_name || '—') : (asset.system_name || '—')}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td className="asset-last-change">{asset.last_change_at ? <><strong>{formatAuditDate(asset.last_change_at)}</strong><small>{asset.last_changed_by || 'System'}{changedThisMonth(asset.last_change_at) ? ' · Updated this month' : ''}</small></> : <span className="muted">No system edit</span>}</td><td><ChevronRight size={17} /></td></tr>)}</tbody>
             </table>
           </div>
         </article>
@@ -239,7 +295,9 @@ export function AssetsPage() {
 
           <h3>Current active details</h3>
           <dl className="details-list asset-details-complete">
-            <div><dt>CPU / Asset Tag</dt><dd>{selected.cpu_asset_tag || '—'}</dd></div><div><dt>Workstation</dt><dd>{selected.workstation_no || '—'}</dd></div>
+            <div><dt>Asset Tag</dt><dd>{selected.cpu_asset_tag || '—'}</dd></div><div><dt>{selected.device_type === 'Printer' ? 'Floor / Location' : 'Workstation'}</dt><dd>{selected.device_type === 'Printer' ? (selected.location || '—') : (selected.workstation_no || '—')}</dd></div>
+            <div><dt>Brand</dt><dd>{selected.brand || '—'}</dd></div><div><dt>Model</dt><dd>{selected.model || '—'}</dd></div>
+            <div><dt>Serial Number</dt><dd>{selected.serial_number || '—'}</dd></div><div><dt>Connection Type</dt><dd>{selected.connection_type || '—'}</dd></div>
             <div><dt>Employee</dt><dd>{selected.used_by || 'Unassigned'}</dd></div><div><dt>Department</dt><dd>{selected.department || '—'}</dd></div>
             <div><dt>Monitor tags</dt><dd>{selected.monitor_asset_tags || '—'}</dd></div><div><dt>Mouse tag</dt><dd>{selected.mouse_asset_tag || '—'}</dd></div>
             <div><dt>Keyboard tag</dt><dd>{selected.keyboard_asset_tag || '—'}</dd></div><div><dt>Processor</dt><dd>{selected.processor || '—'}</dd></div>
@@ -267,18 +325,20 @@ export function AssetsPage() {
         </aside>}
       </section>
 
-      {assignmentOpen && selected && <div className="modal-backdrop"><section className="modal-card workflow-modal"><button className="icon-button modal-close" onClick={() => setAssignmentOpen(false)}><X /></button><div className="modal-heading"><ArrowRightLeft /><div><span className="section-kicker">CONTROLLED ASSIGNMENT</span><h2>{selected.cpu_asset_tag || selected.asset_code} / {selected.workstation_no || 'No workstation'}</h2></div></div>{error && <div className="error-message modal-error">{error}</div>}<form className="data-form form-grid" onSubmit={assignAsset}>
-        <label>Used By<input required value={assignment.used_by} onChange={e => setAssignment({ ...assignment, used_by: e.target.value })} /></label>
-        <label>Department<input required value={assignment.department} onChange={e => setAssignment({ ...assignment, department: e.target.value })} /></label>
-        <label>Workstation No.<input required value={assignment.workstation_no} onChange={e => setAssignment({ ...assignment, workstation_no: e.target.value })} /></label>
+      {assignmentOpen && selected && <div className="modal-backdrop"><section className="modal-card workflow-modal"><button className="icon-button modal-close" onClick={() => setAssignmentOpen(false)}><X /></button><div className="modal-heading"><ArrowRightLeft /><div><span className="section-kicker">{selected.used_by ? 'CONTROLLED TRANSFER' : 'CONTROLLED ASSIGNMENT'}</span><h2>{selected.cpu_asset_tag || selected.asset_code} / {selected.workstation_no || 'No workstation'}</h2></div></div>{error && <div className="error-message modal-error">{error}</div>}<form className="data-form form-grid" onSubmit={assignAsset}>
+        <div className="full-span form-guidance"><strong>Current custody:</strong> {selected.used_by || 'IT / Company (unassigned)'} · {selected.department || 'No department'} · {selected.workstation_no || 'No workstation'} · {(selected.work_mode || 'office').replaceAll('_', ' ')}</div>
+        <label>{selected.used_by ? 'Transfer To / New Custodian' : 'Assign To / Employee'} {selected.device_type === 'Printer' ? '(optional for shared printer)' : ''}<input required={selected.device_type !== 'Printer'} value={assignment.used_by} onChange={e => setAssignment({ ...assignment, used_by: e.target.value })} /></label>
+        <label>{selected.used_by ? 'New Department' : 'Department'}<input required value={assignment.department} onChange={e => setAssignment({ ...assignment, department: e.target.value })} /></label>
+        <label>{selected.device_type === 'Printer' ? 'Workstation No. (optional)' : selected.used_by ? 'New Workstation No.' : 'Workstation No.'}<input required={selected.device_type !== 'Printer'} value={assignment.workstation_no} onChange={e => setAssignment({ ...assignment, workstation_no: e.target.value })} /></label>
         <label>Location<input value={assignment.location} onChange={e => setAssignment({ ...assignment, location: e.target.value })} /></label>
-        <label>Work Mode<select value={assignment.work_mode} onChange={e => setAssignment({ ...assignment, work_mode: e.target.value })}><option value="office">Office</option><option value="wfh">Work From Home</option><option value="field">Field</option></select></label>
-        <label>Assignment Date<input type="date" value={assignment.assigned_date} onChange={e => setAssignment({ ...assignment, assigned_date: e.target.value })} /></label>
-        <label className="full-span">Assignment Activity Remarks — Selected Month Only<textarea rows={3} value={assignment.remarks} onChange={e => setAssignment({ ...assignment, remarks: e.target.value })} /></label>
-        <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Assigning...' : 'Confirm Assignment'}</button>
+        <label>{selected.used_by ? 'New Work Mode' : 'Work Mode'}<select value={assignment.work_mode} onChange={e => setAssignment({ ...assignment, work_mode: e.target.value })}><option value="office">Office</option><option value="wfh">Work From Home</option><option value="field">Field</option></select></label>
+        <label>{selected.used_by ? 'Transfer Date' : 'Assignment Date'}<input type="date" value={assignment.assigned_date} onChange={e => setAssignment({ ...assignment, assigned_date: e.target.value })} /></label>
+        <label className="full-span">{selected.used_by ? 'Transfer' : 'Assignment'} Activity Remarks — Selected Month Only<textarea rows={3} value={assignment.remarks} onChange={e => setAssignment({ ...assignment, remarks: e.target.value })} /></label>
+        <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Saving...' : selected.used_by ? 'Confirm Transfer' : 'Confirm Assignment'}</button>
       </form></section></div>}
 
       {returnOpen && selected && <div className="modal-backdrop"><section className="modal-card workflow-modal"><button className="icon-button modal-close" onClick={() => setReturnOpen(false)}><X /></button><div className="modal-heading"><RotateCcw /><div><span className="section-kicker">ASSET RETURN</span><h2>{selected.cpu_asset_tag || selected.asset_code} / {selected.workstation_no || 'No workstation'}</h2></div></div>{error && <div className="error-message modal-error">{error}</div>}<form className="data-form form-grid" onSubmit={returnAsset}>
+        <div className="full-span form-guidance"><strong>Returning from:</strong> {selected.used_by || 'No current custodian'} · {selected.department || 'No department'} · {selected.workstation_no || 'No workstation'} · {(selected.work_mode || 'office').replaceAll('_', ' ')}</div>
         <label>Final Status<select value={returnForm.final_status} onChange={e => setReturnForm({ ...returnForm, final_status: e.target.value })}><option value="available">Available after inspection</option><option value="repair">Under repair</option><option value="damaged">Damaged</option><option value="returned">Returned, awaiting inspection</option></select></label>
         <label>Return Date<input type="date" value={returnForm.return_date} onChange={e => setReturnForm({ ...returnForm, return_date: e.target.value })} /></label>
         <label>Condition<select value={returnForm.condition} onChange={e => setReturnForm({ ...returnForm, condition: e.target.value })}><option value="working">Working</option><option value="minor_damage">Minor damage</option><option value="not_working">Not working</option><option value="destroyed">Destroyed</option></select></label>

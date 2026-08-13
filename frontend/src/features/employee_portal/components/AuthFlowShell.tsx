@@ -1,6 +1,8 @@
 import { ArrowLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { LoginNetworkMotionCanvas } from '../../../components/LoginNetworkMotionCanvas'
+import '../../../login-interactive.css'
 
 export function AuthFlowShell({
   eyebrow,
@@ -22,6 +24,7 @@ export function AuthFlowShell({
   return (
     <main className="final-login-screen auth-flow-screen">
       <div className="final-login-shell">
+        <LoginNetworkMotionCanvas />
         <header className="final-login-header">
           <Link className="final-login-brand" to="/" aria-label="NakshaTech Asset Management home">
             <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" />

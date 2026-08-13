@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
+from typing import Literal
 
 
 class ReplacementCreate(BaseModel):
@@ -14,10 +15,19 @@ class ReplacementCreate(BaseModel):
 
 
 class ReplacementApproval(BaseModel):
-    approval_status: str
+    approval_status: Literal["approved", "rejected", "returned"]
     new_asset_id: int | None = None
     final_action: str | None = None
     remarks: str | None = None
+
+
+class ReplacementResubmit(BaseModel):
+    reporting_month: str | None = None
+    new_asset_id: int | None = None
+    reason: str
+    damage_category: str = "technical_failure"
+    inspection_finding: str | None = None
+    final_action: str = "replacement_pending"
 
 
 class ReplacementResponse(BaseModel):
@@ -41,3 +51,5 @@ class ReplacementResponse(BaseModel):
     reporting_month: str | None = None
     created_at: datetime
     approved_at: datetime | None = None
+    decision_remarks: str | None = None
+    updated_at: datetime | None = None

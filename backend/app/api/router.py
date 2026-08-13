@@ -16,30 +16,69 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
 from app.core.roles import VALID_ROLES, role_display_name
+from app.core.management_access import (
+    FIRST_LOGIN_PRIVILEGED_ROLES,
+    is_authorized_privileged_email,
+    management_account_payload,
+    privileged_account_payload,
+)
 from app.core.database import get_db
 from app.core.security import create_temporary_token, verify_password
 from app.lib.reporting_month import normalize_reporting_month
-from app.models.entities import Asset, AssetHistory, ComponentReplacement, Drone, DroneLocation, MonthlySnapshotRun, ReplacementRecord, User, WorkRecord
+from app.models.entities import (
+    Asset, AssetHistory, ComponentReplacement, Drone, DroneLocation, MonthlySnapshotRun,
+    ReplacementRecord, User, WorkRecord,
+)
 from app.schemas.asset import (
     AssetAssignment, AssetCreate, AssetResponse, AssetReturn, AssetStatusUpdate, AssetUpdate,
 )
 from app.schemas.auth import LoginRequest, LoginResponse, UserResponse
 from app.schemas.drone import DroneLocationCreate, DroneLocationResponse
 from app.schemas.component_replacement import ComponentChangeBatchCreate, ComponentChangeBatchResponse, ComponentReplacementCreate, ComponentReplacementResponse
-from app.schemas.replacement import ReplacementApproval, ReplacementCreate, ReplacementResponse
-from app.schemas.work import WorkRecordCreate, WorkRecordResponse, WorkRecordUpdate
-from app.services.excel_import_service import import_assets_workbook
+from app.schemas.replacement import ReplacementApproval, ReplacementCreate, ReplacementResubmit, ReplacementResponse
+from app.schemas.work import WorkApprovalDecision, WorkRecordCreate, WorkRecordResponse, WorkRecordUpdate
+from app.services.excel_import_service import (
+    import_assets_workbook, import_external_hdd_assets_workbook, import_printer_assets_workbook,
+)
 from app.services.excel_service import (
     build_asset_report, build_dashboard_report, build_monthly_asset_report,
     build_monthly_change_history_report, build_monthly_summary_report,
-    build_replacement_history_report, build_upload_template,
+    build_external_hdd_asset_report, build_printer_asset_report, build_replacement_history_report, build_upload_template,
 )
 from app.services.monthly_snapshot_service import (
     assets_for_month, available_months, ensure_previous_month_snapshot, finalize_month_snapshot,
     month_end, month_start, parse_month_key,
 )
+from app.services.periodic_reporting_service import (
+    build_complete_period_report, monthly_period, yearly_period,
+)
 from app.services.asset_drilldown_service import build_asset_drilldown_workbook, query_asset_drilldown
+from app.services.asset_lifecycle_service import (
+    canonical_device_type,
+    device_distribution as canonical_device_distribution,
+    inventory_integrity,
+    inventory_summary,
+    is_primary_device_type,
+    is_supported_device_type,
+    lifecycle_status_distribution,
+    AssetLifecycleTransitionError,
+    apply_assignment_transition,
+    apply_return_transition,
+    custody_state,
+)
+from app.services.approval_workflow_service import (
+    WORKFLOW_IT_WORK,
+    WORKFLOW_REPLACEMENT,
+    record_approval_history,
+    utc_now_naive,
+    validate_it_work_operational_transition,
+)
+from app.services.approval_notification_service import (
+    notify_approval_decision,
+    notify_management_approval_required,
+)
 from app.modules.employee_portal.service import (
+    create_or_replace_authenticator,
     ensure_allowed_email,
     get_confirmed_authenticator,
     issue_access_for_user,
@@ -53,7 +92,7 @@ VALID_WORK_MODULES = {"it", "drone"}
 VALID_STATUSES = {
     "available", "assigned", "in_use", "wfh", "field_deployment", "under_inspection", "repair",
     "replacement_pending", "replaced", "damaged", "beyond_repair", "returned", "missing", "retired",
-    "for_parts", "disposal_pending", "disposed",
+    "for_parts", "disposal_pending", "disposed", "issued", "permanently_issued",
 }
 
 COMPONENT_FIELD_MAP = {
@@ -73,6 +112,10 @@ COMPONENT_FIELD_MAP = {
     "operating system": "operating_system",
     "os": "operating_system",
     "antivirus": "antivirus",
+    "brand": "brand",
+    "model": "model",
+    "serial number": "serial_number",
+    "connection type": "connection_type",
     "used by": "used_by",
     "department": "department",
     "workstation": "workstation_no",
@@ -196,6 +239,8 @@ def _replacement_response(record: ReplacementRecord) -> dict:
         reporting_month=record.reporting_month,
         created_at=record.created_at,
         approved_at=record.approved_at,
+        decision_remarks=record.decision_remarks,
+        updated_at=record.updated_at,
     ).model_dump(mode="json")
 
 
@@ -215,7 +260,9 @@ WORK_MODES = {"office", "wfh", "field"}
 IGNORED_UNIQUE_TAGS = {"OWN", "N/A", "NA", "-", "--"}
 ASSET_EDIT_FIELDS = [
     "used_by", "workstation_no", "department", "cpu_asset_tag", "monitor_asset_tags",
-    "mouse_asset_tag", "keyboard_asset_tag", "system_name", "device_type", "processor",
+    "mouse_asset_tag", "keyboard_asset_tag", "system_name", "brand", "model",
+    "serial_number", "connection_type", "capacity", "ownership", "client_name", "project_id",
+    "current_holder", "device_type", "processor",
     "memory_gb", "ssd", "hdd", "ip_address", "mac_address", "graphics_card",
     "operating_system", "antivirus", "network_type", "approved_by", "price", "remarks",
     "asset_date", "location", "work_mode", "status",
@@ -242,8 +289,9 @@ def _validate_asset_data(db: Session, values: dict, exclude_asset_id: int | None
     if status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid asset status")
     device_type = str(values.get("device_type") or "").strip()
-    if device_type not in {"Computer", "Laptop", "Smartphone", "Printer", "Server", "Network Device", "Other"}:
+    if not is_supported_device_type(device_type):
         raise HTTPException(status_code=400, detail="Select a valid device type")
+    device_type = canonical_device_type(device_type)
     work_mode = str(values.get("work_mode") or "office").strip().lower()
     if work_mode not in WORK_MODES:
         raise HTTPException(status_code=400, detail="Work mode must be office, wfh or field")
@@ -251,16 +299,47 @@ def _validate_asset_data(db: Session, values: dict, exclude_asset_id: int | None
     used_by = _normalised(values.get("used_by"))
     department = _normalised(values.get("department"))
     workstation = _normalised(values.get("workstation_no"))
+    location = _normalised(values.get("location"))
+    if device_type == "Printer":
+        if not _normalised(values.get("brand")) or not _normalised(values.get("model")):
+            raise HTTPException(status_code=400, detail="Printer Brand and Model are required.")
+    if device_type == "External HDD":
+        required = {
+            "External HDD Asset ID": _normalised(values.get("cpu_asset_tag")),
+            "Brand": _normalised(values.get("brand")),
+            "Capacity": _normalised(values.get("capacity")),
+            "Serial Number": _normalised(values.get("serial_number")),
+            "Ownership": _normalised(values.get("ownership")),
+        }
+        missing = [label for label, value in required.items() if not value]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"External HDD requires: {', '.join(missing)}.")
+        ownership = str(values.get("ownership") or "").strip().casefold()
+        if ownership not in {"nakshatech", "client"}:
+            raise HTTPException(status_code=400, detail="External HDD ownership must be NakshaTech or Client.")
+        if ownership == "client" and not _normalised(values.get("client_name")):
+            raise HTTPException(status_code=400, detail="Client Name is required for a client-owned External HDD.")
+        if status in {"in_use", "issued", "permanently_issued"} and not _normalised(values.get("current_holder")):
+            raise HTTPException(status_code=400, detail="Current Holder is required for an in-use or issued External HDD.")
     if status == "available" and used_by:
         raise HTTPException(
             status_code=400,
             detail="Available assets cannot have an employee. A workstation may be recorded for physical placement.",
         )
-    if status in ASSIGNED_STATUSES and (not used_by or not department or not workstation):
-        raise HTTPException(
-            status_code=400,
-            detail="Assigned, in-use, WFH and field assets require Used By, Department and Workstation Number.",
-        )
+    if status in ASSIGNED_STATUSES:
+        if device_type == "External HDD":
+            pass
+        elif device_type == "Printer":
+            if not department or (not used_by and not location):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Assigned printers require Department and either Assigned User or Floor / Location.",
+                )
+        elif not used_by or not department or not workstation:
+            raise HTTPException(
+                status_code=400,
+                detail="Assigned, in-use, WFH and field assets require Used By, Department and Workstation Number.",
+            )
 
     ip_value = _normalised(values.get("ip_address"))
     network_type = str(values.get("network_type") or "").strip().lower()
@@ -284,6 +363,7 @@ def _validate_asset_data(db: Session, values: dict, exclude_asset_id: int | None
             raise HTTPException(status_code=409, detail=f"{label} already exists: {value}")
 
     ensure_unique(Asset.cpu_asset_tag, _normalised(values.get("cpu_asset_tag")), "CPU / Asset Tag")
+    ensure_unique(Asset.serial_number, _normalised(values.get("serial_number")), "Serial number")
     ensure_unique(Asset.mac_address, mac_value, "MAC address")
     if ip_value and "static" in network_type:
         ensure_unique(Asset.ip_address, ip_value, "Static IP address")
@@ -354,12 +434,47 @@ def health() -> dict:
     return {"status": "healthy", "service": "nakshatech-asset-management-backend"}
 
 
+@router.get("/auth/management/accounts")
+def public_management_accounts() -> dict[str, list[dict[str, str]]]:
+    """Backward-compatible Management selector endpoint."""
+    return {"accounts": management_account_payload()}
+
+
+@router.get("/auth/privileged/accounts")
+def public_privileged_accounts(role: str = Query(...)) -> dict[str, list[dict[str, str]]]:
+    """Return only the authoritative identities for a provisioned role selector."""
+    normalized_role = role.strip().lower()
+    if normalized_role not in FIRST_LOGIN_PRIVILEGED_ROLES:
+        raise HTTPException(status_code=400, detail="This role does not use a provisioned account selector")
+    return {"accounts": privileged_account_payload(normalized_role)}
+
+
 @router.post("/auth/login", response_model=LoginResponse)
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     requested_role = payload.role.lower().strip() if payload.role else None
+    access_mode = (payload.access_mode or "").strip().lower() or None
+    if access_mode not in {None, "employee_support"}:
+        raise HTTPException(status_code=400, detail="Invalid access mode")
     if requested_role and requested_role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role selected")
     email = ensure_allowed_email(str(payload.email))
+
+    if requested_role in FIRST_LOGIN_PRIVILEGED_ROLES and not is_authorized_privileged_email(requested_role, email):
+        record_audit(
+            db,
+            event_type="LOGIN_FAILED",
+            request=request,
+            actor_email=email,
+            result="failed",
+            module="authentication",
+            details={"reason": "unauthorized_privileged_identity", "requested_role": requested_role},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=f"{role_display_name(requested_role)} access is restricted to the authorized account",
+        )
+
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if not user or not verify_password(payload.password, user.password_hash):
         record_audit(
@@ -373,6 +488,113 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         )
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if user.role in FIRST_LOGIN_PRIVILEGED_ROLES and not is_authorized_privileged_email(user.role, user.email):
+        record_audit(
+            db,
+            event_type="LOGIN_FAILED",
+            request=request,
+            user=user,
+            result="failed",
+            module="authentication",
+            details={"reason": "disabled_privileged_identity", "stored_role": user.role},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=f"{role_display_name(user.role)} access is restricted to the authorized account",
+        )
+
+    employee_support_mode = access_mode == "employee_support"
+    if employee_support_mode and requested_role not in {None, "employee"}:
+        raise HTTPException(status_code=400, detail="Employee Login must use the Employee Support role")
+    management_as_employee = (
+        employee_support_mode
+        and user.role == "management"
+        and is_authorized_privileged_email("management", user.email)
+    )
+    if employee_support_mode and user.role not in {"employee", "management"}:
+        raise HTTPException(status_code=403, detail="Employee Login is available only to Employee Support users and authorized Management users")
+    if management_as_employee and (user.must_change_password or not user.is_active or user.account_status not in {"active", ""}):
+        raise HTTPException(status_code=403, detail="Complete the Management account activation before using Employee Login")
+    if requested_role and user.role != requested_role and not management_as_employee:
+        record_audit(
+            db,
+            event_type="LOGIN_FAILED",
+            request=request,
+            user=user,
+            result="failed",
+            module="authentication",
+            details={"reason": "role_mismatch", "requested_role": requested_role},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=f"This account is registered as {role_display_name(user.role)}, not {role_display_name(requested_role)}",
+        )
+
+    effective_role = "employee" if employee_support_mode else user.role
+    response_user = UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        role=effective_role,
+        branch=user.branch,
+        employee_id=user.employee_id,
+        department=user.department,
+        designation=user.designation,
+        email_verified=user.email_verified,
+        mfa_enabled=get_confirmed_authenticator(db, user.id) is not None,
+    )
+
+    if user.role in FIRST_LOGIN_PRIVILEGED_ROLES and user.must_change_password:
+        confirmed_authenticator = get_confirmed_authenticator(db, user.id)
+        if user.account_status == "pending_password_change" and confirmed_authenticator is not None:
+            password_token = create_temporary_token(
+                user.email,
+                "privileged_password_setup",
+                role=user.role,
+                extra={"uid": user.id},
+            )
+            return LoginResponse(
+                user=response_user,
+                password_change_required=True,
+                password_change_token=password_token,
+            )
+
+        _credential, uri, qr = create_or_replace_authenticator(db, user)
+        user.account_status = "pending_mfa"
+        user.is_active = False
+        user.mfa_required = True
+        record_audit(
+            db,
+            event_type="PRIVILEGED_TEMPORARY_PASSWORD_ACCEPTED",
+            request=request,
+            user=user,
+            module="authentication",
+            details={"role": user.role, "next_step": "authenticator_verification"},
+        )
+        db.commit()
+        setup_token = create_temporary_token(user.email, "mfa_setup", role=user.role, extra={"uid": user.id})
+        return LoginResponse(
+            user=response_user,
+            mfa_setup_required=True,
+            mfa_setup_token=setup_token,
+            otpauth_uri=uri,
+            qr_code_data_uri=qr,
+        )
+
+    if user.email_verified and user.account_status == "pending_mfa":
+        _credential, uri, qr = create_or_replace_authenticator(db, user)
+        setup_token = create_temporary_token(user.email, "mfa_setup", role=user.role, extra={"uid": user.id})
+        return LoginResponse(
+            user=response_user,
+            mfa_setup_required=True,
+            mfa_setup_token=setup_token,
+            otpauth_uri=uri,
+            qr_code_data_uri=qr,
+        )
+
     if not user.is_active or user.account_status not in {"active", ""}:
         record_audit(
             db,
@@ -385,58 +607,16 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         )
         db.commit()
         raise HTTPException(status_code=403, detail="This account is not active")
-    if requested_role and user.role != requested_role:
-        raise HTTPException(status_code=403, detail=f"This account is registered as {role_display_name(user.role)}, not {role_display_name(requested_role)}")
 
-    credential = get_confirmed_authenticator(db, user.id)
-    if user.mfa_required and credential is None:
-        from app.modules.employee_portal.service import create_or_replace_authenticator
-        _credential, uri, qr = create_or_replace_authenticator(db, user)
-        setup_token = create_temporary_token(user.email, "mfa_setup", role=user.role, extra={"uid": user.id})
-        return LoginResponse(
-            user=UserResponse(
-                id=user.id, email=user.email, full_name=user.full_name, role=user.role, branch=user.branch,
-                employee_id=user.employee_id, department=user.department, designation=user.designation,
-                email_verified=user.email_verified, mfa_enabled=False,
-            ),
-            mfa_setup_required=True,
-            mfa_setup_token=setup_token,
-            otpauth_uri=uri,
-            qr_code_data_uri=qr,
-        )
-    if credential is not None:
-        pre_auth = create_temporary_token(
-            user.email,
-            "pre_auth",
-            role=user.role,
-            extra={"uid": user.id, "ver": user.token_version},
-        )
-        return LoginResponse(
-            user=UserResponse(
-                id=user.id, email=user.email, full_name=user.full_name, role=user.role, branch=user.branch,
-                employee_id=user.employee_id, department=user.department, designation=user.designation,
-                email_verified=user.email_verified, mfa_enabled=True,
-            ),
-            requires_mfa=True,
-            pre_auth_token=pre_auth,
-        )
+    if user.mfa_required:
+        user.mfa_required = False
+        db.commit()
 
-    token, _session = issue_access_for_user(db, user=user, request=request)
+    token, _session = issue_access_for_user(db, user=user, request=request, access_role=effective_role)
     return LoginResponse(
         access_token=token,
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            role=user.role,
-            branch=user.branch,
-            employee_id=user.employee_id,
-            department=user.department,
-            designation=user.designation,
-            email_verified=user.email_verified,
-            mfa_enabled=False,
-        ),
-        branch_selection_required=user.role == "employee",
+        user=response_user,
+        branch_selection_required=effective_role == "employee",
     )
 
 
@@ -446,7 +626,7 @@ def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_
     branch = db.get(Branch, int(branch_id)) if branch_id is not None else None
     user = auth.user
     return UserResponse(
-        id=user.id, email=user.email, full_name=user.full_name, role=user.role,
+        id=user.id, email=user.email, full_name=user.full_name, role=auth.effective_role,
         branch=branch.name if branch else user.branch, employee_id=user.employee_id,
         department=user.department, designation=user.designation,
         selected_branch_id=branch.id if branch else None,
@@ -459,13 +639,15 @@ def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_
 @router.get("/dashboard/summary")
 def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "management", "it", "drone"))) -> dict:
     assets = list(db.scalars(select(Asset)).all())
+    primary_assets = [asset for asset in assets if is_primary_device_type(asset.device_type)]
+    primary_summary = inventory_summary(primary_assets)
     drones = list(db.scalars(select(Drone)).all())
     pending_work = db.scalar(select(func.count(WorkRecord.id)).where(WorkRecord.status.in_(["open", "pending", "in_progress"]))) or 0
     return {
         "role": user.role,
-        "assets_total": len(assets),
-        "available_assets": sum(asset.status == "available" for asset in assets),
-        "repair_assets": sum(asset.status == "repair" for asset in assets),
+        "assets_total": primary_summary["total"],
+        "available_assets": primary_summary["available"],
+        "repair_assets": primary_summary["repair"],
         "drones_total": len(drones),
         "deployed_drones": sum(drone.status == "deployed" for drone in drones),
         "pending_work": pending_work,
@@ -528,14 +710,24 @@ def it_dashboard(
     work_records = list(db.scalars(work_query).all()) if source != "template" else []
     replacements = list(db.scalars(replacement_query).all()) if source != "template" else []
 
-    status_counts = Counter(asset.status for asset in assets)
-    device_counts = Counter(asset.device_type for asset in assets)
-    department_counts = Counter(asset.department or "Unassigned" for asset in assets)
-    location_counts = Counter(asset.location or "Unknown" for asset in assets)
-    memory_counts = Counter(asset.memory_gb or "Not recorded" for asset in assets)
-    os_counts = Counter(asset.operating_system or "Not recorded" for asset in assets)
+    # External HDDs remain a dedicated portable-storage register. Dashboard KPIs,
+    # drill-downs and reports share one canonical classification layer so aliases and
+    # legacy values cannot silently disappear or be counted twice.
+    primary_assets = [asset for asset in assets if is_primary_device_type(asset.device_type)]
+    primary_summary = inventory_summary(primary_assets)
+    all_summary = inventory_summary(assets)
+    integrity = inventory_integrity(primary_assets, assets)
 
-    ip_counts = Counter(asset.ip_address for asset in assets if asset.ip_address and asset.ip_address not in {"-", "Dynamic"})
+    department_counts = Counter(asset.department or "Unassigned" for asset in primary_assets)
+    location_counts = Counter(asset.location or "Unknown" for asset in primary_assets)
+    memory_counts = Counter(asset.memory_gb or "Not recorded" for asset in primary_assets)
+    os_counts = Counter(asset.operating_system or "Not recorded" for asset in primary_assets)
+
+    ip_counts = Counter(
+        asset.ip_address
+        for asset in primary_assets
+        if asset.ip_address and asset.ip_address not in {"-", "Dynamic"}
+    )
     duplicate_ips = sorted([ip for ip, count in ip_counts.items() if count > 1])
     pending_approvals = 0
     component_changes = 0
@@ -577,10 +769,10 @@ def it_dashboard(
         ) or 0
 
     alerts = [
-        {"severity": "high", "title": "Replacement pending", "count": status_counts.get("replacement_pending", 0), "filter": "replacement_pending"},
-        {"severity": "high", "title": "Assets under repair", "count": status_counts.get("repair", 0), "filter": "repair"},
-        {"severity": "medium", "title": "Missing employee assignment", "count": sum(not asset.used_by for asset in assets), "filter": "unassigned"},
-        {"severity": "medium", "title": "MAC address not recorded", "count": sum(not asset.mac_address for asset in assets), "filter": "missing_mac"},
+        {"severity": "high", "title": "Replacement pending", "count": primary_summary["replacement_pending"], "filter": "replacement_pending"},
+        {"severity": "high", "title": "Assets under repair", "count": primary_summary["repair"], "filter": "repair"},
+        {"severity": "medium", "title": "Missing employee assignment", "count": sum(not asset.used_by and is_primary_device_type(asset.device_type) for asset in assets), "filter": "unassigned"},
+        {"severity": "medium", "title": "MAC address not recorded", "count": sum(not asset.mac_address and is_primary_device_type(asset.device_type) for asset in assets), "filter": "missing_mac"},
         {"severity": "high", "title": "Duplicate IP addresses", "count": len(duplicate_ips), "details": duplicate_ips},
         {"severity": "medium", "title": "Approvals waiting", "count": pending_approvals, "filter": "approval_pending"},
     ]
@@ -595,18 +787,24 @@ def it_dashboard(
             "read_only": not is_live,
         },
         "kpis": {
-            "total": len(assets),
-            "computers": device_counts.get("Computer", 0),
-            "laptops": device_counts.get("Laptop", 0),
-            "smartphones": device_counts.get("Smartphone", 0),
-            "assigned": status_counts.get("assigned", 0) + status_counts.get("in_use", 0),
-            "available": status_counts.get("available", 0),
-            "repair": status_counts.get("repair", 0),
-            "replacement_pending": status_counts.get("replacement_pending", 0),
-            "wfh": status_counts.get("wfh", 0),
-            "field": status_counts.get("field_deployment", 0),
-            "returned": status_counts.get("returned", 0),
-            "damaged": status_counts.get("damaged", 0) + status_counts.get("beyond_repair", 0),
+            "total": primary_summary["total"],
+            "computers": primary_summary["computers"],
+            "laptops": primary_summary["laptops"],
+            "smartphones": primary_summary["smartphones"],
+            "printers": primary_summary["printers"],
+            "external_hdds": all_summary["external_hdds"],
+            "assigned": primary_summary["assigned"],
+            "available": primary_summary["available"],
+            "repair": primary_summary["repair"],
+            "replacement_pending": primary_summary["replacement_pending"],
+            "wfh": primary_summary["wfh"],
+            "field": primary_summary["field"],
+            "returned": primary_summary["returned"],
+            "damaged": primary_summary["damaged"],
+            "servers": primary_summary["servers"],
+            "network_devices": primary_summary["network_devices"],
+            "other_primary": primary_summary["other"],
+            "terminal": primary_summary["terminal"],
         },
         "monthly_activity": {
             "new_assets": new_assets,
@@ -616,8 +814,9 @@ def it_dashboard(
             "asset_edit_operations": asset_edit_operations,
             "assets_edited": assets_edited,
         },
-        "device_distribution": [{"name": key, "value": value} for key, value in device_counts.most_common()],
-        "status_distribution": [{"name": key.replace("_", " ").title(), "value": value} for key, value in status_counts.most_common()],
+        "device_distribution": canonical_device_distribution(primary_assets),
+        "status_distribution": lifecycle_status_distribution(primary_assets),
+        "inventory_integrity": integrity,
         "department_distribution": [{"name": key, "value": value} for key, value in department_counts.most_common(12)],
         "location_distribution": [{"name": key, "value": value} for key, value in location_counts.most_common(8)],
         "memory_distribution": [{"name": key, "value": value} for key, value in memory_counts.most_common(8)],
@@ -631,7 +830,7 @@ def it_dashboard(
 @router.get("/dashboard/it/assets")
 def it_dashboard_asset_drilldown(
     month: str = Query(..., description="Reporting month in YYYY-MM format"),
-    scope: str = Query(default="all", description="all, device, status or department"),
+    scope: str = Query(default="all", description="all, primary, device, status or department"),
     scope_value: str | None = None,
     search: str | None = None,
     department: str | None = None,
@@ -639,6 +838,12 @@ def it_dashboard_asset_drilldown(
     status: str | None = None,
     location: str | None = None,
     work_mode: str | None = None,
+    ownership: str | None = None,
+    client_name: str | None = None,
+    project_id: str | None = None,
+    current_holder: str | None = None,
+    brand: str | None = None,
+    capacity: str | None = None,
     sort_by: str = "asset_code",
     sort_dir: str = "asc",
     page: int = Query(default=1, ge=1),
@@ -658,6 +863,12 @@ def it_dashboard_asset_drilldown(
             status=status,
             location=location,
             work_mode=work_mode,
+            ownership=ownership,
+            client_name=client_name,
+            project_id=project_id,
+            current_holder=current_holder,
+            brand=brand,
+            capacity=capacity,
             sort_by=sort_by,
             sort_dir=sort_dir,
             page=page,
@@ -695,7 +906,11 @@ def list_assets(
                     Asset.workstation_no.ilike(pattern), Asset.department.ilike(pattern),
                     Asset.cpu_asset_tag.ilike(pattern), Asset.monitor_asset_tags.ilike(pattern),
                     Asset.mouse_asset_tag.ilike(pattern), Asset.keyboard_asset_tag.ilike(pattern),
-                    Asset.system_name.ilike(pattern), Asset.ip_address.ilike(pattern),
+                    Asset.system_name.ilike(pattern), Asset.brand.ilike(pattern), Asset.model.ilike(pattern),
+                    Asset.serial_number.ilike(pattern), Asset.connection_type.ilike(pattern),
+                    Asset.capacity.ilike(pattern), Asset.ownership.ilike(pattern),
+                    Asset.client_name.ilike(pattern), Asset.project_id.ilike(pattern),
+                    Asset.current_holder.ilike(pattern), Asset.ip_address.ilike(pattern),
                     Asset.mac_address.ilike(pattern),
                 )
             )
@@ -735,7 +950,12 @@ def list_assets(
         searchable = " ".join(str(value or "") for value in (
             asset.asset_code, asset.used_by, asset.workstation_no, asset.department,
             asset.cpu_asset_tag, asset.monitor_asset_tags, asset.mouse_asset_tag,
-            asset.keyboard_asset_tag, asset.system_name, asset.ip_address, asset.mac_address,
+            asset.keyboard_asset_tag, asset.system_name, getattr(asset, "brand", None),
+            getattr(asset, "model", None), getattr(asset, "serial_number", None),
+            getattr(asset, "connection_type", None), getattr(asset, "capacity", None),
+            getattr(asset, "ownership", None), getattr(asset, "client_name", None),
+            getattr(asset, "project_id", None), getattr(asset, "current_holder", None),
+            asset.ip_address, asset.mac_address,
         )).lower()
         if query_text and query_text not in searchable:
             continue
@@ -830,11 +1050,16 @@ def create_asset(
     reporting_month = normalize_reporting_month(values.pop("reporting_month", None))
     values["status"] = str(values.get("status") or "available").lower()
     values["work_mode"] = str(values.get("work_mode") or "office").lower()
+    if is_supported_device_type(values.get("device_type")):
+        values["device_type"] = canonical_device_type(values.get("device_type"))
     values["performed_by"] = user.full_name
     values["asset_date"] = values.get("asset_date") or date.today()
     _validate_asset_data(db, values)
 
-    prefix = {"computer": "NT-PC", "laptop": "NT-LAP", "smartphone": "NT-MOB"}.get(
+    prefix = {
+        "computer": "NT-PC", "laptop": "NT-LAP", "smartphone": "NT-MOB",
+        "printer": "NT-PRN", "external hdd": "NT-HDD",
+    }.get(
         values["device_type"].lower(), "NT-IT"
     )
     code = _next_code(db, Asset, Asset.asset_code, prefix)
@@ -879,6 +1104,9 @@ def update_asset(
     merged = {**before, **updates}
     merged["status"] = str(merged.get("status") or "available").lower()
     merged["work_mode"] = str(merged.get("work_mode") or "office").lower()
+    if "device_type" in updates and is_supported_device_type(updates.get("device_type")):
+        updates["device_type"] = canonical_device_type(updates.get("device_type"))
+        merged["device_type"] = updates["device_type"]
     _validate_asset_data(db, merged, exclude_asset_id=asset.id)
 
     changed: dict[str, dict] = {}
@@ -889,8 +1117,6 @@ def update_asset(
 
     if not changed:
         return asset
-    if not audit_reason:
-        raise HTTPException(status_code=400, detail="Reason for Edit is required when asset details are changed")
 
     for key, values in changed.items():
         setattr(asset, key, values["to"])
@@ -958,29 +1184,27 @@ def assign_asset(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> Asset:
-    asset = db.get(Asset, asset_id)
+    asset = db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update())
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    if asset.status in FINAL_STATUSES:
-        raise HTTPException(status_code=400, detail=f"A {asset.status.replace('_', ' ')} asset cannot be assigned")
     work_mode = payload.work_mode.strip().lower()
-    status = {"office": "assigned", "wfh": "wfh", "field": "field_deployment"}.get(work_mode)
-    if not status:
+    if work_mode not in WORK_MODES:
         raise HTTPException(status_code=400, detail="Work mode must be office, wfh or field")
-    old_assignment = {
-        "used_by": asset.used_by,
-        "department": asset.department,
-        "workstation_no": asset.workstation_no,
-        "location": asset.location,
-        "status": asset.status,
-    }
-    asset.used_by = payload.used_by.strip()
-    asset.department = payload.department.strip()
-    asset.workstation_no = _normalised(payload.workstation_no)
-    asset.location = _normalised(payload.location) or asset.location or "Head Office"
-    asset.work_mode = work_mode
-    asset.status = status
-    asset.asset_date = payload.assigned_date or asset.asset_date or date.today()
+    old_assignment = custody_state(asset)
+    assignment_action = "transfer" if old_assignment.get("used_by") else "assign"
+    try:
+        apply_assignment_transition(
+            asset,
+            used_by=_normalised(payload.used_by),
+            department=payload.department,
+            workstation_no=_normalised(payload.workstation_no),
+            location=_normalised(payload.location) or asset.location or "Head Office",
+            work_mode=work_mode,
+            transition_date=payload.assigned_date or asset.asset_date or date.today(),
+            action=assignment_action,
+        )
+    except AssetLifecycleTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     _validate_asset_data(db, _asset_state(asset), exclude_asset_id=asset.id)
     _record_history(
         db,
@@ -988,17 +1212,10 @@ def assign_asset(
         "Asset assigned / transferred",
         user,
         old_value=_serialise_changes(old_assignment),
-        new_value=_serialise_changes({
-            "used_by": asset.used_by,
-            "department": asset.department,
-            "workstation_no": asset.workstation_no,
-            "location": asset.location,
-            "work_mode": asset.work_mode,
-            "status": asset.status,
-        }),
+        new_value=_serialise_changes(custody_state(asset)),
         remarks=payload.remarks,
         change_type="assignment_transfer",
-        reason=payload.remarks or "Asset assigned or transferred",
+        reason=payload.remarks or ("Asset transferred to a new custodian" if assignment_action == "transfer" else "Asset assigned to a custodian"),
         reporting_month=payload.reporting_month,
     )
     db.commit()
@@ -1013,23 +1230,21 @@ def return_asset(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> Asset:
-    asset = db.get(Asset, asset_id)
+    asset = db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update())
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     final_status = payload.final_status.strip().lower()
     if final_status not in {"available", "repair", "damaged", "returned"}:
         raise HTTPException(status_code=400, detail="Return status must be available, repair, damaged or returned")
-    old_assignment = {
-        "used_by": asset.used_by,
-        "department": asset.department,
-        "workstation_no": asset.workstation_no,
-        "work_mode": asset.work_mode,
-        "status": asset.status,
-    }
-    asset.used_by = None
-    asset.workstation_no = None
-    asset.work_mode = "office"
-    asset.status = final_status
+    old_assignment = custody_state(asset)
+    try:
+        apply_return_transition(
+            asset,
+            final_status=final_status,
+            transition_date=payload.return_date or date.today(),
+        )
+    except AssetLifecycleTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     note = f"Returned on {payload.return_date or date.today()}; condition: {payload.condition}; all components returned: {'Yes' if payload.all_components_returned else 'No'}"
     if payload.remarks:
         note = f"{note}; {payload.remarks}"
@@ -1041,7 +1256,7 @@ def return_asset(
         "Asset returned",
         user,
         old_value=_serialise_changes(old_assignment),
-        new_value=_serialise_changes({"used_by": None, "workstation_no": None, "status": final_status}),
+        new_value=_serialise_changes(custody_state(asset)),
         remarks=note,
         change_type="asset_returned",
         reason=payload.remarks or f"Asset returned in {payload.condition} condition",
@@ -1126,7 +1341,7 @@ def list_work_records(
 def create_work_record(
     payload: WorkRecordCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("admin", "management", "it", "drone")),
+    user: User = Depends(require_roles("admin", "it", "drone")),
 ) -> dict:
     module = payload.module.strip().lower()
     if module not in VALID_WORK_MODULES:
@@ -1170,25 +1385,92 @@ def update_work_record(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "management", "it", "drone")),
 ) -> dict:
-    work = db.get(WorkRecord, work_id)
+    work = db.scalar(
+        select(WorkRecord)
+        .where(WorkRecord.id == work_id)
+        .with_for_update()
+    )
     if not work:
         raise HTTPException(status_code=404, detail="Work record not found")
     if user.role in {"it", "drone"} and work.module != user.role:
         raise HTTPException(status_code=403, detail="You cannot update another department's work")
+    if work.module == "it" and user.role == "management":
+        raise HTTPException(status_code=403, detail="Management must use the approval decision endpoint for IT work")
+
     values = payload.model_dump(exclude_unset=True)
+    if "approval_status" in values:
+        raise HTTPException(
+            status_code=400,
+            detail="Approval decisions must use the Management approval endpoint",
+        )
+    if work.module == "it" and work.status in {"completed", "closed"} and values:
+        raise HTTPException(
+            status_code=409,
+            detail="Completed IT work is locked. Management must return it to IT before further operational edits.",
+        )
+
     if "reporting_month" in values and work.module == "it":
         values["reporting_month"] = normalize_reporting_month(values["reporting_month"])
     elif work.module != "it":
         values.pop("reporting_month", None)
+
+    target_status = values.get("status")
+    if target_status and target_status != work.status:
+        if work.module == "it":
+            if user.role not in {"it", "admin"}:
+                raise HTTPException(status_code=403, detail="Only IT can perform operational IT work transitions")
+            validate_it_work_operational_transition(work.status, target_status)
+        elif work.module == "drone" and user.role == "management":
+            raise HTTPException(status_code=403, detail="Management cannot perform Drone operational work transitions")
+
     old_status = work.status
-    changed = {}
+    changed: dict[str, dict[str, object]] = {}
     for key, value in values.items():
         old = getattr(work, key)
         if old != value:
             changed[key] = {"from": old, "to": value}
             setattr(work, key, value)
-    if payload.status == "completed":
-        work.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if work.module == "it" and target_status == "completed" and old_status != "completed":
+        now = utc_now_naive()
+        previous_approval_status = work.approval_status
+        work.completed_at = now
+        work.approval_status = "pending"
+        work.submitted_by_user_id = user.id
+        work.submitted_by_name = user.full_name
+        work.submitted_by_email = user.email
+        work.submitted_by_role = user.role
+        work.submitted_at = now
+        work.approved_by_user_id = None
+        work.approved_by_name = None
+        work.approved_by_email = None
+        work.approved_by_role = None
+        work.approved_at = None
+        work.approval_comments = None
+        record_approval_history(
+            db,
+            workflow_type=WORKFLOW_IT_WORK,
+            record_id=work.id,
+            record_code=work.work_code,
+            action="resubmitted" if previous_approval_status == "returned" else "submitted",
+            from_status=previous_approval_status,
+            to_status="pending",
+            user=user,
+            remarks=work.resolution or work.issue_description or work.title,
+        )
+        notify_management_approval_required(
+            db,
+            workflow="it_work",
+            record_id=work.id,
+            record_code=work.work_code,
+            reporting_month=work.reporting_month,
+            submitted_by_name=user.full_name,
+            event_token=work.submitted_at,
+            resubmitted=previous_approval_status == "returned",
+        )
+    elif target_status == "completed":
+        work.completed_at = work.completed_at or utc_now_naive()
+
     if work.asset and changed:
         _record_history(
             db,
@@ -1200,6 +1482,92 @@ def update_work_record(
             remarks=work.resolution or work.issue_description,
             change_type="work_record_updated",
             reason=work.resolution or work.issue_description or "Work record updated",
+            reporting_month=work.reporting_month,
+        )
+    db.commit()
+    db.refresh(work)
+    return _work_response(work)
+
+
+@router.post("/work-records/{work_id}/decision")
+def decide_work_record(
+    work_id: int,
+    payload: WorkApprovalDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("management")),
+) -> dict:
+    work = db.scalar(
+        select(WorkRecord)
+        .where(WorkRecord.id == work_id)
+        .with_for_update()
+    )
+    if work is None:
+        raise HTTPException(status_code=404, detail="Work record not found")
+    if work.module != "it":
+        raise HTTPException(status_code=400, detail="This Management approval workflow is only for IT work records")
+    if work.status != "completed" or work.approval_status != "pending":
+        raise HTTPException(status_code=409, detail="Only completed IT work pending Management approval can be decided")
+    if work.submitted_by_user_id is not None and work.submitted_by_user_id == user.id:
+        raise HTTPException(status_code=409, detail="A user cannot approve or return their own submitted IT work")
+
+    comments = (payload.comments or "").strip() or None
+    if payload.action == "return" and not comments:
+        raise HTTPException(status_code=400, detail="Management comments are required when returning work to IT")
+
+    now = utc_now_naive()
+    from_status = work.approval_status
+    if payload.action == "approve":
+        work.status = "closed"
+        work.approval_status = "approved"
+        history_action = "approved"
+        history_to_status = "approved"
+    else:
+        work.status = "in_progress"
+        work.approval_status = "returned"
+        history_action = "returned"
+        history_to_status = "returned"
+
+    work.approved_by_user_id = user.id
+    work.approved_by_name = user.full_name
+    work.approved_by_email = user.email
+    work.approved_by_role = user.role
+    work.approved_at = now
+    work.approval_comments = comments
+
+    record_approval_history(
+        db,
+        workflow_type=WORKFLOW_IT_WORK,
+        record_id=work.id,
+        record_code=work.work_code,
+        action=history_action,
+        from_status=from_status,
+        to_status=history_to_status,
+        user=user,
+        remarks=comments,
+    )
+    notify_approval_decision(
+        db,
+        workflow="it_work",
+        record_id=work.id,
+        record_code=work.work_code,
+        reporting_month=work.reporting_month,
+        outcome=history_to_status,
+        decided_by_name=user.full_name,
+        remarks=comments,
+        event_token=work.approved_at,
+        recipient_user_id=work.submitted_by_user_id,
+    )
+    if work.asset:
+        _record_history(
+            db,
+            work.asset,
+            "IT work approved and closed" if payload.action == "approve" else "IT work returned by Management",
+            user,
+            old_value="completed / pending approval",
+            new_value=f"{work.status} / {work.approval_status}",
+            remarks=comments,
+            change_type="work_approval_decision",
+            reason=comments or work.resolution or work.issue_description or work.title,
             reporting_month=work.reporting_month,
         )
     db.commit()
@@ -1578,19 +1946,37 @@ def create_replacement(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
-    old_asset = db.get(Asset, payload.old_asset_id)
+    old_asset = db.scalar(
+        select(Asset).where(Asset.id == payload.old_asset_id).with_for_update()
+    )
     if not old_asset:
         raise HTTPException(status_code=404, detail="Old asset not found")
-    new_asset = db.get(Asset, payload.new_asset_id) if payload.new_asset_id else None
+    existing_open_request = db.scalar(
+        select(ReplacementRecord.id)
+        .where(
+            ReplacementRecord.old_asset_id == old_asset.id,
+            ReplacementRecord.approval_status.in_(["pending", "returned"]),
+        )
+        .limit(1)
+    )
+    if existing_open_request is not None:
+        raise HTTPException(status_code=409, detail="This asset already has an active replacement request")
+
+    new_asset = None
+    if payload.new_asset_id:
+        new_asset = db.scalar(select(Asset).where(Asset.id == payload.new_asset_id).with_for_update())
     if new_asset and new_asset.id == old_asset.id:
         raise HTTPException(status_code=400, detail="Old asset and replacement asset cannot be the same")
     if new_asset and new_asset.status != "available":
         raise HTTPException(status_code=400, detail="Selected replacement asset is not available")
+    if new_asset and new_asset.device_type != old_asset.device_type:
+        raise HTTPException(status_code=400, detail="Replacement asset must use the same device type as the old asset")
     replacement_values = payload.model_dump()
     replacement_values["reporting_month"] = normalize_reporting_month(replacement_values.get("reporting_month"))
     record = ReplacementRecord(
         replacement_code=_next_code(db, ReplacementRecord, ReplacementRecord.replacement_code, "RPL"),
         **replacement_values,
+        requested_by_user_id=user.id,
         requested_by=user.full_name,
         requested_by_email=user.email,
         requested_by_role=user.role,
@@ -1600,6 +1986,26 @@ def create_replacement(
     old_asset.status = "replacement_pending"
     db.add(record)
     db.flush()
+    record_approval_history(
+        db,
+        workflow_type=WORKFLOW_REPLACEMENT,
+        record_id=record.id,
+        record_code=record.replacement_code,
+        action="submitted",
+        from_status=None,
+        to_status="pending",
+        user=user,
+        remarks=payload.reason,
+    )
+    notify_management_approval_required(
+        db,
+        workflow="replacement",
+        record_id=record.id,
+        record_code=record.replacement_code,
+        reporting_month=record.reporting_month,
+        submitted_by_name=user.full_name,
+        event_token=record.created_at,
+    )
     _record_history(
         db,
         old_asset,
@@ -1624,84 +2030,248 @@ def approve_replacement(
     replacement_id: int,
     payload: ReplacementApproval,
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("admin", "management")),
+    user: User = Depends(require_roles("management")),
 ) -> dict:
-    record = db.get(ReplacementRecord, replacement_id)
+    record = db.scalar(
+        select(ReplacementRecord)
+        .where(ReplacementRecord.id == replacement_id)
+        .with_for_update()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Replacement record not found")
+    if record.approval_status != "pending":
+        raise HTTPException(status_code=409, detail="Only pending replacement requests can receive a Management decision")
+    if record.requested_by_user_id is not None and record.requested_by_user_id == user.id:
+        raise HTTPException(status_code=409, detail="A user cannot decide their own replacement request")
+
+    remarks = (payload.remarks or "").strip() or None
+    if payload.approval_status in {"rejected", "returned"} and not remarks:
+        raise HTTPException(status_code=400, detail="Management remarks are required for rejection or return")
+
+    old_asset = db.scalar(select(Asset).where(Asset.id == record.old_asset_id).with_for_update())
+    if old_asset is None:
+        raise HTTPException(status_code=409, detail="Replacement request references a missing old asset")
+
+    effective_new_asset_id = payload.new_asset_id if payload.new_asset_id is not None else record.new_asset_id
+    new_asset: Asset | None = None
+    if effective_new_asset_id is not None:
+        new_asset = db.scalar(select(Asset).where(Asset.id == effective_new_asset_id).with_for_update())
+        if not new_asset:
+            raise HTTPException(status_code=404, detail="Replacement asset not found")
+        if new_asset.id == old_asset.id:
+            raise HTTPException(status_code=400, detail="Old asset and replacement asset cannot be the same")
+        if new_asset.device_type != old_asset.device_type:
+            raise HTTPException(status_code=400, detail="Replacement asset must use the same device type as the old asset")
+        if payload.approval_status == "approved" and new_asset.status != "available":
+            raise HTTPException(status_code=409, detail="Replacement asset is no longer available")
+
+    if payload.final_action:
+        record.final_action = payload.final_action
+    if payload.approval_status == "approved" and record.final_action == "replace_and_retire" and new_asset is None:
+        raise HTTPException(status_code=400, detail="Select an available replacement asset before approval")
+
+    now = utc_now_naive()
     record.approval_status = payload.approval_status
+    record.approved_by_user_id = user.id
     record.approved_by = user.full_name
     record.approved_by_email = user.email
     record.approved_by_role = user.role
-    record.approved_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    if payload.new_asset_id is not None:
-        new_asset = db.get(Asset, payload.new_asset_id)
-        if not new_asset:
-            raise HTTPException(status_code=404, detail="Replacement asset not found")
-        if new_asset.id == record.old_asset_id:
-            raise HTTPException(status_code=400, detail="Old asset and replacement asset cannot be the same")
-        if new_asset.status != "available":
-            raise HTTPException(status_code=400, detail="Replacement asset must be available")
+    record.approved_at = now
+    record.decision_remarks = remarks
+    record.updated_at = now
+    if new_asset is not None:
         record.new_asset_id = new_asset.id
-    if payload.final_action:
-        record.final_action = payload.final_action
-
-    if payload.approval_status == "approved" and record.final_action == "replace_and_retire" and not record.new_asset:
-        raise HTTPException(status_code=400, detail="Select an available replacement asset before approval")
 
     if payload.approval_status == "approved":
-        record.old_asset.status = "replaced"
-        if record.new_asset:
-            record.new_asset.status = "assigned"
-            record.new_asset.used_by = record.old_asset.used_by
-            record.new_asset.department = record.old_asset.department
-            record.new_asset.location = record.old_asset.location
-            record.new_asset.workstation_no = record.old_asset.workstation_no
-            record.new_asset.work_mode = record.old_asset.work_mode
+        old_asset.status = "replaced"
+        effective_new_asset = new_asset
+        if effective_new_asset:
+            effective_new_asset.status = "assigned"
+            effective_new_asset.used_by = old_asset.used_by
+            effective_new_asset.department = old_asset.department
+            effective_new_asset.location = old_asset.location
+            effective_new_asset.workstation_no = old_asset.workstation_no
+            effective_new_asset.work_mode = old_asset.work_mode
             _record_history(
                 db,
-                record.new_asset,
+                effective_new_asset,
                 "Assigned as replacement asset",
                 user,
                 old_value="available",
                 new_value="assigned",
-                remarks=f"Replaces {record.old_asset.asset_code}",
+                remarks=f"Replaces {old_asset.asset_code}",
                 change_type="complete_asset_replacement",
                 reason=record.reason,
                 reporting_month=record.reporting_month,
             )
         _record_history(
             db,
-            record.old_asset,
+            old_asset,
             "Replacement approved",
             user,
             old_value="replacement_pending",
             new_value="replaced",
-            remarks=payload.remarks,
+            remarks=remarks,
             change_type="replacement_approved",
-            reason=payload.remarks or record.reason,
+            reason=remarks or record.reason,
             batch_code=record.replacement_code,
             field_count=1,
             reporting_month=record.reporting_month,
         )
+        history_action = "approved"
     elif payload.approval_status == "rejected":
-        previous_status = "assigned" if record.old_asset.used_by else "available"
-        record.old_asset.status = previous_status
+        previous_status = "assigned" if old_asset.used_by else "available"
+        old_asset.status = previous_status
         _record_history(
             db,
-            record.old_asset,
+            old_asset,
             "Replacement rejected",
             user,
             old_value="replacement_pending",
             new_value=previous_status,
-            remarks=payload.remarks,
+            remarks=remarks,
             change_type="replacement_rejected",
-            reason=payload.remarks or record.reason,
+            reason=remarks or record.reason,
             batch_code=record.replacement_code,
             field_count=1,
             reporting_month=record.reporting_month,
         )
+        history_action = "rejected"
+    else:
+        # Returned requests stay in replacement_pending so the failed asset is not
+        # accidentally placed back into normal service while IT corrects the request.
+        old_asset.status = "replacement_pending"
+        _record_history(
+            db,
+            old_asset,
+            "Replacement returned to IT",
+            user,
+            old_value="replacement_pending",
+            new_value="replacement_pending",
+            remarks=remarks,
+            change_type="replacement_returned",
+            reason=remarks or record.reason,
+            batch_code=record.replacement_code,
+            field_count=0,
+            reporting_month=record.reporting_month,
+        )
+        history_action = "returned"
 
+    record_approval_history(
+        db,
+        workflow_type=WORKFLOW_REPLACEMENT,
+        record_id=record.id,
+        record_code=record.replacement_code,
+        action=history_action,
+        from_status="pending",
+        to_status=payload.approval_status,
+        user=user,
+        remarks=remarks,
+    )
+    notify_approval_decision(
+        db,
+        workflow="replacement",
+        record_id=record.id,
+        record_code=record.replacement_code,
+        reporting_month=record.reporting_month,
+        outcome=payload.approval_status,
+        decided_by_name=user.full_name,
+        remarks=remarks,
+        event_token=record.approved_at,
+        recipient_user_id=record.requested_by_user_id,
+    )
+    db.commit()
+    db.refresh(record)
+    return _replacement_response(record)
+
+
+@router.put("/replacements/{replacement_id}/resubmit")
+def resubmit_replacement(
+    replacement_id: int,
+    payload: ReplacementResubmit,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    record = db.scalar(
+        select(ReplacementRecord)
+        .where(ReplacementRecord.id == replacement_id)
+        .with_for_update()
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Replacement record not found")
+    if record.approval_status != "returned":
+        raise HTTPException(status_code=409, detail="Only replacement requests returned by Management can be resubmitted")
+
+    old_asset = db.scalar(select(Asset).where(Asset.id == record.old_asset_id).with_for_update())
+    if old_asset is None:
+        raise HTTPException(status_code=409, detail="Replacement request references a missing old asset")
+    new_asset = None
+    if payload.new_asset_id:
+        new_asset = db.scalar(select(Asset).where(Asset.id == payload.new_asset_id).with_for_update())
+        if new_asset is None:
+            raise HTTPException(status_code=404, detail="Selected replacement asset was not found")
+    if new_asset and new_asset.id == old_asset.id:
+        raise HTTPException(status_code=400, detail="Old asset and replacement asset cannot be the same")
+    if new_asset and new_asset.status != "available":
+        raise HTTPException(status_code=400, detail="Selected replacement asset is not available")
+    if new_asset and new_asset.device_type != old_asset.device_type:
+        raise HTTPException(status_code=400, detail="Replacement asset must use the same device type as the old asset")
+
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Replacement reason is required")
+
+    record.reporting_month = normalize_reporting_month(payload.reporting_month)
+    record.new_asset_id = new_asset.id if new_asset else None
+    record.reason = reason
+    record.damage_category = payload.damage_category
+    record.inspection_finding = (payload.inspection_finding or "").strip() or None
+    record.final_action = payload.final_action
+    record.approval_status = "pending"
+    record.approved_by_user_id = None
+    record.approved_by = None
+    record.approved_by_email = None
+    record.approved_by_role = None
+    record.approved_at = None
+    record.decision_remarks = None
+    record.updated_at = utc_now_naive()
+    old_asset.status = "replacement_pending"
+
+    record_approval_history(
+        db,
+        workflow_type=WORKFLOW_REPLACEMENT,
+        record_id=record.id,
+        record_code=record.replacement_code,
+        action="resubmitted",
+        from_status="returned",
+        to_status="pending",
+        user=user,
+        remarks=record.reason,
+    )
+    notify_management_approval_required(
+        db,
+        workflow="replacement",
+        record_id=record.id,
+        record_code=record.replacement_code,
+        reporting_month=record.reporting_month,
+        submitted_by_name=user.full_name,
+        event_token=record.updated_at,
+        resubmitted=True,
+    )
+    _record_history(
+        db,
+        old_asset,
+        "Replacement request resubmitted",
+        user,
+        old_value="returned for correction",
+        new_value="pending management approval",
+        remarks=record.reason,
+        change_type="replacement_resubmitted",
+        reason=record.reason,
+        batch_code=record.replacement_code,
+        field_count=1,
+        reporting_month=record.reporting_month,
+    )
     db.commit()
     db.refresh(record)
     return _replacement_response(record)
@@ -1719,6 +2289,40 @@ async def import_assets_excel(
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Excel file is larger than 25 MB")
     return import_assets_workbook(db, content)
+
+
+@router.post("/imports/printers.xlsx")
+async def import_printers_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Please upload an .xlsx printer register")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Printer Excel file is larger than 10 MB")
+    try:
+        return import_printer_assets_workbook(db, content, performed_by=user.full_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/imports/external-hdds.xlsx")
+async def import_external_hdds_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Please upload an .xlsx External HDD register")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="External HDD Excel file is larger than 10 MB")
+    try:
+        return import_external_hdd_assets_workbook(db, content, performed_by=user.full_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/reports/months")
@@ -1760,7 +2364,7 @@ def finalize_month(
 @router.get("/reports/it-dashboard-assets.xlsx")
 def it_dashboard_asset_drilldown_excel(
     month: str = Query(..., description="Reporting month in YYYY-MM format"),
-    scope: str = Query(default="all", description="all, device, status or department"),
+    scope: str = Query(default="all", description="all, primary, device, status or department"),
     scope_value: str | None = None,
     search: str | None = None,
     department: str | None = None,
@@ -1768,6 +2372,12 @@ def it_dashboard_asset_drilldown_excel(
     status: str | None = None,
     location: str | None = None,
     work_mode: str | None = None,
+    ownership: str | None = None,
+    client_name: str | None = None,
+    project_id: str | None = None,
+    current_holder: str | None = None,
+    brand: str | None = None,
+    capacity: str | None = None,
     sort_by: str = "asset_code",
     sort_dir: str = "asc",
     db: Session = Depends(get_db),
@@ -1785,6 +2395,12 @@ def it_dashboard_asset_drilldown_excel(
             status=status,
             location=location,
             work_mode=work_mode,
+            ownership=ownership,
+            client_name=client_name,
+            project_id=project_id,
+            current_holder=current_holder,
+            brand=brand,
+            capacity=capacity,
             sort_by=sort_by,
             sort_dir=sort_dir,
             page=1,
@@ -1798,6 +2414,47 @@ def it_dashboard_asset_drilldown_excel(
 
     safe_scope = re.sub(r"[^A-Za-z0-9_-]+", "-", result["scope"]["label"]).strip("-") or "Assets"
     filename = f"NakshaTech {safe_scope} - {result['month']['label']}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/complete-monthly.xlsx")
+def complete_monthly_excel_report(
+    month: str = Query(..., description="Month in YYYY-MM format"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> StreamingResponse:
+    ensure_previous_month_snapshot(db)
+    try:
+        period = monthly_period(month)
+        stream = build_complete_period_report(db, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = f"NakshaTech Complete IT Report - {period.label}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/complete-yearly.xlsx")
+def complete_yearly_excel_report(
+    year: int = Query(..., ge=2000, le=2100),
+    period_type: str = Query(default="calendar", alias="period", description="calendar or financial"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> StreamingResponse:
+    ensure_previous_month_snapshot(db)
+    try:
+        period = yearly_period(year, period_type)
+        stream = build_complete_period_report(db, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = f"NakshaTech Complete IT Report - {period.label}.xlsx"
     return StreamingResponse(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1860,6 +2517,42 @@ def monthly_summary_excel_report(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/printers.xlsx")
+def printer_asset_excel_report(
+    month: str | None = Query(default=None, description="Reporting month in YYYY-MM format"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> StreamingResponse:
+    try:
+        stream = build_printer_asset_report(db, month)
+        label = parse_month_key(month).strftime("%B %Y") if month else month_start().strftime("%B %Y")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="NakshaTech Printer Asset Register - {label}.xlsx"'},
+    )
+
+
+@router.get("/reports/external-hdds.xlsx")
+def external_hdd_asset_excel_report(
+    month: str | None = Query(default=None, description="Reporting month in YYYY-MM format"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "management", "it")),
+) -> StreamingResponse:
+    try:
+        stream = build_external_hdd_asset_report(db, month)
+        label = parse_month_key(month).strftime("%B %Y") if month else month_start().strftime("%B %Y")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="NakshaTech External HDD Asset Register - {label}.xlsx"'},
     )
 
 

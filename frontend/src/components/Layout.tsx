@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Code2,
   Database,
+  FileCheck2,
   FileDown,
   FolderKanban,
   HardDrive,
@@ -16,11 +17,14 @@ import {
   Activity,
   LogOut,
   Menu,
+  MonitorCheck,
   PackageCheck,
   PlaneTakeoff,
   Repeat2,
+  SearchCheck,
   Settings,
   ShoppingCart,
+  Sparkles,
   ShieldCheck,
   UploadCloud,
   Users,
@@ -33,6 +37,7 @@ import { useAuth } from '../context/AuthContext'
 import { useITMonth } from '../context/ITMonthContext'
 import type { Role } from '../types'
 import { Logo } from './Logo'
+import { GlobalNotificationBell } from './GlobalNotificationBell'
 import { canAccessRole, isFullAccessRole, roleDisplayName } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import { apiFetch } from '../lib/api'
@@ -43,6 +48,8 @@ interface NavItem {
   icon: AppIcon
   roles: Role[]
   group: 'overview' | 'support' | 'management' | 'it' | 'drone' | 'system'
+  managementGroup?: NavItem['group']
+  managementLabel?: string
 }
 
 interface NavGroupDefinition {
@@ -63,18 +70,23 @@ const navItems: NavItem[] = [
   { to: '/support', label: 'Support Dashboard', icon: LifeBuoy, roles: ['employee'], group: 'support' },
   { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
   { to: '/tickets', label: 'Support Tickets', icon: ClipboardList, roles: ['employee', 'it', 'drone', 'management', 'software_team'], group: 'support' },
+  { to: '/software-team/agents', label: 'Agent Monitoring', icon: MonitorCheck, roles: ['software_team'], group: 'system' },
   { to: '/software-team/security', label: 'Users & Audit', icon: Activity, roles: ['software_team'], group: 'system' },
+  { to: '/management/activity', label: 'Users & Activity', icon: Activity, roles: ['management'], group: 'system' },
   { to: '/software-team', label: 'Software Team Overview', icon: Code2, roles: ['software_team'], group: 'overview' },
   { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview' },
-  { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management' },
+  { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/replacements', label: 'Component Changes', icon: Repeat2, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/it/handover-return', label: 'Handover & Return', icon: ArrowRightLeft, roles: ['admin', 'management', 'it'], group: 'it' },
-  { to: '/it/purchases', label: 'Purchase & Procurement', icon: ShoppingCart, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/it/purchase-requests', label: 'Purchase Requests', icon: FileCheck2, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'management', managementLabel: 'Purchase Order Approval' },
+  { to: '/it/purchases', label: 'Purchase & Procurement', icon: ShoppingCart, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'management' },
   { to: '/it/recent-changes', label: 'Recent Changes', icon: History, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/data-quality', label: 'Data Quality Centre', icon: SearchCheck, roles: ['software_team', 'management', 'it'], group: 'it' },
   { to: '/reports', label: 'IT Excel & Reports', icon: FileDown, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/naksha-copilot', label: 'Naksha Copilot', icon: Sparkles, roles: ['software_team', 'management', 'it'], group: 'it' },
   { to: '/drone', label: 'Drone Dashboard', icon: Drone, roles: ['admin', 'management', 'drone'], group: 'drone' },
   { to: '/drone/assets', label: 'Drone Assets', icon: Boxes, roles: ['admin', 'management', 'drone'], group: 'drone' },
   { to: '/drone/kits', label: 'Drone Kits', icon: PackageCheck, roles: ['admin', 'management', 'drone'], group: 'drone' },
@@ -111,6 +123,14 @@ function canViewItem(role: Role, item: NavItem): boolean {
   return canAccessRole(role, item.roles)
 }
 
+function navigationGroupForItem(role: Role, item: NavItem): NavItem['group'] {
+  return role === 'management' && item.managementGroup ? item.managementGroup : item.group
+}
+
+function navigationLabelForItem(role: Role, item: NavItem): string {
+  return role === 'management' && item.managementLabel ? item.managementLabel : item.label
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const { selectedMonth } = useITMonth()
@@ -126,10 +146,11 @@ export function Layout({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    if (!user || !isFullAccessRole(user.role)) return
+    if (!user || (!isFullAccessRole(user.role) && user.role !== 'management')) return
     const activeItem = navItems.find(item => canViewItem(user.role, item) && isPathInItem(location.pathname, item))
     if (activeItem) {
-      setOpenGroups(current => ({ ...current, [activeItem.group]: true }))
+      const activeGroup = navigationGroupForItem(user.role, activeItem)
+      setOpenGroups(current => ({ ...current, [activeGroup]: true }))
     }
   }, [location.pathname, user])
 
@@ -142,10 +163,18 @@ export function Layout({ children }: { children: ReactNode }) {
   }, [location.pathname, user])
 
   if (!user) return null
+  const currentUser = user
 
-  const available = navItems.filter(item => canViewItem(user.role, item))
-  const roleMeta = roleLabels[user.role]
-  const groupedNavigation = isFullAccessRole(user.role)
+  const visibleItems = navItems.filter(item => canViewItem(currentUser.role, item))
+
+  const available = currentUser.role === 'it'
+    ? [
+        ...visibleItems.filter(item => item.to !== '/tickets'),
+        ...visibleItems.filter(item => item.to === '/tickets'),
+      ]
+    : visibleItems
+  const roleMeta = roleLabels[currentUser.role]
+  const groupedNavigation = isFullAccessRole(currentUser.role) || currentUser.role === 'management'
 
   function renderNavItem(item: NavItem) {
     const Icon = item.icon
@@ -157,7 +186,7 @@ export function Layout({ children }: { children: ReactNode }) {
         className={() => isPathInItem(location.pathname, item) ? 'active' : ''}
       >
         <Icon size={18} />
-        <span>{item.label}</span>
+        <span>{navigationLabelForItem(currentUser.role, item)}</span>
       </NavLink>
     )
   }
@@ -176,7 +205,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <nav className={groupedNavigation ? 'grouped-navigation' : ''}>
           {groupedNavigation
             ? navGroups.map(group => {
-                const items = available.filter(item => item.group === group.id)
+                const items = available.filter(item => navigationGroupForItem(currentUser.role, item) === group.id)
                 if (items.length === 0) return null
                 const isOpen = openGroups[group.id]
                 return (
@@ -198,11 +227,11 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-department-card">
-            <div className="user-avatar">{user.full_name.charAt(0)}</div>
+            <div className="user-avatar">{currentUser.full_name.charAt(0)}</div>
             <div>
               <small>{roleMeta.name}</small>
-              <strong>{user.full_name}</strong>
-              <span>{roleMeta.subtitle} · {user.branch}</span>
+              <strong>{currentUser.full_name}</strong>
+              <span>{roleMeta.subtitle} · {currentUser.branch}</span>
             </div>
           </div>
           <button className="ghost-button" onClick={logout}><LogOut size={17} /> Logout</button>
@@ -212,9 +241,12 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="main-content" key={location.pathname}>
         <div className="topbar">
           <div className="topbar-status"><span className="system-indicator" /><span>System online</span></div>
-          <div className="topbar-actions">
-            <span className="topbar-context"><PackageCheck size={17} />{user.role === 'drone' ? 'Drone operations workspace' : user.role === 'employee' ? `Branch: ${user.selected_branch_name || user.branch}` : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
-            <span className="topbar-user"><Users size={17} /><b>{roleDisplayName(user.role).toUpperCase()}</b><small>{roleMeta.name}</small></span>
+          <div className="topbar-right">
+            <GlobalNotificationBell />
+            <div className="topbar-actions">
+              <span className="topbar-context"><PackageCheck size={17} />{currentUser.role === 'drone' ? 'Drone operations workspace' : currentUser.role === 'employee' ? `Branch: ${currentUser.selected_branch_name || currentUser.branch}` : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
+              <span className="topbar-user"><Users size={17} /><b>{roleDisplayName(currentUser.role).toUpperCase()}</b><small>{roleMeta.name}</small></span>
+            </div>
           </div>
         </div>
         <div className="internal-page-content">{children}</div>

@@ -3,11 +3,13 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  Database,
   FileDown,
   HardDrive,
   Laptop,
   Monitor,
   PackageOpen,
+  Printer,
   RefreshCcw,
   Repeat2,
   RotateCcw,
@@ -15,7 +17,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ActivityTrendChart, DonutChart, HorizontalBars } from '../components/Charts'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { AssetDrilldownDrawer } from '../components/AssetDrilldownDrawer'
@@ -23,7 +25,9 @@ import { StatCard } from '../components/StatCard'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, downloadFile } from '../lib/api'
 import { withITMonth } from '../lib/itMonth'
-import type { ActivityTrendPoint, DistributionItem, ITActivitySummaryData, ITAssetDrilldownSelection, ITDashboardData, ReportMonth } from '../types'
+import '../printer-assets.css'
+import '../external-hdd-assets.css'
+import type { ActivityTrendPoint, AlertItem, DistributionItem, ITActivitySummaryData, ITAssetDrilldownSelection, ITDashboardData, ReportMonth } from '../types'
 
 
 function reportingMonthWindow(endMonth: string, count = 6): Array<{ key: string; label: string }> {
@@ -59,8 +63,37 @@ function statusChartItems(items: DistributionItem[]): DistributionItem[] {
   return result
 }
 
+function alertRegisterUrl(alert: AlertItem, month: string): string {
+  const qualityFilter = alert.filter || (alert.title === 'Duplicate IP addresses' ? 'duplicate_ip' : '')
+  if (!qualityFilter) return withITMonth('/assets', month)
+
+  const params = new URLSearchParams()
+  params.set('quality', qualityFilter)
+  if (qualityFilter === 'duplicate_ip' && alert.details?.length) {
+    params.set('quality_values', alert.details.join(','))
+  }
+  return withITMonth(`/assets?${params.toString()}`, month)
+}
+
+function drilldownFromQuery(
+  drawer: string | null,
+  scope: string | null,
+  value: string | null,
+): ITAssetDrilldownSelection | null {
+  if (drawer === 'printers') return { scope: 'device', value: 'Printer' }
+  if (drawer === 'external-hdds') return { scope: 'device', value: 'External HDD' }
+  if (drawer !== 'assets') return null
+  const allowedScopes = new Set<ITAssetDrilldownSelection['scope']>(['all', 'primary', 'device', 'status', 'department'])
+  if (!scope || !allowedScopes.has(scope as ITAssetDrilldownSelection['scope'])) return null
+  return { scope: scope as ITAssetDrilldownSelection['scope'], value: value || undefined }
+}
+
 export function ITDashboard() {
   const { selectedMonth, presentMonth, setSelectedMonth, returnToPresent } = useITMonthUrl()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedDrawer = searchParams.get('drawer')
+  const requestedDrawerScope = searchParams.get('drawer_scope')
+  const requestedDrawerValue = searchParams.get('drawer_value')
   const [data, setData] = useState<ITDashboardData | null>(null)
   const [months, setMonths] = useState<ReportMonth[]>([])
   const [error, setError] = useState('')
@@ -70,10 +103,27 @@ export function ITDashboard() {
   const requestSequence = useRef(0)
   const trendRequestSequence = useRef(0)
   const trendAbortController = useRef<AbortController | null>(null)
-  const [drilldown, setDrilldown] = useState<ITAssetDrilldownSelection | null>(null)
+  const [drilldown, setDrilldown] = useState<ITAssetDrilldownSelection | null>(
+    drilldownFromQuery(requestedDrawer, requestedDrawerScope, requestedDrawerValue),
+  )
   const [activityTrend, setActivityTrend] = useState<ActivityTrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(false)
   const [trendError, setTrendError] = useState('')
+
+  useEffect(() => {
+    if (!requestedDrawer) return
+    setDrilldown(drilldownFromQuery(requestedDrawer, requestedDrawerScope, requestedDrawerValue))
+  }, [requestedDrawer, requestedDrawerScope, requestedDrawerValue])
+
+  function closeDrilldown() {
+    setDrilldown(null)
+    if (!requestedDrawer) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('drawer')
+    next.delete('drawer_scope')
+    next.delete('drawer_value')
+    setSearchParams(next, { replace: true })
+  }
 
   async function loadMonths() {
     try {
@@ -177,7 +227,7 @@ export function ITDashboard() {
     setSelectedMonth(month)
   }
 
-  async function download(type: 'assets' | 'dashboard') {
+  async function download(type: 'assets' | 'dashboard' | 'printers' | 'external-hdds') {
     if (!data) return
     setDownloading(type)
     try {
@@ -187,6 +237,10 @@ export function ITDashboard() {
           `/reports/monthly-assets.xlsx?month=${encodedMonth}`,
           `NakshaTech Asset Register - ${data.month.label}.xlsx`,
         )
+      } else if (type === 'printers') {
+        await downloadFile(`/reports/printers.xlsx?month=${encodedMonth}`, `NakshaTech Printer Asset Register - ${data.month.label}.xlsx`)
+      } else if (type === 'external-hdds') {
+        await downloadFile(`/reports/external-hdds.xlsx?month=${encodedMonth}`, `NakshaTech External HDD Asset Register - ${data.month.label}.xlsx`)
       } else {
         await downloadFile(
           `/reports/monthly-summary.xlsx?month=${encodedMonth}`,
@@ -203,7 +257,6 @@ export function ITDashboard() {
   if (!data) return <div className="loading-state">{error || 'Loading IT dashboard...'}</div>
   const k = data.kpis
   const statusVisualData = statusChartItems(data.status_distribution)
-  const registerUrl = withITMonth('/assets', selectedMonth)
 
   return (
     <>
@@ -226,6 +279,8 @@ export function ITDashboard() {
           {selectedMonth !== presentMonth && <button className="secondary-button" onClick={returnToPresent}><RotateCcw size={17} /> Return to Present</button>}
           <button className="secondary-button" onClick={() => void load(true)} disabled={refreshing}><RefreshCcw size={17} className={refreshing ? 'spin' : ''} /> {refreshing ? 'Refreshing...' : 'Refresh'}{lastUpdated && !refreshing ? ` · ${lastUpdated}` : ''}</button>
           <button className="secondary-button" onClick={() => void download('dashboard')} disabled={!!downloading}><FileDown size={17} /> Dashboard Excel</button>
+          <button className="secondary-button" onClick={() => void download('printers')} disabled={!!downloading}><Printer size={17} /> {downloading === 'printers' ? 'Preparing...' : 'Printer Excel'}</button>
+          <button className="secondary-button" onClick={() => void download('external-hdds')} disabled={!!downloading}><Database size={17} /> {downloading === 'external-hdds' ? 'Preparing...' : 'External HDD Excel'}</button>
           <button className="primary-button" onClick={() => void download('assets')} disabled={!!downloading}><FileDown size={17} /> {downloading === 'assets' ? 'Preparing...' : 'Download Asset Excel'}</button>
         </>}
       />
@@ -243,11 +298,13 @@ export function ITDashboard() {
         </div>
       </section>
 
-      <section className="stats-grid stats-eight dashboard-drilldown-cards" aria-label="Clickable IT asset summaries">
-        <StatCard icon={HardDrive} label="Total IT Assets" value={k.total} note={data.month.is_live ? 'Current active register · click for details' : `${data.month.label} closing register · click for details`} onClick={() => setDrilldown({ scope: 'all' })} active={drilldown?.scope === 'all'} />
+      <section className="stats-grid stats-nine dashboard-drilldown-cards" aria-label="Clickable IT asset summaries">
+        <StatCard icon={HardDrive} label="Total IT Assets" value={k.total} note={data.month.is_live ? 'Current active register · click for details' : `${data.month.label} closing register · click for details`} onClick={() => setDrilldown({ scope: 'primary' })} active={drilldown?.scope === 'primary'} />
         <StatCard icon={Monitor} label="Computers" value={k.computers} tone="navy" note="Click for computer details" onClick={() => setDrilldown({ scope: 'device', value: 'Computer' })} active={drilldown?.scope === 'device' && drilldown.value === 'Computer'} />
         <StatCard icon={Laptop} label="Laptops" value={k.laptops} tone="cyan" note="Click for laptop details" onClick={() => setDrilldown({ scope: 'device', value: 'Laptop' })} active={drilldown?.scope === 'device' && drilldown.value === 'Laptop'} />
         <StatCard icon={Smartphone} label="Smartphones" value={k.smartphones} tone="purple" note="Click for smartphone details" onClick={() => setDrilldown({ scope: 'device', value: 'Smartphone' })} active={drilldown?.scope === 'device' && drilldown.value === 'Smartphone'} />
+        <StatCard icon={Printer} label="Printers" value={k.printers} tone="blue" note="Click for printer details" onClick={() => setDrilldown({ scope: 'device', value: 'Printer' })} active={drilldown?.scope === 'device' && drilldown.value === 'Printer'} />
+        <StatCard icon={Database} label="External HDDs" value={k.external_hdds} tone="navy" note="Click for external HDD details" onClick={() => setDrilldown({ scope: 'device', value: 'External HDD' })} active={drilldown?.scope === 'device' && drilldown.value === 'External HDD'} />
         <StatCard icon={CheckCircle2} label="Assigned / In Use" value={k.assigned} tone="green" note="Click for assigned assets" onClick={() => setDrilldown({ scope: 'status', value: 'assigned' })} active={drilldown?.scope === 'status' && drilldown.value === 'assigned'} />
         <StatCard icon={PackageOpen} label="Available" value={k.available} tone="teal" note="Click for available assets" onClick={() => setDrilldown({ scope: 'status', value: 'available' })} active={drilldown?.scope === 'status' && drilldown.value === 'available'} />
         <StatCard icon={Wrench} label="Under Repair" value={k.repair} tone="orange" note="Click for repair details" onClick={() => setDrilldown({ scope: 'status', value: 'repair' })} active={drilldown?.scope === 'status' && drilldown.value === 'repair'} />
@@ -298,8 +355,8 @@ export function ITDashboard() {
           <div className="alert-list">
             {data.alerts.length === 0 && <div className="empty-state">No active alerts for this month.</div>}
             {data.alerts.map(alert => (
-              <Link to={registerUrl} key={alert.title} className={`alert-row severity-${alert.severity}`}>
-                <AlertTriangle size={19} /><div><strong>{alert.title}</strong>{alert.details?.length ? <small>{alert.details.join(', ')}</small> : <small>Open the selected month register</small>}</div><b>{alert.count}</b>
+              <Link to={alertRegisterUrl(alert, selectedMonth)} key={alert.title} className={`alert-row severity-${alert.severity}`}>
+                <AlertTriangle size={19} /><div><strong>{alert.title}</strong>{alert.details?.length ? <small>{alert.details.join(', ')}</small> : <small>Open affected records in the selected month register</small>}</div><b>{alert.count}</b>
               </Link>
             ))}
           </div>
@@ -345,7 +402,7 @@ export function ITDashboard() {
         </article>
       </section>
 
-      {drilldown && <AssetDrilldownDrawer selectedMonth={selectedMonth} selection={drilldown} onClose={() => setDrilldown(null)} />}
+      {drilldown && <AssetDrilldownDrawer selectedMonth={selectedMonth} selection={drilldown} onClose={closeDrilldown} />}
     </>
   )
 }

@@ -14,6 +14,15 @@ class AssetFields(BaseModel):
     mouse_asset_tag: str | None = None
     keyboard_asset_tag: str | None = None
     system_name: str | None = None
+    brand: str | None = None
+    model: str | None = None
+    serial_number: str | None = None
+    connection_type: str | None = None
+    capacity: str | None = None
+    ownership: str | None = None
+    client_name: str | None = None
+    project_id: str | None = None
+    current_holder: str | None = None
     device_type: str = "Computer"
     processor: str | None = None
     memory_gb: str | None = None
@@ -36,7 +45,9 @@ class AssetFields(BaseModel):
 
     @field_validator(
         "used_by", "workstation_no", "department", "cpu_asset_tag", "monitor_asset_tags",
-        "mouse_asset_tag", "keyboard_asset_tag", "system_name", "processor", "memory_gb",
+        "mouse_asset_tag", "keyboard_asset_tag", "system_name", "brand", "model",
+        "serial_number", "connection_type", "capacity", "ownership", "client_name",
+        "project_id", "current_holder", "processor", "memory_gb",
         "ssd", "hdd", "ip_address", "mac_address", "graphics_card", "operating_system",
         "antivirus", "network_type", "performed_by", "approved_by", "remarks", "location",
         mode="before",
@@ -66,6 +77,15 @@ class AssetUpdate(BaseModel):
     mouse_asset_tag: str | None = None
     keyboard_asset_tag: str | None = None
     system_name: str | None = None
+    brand: str | None = None
+    model: str | None = None
+    serial_number: str | None = None
+    connection_type: str | None = None
+    capacity: str | None = None
+    ownership: str | None = None
+    client_name: str | None = None
+    project_id: str | None = None
+    current_holder: str | None = None
     device_type: str | None = None
     processor: str | None = None
     memory_gb: str | None = None
@@ -87,7 +107,9 @@ class AssetUpdate(BaseModel):
 
     @field_validator(
         "used_by", "workstation_no", "department", "cpu_asset_tag", "monitor_asset_tags",
-        "mouse_asset_tag", "keyboard_asset_tag", "system_name", "processor", "memory_gb",
+        "mouse_asset_tag", "keyboard_asset_tag", "system_name", "brand", "model",
+        "serial_number", "connection_type", "capacity", "ownership", "client_name",
+        "project_id", "current_holder", "processor", "memory_gb",
         "ssd", "hdd", "ip_address", "mac_address", "graphics_card", "operating_system",
         "audit_reason", "audit_remarks", "antivirus", "network_type", "approved_by", "remarks", "location",
         mode="before",
@@ -108,7 +130,7 @@ class AssetStatusUpdate(BaseModel):
 
 class AssetAssignment(BaseModel):
     reporting_month: str | None = None
-    used_by: str = Field(min_length=2)
+    used_by: str | None = None
     department: str = Field(min_length=1)
     workstation_no: str | None = None
     location: str | None = None

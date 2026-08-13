@@ -17,6 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.services.monthly_snapshot_service import assets_for_month, get_snapshot_run, month_end, month_start, parse_month_key, parse_template_sheet_month
+from app.services.asset_lifecycle_service import (
+    canonical_device_type,
+    inventory_summary,
+    is_primary_device_type,
+    lifecycle_status_distribution,
+)
 from app.models.entities import Asset, AssetHistory, ComponentReplacement, MonthlySnapshotRun, ReplacementRecord, User, WorkRecord
 
 
@@ -37,6 +43,10 @@ FIELD_LABELS = {
     "mouse_asset_tag": "Mouse Asset Tag",
     "keyboard_asset_tag": "Keyboard Asset Tag",
     "system_name": "System Name",
+    "brand": "Brand",
+    "model": "Model",
+    "serial_number": "Serial Number",
+    "connection_type": "Connection Type",
     "device_type": "Device Type",
     "processor": "Processor",
     "memory_gb": "Memory",
@@ -63,10 +73,12 @@ LIVE_ASSET_HEADERS = [
     "PERFORMED BY", "APPROVED BY", "PRICE", "REMARKS", "date",
     "ORIGINAL ASSET DATE", "LAST UPDATED TIME", "UPDATED BY", "UPDATED BY ROLE",
     "LAST CHANGE TYPE", "FIELDS CHANGED", "EDIT REASON", "CHANGE BATCH ID",
+    "BRAND", "MODEL", "SERIAL NUMBER", "CONNECTION TYPE",
 ]
 LIVE_ASSET_WIDTHS = [
     7, 22, 14, 20, 14, 25, 14, 14, 22, 24, 22, 16, 14, 14, 18, 20, 22, 20,
     20, 14, 20, 20, 14, 34, 18, 18, 18, 24, 20, 26, 38, 40, 24,
+    18, 22, 22, 18,
 ]
 
 
@@ -213,11 +225,121 @@ def _asset_row(asset: Asset, serial: int, latest_history: AssetHistory | None = 
         ", ".join(FIELD_LABELS.get(field, field.replace("_", " ").title()) for field in changed_fields) or None,
         reason,
         batch_code,
+        getattr(asset, "brand", None),
+        getattr(asset, "model", None),
+        getattr(asset, "serial_number", None),
+        getattr(asset, "connection_type", None),
     ]
 
 
 def _latest_sheet_name(workbook) -> str:
     return workbook.sheetnames[0]
+
+
+def _asset_rows_for_report(db: Session, month_key: str | None = None):
+    if not month_key:
+        return list(db.scalars(select(Asset).order_by(Asset.id)).all())
+    start = parse_month_key(month_key)
+    assets, source = assets_for_month(db, start)
+    if source == "missing":
+        raise ValueError("No asset register is available for the selected month")
+    return list(assets)
+
+
+def build_printer_asset_report(db: Session, month_key: str | None = None) -> BytesIO:
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "Printer Assets"
+    headers = [
+        "Asset ID", "Assigned User", "Brand", "Model", "Serial No.", "Connection",
+        "Department", "Floor", "Status", "Remarks", "Last Updated",
+    ]
+    ws.append(headers)
+    _style_header(ws)
+
+    printers = sorted(
+        (asset for asset in _asset_rows_for_report(db, month_key) if canonical_device_type(asset.device_type) == "Printer"),
+        key=lambda asset: (str(asset.cpu_asset_tag or "").casefold(), str(asset.asset_code or "").casefold()),
+    )
+    for asset in printers:
+        ws.append([
+            asset.cpu_asset_tag or asset.asset_code,
+            asset.used_by,
+            getattr(asset, "brand", None),
+            getattr(asset, "model", None),
+            getattr(asset, "serial_number", None),
+            getattr(asset, "connection_type", None),
+            asset.department,
+            asset.location,
+            asset.status.replace("_", " ").title(),
+            asset.remarks,
+            getattr(asset, "asset_date", None) or getattr(asset, "updated_at", None),
+        ])
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:K{max(ws.max_row, 2)}"
+    ws.sheet_view.showGridLines = False
+    widths = [16, 22, 20, 24, 22, 18, 20, 16, 20, 36, 18]
+    for index, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    for cell in ws[1]:
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for row in ws.iter_rows(min_row=2, min_col=11, max_col=11):
+        for cell in row:
+            if isinstance(cell.value, (date, datetime)):
+                cell.number_format = "DD-MM-YYYY"
+
+    stream = BytesIO()
+    workbook.save(stream)
+    workbook.close()
+    stream.seek(0)
+    return stream
+
+
+def build_external_hdd_asset_report(db: Session, month_key: str | None = None) -> BytesIO:
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "External HDD Asset Register"
+    headers = [
+        "Asset ID", "Brand", "Capacity", "Serial No.", "Ownership", "Department",
+        "Client Name", "Project ID", "Current Holder", "Status", "Remarks",
+    ]
+    ws.append(headers)
+    _style_header(ws)
+
+    drives = sorted(
+        (asset for asset in _asset_rows_for_report(db, month_key) if canonical_device_type(asset.device_type) == "External HDD"),
+        key=lambda asset: (str(asset.cpu_asset_tag or "").casefold(), str(asset.asset_code or "").casefold()),
+    )
+    for asset in drives:
+        ws.append([
+            asset.cpu_asset_tag or asset.asset_code,
+            getattr(asset, "brand", None),
+            getattr(asset, "capacity", None),
+            getattr(asset, "serial_number", None),
+            getattr(asset, "ownership", None),
+            asset.department,
+            getattr(asset, "client_name", None),
+            getattr(asset, "project_id", None),
+            getattr(asset, "current_holder", None),
+            asset.status.replace("_", " ").title(),
+            asset.remarks,
+        ])
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:K{max(ws.max_row, 2)}"
+    ws.sheet_view.showGridLines = False
+    widths = [16, 20, 14, 22, 18, 20, 24, 16, 24, 22, 42]
+    for index, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    for cell in ws[1]:
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    stream = BytesIO()
+    workbook.save(stream)
+    workbook.close()
+    stream.seek(0)
+    return stream
 
 
 def build_asset_report(db: Session) -> BytesIO:
@@ -259,10 +381,10 @@ def build_asset_report(db: Session) -> BytesIO:
         serial += 1
 
     ws.append([])
-    counts = Counter(asset.device_type for asset in assets)
-    ws.append([None, "Current Inventory Summary", "Computer", "Laptop", "Mobile"])
-    ws.append([None, "NakshaTech", counts.get("Computer", 0), counts.get("Laptop", 0), counts.get("Smartphone", 0)])
-    ws.append([None, "Total", counts.get("Computer", 0), counts.get("Laptop", 0), counts.get("Smartphone", 0)])
+    counts = inventory_summary(assets)
+    ws.append([None, "Current Inventory Summary", "Computer", "Laptop", "Mobile", "Printer"])
+    ws.append([None, "NakshaTech", counts["computers"], counts["laptops"], counts["smartphones"], counts["printers"]])
+    ws.append([None, "Total", counts["computers"], counts["laptops"], counts["smartphones"], counts["printers"]])
     ws.freeze_panes = "A2"
     last_column = get_column_letter(len(LIVE_ASSET_HEADERS))
     ws.auto_filter.ref = f"A1:{last_column}{max(len(office_assets) + 1, 2)}"
@@ -322,19 +444,27 @@ def build_dashboard_report(db: Session) -> BytesIO:
 
     assets = list(db.scalars(select(Asset)).all())
     works = list(db.scalars(select(WorkRecord).where(WorkRecord.module == "it")).all())
-    status_counts = Counter(asset.status for asset in assets)
-    device_counts = Counter(asset.device_type for asset in assets)
-    department_counts = Counter(asset.department or "Unassigned" for asset in assets)
+    primary_assets = [asset for asset in assets if is_primary_device_type(asset.device_type)]
+    primary_summary = inventory_summary(primary_assets)
+    all_summary = inventory_summary(assets)
+    department_counts = Counter(asset.department or "Unassigned" for asset in primary_assets)
 
     kpis = [
-        ("Total Assets", len(assets)),
-        ("Computers", device_counts.get("Computer", 0)),
-        ("Laptops", device_counts.get("Laptop", 0)),
-        ("Smartphones", device_counts.get("Smartphone", 0)),
-        ("Assigned / In Use", status_counts.get("assigned", 0)),
-        ("Available", status_counts.get("available", 0)),
-        ("Under Repair", status_counts.get("repair", 0)),
-        ("Replacement Pending", status_counts.get("replacement_pending", 0)),
+        ("Total IT Assets", primary_summary["total"]),
+        ("Computers", primary_summary["computers"]),
+        ("Laptops", primary_summary["laptops"]),
+        ("Smartphones", primary_summary["smartphones"]),
+        ("Printers", primary_summary["printers"]),
+        ("External HDDs", all_summary["external_hdds"]),
+        ("Servers", primary_summary["servers"]),
+        ("Network Devices", primary_summary["network_devices"]),
+        ("Other Device Types", primary_summary["other"]),
+        ("Assigned / In Use", primary_summary["assigned"]),
+        ("Available", primary_summary["available"]),
+        ("Under Repair", primary_summary["repair"]),
+        ("Replacement Pending", primary_summary["replacement_pending"]),
+        ("Damaged / At Risk", primary_summary["damaged"]),
+        ("Retired / Finalized", primary_summary["terminal"]),
     ]
     summary.append([])
     summary.append(["KPI", "Value"])
@@ -348,6 +478,7 @@ def build_dashboard_report(db: Session) -> BytesIO:
         "Monitor Asset Tags", "Mouse Asset Tag", "Keyboard Asset Tag", "System Name", "Processor",
         "Memory", "SSD", "HDD", "IP Address", "MAC Address", "Graphics Card", "Operating System",
         "Antivirus", "Network Type", "Work Mode", "Location", "Status", "Remarks", "Asset Date",
+        "Brand", "Model", "Serial Number", "Connection Type",
     ])
     _style_header(asset_sheet)
     for asset in sorted(assets, key=lambda item: item.asset_code):
@@ -357,15 +488,15 @@ def build_dashboard_report(db: Session) -> BytesIO:
             asset.system_name, asset.processor, asset.memory_gb, asset.ssd, asset.hdd, asset.ip_address,
             asset.mac_address, asset.graphics_card, asset.operating_system, asset.antivirus,
             asset.network_type, asset.work_mode, asset.location, asset.status.replace("_", " ").title(),
-            asset.remarks, asset.asset_date,
+            asset.remarks, asset.asset_date, asset.brand, asset.model, asset.serial_number, asset.connection_type,
         ])
-    asset_sheet.auto_filter.ref = f"A1:Y{asset_sheet.max_row}"
+    asset_sheet.auto_filter.ref = f"A1:AC{asset_sheet.max_row}"
 
     status_sheet = workbook.create_sheet("Asset Status")
     status_sheet.append(["Status", "Count"])
     _style_header(status_sheet)
-    for status, count in sorted(status_counts.items()):
-        status_sheet.append([status.replace("_", " ").title(), count])
+    for item in lifecycle_status_distribution(primary_assets):
+        status_sheet.append([item["name"], item["value"]])
     pie = PieChart()
     pie.title = "Asset Status Distribution"
     pie.add_data(Reference(status_sheet, min_col=2, min_row=1, max_row=status_sheet.max_row), titles_from_data=True)
@@ -595,21 +726,24 @@ def _write_asset_register_sheet(
         serial += 1
 
     summary_row = row_number + 2
-    counts = Counter(getattr(asset, "device_type", "Other") for asset in assets)
+    counts = inventory_summary(assets)
     ws.cell(summary_row, 2).value = "Current Inventory Summary"
     ws.cell(summary_row, 2).font = Font(bold=True, color="FFFFFF")
     ws.cell(summary_row, 2).fill = PatternFill("solid", fgColor=NAVY)
     ws.cell(summary_row + 1, 3).value = "Computer"
     ws.cell(summary_row + 1, 4).value = "Laptop"
     ws.cell(summary_row + 1, 5).value = "Mobile"
+    ws.cell(summary_row + 1, 6).value = "Printer"
     ws.cell(summary_row + 2, 2).value = "NakshaTech"
-    ws.cell(summary_row + 2, 3).value = counts.get("Computer", 0)
-    ws.cell(summary_row + 2, 4).value = counts.get("Laptop", 0)
-    ws.cell(summary_row + 2, 5).value = counts.get("Smartphone", 0)
+    ws.cell(summary_row + 2, 3).value = counts["computers"]
+    ws.cell(summary_row + 2, 4).value = counts["laptops"]
+    ws.cell(summary_row + 2, 5).value = counts["smartphones"]
+    ws.cell(summary_row + 2, 6).value = counts["printers"]
     ws.cell(summary_row + 3, 2).value = "Total"
-    ws.cell(summary_row + 3, 3).value = counts.get("Computer", 0)
-    ws.cell(summary_row + 3, 4).value = counts.get("Laptop", 0)
-    ws.cell(summary_row + 3, 5).value = counts.get("Smartphone", 0)
+    ws.cell(summary_row + 3, 3).value = counts["computers"]
+    ws.cell(summary_row + 3, 4).value = counts["laptops"]
+    ws.cell(summary_row + 3, 5).value = counts["smartphones"]
+    ws.cell(summary_row + 3, 6).value = counts["printers"]
 
     department_row = summary_row + 6
     ws.cell(department_row, 12).value = "Department"
@@ -988,8 +1122,7 @@ def build_monthly_summary_report(db: Session, month_key: str) -> BytesIO:
                     device = str(row[9] or "").strip() if len(row) > 9 else ""
                     if device.lower() in {"computer", "laptop", "smartphone", "mobile"} or (cpu_tag not in (None, "", "-") and str(row[0] or "").strip().isdigit()):
                         closing_count += 1
-                        normalized = "Smartphone" if device.lower() in {"smartphone", "mobile"} else (device.title() if device else "Other")
-                        device_counts[normalized] += 1
+                        device_counts[canonical_device_type(device)] += 1
                 historical_book.close()
 
                 workbook = Workbook()
@@ -1007,6 +1140,7 @@ def build_monthly_summary_report(db: Session, month_key: str) -> BytesIO:
                 ws.append(["Computers", device_counts.get("Computer", 0), "Original monthly workbook"])
                 ws.append(["Laptops", device_counts.get("Laptop", 0), "Original monthly workbook"])
                 ws.append(["Smartphones", device_counts.get("Smartphone", 0), "Original monthly workbook"])
+                ws.append(["Printers", device_counts.get("Printer", 0), "Original monthly workbook"])
                 ws.append(["System-recorded component changes", 0, "Detailed upgrade, replacement and downgrade history was not captured in the application before system adoption"])
                 ws.column_dimensions["A"].width = 38
                 ws.column_dimensions["B"].width = 14

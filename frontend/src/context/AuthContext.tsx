@@ -1,10 +1,11 @@
 import { createContext, type ReactNode, useContext, useMemo, useState } from 'react'
 import { apiFetch } from '../lib/api'
-import type { AuthLoginResponse, AuthUser, Branch } from '../types'
+import type { AuthLoginResponse, AuthUser, Branch, Role } from '../types'
 
-interface PendingAuth {
-  preAuthToken?: string
+interface PendingAuthenticatorSetup {
   mfaSetupToken?: string
+  passwordChangeRequired?: boolean
+  passwordChangeToken?: string
   qrCodeDataUri?: string
   otpAuthUri?: string
   user?: AuthUser
@@ -14,11 +15,11 @@ interface PendingAuth {
 interface AuthContextValue {
   user: AuthUser | null
   needsBranchSelection: boolean
-  pendingAuth: PendingAuth | null
-  login: (email: string, password: string, remember: boolean) => Promise<AuthLoginResponse>
+  pendingAuthenticatorSetup: PendingAuthenticatorSetup | null
+  login: (role: Role, email: string, password: string, remember: boolean, accessMode?: 'employee_support') => Promise<AuthLoginResponse>
   acceptAuthResponse: (result: AuthLoginResponse, remember?: boolean) => void
-  verifyLoginMfa: (code: string) => Promise<AuthLoginResponse>
-  confirmMfaSetup: (code: string) => Promise<AuthLoginResponse>
+  confirmRegistrationAuthenticator: (code: string) => Promise<AuthLoginResponse>
+  completePrivilegedPasswordSetup: (newPassword: string, confirmPassword: string) => Promise<AuthLoginResponse>
   selectBranch: (branchId: number) => Promise<AuthLoginResponse>
   loadBranches: () => Promise<Branch[]>
   logout: () => void
@@ -37,10 +38,10 @@ function readBranchSelectionRequired(): boolean {
   return raw === 'true'
 }
 
-function readPendingAuth(): PendingAuth | null {
-  const raw = sessionStorage.getItem('asset_pending_auth')
+function readPendingAuthenticatorSetup(): PendingAuthenticatorSetup | null {
+  const raw = sessionStorage.getItem('asset_pending_authenticator_setup')
   if (!raw) return null
-  try { return JSON.parse(raw) as PendingAuth } catch { return null }
+  try { return JSON.parse(raw) as PendingAuthenticatorSetup } catch { return null }
 }
 
 function clearAuthStorage() {
@@ -49,31 +50,45 @@ function clearAuthStorage() {
     storage.removeItem('asset_user')
     storage.removeItem('asset_branch_required')
   }
+  sessionStorage.removeItem('asset_pending_auth')
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(readStoredUser)
   const [needsBranchSelection, setNeedsBranchSelection] = useState(readBranchSelectionRequired)
-  const [pendingAuth, setPendingAuth] = useState<PendingAuth | null>(readPendingAuth)
+  const [pendingAuthenticatorSetup, setPendingAuthenticatorSetup] = useState<PendingAuthenticatorSetup | null>(readPendingAuthenticatorSetup)
 
-  function savePending(pending: PendingAuth | null) {
-    setPendingAuth(pending)
-    if (pending) sessionStorage.setItem('asset_pending_auth', JSON.stringify(pending))
-    else sessionStorage.removeItem('asset_pending_auth')
+  function savePendingAuthenticatorSetup(pending: PendingAuthenticatorSetup | null) {
+    setPendingAuthenticatorSetup(pending)
+    if (pending) sessionStorage.setItem('asset_pending_authenticator_setup', JSON.stringify(pending))
+    else sessionStorage.removeItem('asset_pending_authenticator_setup')
   }
 
-  function acceptAuthResponse(result: AuthLoginResponse, remember = pendingAuth?.remember ?? false) {
-    if (result.requires_mfa || result.mfa_setup_required) {
-      savePending({
-        preAuthToken: result.pre_auth_token,
-        mfaSetupToken: result.mfa_setup_token,
-        qrCodeDataUri: result.qr_code_data_uri,
-        otpAuthUri: result.otpauth_uri,
-        user: result.user,
+  function acceptAuthResponse(result: AuthLoginResponse, remember = false) {
+    if (result.mfa_setup_required || result.password_change_required) {
+      if (result.mfa_setup_required && !result.mfa_setup_token) {
+        throw new Error('Authenticator setup response is incomplete')
+      }
+      if (result.password_change_required && !result.password_change_token) {
+        throw new Error('Password setup response is incomplete')
+      }
+      savePendingAuthenticatorSetup({
+        ...pendingAuthenticatorSetup,
+        mfaSetupToken: result.mfa_setup_token ?? pendingAuthenticatorSetup?.mfaSetupToken,
+        passwordChangeRequired: result.password_change_required,
+        passwordChangeToken: result.password_change_token ?? pendingAuthenticatorSetup?.passwordChangeToken,
+        qrCodeDataUri: result.qr_code_data_uri ?? pendingAuthenticatorSetup?.qrCodeDataUri,
+        otpAuthUri: result.otpauth_uri ?? pendingAuthenticatorSetup?.otpAuthUri,
+        user: result.user ?? pendingAuthenticatorSetup?.user,
         remember,
       })
       return
     }
+
+    if (result.requires_mfa) {
+      throw new Error('Authenticator codes are not required for normal sign-in. Please refresh and sign in again.')
+    }
+
     if (!result.access_token || !result.user) throw new Error('Authentication response is incomplete')
     clearAuthStorage()
     const storage = remember ? localStorage : sessionStorage
@@ -82,35 +97,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storage.setItem('asset_branch_required', String(result.branch_selection_required))
     setUser(result.user)
     setNeedsBranchSelection(result.branch_selection_required)
-    savePending(null)
+    savePendingAuthenticatorSetup(null)
   }
 
-  async function login(email: string, password: string, remember: boolean) {
+  async function login(role: Role, email: string, password: string, remember: boolean, accessMode?: 'employee_support') {
     const result = await apiFetch<AuthLoginResponse>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ role, email, password, access_mode: accessMode }),
     })
     acceptAuthResponse(result, remember)
     return result
   }
 
-  async function verifyLoginMfa(code: string) {
-    if (!pendingAuth?.preAuthToken) throw new Error('The authenticator login session is missing. Sign in again.')
-    const result = await apiFetch<AuthLoginResponse>('/auth/mfa/verify-login', {
+  async function confirmRegistrationAuthenticator(code: string) {
+    if (!pendingAuthenticatorSetup?.mfaSetupToken) {
+      throw new Error('The account activation session is missing. Sign in again to resume setup.')
+    }
+    const result = await apiFetch<AuthLoginResponse>('/auth/mfa/confirm', {
       method: 'POST',
-      body: JSON.stringify({ pre_auth_token: pendingAuth.preAuthToken, code }),
+      body: JSON.stringify({ mfa_setup_token: pendingAuthenticatorSetup.mfaSetupToken, code }),
     })
-    acceptAuthResponse(result, pendingAuth.remember)
+    acceptAuthResponse(result, pendingAuthenticatorSetup.remember)
     return result
   }
 
-  async function confirmMfaSetup(code: string) {
-    if (!pendingAuth?.mfaSetupToken) throw new Error('The authenticator setup session is missing. Start again.')
-    const result = await apiFetch<AuthLoginResponse>('/auth/mfa/confirm', {
+  async function completePrivilegedPasswordSetup(newPassword: string, confirmPassword: string) {
+    if (!pendingAuthenticatorSetup?.passwordChangeToken) {
+      throw new Error('The privileged account password setup session is missing. Sign in again to resume setup.')
+    }
+    const result = await apiFetch<AuthLoginResponse>('/auth/privileged/complete-setup', {
       method: 'POST',
-      body: JSON.stringify({ mfa_setup_token: pendingAuth.mfaSetupToken, code }),
+      body: JSON.stringify({
+        password_change_token: pendingAuthenticatorSetup.passwordChangeToken,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      }),
     })
-    acceptAuthResponse(result, pendingAuth.remember)
+    acceptAuthResponse(result, pendingAuthenticatorSetup.remember)
     return result
   }
 
@@ -130,26 +153,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     void apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined)
     clearAuthStorage()
-    sessionStorage.removeItem('asset_pending_auth')
+    sessionStorage.removeItem('asset_pending_authenticator_setup')
     setUser(null)
     setNeedsBranchSelection(false)
-    setPendingAuth(null)
+    setPendingAuthenticatorSetup(null)
   }
 
   const value = useMemo(
     () => ({
       user,
       needsBranchSelection,
-      pendingAuth,
+      pendingAuthenticatorSetup,
       login,
       acceptAuthResponse,
-      verifyLoginMfa,
-      confirmMfaSetup,
+      confirmRegistrationAuthenticator,
+      completePrivilegedPasswordSetup,
       selectBranch,
       loadBranches,
       logout,
     }),
-    [user, needsBranchSelection, pendingAuth],
+    [user, needsBranchSelection, pendingAuthenticatorSetup],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

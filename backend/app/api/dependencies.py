@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.entities import User
-from app.core.roles import role_is_allowed
+from app.core.roles import VALID_ROLES, role_is_allowed
 from app.modules.employee_portal.models import UserSession
 
 security = HTTPBearer()
@@ -23,6 +23,11 @@ class CurrentAuth:
     user: User
     claims: dict[str, Any]
     session: UserSession | None
+
+    @property
+    def effective_role(self) -> str:
+        claimed_role = str(self.claims.get("role") or "").strip().lower()
+        return claimed_role if claimed_role in VALID_ROLES else self.user.role
 
 
 def get_current_auth(
@@ -63,9 +68,9 @@ def get_current_user(auth: CurrentAuth = Depends(get_current_auth)) -> User:
 def require_roles(*roles: str):
     allowed = set(roles)
 
-    def checker(user: User = Depends(get_current_user)) -> User:
-        if not role_is_allowed(user.role, allowed):
+    def checker(auth: CurrentAuth = Depends(get_current_auth)) -> User:
+        if not role_is_allowed(auth.effective_role, allowed):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
-        return user
+        return auth.user
 
     return checker

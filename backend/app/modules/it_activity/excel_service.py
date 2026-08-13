@@ -11,8 +11,19 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.modules.it_activity.models import ITHandoverRecord, ITPurchaseRecord
-from app.modules.it_activity.service import IST, local_datetime, month_bounds, monthly_activity_data
+from app.modules.it_activity.models import (
+    ITHandoverRecord,
+    ITPurchaseRecord,
+    ITPurchaseRequest,
+    ITPurchaseRequestHistory,
+)
+from app.modules.it_activity.service import (
+    IST,
+    local_datetime,
+    month_bounds,
+    monthly_activity_data,
+    purchase_request_query,
+)
 
 EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 NAVY = "0F2744"
@@ -222,7 +233,7 @@ def build_monthly_it_activity_workbook(db: Session, month_key: str) -> tuple[Byt
         .order_by(ITPurchaseRecord.purchase_date, ITPurchaseRecord.id)
     ).all())
     purchase_columns = [
-        "Purchase Code", "Reporting Month", "Purchase Date", "System Recorded At", "PO Number", "Asset Number", "Linked Asset Code", "Supplier Name",
+        "Purchase Code", "Approval Request Code", "Reporting Month", "Purchase Date", "System Recorded At", "PO Number", "Asset Number", "Linked Asset Code", "Supplier Name",
         "Supplier Contact", "Item Description", "Warranty / Serial No.", "Quantity", "Unit Price (INR)",
         "Total Price (INR)", "Received Date", "Inspection Status", "Approved By", "Department",
         "Remarks", "Recorded By", "Role", "Time", "Source File", "Source Sheet", "Source Row",
@@ -231,6 +242,7 @@ def build_monthly_it_activity_workbook(db: Session, month_key: str) -> tuple[Byt
     for record in purchases:
         purchase_rows.append({
             "Purchase Code": record.purchase_code,
+            "Approval Request Code": record.purchase_request_code,
             "Reporting Month": record.reporting_month or record.purchase_date.strftime("%Y-%m"),
             "Purchase Date": record.purchase_date.strftime("%d-%m-%Y"),
             "System Recorded At": local_datetime(record.created_at).strftime("%d-%m-%Y %I:%M:%S %p") if local_datetime(record.created_at) else None,
@@ -286,3 +298,190 @@ def build_monthly_it_activity_workbook(db: Session, month_key: str) -> tuple[Byt
     wb.save(stream)
     stream.seek(0)
     return stream, counts
+
+
+
+def build_purchase_request_workbook(
+    db: Session,
+    *,
+    month: str | None = None,
+    status: str | None = None,
+    department: str | None = None,
+    priority: str | None = None,
+    search: str | None = None,
+) -> tuple[BytesIO, int]:
+    requests = list(db.scalars(
+        purchase_request_query(
+            month,
+            status=status,
+            department=department,
+            priority=priority,
+            search=search,
+        )
+        .order_by(ITPurchaseRequest.requested_at.desc(), ITPurchaseRequest.id.desc())
+    ).unique().all())
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    summary = wb.create_sheet("Approval Summary")
+    summary.sheet_view.showGridLines = False
+    summary.merge_cells("A1:F1")
+    summary["A1"] = "NakshaTech Purchase Permission & Approval Register"
+    summary["A1"].fill = PatternFill("solid", fgColor=NAVY)
+    summary["A1"].font = Font(color="FFFFFF", bold=True, size=16)
+    summary["A1"].alignment = Alignment(horizontal="left", vertical="center")
+    summary.row_dimensions[1].height = 38
+    summary["A3"] = "Reporting Month"
+    summary["B3"] = month or "All months"
+    summary["A4"] = "Status Filter"
+    summary["B4"] = status or "All statuses"
+    summary["A5"] = "Department Filter"
+    summary["B5"] = department or "All departments"
+    summary["A6"] = "Priority Filter"
+    summary["B6"] = priority or "All priorities"
+    summary["A7"] = "Generated At"
+    summary["B7"] = datetime.now(IST).strftime("%d-%m-%Y %I:%M:%S %p")
+    summary["A9"] = "Metric"
+    summary["B9"] = "Count / Value"
+    for cell in summary[9]:
+        cell.fill = PatternFill("solid", fgColor=GREEN)
+        cell.font = Font(color="FFFFFF", bold=True)
+    status_counts = Counter(record.status for record in requests)
+    metrics = [
+        ("Total Requests", len(requests)),
+        ("Pending Approval", status_counts.get("pending_approval", 0)),
+        ("Approved", status_counts.get("approved", 0)),
+        ("Rejected", status_counts.get("rejected", 0)),
+        ("Sent Back", status_counts.get("sent_back", 0)),
+        ("Purchase Completed", status_counts.get("purchase_completed", 0)),
+        ("Estimated Value (INR)", round(sum(float(record.estimated_total_amount or 0) for record in requests), 2)),
+        ("Approved Value (INR)", round(sum(float(record.approved_amount or 0) for record in requests), 2)),
+        ("Actual Purchase Value (INR)", round(sum(float(record.purchase_record.total_price or 0) for record in requests if record.purchase_record), 2)),
+    ]
+    for row_index, (label, value) in enumerate(metrics, 10):
+        summary.cell(row_index, 1, label)
+        summary.cell(row_index, 2, value)
+        if row_index % 2 == 0:
+            summary.cell(row_index, 1).fill = PatternFill("solid", fgColor=LIGHT_BLUE)
+            summary.cell(row_index, 2).fill = PatternFill("solid", fgColor=LIGHT_BLUE)
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 28
+
+    columns = [
+        "Request Code",
+        "Reporting Month",
+        "Requesting Department",
+        "Requested Employee",
+        "Item Type",
+        "Item Name",
+        "Item Description",
+        "Quantity",
+        "Estimated Unit Price (INR)",
+        "Estimated Total (INR)",
+        "Business Requirement",
+        "Required By",
+        "Priority",
+        "IT Remarks",
+        "Status",
+        "Branch",
+        "Requested By",
+        "Requester Email",
+        "Requested At",
+        "Approved Amount (INR)",
+        "Management Remarks",
+        "Decision By",
+        "Decision Email",
+        "Decision At",
+        "Purchase Code",
+        "Purchase Date",
+        "Actual Purchase Amount (INR)",
+        "Purchase Completed At",
+    ]
+    rows: list[dict[str, Any]] = []
+    for record in requests:
+        purchase = record.purchase_record
+        requested_at = local_datetime(record.requested_at)
+        decided_at = local_datetime(record.decided_at)
+        completed_at = local_datetime(record.purchase_completed_at)
+        rows.append({
+            "Request Code": record.request_code,
+            "Reporting Month": record.reporting_month,
+            "Requesting Department": record.requesting_department,
+            "Requested Employee": record.requested_employee,
+            "Item Type": record.item_type.title(),
+            "Item Name": record.item_name,
+            "Item Description": record.item_description,
+            "Quantity": record.quantity,
+            "Estimated Unit Price (INR)": record.estimated_unit_price,
+            "Estimated Total (INR)": record.estimated_total_amount,
+            "Business Requirement": record.business_reason,
+            "Required By": record.required_by_date.strftime("%d-%m-%Y") if record.required_by_date else None,
+            "Priority": record.priority.title(),
+            "IT Remarks": record.it_remarks,
+            "Status": record.status.replace("_", " ").title(),
+            "Branch": record.branch,
+            "Requested By": record.requested_by_name,
+            "Requester Email": record.requested_by_email,
+            "Requested At": requested_at.strftime("%d-%m-%Y %I:%M:%S %p") if requested_at else None,
+            "Approved Amount (INR)": record.approved_amount,
+            "Management Remarks": record.management_remarks,
+            "Decision By": record.decided_by_name,
+            "Decision Email": record.decided_by_email,
+            "Decision At": decided_at.strftime("%d-%m-%Y %I:%M:%S %p") if decided_at else None,
+            "Purchase Code": purchase.purchase_code if purchase else None,
+            "Purchase Date": purchase.purchase_date.strftime("%d-%m-%Y") if purchase else None,
+            "Actual Purchase Amount (INR)": purchase.total_price if purchase else None,
+            "Purchase Completed At": completed_at.strftime("%d-%m-%Y %I:%M:%S %p") if completed_at else None,
+        })
+    sheet = wb.create_sheet("Purchase Requests")
+    _write_rows(sheet, columns, rows)
+    for column_name in (
+        "Estimated Unit Price (INR)",
+        "Estimated Total (INR)",
+        "Approved Amount (INR)",
+        "Actual Purchase Amount (INR)",
+    ):
+        column_index = columns.index(column_name) + 1
+        for row_index in range(2, sheet.max_row + 1):
+            sheet.cell(row_index, column_index).number_format = '₹#,##0.00'
+
+    request_ids = [record.id for record in requests]
+    histories = list(db.scalars(
+        select(ITPurchaseRequestHistory)
+        .where(ITPurchaseRequestHistory.request_id.in_(request_ids))
+        .order_by(ITPurchaseRequestHistory.created_at, ITPurchaseRequestHistory.id)
+    ).all()) if request_ids else []
+    request_codes = {record.id: record.request_code for record in requests}
+    history_columns = [
+        "Request Code",
+        "Action",
+        "From Status",
+        "To Status",
+        "Remarks",
+        "Performed By",
+        "Email",
+        "Role",
+        "Date & Time",
+    ]
+    history_rows = []
+    for history in histories:
+        created_at = local_datetime(history.created_at)
+        history_rows.append({
+            "Request Code": request_codes.get(history.request_id),
+            "Action": history.action.replace("_", " ").title(),
+            "From Status": (history.from_status or "").replace("_", " ").title(),
+            "To Status": history.to_status.replace("_", " ").title(),
+            "Remarks": history.remarks,
+            "Performed By": history.performed_by_name,
+            "Email": history.performed_by_email,
+            "Role": history.performed_by_role.replace("_", " ").title(),
+            "Date & Time": created_at.strftime("%d-%m-%Y %I:%M:%S %p") if created_at else None,
+        })
+    history_sheet = wb.create_sheet("Approval History")
+    _write_rows(history_sheet, history_columns, history_rows)
+
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return stream, len(requests)
