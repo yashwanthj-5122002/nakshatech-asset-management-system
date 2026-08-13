@@ -1,17 +1,14 @@
 import {
-  AlertTriangle,
   CheckCircle2,
-  Clock3,
   Download,
   ExternalLink,
   FileCheck2,
-  HardDrive,
   IndianRupee,
   RotateCcw,
   ShieldCheck,
   ThumbsDown,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { StatCard } from '../components/StatCard'
@@ -20,7 +17,10 @@ import { apiFetch, downloadFile } from '../lib/api'
 import { monthLabel } from '../lib/itMonth'
 import '../management-control.css'
 
-type ApprovalItem = {
+type PurchaseStatus = 'pending_approval' | 'approved' | 'sent_back' | 'rejected' | 'purchase_completed'
+type StatusFilter = 'all' | PurchaseStatus
+
+type PurchaseRequestItem = {
   workflow: 'purchase_request'
   id: number
   code: string
@@ -31,38 +31,25 @@ type ApprovalItem = {
   priority?: string
   amount?: number
   reason?: string
-  status: string
+  status: PurchaseStatus
   target_url: string
   reporting_month?: string
-  metadata: Record<string, unknown>
-}
-
-type RiskTicket = {
-  id: number
-  ticket_code: string
-  title: string
-  department: string
-  priority: string
-  status: string
-  created_at: string
-  sla_status?: string
-  sla_due_at?: string
-  sla_breached: boolean
-  sla_warning: boolean
-  target_url: string
-}
-
-type RecentDecision = {
-  id: number
-  workflow: string
-  code: string
-  action: string
-  from_status?: string
-  to_status: string
-  remarks?: string
-  performed_by: string
-  performed_by_role: string
-  created_at: string
+  approved_amount?: number
+  management_remarks?: string
+  decided_by?: string
+  decided_at?: string
+  purchase_completed_at?: string
+  purchase_record_id?: number
+  purchase_code?: string
+  actual_purchase_amount?: number
+  purchase_date?: string
+  metadata: {
+    requested_employee?: string
+    quantity?: number
+    item_type?: string
+    required_by_date?: string
+    it_remarks?: string
+  }
 }
 
 type ManagementControlData = {
@@ -70,24 +57,29 @@ type ManagementControlData = {
   month?: string
   authority_model: string
   executive: {
-    primary_assets: number
-    assigned_assets: number
-    available_assets: number
-    repair_assets: number
-    replacement_pending_assets: number
-    active_it_work: number
-    active_replacements: number
-    pending_approvals: number
     pending_purchase_requests: number
     approved_purchase_value: number
-    open_critical_tickets: number
-    sla_warnings: number
-    sla_breaches: number
   }
-  approvals: ApprovalItem[]
-  risk_tickets: RiskTicket[]
-  recent_decisions: RecentDecision[]
+  purchase_summary: {
+    total: number
+    pending_approval: number
+    approved: number
+    sent_back: number
+    rejected: number
+    purchase_completed: number
+    approved_purchase_value: number
+  }
+  purchase_requests: PurchaseRequestItem[]
 }
+
+const statusFilters: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'pending_approval', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'sent_back', label: 'Sent Back' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'purchase_completed', label: 'Purchase Completed' },
+]
 
 function formatMoney(value?: number) {
   if (value == null) return '—'
@@ -103,9 +95,14 @@ function formatDate(value?: string) {
   }).format(new Date(value))
 }
 
+function statusLabel(status: PurchaseStatus) {
+  return status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
+}
+
 export function ManagementApprovalCenter() {
   const { selectedMonth } = useITMonthUrl()
   const [data, setData] = useState<ManagementControlData | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [remarks, setRemarks] = useState<Record<number, string>>({})
   const [approvedAmounts, setApprovedAmounts] = useState<Record<number, string>>({})
   const [busy, setBusy] = useState('')
@@ -121,9 +118,18 @@ export function ManagementApprovalCenter() {
     }
   }
 
-  useEffect(() => { void load() }, [selectedMonth])
+  useEffect(() => {
+    setStatusFilter('all')
+    void load()
+  }, [selectedMonth])
 
-  async function decide(item: ApprovalItem, action: 'approve' | 'reject' | 'send_back') {
+  const filteredRequests = useMemo(() => {
+    const requests = data?.purchase_requests || []
+    return statusFilter === 'all' ? requests : requests.filter(item => item.status === statusFilter)
+  }, [data?.purchase_requests, statusFilter])
+
+  async function decide(item: PurchaseRequestItem, action: 'approve' | 'reject' | 'send_back') {
+    if (item.status !== 'pending_approval') return
     const note = (remarks[item.id] || '').trim()
     if (['reject', 'send_back'].includes(action) && !note) {
       setError('Management remarks are required when rejecting or sending back a Purchase Request.')
@@ -145,6 +151,7 @@ export function ManagementApprovalCenter() {
       })
       setMessage(`${item.code} purchase decision saved: ${action.replaceAll('_', ' ')}.`)
       setRemarks(current => ({ ...current, [item.id]: '' }))
+      setApprovedAmounts(current => ({ ...current, [item.id]: '' }))
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save purchase decision')
@@ -159,99 +166,109 @@ export function ManagementApprovalCenter() {
     try {
       await downloadFile(
         `/management/control-center.xlsx?month=${encodeURIComponent(selectedMonth)}`,
-        `NakshaTech Management Control - ${selectedMonth}.xlsx`,
+        `NakshaTech Purchase Approval Centre - ${selectedMonth}.xlsx`,
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to download Management workbook')
+      setError(err instanceof Error ? err.message : 'Unable to download Purchase Approval workbook')
     } finally {
       setBusy('')
     }
   }
+
+  const summary = data?.purchase_summary
 
   return (
     <>
       <DashboardHeader
         eyebrow="PURCHASE GOVERNANCE"
         title="Purchase Approval Centre"
-        description={`Management permission is required only for Purchase Requests in ${monthLabel(selectedMonth)}. IT Work, replacements, handovers and asset operations remain under IT control and are visible to Management in read-only mode.`}
-        actions={<button className="secondary-button" onClick={() => void exportWorkbook()} disabled={busy === 'excel'}><Download size={17} /> {busy === 'excel' ? 'Preparing…' : 'Management Excel'}</button>}
+        description={`Management purchase governance for ${monthLabel(selectedMonth)}. Every Purchase Request remains visible through Pending, Approved, Sent Back, Rejected and Purchase Completed states.`}
+        actions={<button className="secondary-button" onClick={() => void exportWorkbook()} disabled={busy === 'excel'}><Download size={17} /> {busy === 'excel' ? 'Preparing…' : 'Purchase Excel'}</button>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
-      <div className="approval-note"><ShieldCheck size={16} /> Final authority model: Management approves expenditure only. Operational IT records remain fully visible but read-only.</div>
+      <div className="approval-note"><ShieldCheck size={16} /> Management can Approve, Send Back or Reject only Pending Purchase Requests. Approved, Sent Back, Rejected and Purchase Completed requests stay visible as read-only trace records.</div>
 
       <section className="stats-grid management-control-kpis">
-        <StatCard icon={FileCheck2} label="Pending Purchase Approvals" value={data?.executive.pending_purchase_requests ?? '—'} tone="purple" />
-        <StatCard icon={IndianRupee} label="Approved Purchase Value" value={data ? formatMoney(data.executive.approved_purchase_value) : '—'} tone="green" />
-        <StatCard icon={HardDrive} label="Primary IT Assets" value={data?.executive.primary_assets ?? '—'} />
-        <StatCard icon={AlertTriangle} label="SLA Breaches" value={data?.executive.sla_breaches ?? '—'} tone="red" />
-        <StatCard icon={Clock3} label="Critical Tickets" value={data?.executive.open_critical_tickets ?? '—'} tone="orange" />
+        <StatCard icon={FileCheck2} label="Pending" value={summary?.pending_approval ?? '—'} tone="purple" />
+        <StatCard icon={CheckCircle2} label="Approved" value={summary?.approved ?? '—'} tone="green" />
+        <StatCard icon={RotateCcw} label="Sent Back" value={summary?.sent_back ?? '—'} tone="orange" />
+        <StatCard icon={ThumbsDown} label="Rejected" value={summary?.rejected ?? '—'} tone="red" />
+        <StatCard icon={FileCheck2} label="Purchase Completed" value={summary?.purchase_completed ?? '—'} tone="blue" />
+        <StatCard icon={IndianRupee} label="Approved Purchase Value" value={summary ? formatMoney(summary.approved_purchase_value) : '—'} tone="green" />
       </section>
 
-      <section className="management-control-grid">
-        <article className="panel management-approval-queue">
-          <div className="panel-title-row">
-            <div><span className="section-kicker">ONLY APPROVAL QUEUE</span><h2>Pending Purchase Requests</h2></div>
-            <span className="count-chip">{data?.approvals.length ?? 0}</span>
-          </div>
+      <section className="panel management-approval-queue">
+        <div className="panel-title-row">
+          <div><span className="section-kicker">PURCHASE REQUEST LIFECYCLE</span><h2>Purchase Requests</h2></div>
+          <span className="count-chip">{filteredRequests.length}</span>
+        </div>
 
-          <div className="management-approval-list">
-            {(data?.approvals || []).map(item => (
+        <div className="management-decision-actions">
+          {statusFilters.map(filter => (
+            <button
+              type="button"
+              key={filter.value}
+              className={statusFilter === filter.value ? 'primary-button' : 'secondary-button'}
+              onClick={() => setStatusFilter(filter.value)}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="management-approval-list">
+          {filteredRequests.map(item => {
+            const isPending = item.status === 'pending_approval'
+            return (
               <article className="management-approval-card" key={item.id}>
                 <header>
                   <div><span>Purchase Request</span><h3>{item.code} · {item.title}</h3></div>
-                  <strong className={`priority ${item.priority || 'medium'}`}>{item.priority || 'normal'}</strong>
+                  <div>
+                    <strong className={`priority ${item.priority || 'medium'}`}>{item.priority || 'normal'}</strong>
+                    <span className={`status ${item.status}`}>{statusLabel(item.status)}</span>
+                  </div>
                 </header>
                 <div className="management-approval-meta">
                   <span>Submitted by <b>{item.submitted_by || 'Not recorded'}</b></span>
                   <span>{formatDate(item.submitted_at)}</span>
                   <span>{item.department || 'No department'}</span>
-                  {item.amount != null && <span>{formatMoney(item.amount)}</span>}
+                  {item.amount != null && <span>Estimated {formatMoney(item.amount)}</span>}
+                  {item.metadata.requested_employee && <span>For {item.metadata.requested_employee}</span>}
                 </div>
                 <p>{item.reason || 'No business reason recorded.'}</p>
-                {typeof item.metadata.it_remarks === 'string' && item.metadata.it_remarks && <div className="approval-note">IT Remarks · {item.metadata.it_remarks}</div>}
-                <label className="management-approved-amount"><span>Approved Amount (INR)</span><input type="number" min="0" step="0.01" value={approvedAmounts[item.id] ?? (item.amount == null ? '' : String(item.amount))} onChange={event => setApprovedAmounts(current => ({ ...current, [item.id]: event.target.value }))} /></label>
-                <label className="management-decision-remarks"><span>Management Remarks</span><textarea rows={2} value={remarks[item.id] || ''} onChange={event => setRemarks(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Required for Send Back / Reject; optional for approval" /></label>
-                <div className="management-decision-actions">
-                  <button className="primary-button" onClick={() => void decide(item, 'approve')} disabled={busy.startsWith(`${item.id}-`)}><CheckCircle2 size={16} /> Approve Purchase</button>
-                  <button className="secondary-button" onClick={() => void decide(item, 'send_back')} disabled={busy.startsWith(`${item.id}-`)}><RotateCcw size={16} /> Send Back</button>
-                  <button className="danger-button" onClick={() => void decide(item, 'reject')} disabled={busy.startsWith(`${item.id}-`)}><ThumbsDown size={16} /> Reject</button>
-                  <Link className="ghost-link" to={item.target_url}><ExternalLink size={15} /> Open Full Request</Link>
-                </div>
+                {item.metadata.it_remarks && <div className="approval-note">IT Remarks · {item.metadata.it_remarks}</div>}
+
+                {isPending ? <>
+                  <label className="management-approved-amount"><span>Approved Amount (INR)</span><input type="number" min="0" step="0.01" value={approvedAmounts[item.id] ?? (item.amount == null ? '' : String(item.amount))} onChange={event => setApprovedAmounts(current => ({ ...current, [item.id]: event.target.value }))} /></label>
+                  <label className="management-decision-remarks"><span>Management Remarks</span><textarea rows={2} value={remarks[item.id] || ''} onChange={event => setRemarks(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Required for Send Back / Reject; optional for approval" /></label>
+                  <div className="management-decision-actions">
+                    <button className="primary-button" onClick={() => void decide(item, 'approve')} disabled={busy.startsWith(`${item.id}-`)}><CheckCircle2 size={16} /> Approve Purchase</button>
+                    <button className="secondary-button" onClick={() => void decide(item, 'send_back')} disabled={busy.startsWith(`${item.id}-`)}><RotateCcw size={16} /> Send Back</button>
+                    <button className="danger-button" onClick={() => void decide(item, 'reject')} disabled={busy.startsWith(`${item.id}-`)}><ThumbsDown size={16} /> Reject</button>
+                    <Link className="ghost-link" to={item.target_url}><ExternalLink size={15} /> Open Full Request</Link>
+                  </div>
+                </> : <>
+                  <div className="approval-note">
+                    <strong>{statusLabel(item.status)}</strong>
+                    {item.approved_amount != null && <> · Approved Amount {formatMoney(item.approved_amount)}</>}
+                    {item.decided_by && <> · Decision by {item.decided_by}</>}
+                    {item.decided_at && <> · {formatDate(item.decided_at)}</>}
+                    {item.management_remarks && <> · {item.management_remarks}</>}
+                  </div>
+                  {item.status === 'purchase_completed' && <div className="approval-note">
+                    Purchase {item.purchase_code || 'record'} completed{item.purchase_date ? ` on ${item.purchase_date}` : ''}{item.actual_purchase_amount != null ? ` · Actual ${formatMoney(item.actual_purchase_amount)}` : ''}.
+                  </div>}
+                  <div className="management-decision-actions">
+                    <Link className="ghost-link" to={item.target_url}><ExternalLink size={15} /> Open Full Request</Link>
+                  </div>
+                </>}
               </article>
-            ))}
-            {!data?.approvals.length && <div className="empty-state"><ShieldCheck size={28} /><strong>No purchase approvals pending</strong><span>Management has no expenditure decision waiting for this period.</span></div>}
-          </div>
-        </article>
-
-        <aside className="management-control-side">
-          <section className="panel">
-            <div className="panel-title-row"><div><span className="section-kicker">EXECUTIVE RISK</span><h2>Critical Tickets & SLA</h2></div><AlertTriangle /></div>
-            <div className="management-risk-list">
-              {(data?.risk_tickets || []).map(ticket => (
-                <Link to={ticket.target_url} key={ticket.id} className={ticket.sla_breached ? 'breached' : ticket.sla_warning ? 'warning' : ''}>
-                  <div><strong>{ticket.ticket_code}</strong><span>{ticket.title}</span></div>
-                  <small>{ticket.priority} · {ticket.sla_status?.replaceAll('_', ' ') || 'SLA not applicable'}</small>
-                </Link>
-              ))}
-              {!data?.risk_tickets.length && <div className="empty-state">No active ticket risk.</div>}
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-title-row"><div><span className="section-kicker">PURCHASE TRACE</span><h2>Recent Purchase Decisions</h2></div><FileCheck2 /></div>
-            <div className="management-decision-history">
-              {(data?.recent_decisions || []).slice(0, 12).map(item => (
-                <div key={item.id}>
-                  <i />
-                  <p><strong>{item.code} · {item.action.replaceAll('_', ' ')}</strong><span>{item.performed_by} · {formatDate(item.created_at)}</span><small>{item.remarks || `${item.from_status || 'new'} → ${item.to_status}`}</small></p>
-                </div>
-              ))}
-              {!data?.recent_decisions.length && <div className="empty-state">No purchase decisions for this period.</div>}
-            </div>
-          </section>
-        </aside>
+            )
+          })}
+          {!filteredRequests.length && <div className="empty-state"><ShieldCheck size={28} /><strong>No Purchase Requests in this view</strong><span>Change the status filter or reporting month to review another part of the purchase lifecycle.</span></div>}
+        </div>
       </section>
     </>
   )
