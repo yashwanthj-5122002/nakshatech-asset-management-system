@@ -218,10 +218,20 @@ def management_control_center(db: Session, month: str | None = None) -> dict[str
 def build_management_control_workbook(data: dict[str, Any]) -> bytes:
     workbook = Workbook()
     summary = workbook.active
-    summary.title = "Executive Summary"
+    summary.title = "Purchase Summary"
     summary.append(["Metric", "Value"])
-    for key, value in data["executive"].items():
-        summary.append([key.replace("_", " ").title(), value])
+    purchase_summary = data.get("purchase_summary", {})
+    summary_rows = [
+        ("Total Purchase Requests", purchase_summary.get("total", 0)),
+        ("Pending", purchase_summary.get("pending_approval", 0)),
+        ("Approved", purchase_summary.get("approved", 0)),
+        ("Sent Back", purchase_summary.get("sent_back", 0)),
+        ("Rejected", purchase_summary.get("rejected", 0)),
+        ("Purchase Completed", purchase_summary.get("purchase_completed", 0)),
+        ("Approved Purchase Value", purchase_summary.get("approved_purchase_value", 0)),
+    ]
+    for label, value in summary_rows:
+        summary.append([label, value])
 
     purchases = workbook.create_sheet("Purchase Requests")
     purchases.append([
@@ -247,14 +257,6 @@ def build_management_control_workbook(data: dict[str, Any]) -> bytes:
         decisions.append([
             item["code"], item["action"], item["from_status"], item["to_status"],
             item["performed_by"], item["performed_by_role"], item["created_at"], item["remarks"],
-        ])
-
-    risks = workbook.create_sheet("Ticket Risk")
-    risks.append(["Ticket", "Title", "Department", "Priority", "Status", "SLA Status", "Due At"])
-    for item in data["risk_tickets"]:
-        risks.append([
-            item["ticket_code"], item["title"], item["department"], item["priority"],
-            item["status"], item["sla_status"], item["sla_due_at"],
         ])
 
     buffer = BytesIO()
