@@ -142,8 +142,12 @@ export function AssetDrilldownDrawer({
 }) {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isPrinterDrawer = selection.scope === 'device' && selection.value?.trim().toLowerCase() === 'printer'
-  const isExternalHddDrawer = selection.scope === 'device' && selection.value?.trim().toLowerCase() === 'external hdd'
+  const drawerDeviceType = selection.scope === 'device' ? (selection.value?.trim() || '') : ''
+  const isPrinterDrawer = drawerDeviceType.toLowerCase() === 'printer'
+  const isExternalHddDrawer = drawerDeviceType.toLowerCase() === 'external hdd'
+  const isLaptopDrawer = drawerDeviceType.toLowerCase() === 'laptop'
+  const isSmartphoneDrawer = drawerDeviceType.toLowerCase() === 'smartphone'
+  const quickAddDeviceType = isLaptopDrawer ? 'Laptop' : isSmartphoneDrawer ? 'Smartphone' : null
   const canManageAssets = !!user && (user.role === 'it' || isFullAccessRole(user.role))
   const canManagePrinters = canManageAssets
   const canManageExternalHdds = canManageAssets
@@ -293,6 +297,16 @@ export function AssetDrilldownDrawer({
     navigate(withITMonth(`/assets/${assetId}/edit?${params.toString()}`, selectedMonth))
   }
 
+  function openPrimaryDeviceForm(deviceType: 'Laptop' | 'Smartphone') {
+    const params = new URLSearchParams({
+      device_type: deviceType,
+      return_to: 'asset-drawer',
+      drawer_scope: selection.scope,
+    })
+    if (selection.value) params.set('drawer_value', selection.value)
+    navigate(withITMonth(`/assets/new?${params.toString()}`, selectedMonth))
+  }
+
   function openPrinterForm(assetId?: number) {
     const basePath = assetId ? `/assets/${assetId}/edit` : '/assets/new'
     navigate(withITMonth(`${basePath}?device_type=Printer&return_to=printer-drawer`, selectedMonth))
@@ -381,7 +395,6 @@ export function AssetDrilldownDrawer({
     }
   }
 
-
   return (
     <div className="asset-drilldown-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <aside className="asset-drilldown-drawer" role="dialog" aria-modal="true" aria-label="IT asset dashboard details">
@@ -389,9 +402,10 @@ export function AssetDrilldownDrawer({
           <div>
             <span className="section-kicker">DASHBOARD DRILL-DOWN</span>
             <h2>{data?.scope.label || 'Asset Details'}</h2>
-            <p>{data?.month.label || selectedMonth} inventory snapshot · {data?.month.is_live === false ? 'historical read-only view with month-specific downloads' : isPrinterDrawer ? 'add, edit, import and export printer records' : isExternalHddDrawer ? 'track portable External HDD ownership, holder, client and project records' : canManageAssets ? 'view and edit current asset records' : 'read-only dashboard view'}</p>
+            <p>{data?.month.label || selectedMonth} inventory snapshot · {data?.month.is_live === false ? 'historical read-only view with month-specific downloads' : isPrinterDrawer ? 'add, edit, import and export printer records' : isExternalHddDrawer ? 'track portable External HDD ownership, holder, client and project records' : quickAddDeviceType && canManageAssets ? `add and edit current ${quickAddDeviceType.toLowerCase()} records` : canManageAssets ? 'view and edit current asset records' : 'read-only dashboard view'}</p>
           </div>
           <div className={`drilldown-header-actions${isPrinterDrawer ? ' printer-header-actions' : isExternalHddDrawer ? ' external-hdd-header-actions' : ''}`}>
+            {quickAddDeviceType && canManageAssets && data?.month.is_live && <button type="button" className="primary-button" onClick={() => openPrimaryDeviceForm(quickAddDeviceType)}><Plus size={16} /> Add New {quickAddDeviceType}</button>}
             {isPrinterDrawer && <div className="drilldown-printer-actions">
               {canManagePrinters && data?.month.is_live && <>
                 <button type="button" className="primary-button" onClick={() => openPrinterForm()}>
@@ -463,7 +477,6 @@ export function AssetDrilldownDrawer({
           })}
         </section>
 
-
         {visualsOpen && data && data.filtered_total > 0 && (
           <section id="asset-drilldown-visuals" className="drilldown-visual-section" aria-label={`${data.scope.label} visual analytics`}>
             <div className="drilldown-visual-heading">
@@ -479,41 +492,19 @@ export function AssetDrilldownDrawer({
               {selection.scope !== 'device' && (
                 <article className="drilldown-visual-card">
                   <div className="drilldown-chart-title"><PieChart size={16} /><div><strong>Device Mix</strong><span>Computers, laptops and smartphones</span></div></div>
-                  <DonutChart
-                    data={data.visuals.device_distribution}
-                    centerLabel="Assets"
-                    ariaLabel={`${data.scope.label} by device type`}
-                    activeKey={filters.device_type}
-                    onSelect={item => useVisualFilter('device_type', item.key || item.name)}
-                  />
+                  <DonutChart data={data.visuals.device_distribution} centerLabel="Assets" ariaLabel={`${data.scope.label} by device type`} activeKey={filters.device_type} onSelect={item => useVisualFilter('device_type', item.key || item.name)} />
                 </article>
               )}
-
               {selection.scope !== 'status' && (
                 <article className="drilldown-visual-card">
                   <div className="drilldown-chart-title"><PieChart size={16} /><div><strong>Status Distribution</strong><span>Assigned, available, repair and replacement</span></div></div>
-                  <DonutChart
-                    data={data.visuals.status_distribution}
-                    centerLabel="Assets"
-                    ariaLabel={`${data.scope.label} by asset status`}
-                    activeKey={filters.status}
-                    onSelect={item => useVisualFilter('status', item.key || item.name)}
-                  />
+                  <DonutChart data={data.visuals.status_distribution} centerLabel="Assets" ariaLabel={`${data.scope.label} by asset status`} activeKey={filters.status} onSelect={item => useVisualFilter('status', item.key || item.name)} />
                 </article>
               )}
-
               {selection.scope !== 'department' && (
-                <article
-                  className="drilldown-visual-card department-visual-card"
-                  data-compact={data.visuals.department_distribution.length <= 4 ? 'true' : 'false'}
-                >
+                <article className="drilldown-visual-card department-visual-card" data-compact={data.visuals.department_distribution.length <= 4 ? 'true' : 'false'}>
                   <div className="drilldown-chart-title"><BarChart3 size={16} /><div><strong>Department Allocation</strong><span>Distribution across NakshaTech teams</span></div></div>
-                  <HorizontalBars
-                    data={data.visuals.department_distribution}
-                    maxItems={8}
-                    activeName={filters.department}
-                    onSelect={item => useVisualFilter('department', item.key || item.name)}
-                  />
+                  <HorizontalBars data={data.visuals.department_distribution} maxItems={8} activeName={filters.department} onSelect={item => useVisualFilter('department', item.key || item.name)} />
                 </article>
               )}
             </div>
@@ -570,33 +561,11 @@ export function AssetDrilldownDrawer({
                 return [
                   <tr key={`row-${asset.id}`} className={expanded ? 'expanded' : ''}>
                     <td><strong>{asset.cpu_asset_tag || asset.asset_code}</strong><small>{asset.asset_code}</small></td>
-                    <td>{asset.brand || 'Not recorded'}</td>
-                    <td>{asset.capacity || 'Not recorded'}</td>
-                    <td>{asset.serial_number || 'Not recorded'}</td>
-                    <td>{asset.ownership || 'Not recorded'}</td>
-                    <td>{asset.department || 'Not recorded'}</td>
-                    <td>{asset.client_name || 'Internal'}<small>{asset.project_id || 'No project'}</small></td>
-                    <td>{asset.current_holder || 'Not recorded'}</td>
-                    <td><span className={`status ${asset.status}`}>{label(asset.status)}</span></td>
-                    <td><div className="drilldown-row-actions">
-                      {canManageExternalHdds && data?.month.is_live && <button type="button" className="secondary-button compact-action" onClick={() => openExternalHddForm(asset.id)}><PencilLine size={14} /> Edit</button>}
-                      <button className="icon-button compact" onClick={() => setExpandedId(expanded ? null : asset.id)} aria-label={expanded ? 'Collapse details' : 'Expand details'}><ChevronDown className={expanded ? 'rotated' : ''} /></button>
-                    </div></td>
+                    <td>{asset.brand || 'Not recorded'}</td><td>{asset.capacity || 'Not recorded'}</td><td>{asset.serial_number || 'Not recorded'}</td><td>{asset.ownership || 'Not recorded'}</td><td>{asset.department || 'Not recorded'}</td><td>{asset.client_name || 'Internal'}<small>{asset.project_id || 'No project'}</small></td><td>{asset.current_holder || 'Not recorded'}</td><td><span className={`status ${asset.status}`}>{label(asset.status)}</span></td>
+                    <td><div className="drilldown-row-actions">{canManageExternalHdds && data?.month.is_live && <button type="button" className="secondary-button compact-action" onClick={() => openExternalHddForm(asset.id)}><PencilLine size={14} /> Edit</button>}<button className="icon-button compact" onClick={() => setExpandedId(expanded ? null : asset.id)} aria-label={expanded ? 'Collapse details' : 'Expand details'}><ChevronDown className={expanded ? 'rotated' : ''} /></button></div></td>
                   </tr>,
                   expanded && <tr key={`details-${asset.id}`} className="drilldown-expanded-row"><td colSpan={10}><div className="drilldown-asset-details external-hdd-details">
-                    <div><span>External HDD Asset ID</span><strong>{asset.cpu_asset_tag || asset.asset_code}</strong></div>
-                    <div><span>Brand</span><strong>{asset.brand || 'Not recorded'}</strong></div>
-                    <div><span>Capacity</span><strong>{asset.capacity || 'Not recorded'}</strong></div>
-                    <div><span>Serial Number</span><strong>{asset.serial_number || 'Not recorded'}</strong></div>
-                    <div><span>Ownership</span><strong>{asset.ownership || 'Not recorded'}</strong></div>
-                    <div><span>Department</span><strong>{asset.department || 'Not recorded'}</strong></div>
-                    <div><span>Client Name</span><strong>{asset.client_name || 'Internal / not linked'}</strong></div>
-                    <div><span>Project ID</span><strong>{asset.project_id || 'Not linked'}</strong></div>
-                    <div><span>Current Holder</span><strong>{asset.current_holder || 'Not recorded'}</strong></div>
-                    <div><span>Status</span><strong>{label(asset.status)}</strong></div>
-                    <div><span>Created</span><strong>{formatIndiaDateTime(asset.created_at)}</strong></div>
-                    <div><span>Last Updated</span><strong>{formatIndiaDateTime(asset.updated_at)}</strong></div>
-                    <div className="wide"><span>Remarks</span><strong>{asset.remarks || 'No External HDD remarks'}</strong></div>
+                    <div><span>External HDD Asset ID</span><strong>{asset.cpu_asset_tag || asset.asset_code}</strong></div><div><span>Brand</span><strong>{asset.brand || 'Not recorded'}</strong></div><div><span>Capacity</span><strong>{asset.capacity || 'Not recorded'}</strong></div><div><span>Serial Number</span><strong>{asset.serial_number || 'Not recorded'}</strong></div><div><span>Ownership</span><strong>{asset.ownership || 'Not recorded'}</strong></div><div><span>Department</span><strong>{asset.department || 'Not recorded'}</strong></div><div><span>Client Name</span><strong>{asset.client_name || 'Internal / not linked'}</strong></div><div><span>Project ID</span><strong>{asset.project_id || 'Not linked'}</strong></div><div><span>Current Holder</span><strong>{asset.current_holder || 'Not recorded'}</strong></div><div><span>Status</span><strong>{label(asset.status)}</strong></div><div><span>Created</span><strong>{formatIndiaDateTime(asset.created_at)}</strong></div><div><span>Last Updated</span><strong>{formatIndiaDateTime(asset.updated_at)}</strong></div><div className="wide"><span>Remarks</span><strong>{asset.remarks || 'No External HDD remarks'}</strong></div>
                     {canManageExternalHdds && data?.month.is_live && <div className="wide drilldown-detail-actions"><button type="button" className="primary-button" onClick={() => openExternalHddForm(asset.id)}><PencilLine size={16} /> Edit External HDD / Record Movement</button></div>}
                   </div></td></tr>,
                 ]
@@ -609,47 +578,14 @@ export function AssetDrilldownDrawer({
                   <tr key={`row-${asset.id}`} className={expanded ? 'expanded' : ''}>
                     <td><strong>{asset.cpu_asset_tag || asset.asset_code}</strong><small>{asset.asset_code}</small></td>
                     <td>{asset.device_type === 'Printer' ? (asset.model || asset.system_name || '—') : (asset.system_name || '—')}<small>{asset.device_type === 'Printer' ? (asset.brand || asset.connection_type || 'Printer') : (asset.workstation_no || 'No workstation')}</small></td>
-                    <td>{isPrinterDrawer ? (asset.connection_type || 'Not recorded') : asset.device_type}</td>
-                    <td>{asset.department || 'Unassigned'}</td>
-                    <td>{asset.used_by || 'Unassigned'}</td>
-                    <td><span className={`status ${asset.status}`}>{label(asset.status)}</span></td>
-                    <td>{asset.location || 'Unknown'}</td>
-                    <td><div className="drilldown-row-actions">
-                      {asset.device_type === 'Printer'
-                        ? canManagePrinters && data?.month.is_live && <button type="button" className="secondary-button compact-action" onClick={() => openPrinterForm(asset.id)}><PencilLine size={14} /> Edit</button>
-                        : canManageAssets && data?.month.is_live && <button type="button" className="secondary-button compact-action" onClick={() => openAssetForm(asset.id)}><PencilLine size={14} /> Edit</button>}
-                      <button className="icon-button compact" onClick={() => setExpandedId(expanded ? null : asset.id)} aria-label={expanded ? 'Collapse details' : 'Expand details'}><ChevronDown className={expanded ? 'rotated' : ''} /></button>
-                    </div></td>
+                    <td>{isPrinterDrawer ? (asset.connection_type || 'Not recorded') : asset.device_type}</td><td>{asset.department || 'Unassigned'}</td><td>{asset.used_by || 'Unassigned'}</td><td><span className={`status ${asset.status}`}>{label(asset.status)}</span></td><td>{asset.location || 'Unknown'}</td>
+                    <td><div className="drilldown-row-actions">{asset.device_type === 'Printer' ? canManagePrinters && data?.month.is_live && <button type="button" className="secondary-button compact-action" onClick={() => openPrinterForm(asset.id)}><PencilLine size={14} /> Edit</button> : canManageAssets && data?.month.is_live && <button type="button" className="secondary-button compact-action" onClick={() => openAssetForm(asset.id)}><PencilLine size={14} /> Edit</button>}<button className="icon-button compact" onClick={() => setExpandedId(expanded ? null : asset.id)} aria-label={expanded ? 'Collapse details' : 'Expand details'}><ChevronDown className={expanded ? 'rotated' : ''} /></button></div></td>
                   </tr>,
                   expanded && <tr key={`details-${asset.id}`} className="drilldown-expanded-row"><td colSpan={8}><div className="drilldown-asset-details">
                     {asset.device_type === 'Printer' ? <>
-                      <div><span>Printer Asset ID</span><strong>{asset.cpu_asset_tag || asset.asset_code}</strong></div>
-                      <div><span>Brand</span><strong>{asset.brand || 'Not recorded'}</strong></div>
-                      <div><span>Model</span><strong>{asset.model || 'Not recorded'}</strong></div>
-                      <div><span>Serial Number</span><strong>{asset.serial_number || 'Not recorded'}</strong></div>
-                      <div><span>Connection</span><strong>{asset.connection_type || 'Not recorded'}</strong></div>
-                      <div><span>Assigned User</span><strong>{asset.used_by || 'Unassigned'}</strong></div>
-                      <div><span>Department</span><strong>{asset.department || 'Not recorded'}</strong></div>
-                      <div><span>Floor / Location</span><strong>{asset.location || 'Not recorded'}</strong></div>
-                      <div><span>Status</span><strong>{label(asset.status)}</strong></div>
-                      <div><span>Last Updated</span><strong>{formatIndiaDateTime(asset.updated_at)}</strong></div>
-                      <div className="wide"><span>Remarks</span><strong>{asset.remarks || 'No printer remarks'}</strong></div>
-                      {canManagePrinters && data?.month.is_live && <div className="wide drilldown-detail-actions"><button type="button" className="primary-button" onClick={() => openPrinterForm(asset.id)}><PencilLine size={16} /> Edit Printer</button></div>}
+                      <div><span>Printer Asset ID</span><strong>{asset.cpu_asset_tag || asset.asset_code}</strong></div><div><span>Brand</span><strong>{asset.brand || 'Not recorded'}</strong></div><div><span>Model</span><strong>{asset.model || 'Not recorded'}</strong></div><div><span>Serial Number</span><strong>{asset.serial_number || 'Not recorded'}</strong></div><div><span>Connection</span><strong>{asset.connection_type || 'Not recorded'}</strong></div><div><span>Assigned User</span><strong>{asset.used_by || 'Unassigned'}</strong></div><div><span>Department</span><strong>{asset.department || 'Not recorded'}</strong></div><div><span>Floor / Location</span><strong>{asset.location || 'Not recorded'}</strong></div><div><span>Status</span><strong>{label(asset.status)}</strong></div><div><span>Last Updated</span><strong>{formatIndiaDateTime(asset.updated_at)}</strong></div><div className="wide"><span>Remarks</span><strong>{asset.remarks || 'No printer remarks'}</strong></div>{canManagePrinters && data?.month.is_live && <div className="wide drilldown-detail-actions"><button type="button" className="primary-button" onClick={() => openPrinterForm(asset.id)}><PencilLine size={16} /> Edit Printer</button></div>}
                     </> : <>
-                      <div><span>Processor</span><strong>{asset.processor || 'Not recorded'}</strong></div>
-                      <div><span>Memory</span><strong>{asset.memory_gb || 'Not recorded'}</strong></div>
-                      <div><span>Storage</span><strong>{compactStorage(asset)}</strong></div>
-                      <div><span>Graphics</span><strong>{asset.graphics_card || 'Not recorded'}</strong></div>
-                      <div><span>Operating System</span><strong>{asset.operating_system || 'Not recorded'}</strong></div>
-                      <div><span>IP Address</span><strong>{asset.ip_address || 'Not recorded'}</strong></div>
-                      <div><span>MAC Address</span><strong>{asset.mac_address || 'Not recorded'}</strong></div>
-                      <div><span>Network</span><strong>{asset.network_type || 'Not recorded'}</strong></div>
-                      <div><span>Monitor Tag(s)</span><strong>{asset.monitor_asset_tags || 'Not recorded'}</strong></div>
-                      <div><span>Mouse / Keyboard</span><strong>{[asset.mouse_asset_tag, asset.keyboard_asset_tag].filter(Boolean).join(' / ') || 'Not recorded'}</strong></div>
-                      <div><span>Approved By</span><strong>{asset.approved_by || 'Not recorded'}</strong></div>
-                      <div><span>Work Mode</span><strong>{label(asset.work_mode)}</strong></div>
-                      <div className="wide"><span>Asset Master Remarks</span><strong>{asset.remarks || 'No permanent asset remark'}</strong></div>
-                      {canManageAssets && data?.month.is_live && <div className="wide drilldown-detail-actions"><button type="button" className="primary-button" onClick={() => openAssetForm(asset.id)}><PencilLine size={16} /> Edit {asset.device_type}</button></div>}
+                      <div><span>Processor</span><strong>{asset.processor || 'Not recorded'}</strong></div><div><span>Memory</span><strong>{asset.memory_gb || 'Not recorded'}</strong></div><div><span>Storage</span><strong>{compactStorage(asset)}</strong></div><div><span>Graphics</span><strong>{asset.graphics_card || 'Not recorded'}</strong></div><div><span>Operating System</span><strong>{asset.operating_system || 'Not recorded'}</strong></div><div><span>IP Address</span><strong>{asset.ip_address || 'Not recorded'}</strong></div><div><span>MAC Address</span><strong>{asset.mac_address || 'Not recorded'}</strong></div><div><span>Network</span><strong>{asset.network_type || 'Not recorded'}</strong></div><div><span>Monitor Tag(s)</span><strong>{asset.monitor_asset_tags || 'Not recorded'}</strong></div><div><span>Mouse / Keyboard</span><strong>{[asset.mouse_asset_tag, asset.keyboard_asset_tag].filter(Boolean).join(' / ') || 'Not recorded'}</strong></div><div><span>Approved By</span><strong>{asset.approved_by || 'Not recorded'}</strong></div><div><span>Work Mode</span><strong>{label(asset.work_mode)}</strong></div><div className="wide"><span>Asset Master Remarks</span><strong>{asset.remarks || 'No permanent asset remark'}</strong></div>{canManageAssets && data?.month.is_live && <div className="wide drilldown-detail-actions"><button type="button" className="primary-button" onClick={() => openAssetForm(asset.id)}><PencilLine size={16} /> Edit {asset.device_type}</button></div>}
                     </>}
                   </div></td></tr>,
                 ]
@@ -661,10 +597,7 @@ export function AssetDrilldownDrawer({
         <footer className="drilldown-footer">
           <label>Rows<select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1) }}><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select></label>
           <span>{data ? `Page ${data.page} of ${data.pages}` : 'Page 1 of 1'}</span>
-          <div className="pagination-buttons">
-            <button className="icon-button" disabled={!data || data.page <= 1 || loading} onClick={() => setPage(current => Math.max(1, current - 1))}><ChevronLeft /></button>
-            <button className="icon-button" disabled={!data || data.page >= data.pages || loading} onClick={() => setPage(current => current + 1)}><ChevronRight /></button>
-          </div>
+          <div className="pagination-buttons"><button className="icon-button" disabled={!data || data.page <= 1 || loading} onClick={() => setPage(current => Math.max(1, current - 1))}><ChevronLeft /></button><button className="icon-button" disabled={!data || data.page >= data.pages || loading} onClick={() => setPage(current => current + 1)}><ChevronRight /></button></div>
           <button className="secondary-button" onClick={onClose}>Close</button>
         </footer>
       </aside>
