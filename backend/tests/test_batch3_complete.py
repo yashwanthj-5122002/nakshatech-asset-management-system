@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import date, datetime
 import os
 from pathlib import Path
+import sys
 import tempfile
 import uuid
 
 import pytest
 from sqlalchemy import select
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 TEST_DB = Path(tempfile.gettempdir()) / f"nakshatech_batch3_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{TEST_DB}"
