@@ -18,6 +18,14 @@ const initialForm = {
   action_type: 'handover', return_status: 'available', activity_date: today(), issued_by: '', remarks: '', asset_updated_status: '', apply_to_asset: true,
 }
 
+type CustodyEmployeeSuggestion = {
+  id: number
+  full_name: string
+  email: string
+  employee_id?: string | null
+  department?: string | null
+}
+
 function custodyMovement(record: ITHandoverRecord) {
   const from = record.from_employee_name
   const to = record.to_employee_name || record.employee_name
@@ -25,20 +33,6 @@ function custodyMovement(record: ITHandoverRecord) {
   if (record.action_type === 'return') return `${from || record.employee_name || 'Custodian not recorded'} → IT / Company`
   if (record.action_type === 'handover') return `IT / Company → ${to || 'Custodian not recorded'}`
   return record.employee_name || '—'
-}
-
-function uniqueNames(values: Array<string | null | undefined>) {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const value of values) {
-    const name = value?.trim()
-    if (!name) continue
-    const key = name.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    result.push(name)
-  }
-  return result
 }
 
 function isLaptopDesktopAsset(asset: Asset) {
@@ -55,7 +49,7 @@ export function HandoverReturnPage() {
   const [assetSearch, setAssetSearch] = useState('')
   const [assets, setAssets] = useState<Asset[]>([])
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  const [employeeSuggestions, setEmployeeSuggestions] = useState<string[]>([])
+  const [employeeSuggestions, setEmployeeSuggestions] = useState<CustodyEmployeeSuggestion[]>([])
   const [manualDepartmentEntry, setManualDepartmentEntry] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -87,11 +81,7 @@ export function HandoverReturnPage() {
   useEffect(() => {
     const query = assetSearch.trim()
     const selectedKey = selectedAsset ? (selectedAsset.cpu_asset_tag || selectedAsset.asset_code) : ''
-    if (!query || query === selectedKey) {
-      setAssets([])
-      return
-    }
-    if (query.length < 2) {
+    if (!query || query === selectedKey || query.length < 2) {
       setAssets([])
       return
     }
@@ -124,17 +114,13 @@ export function HandoverReturnPage() {
 
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      void apiFetch<Asset[]>(`/assets?search=${encodeURIComponent(query)}&limit=50`, { signal: controller.signal })
-        .then(result => {
-          const names = uniqueNames([
-            ...result.map(asset => asset.used_by),
-            ...records.flatMap(record => [record.employee_name, record.from_employee_name, record.to_employee_name]),
-          ])
-            .filter(name => name.toLowerCase().includes(query.toLowerCase()))
-            .filter(name => form.action_type !== 'transfer' || name.toLowerCase() !== selectedAsset?.used_by?.trim().toLowerCase())
-            .slice(0, 10)
-          setEmployeeSuggestions(names)
-        })
+      void apiFetch<CustodyEmployeeSuggestion[]>(
+        `/it-activity/custody-employees?search=${encodeURIComponent(query)}&limit=15`,
+        { signal: controller.signal },
+      )
+        .then(result => setEmployeeSuggestions(
+          result.filter(item => form.action_type !== 'transfer' || item.full_name.trim().toLowerCase() !== selectedAsset?.used_by?.trim().toLowerCase()),
+        ))
         .catch(() => {
           if (!controller.signal.aborted) setEmployeeSuggestions([])
         })
@@ -144,7 +130,7 @@ export function HandoverReturnPage() {
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [form.action_type, form.employee_name, records, selectedAsset])
+  }, [form.action_type, form.employee_name, selectedAsset])
 
   function changeAssetSearch(value: string) {
     setAssetSearch(value)
@@ -191,6 +177,17 @@ export function HandoverReturnPage() {
     setAssets([])
     setEmployeeSuggestions([])
     setAssetSearch(asset.cpu_asset_tag || asset.asset_code)
+  }
+
+  function selectEmployee(employee: CustodyEmployeeSuggestion) {
+    const department = employee.department?.trim() || form.department
+    setManualDepartmentEntry(Boolean(department && !DEPARTMENT_OPTIONS.some(option => option === department)))
+    setForm(current => ({
+      ...current,
+      employee_name: employee.full_name,
+      department: employee.department?.trim() || current.department,
+    }))
+    setEmployeeSuggestions([])
   }
 
   function changeAction(action_type: string) {
@@ -293,7 +290,7 @@ export function HandoverReturnPage() {
         {form.action_type === 'return' && <label><span>Return Outcome</span><select value="available" disabled><option value="available">Available after inspection</option></select></label>}
         {form.action_type === 'return'
           ? <label><span>Returning From</span><input value={selectedAsset?.used_by || form.employee_name || ''} readOnly placeholder="Select an assigned asset" /></label>
-          : <div className="asset-lookup-block"><label><span>{destinationLabel}</span><input required value={form.employee_name} onChange={event => setForm({ ...form, employee_name: event.target.value })} placeholder={form.action_type === 'transfer' ? 'Start typing new employee / custodian' : 'Start typing employee / custodian'} autoComplete="off" /></label>{employeeSuggestions.length > 0 && <div className="asset-search-results">{employeeSuggestions.map(name => <button type="button" key={name} onClick={() => { setForm(current => ({ ...current, employee_name: name })); setEmployeeSuggestions([]) }}>{name}</button>)}</div>}<small>Select a suggestion when available, or continue typing to enter a valid employee/custodian manually.</small></div>}
+          : <div className="asset-lookup-block"><label><span>{destinationLabel}</span><input required value={form.employee_name} onChange={event => setForm({ ...form, employee_name: event.target.value })} placeholder={form.action_type === 'transfer' ? 'Start typing new employee / custodian' : 'Start typing employee / custodian'} autoComplete="off" /></label>{employeeSuggestions.length > 0 && <div className="asset-search-results">{employeeSuggestions.map(employee => <button type="button" key={employee.id} onClick={() => selectEmployee(employee)}><b>{employee.full_name}</b><span>{employee.employee_id || employee.email} · {employee.department || 'No department recorded'}</span></button>)}</div>}<small>Select an active organization user when available, or continue typing to enter a valid legacy/manual custodian.</small></div>}
         <label><span>{form.action_type === 'transfer' ? 'New Workstation / DC Number' : form.action_type === 'return' ? 'Current Workstation / DC Number' : 'Workstation / DC Number'}</span><input readOnly={form.action_type === 'return'} value={form.dc_number} onChange={event => setForm({ ...form, dc_number: event.target.value })} /></label>
         {form.action_type === 'return'
           ? <label><span>Current Department</span><input readOnly value={form.department} /></label>
