@@ -41,6 +41,11 @@ function uniqueNames(values: Array<string | null | undefined>) {
   return result
 }
 
+function isLaptopDesktopAsset(asset: Asset) {
+  const device = String(asset.device_type || '').trim().toLowerCase()
+  return device.includes('laptop') || device.includes('notebook') || device.includes('computer') || device.includes('desktop')
+}
+
 export function HandoverReturnPage() {
   const { user } = useAuth()
   const { selectedMonth } = useITMonthUrl()
@@ -94,7 +99,7 @@ export function HandoverReturnPage() {
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       void apiFetch<Asset[]>(`/assets?search=${encodeURIComponent(query)}&limit=30`, { signal: controller.signal })
-        .then(setAssets)
+        .then(result => setAssets(result.filter(isLaptopDesktopAsset)))
         .catch(err => {
           if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Unable to search assets')
         })
@@ -156,6 +161,10 @@ export function HandoverReturnPage() {
   }
 
   function selectAsset(asset: Asset) {
+    if (!isLaptopDesktopAsset(asset)) {
+      setError('Laptop & Desktop Handover / Return accepts only Laptop and Desktop / Computer assets.')
+      return
+    }
     const suggestedAction = defaultCustodyAction(asset)
     const action_type = suggestedAction === 'other' ? 'handover' : suggestedAction
     setSelectedAsset(asset)
@@ -167,7 +176,7 @@ export function HandoverReturnPage() {
       activity_date: current.activity_date || today(),
       issued_by: current.issued_by,
       asset_id: String(asset.id),
-      device_category: asset.device_type.toLowerCase().includes('laptop') ? 'laptop' : 'desktop',
+      device_category: asset.device_type.toLowerCase().includes('laptop') || asset.device_type.toLowerCase().includes('notebook') ? 'laptop' : 'desktop',
       action_type,
       employee_name: action_type === 'return' ? (asset.used_by || '') : '',
       dc_number: asset.workstation_no || '',
@@ -208,6 +217,10 @@ export function HandoverReturnPage() {
     setMessage('')
     if (!selectedAsset) {
       setError('Select an Asset Register record from the live search results before saving a custody activity.')
+      return
+    }
+    if (!isLaptopDesktopAsset(selectedAsset)) {
+      setError('Laptop & Desktop Handover / Return accepts only Laptop and Desktop / Computer assets.')
       return
     }
     if (!custodyActionAllowed(selectedAsset, form.action_type)) {
@@ -267,7 +280,7 @@ export function HandoverReturnPage() {
     {canEdit && <section className="panel activity-entry-panel">
       <div className="panel-title-row"><div><span className="section-kicker">NEW CUSTODY ACTIVITY</span><h2>Record Handover, Transfer or Return</h2></div><ArrowRightLeft /></div>
       <div className="asset-lookup-block">
-        <label><Search size={17} /><input value={assetSearch} onChange={event => changeAssetSearch(event.target.value)} placeholder="Start typing asset tag, workstation, employee or system name" autoComplete="off" /></label>
+        <label><Search size={17} /><input value={assetSearch} onChange={event => changeAssetSearch(event.target.value)} placeholder="Start typing Laptop/Desktop tag, workstation, employee, system or serial" autoComplete="off" /></label>
         {assetSearch.trim().length > 0 && assetSearch.trim().length < 2 && !selectedAsset && <small>Type at least 2 characters to search automatically.</small>}
         {assets.length > 0 && <div className="asset-search-results">{assets.map(asset => <button type="button" key={asset.id} onClick={() => selectAsset(asset)}><b>{asset.cpu_asset_tag || asset.asset_code}</b><span>{asset.workstation_no || 'No workstation'} · {asset.used_by || 'Available'} · {asset.department || 'No department'}</span></button>)}</div>}
       </div>
