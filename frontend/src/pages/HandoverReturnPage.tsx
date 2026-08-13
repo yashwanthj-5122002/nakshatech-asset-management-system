@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, uploadExcel } from '../lib/api'
 import { CUSTODY_ACTIONS, custodyActionAllowed, custodyGuidance, defaultCustodyAction } from '../lib/assetCustody'
+import { DEPARTMENT_OPTIONS, MANUAL_ENTRY_VALUE } from '../lib/assetOptions'
 import { isFullAccessRole } from '../lib/roles'
 import { monthLabel } from '../lib/itMonth'
 import type { Asset, ITHandoverRecord } from '../types'
@@ -26,6 +27,20 @@ function custodyMovement(record: ITHandoverRecord) {
   return record.employee_name || '—'
 }
 
+function uniqueNames(values: Array<string | null | undefined>) {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const name = value?.trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(name)
+  }
+  return result
+}
+
 export function HandoverReturnPage() {
   const { user } = useAuth()
   const { selectedMonth } = useITMonthUrl()
@@ -35,6 +50,8 @@ export function HandoverReturnPage() {
   const [assetSearch, setAssetSearch] = useState('')
   const [assets, setAssets] = useState<Asset[]>([])
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
+  const [employeeSuggestions, setEmployeeSuggestions] = useState<string[]>([])
+  const [manualDepartmentEntry, setManualDepartmentEntry] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
@@ -62,13 +79,67 @@ export function HandoverReturnPage() {
     }
   }, [selectedMonth])
 
-  async function searchAssets() {
-    if (!assetSearch.trim()) { setAssets([]); return }
-    setError('')
-    setMessage('')
-    try { setAssets(await apiFetch<Asset[]>(`/assets?search=${encodeURIComponent(assetSearch)}&limit=30`)) }
-    catch (err) { setError(err instanceof Error ? err.message : 'Unable to search assets') }
-  }
+  useEffect(() => {
+    const query = assetSearch.trim()
+    const selectedKey = selectedAsset ? (selectedAsset.cpu_asset_tag || selectedAsset.asset_code) : ''
+    if (!query || query === selectedKey) {
+      setAssets([])
+      return
+    }
+    if (query.length < 2) {
+      setAssets([])
+      return
+    }
+
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      void apiFetch<Asset[]>(`/assets?search=${encodeURIComponent(query)}&limit=30`, { signal: controller.signal })
+        .then(setAssets)
+        .catch(err => {
+          if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Unable to search assets')
+        })
+    }, 275)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [assetSearch, selectedAsset])
+
+  useEffect(() => {
+    if (!['handover', 'transfer'].includes(form.action_type)) {
+      setEmployeeSuggestions([])
+      return
+    }
+    const query = form.employee_name.trim()
+    if (query.length < 2) {
+      setEmployeeSuggestions([])
+      return
+    }
+
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      void apiFetch<Asset[]>(`/assets?search=${encodeURIComponent(query)}&limit=50`, { signal: controller.signal })
+        .then(result => {
+          const names = uniqueNames([
+            ...result.map(asset => asset.used_by),
+            ...records.flatMap(record => [record.employee_name, record.from_employee_name, record.to_employee_name]),
+          ])
+            .filter(name => name.toLowerCase().includes(query.toLowerCase()))
+            .filter(name => form.action_type !== 'transfer' || name.toLowerCase() !== selectedAsset?.used_by?.trim().toLowerCase())
+            .slice(0, 10)
+          setEmployeeSuggestions(names)
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setEmployeeSuggestions([])
+        })
+    }, 275)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [form.action_type, form.employee_name, records, selectedAsset])
 
   function changeAssetSearch(value: string) {
     setAssetSearch(value)
@@ -79,6 +150,8 @@ export function HandoverReturnPage() {
     if (value.trim() === selectedKey) return
     setSelectedAsset(null)
     setAssets([])
+    setEmployeeSuggestions([])
+    setManualDepartmentEntry(false)
     setForm(current => ({ ...initialForm, activity_date: current.activity_date || today(), issued_by: current.issued_by }))
   }
 
@@ -87,6 +160,7 @@ export function HandoverReturnPage() {
     setSelectedAsset(asset)
     setError('')
     setMessage('')
+    setManualDepartmentEntry(Boolean(asset.department && !DEPARTMENT_OPTIONS.some(option => option === asset.department)))
     setForm(current => ({
       ...initialForm,
       activity_date: current.activity_date || today(),
@@ -102,25 +176,28 @@ export function HandoverReturnPage() {
       serial_number: asset.serial_number || '',
       specification: [asset.processor, asset.memory_gb, asset.ssd, asset.hdd].filter(Boolean).join(', '),
       accessories_provided: [asset.monitor_asset_tags, asset.mouse_asset_tag, asset.keyboard_asset_tag].filter(Boolean).join(', '),
+      return_status: 'available',
     }))
     setAssets([])
+    setEmployeeSuggestions([])
     setAssetSearch(asset.cpu_asset_tag || asset.asset_code)
   }
 
   function changeAction(action_type: string) {
     setError('')
     setMessage('')
-    if (selectedAsset && CUSTODY_ACTIONS.has(action_type) && !custodyActionAllowed(selectedAsset, action_type)) return
+    if (selectedAsset && !custodyActionAllowed(selectedAsset, action_type)) return
+    setEmployeeSuggestions([])
     setForm(current => ({
       ...current,
       action_type,
-      return_status: action_type === 'return' ? current.return_status : 'available',
+      return_status: 'available',
       employee_name: action_type === 'return' ? (selectedAsset?.used_by || '') : '',
       dc_number: selectedAsset?.workstation_no || '',
       department: selectedAsset?.department || '',
       work_mode: selectedAsset?.work_mode || 'office',
       asset_updated_status: '',
-      apply_to_asset: selectedAsset && CUSTODY_ACTIONS.has(action_type) ? true : current.apply_to_asset,
+      apply_to_asset: true,
     }))
   }
 
@@ -128,7 +205,7 @@ export function HandoverReturnPage() {
     event.preventDefault()
     setError('')
     setMessage('')
-    if (selectedAsset && CUSTODY_ACTIONS.has(form.action_type) && !custodyActionAllowed(selectedAsset, form.action_type)) {
+    if (selectedAsset && !custodyActionAllowed(selectedAsset, form.action_type)) {
       setError(custodyGuidance(selectedAsset))
       return
     }
@@ -140,17 +217,25 @@ export function HandoverReturnPage() {
     try {
       const payload = {
         ...form,
+        return_status: 'available',
         employee_name: form.action_type === 'return' ? (selectedAsset?.used_by || form.employee_name) : form.employee_name,
         dc_number: form.action_type === 'return' ? (selectedAsset?.workstation_no || form.dc_number) : form.dc_number,
         department: form.action_type === 'return' ? (selectedAsset?.department || form.department) : form.department,
         work_mode: form.action_type === 'return' ? (selectedAsset?.work_mode || form.work_mode) : form.work_mode,
         reporting_month: selectedMonth,
         asset_id: form.asset_id ? Number(form.asset_id) : null,
+        apply_to_asset: true,
       }
       const result = await apiFetch<ITHandoverRecord>('/it-activity/handover-records', { method: 'POST', body: JSON.stringify(payload) })
       const movement = custodyMovement(result)
       setMessage(`${result.activity_code} saved successfully. ${movement}.`)
-      setForm(initialForm); setAssetSearch(''); setSelectedAsset(null); await loadRecords()
+      setForm(initialForm)
+      setAssetSearch('')
+      setSelectedAsset(null)
+      setAssets([])
+      setEmployeeSuggestions([])
+      setManualDepartmentEntry(false)
+      await loadRecords()
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save record') }
     finally { setBusy('') }
   }
@@ -167,28 +252,34 @@ export function HandoverReturnPage() {
     finally { setBusy(''); event.target.value = '' }
   }
 
-  const destinationLabel = form.action_type === 'transfer' ? 'Transfer To / New Custodian' : form.action_type === 'handover' ? 'Handover To / Custodian' : 'Employee / Custodian'
+  const destinationLabel = form.action_type === 'transfer' ? 'Transfer To / New Custodian' : 'Handover To / Custodian'
   const currentCustodyActionAllowed = custodyActionAllowed(selectedAsset, form.action_type)
 
   return <>
-    <DashboardHeader eyebrow="CUSTODY & ASSIGNMENT CONTROL" title="Laptop & Desktop Handover / Return" description={`Records saved now are reported in ${monthLabel(selectedMonth)}. The activity date and actual system entry timestamp remain separately preserved, and each remark belongs only to that activity.`} />
+    <DashboardHeader eyebrow="CUSTODY & ASSIGNMENT CONTROL" title="Laptop & Desktop Handover / Return" description={`Records saved now are reported in ${monthLabel(selectedMonth)}. Handover, Transfer and Return are custody movements only; repair and component work remain in their dedicated IT workflows.`} />
     {message && <div className="success-message">{message}</div>}{error && <div className="error-message">{error}</div>}
 
     {canEdit && <section className="panel activity-entry-panel">
-      <div className="panel-title-row"><div><span className="section-kicker">NEW ACTIVITY</span><h2>Record Handover, Transfer or Return</h2></div><ArrowRightLeft /></div>
-      <div className="asset-lookup-block"><label><Search size={17} /><input value={assetSearch} onChange={event => changeAssetSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void searchAssets() }} placeholder="Search CPU / Asset Tag, workstation, employee or system name" /><button onClick={() => void searchAssets()}>Search</button></label>{assets.length > 0 && <div className="asset-search-results">{assets.map(asset => <button key={asset.id} onClick={() => selectAsset(asset)}><b>{asset.cpu_asset_tag || asset.asset_code}</b><span>{asset.workstation_no || 'No workstation'} · {asset.used_by || 'Available'} · {asset.department || 'No department'}</span></button>)}</div>}</div>
+      <div className="panel-title-row"><div><span className="section-kicker">NEW CUSTODY ACTIVITY</span><h2>Record Handover, Transfer or Return</h2></div><ArrowRightLeft /></div>
+      <div className="asset-lookup-block">
+        <label><Search size={17} /><input value={assetSearch} onChange={event => changeAssetSearch(event.target.value)} placeholder="Start typing asset tag, workstation, employee or system name" autoComplete="off" /></label>
+        {assetSearch.trim().length > 0 && assetSearch.trim().length < 2 && !selectedAsset && <small>Type at least 2 characters to search automatically.</small>}
+        {assets.length > 0 && <div className="asset-search-results">{assets.map(asset => <button type="button" key={asset.id} onClick={() => selectAsset(asset)}><b>{asset.cpu_asset_tag || asset.asset_code}</b><span>{asset.workstation_no || 'No workstation'} · {asset.used_by || 'Available'} · {asset.department || 'No department'}</span></button>)}</div>}
+      </div>
 
       {selectedAsset && <div className="full-span form-guidance"><strong>Current custody:</strong> {selectedAsset.used_by || 'IT / Company (unassigned)'} · {selectedAsset.department || 'No department'} · {selectedAsset.workstation_no || 'No workstation'} · {(selectedAsset.work_mode || 'office').replaceAll('_', ' ')} · Status {(selectedAsset.status || 'unknown').replaceAll('_', ' ')}<br /><strong>Allowed now:</strong> {custodyGuidance(selectedAsset)}</div>}
 
       <form className="activity-form-grid" onSubmit={submit}>
         <label><span>Device Category</span><select value={form.device_category} disabled={!!selectedAsset} onChange={event => setForm({ ...form, device_category: event.target.value })}><option value="laptop">Laptop</option><option value="desktop">Desktop</option></select></label>
-        <label><span>Action</span><select value={form.action_type} onChange={event => changeAction(event.target.value)}><option value="handover" disabled={!!selectedAsset && !custodyActionAllowed(selectedAsset, 'handover')}>Handover{selectedAsset && !custodyActionAllowed(selectedAsset, 'handover') ? ' — unavailable' : ''}</option><option value="return" disabled={!!selectedAsset && !custodyActionAllowed(selectedAsset, 'return')}>Return{selectedAsset && !custodyActionAllowed(selectedAsset, 'return') ? ' — unavailable' : ''}</option><option value="transfer" disabled={!!selectedAsset && !custodyActionAllowed(selectedAsset, 'transfer')}>Transfer{selectedAsset && !custodyActionAllowed(selectedAsset, 'transfer') ? ' — unavailable' : ''}</option><option value="hire">Hire</option><option value="upgrade">Upgrade note</option><option value="replacement">Replacement note</option><option value="downgrade">Downgrade note</option><option value="other">Other</option></select></label>
-        {form.action_type === 'return' && <label><span>Return Outcome</span><select value={form.return_status} onChange={event => setForm({ ...form, return_status: event.target.value })}><option value="available">Available after inspection</option><option value="repair">Under repair</option><option value="damaged">Damaged</option><option value="returned">Returned, awaiting inspection</option></select></label>}
+        <label><span>Action</span><select value={form.action_type} onChange={event => changeAction(event.target.value)}><option value="handover" disabled={!!selectedAsset && !custodyActionAllowed(selectedAsset, 'handover')}>Handover{selectedAsset && !custodyActionAllowed(selectedAsset, 'handover') ? ' — unavailable' : ''}</option><option value="transfer" disabled={!!selectedAsset && !custodyActionAllowed(selectedAsset, 'transfer')}>Transfer{selectedAsset && !custodyActionAllowed(selectedAsset, 'transfer') ? ' — unavailable' : ''}</option><option value="return" disabled={!!selectedAsset && !custodyActionAllowed(selectedAsset, 'return')}>Return{selectedAsset && !custodyActionAllowed(selectedAsset, 'return') ? ' — unavailable' : ''}</option></select></label>
+        {form.action_type === 'return' && <label><span>Return Outcome</span><select value="available" disabled><option value="available">Available after inspection</option></select></label>}
         {form.action_type === 'return'
           ? <label><span>Returning From</span><input value={selectedAsset?.used_by || form.employee_name || ''} readOnly placeholder="Select an assigned asset" /></label>
-          : <label><span>{destinationLabel}</span><input required={form.action_type === 'handover' || form.action_type === 'transfer'} value={form.employee_name} onChange={event => setForm({ ...form, employee_name: event.target.value })} placeholder={form.action_type === 'transfer' ? 'New employee / custodian' : 'Employee / custodian'} /></label>}
+          : <label className="asset-lookup-block"><span>{destinationLabel}</span><input required value={form.employee_name} onChange={event => setForm({ ...form, employee_name: event.target.value })} placeholder={form.action_type === 'transfer' ? 'Start typing new employee / custodian' : 'Start typing employee / custodian'} autoComplete="off" />{employeeSuggestions.length > 0 && <div className="asset-search-results">{employeeSuggestions.map(name => <button type="button" key={name} onClick={() => { setForm(current => ({ ...current, employee_name: name })); setEmployeeSuggestions([]) }}>{name}</button>)}</div>}<small>Select a suggestion when available, or continue typing to enter a valid employee/custodian manually.</small></label>}
         <label><span>{form.action_type === 'transfer' ? 'New Workstation / DC Number' : form.action_type === 'return' ? 'Current Workstation / DC Number' : 'Workstation / DC Number'}</span><input readOnly={form.action_type === 'return'} value={form.dc_number} onChange={event => setForm({ ...form, dc_number: event.target.value })} /></label>
-        <label><span>{form.action_type === 'transfer' ? 'New Department' : form.action_type === 'return' ? 'Current Department' : 'Department'}</span><input readOnly={form.action_type === 'return'} value={form.department} onChange={event => setForm({ ...form, department: event.target.value })} /></label>
+        {form.action_type === 'return'
+          ? <label><span>Current Department</span><input readOnly value={form.department} /></label>
+          : <label><span>{form.action_type === 'transfer' ? 'New Department' : 'Department'}</span><select value={manualDepartmentEntry ? MANUAL_ENTRY_VALUE : form.department} onChange={event => { const value = event.target.value; if (value === MANUAL_ENTRY_VALUE) { setManualDepartmentEntry(true); setForm(current => ({ ...current, department: '' })) } else { setManualDepartmentEntry(false); setForm(current => ({ ...current, department: value })) } }}><option value="">Select department</option>{!manualDepartmentEntry && form.department && !DEPARTMENT_OPTIONS.some(option => option === form.department) && <option value={form.department}>Current value — {form.department}</option>}{DEPARTMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}<option value={MANUAL_ENTRY_VALUE}>Other / Enter Manually</option></select>{manualDepartmentEntry && <input autoFocus value={form.department} onChange={event => setForm(current => ({ ...current, department: event.target.value }))} placeholder="Enter department" />}</label>}
         <label><span>{form.action_type === 'transfer' ? 'New Work Mode' : form.action_type === 'return' ? 'Current Work Mode' : 'Work Mode'}</span><select disabled={form.action_type === 'return'} value={form.work_mode} onChange={event => setForm({ ...form, work_mode: event.target.value })}><option value="office">Office</option><option value="wfh">WFH</option><option value="field">Field</option></select></label>
         <label><span>Internal / Meher Asset No.</span><input readOnly={!!selectedAsset} value={form.internal_asset_no} onChange={event => setForm({ ...form, internal_asset_no: event.target.value })} /></label>
         <label><span>Serial Number</span><input readOnly={!!selectedAsset} value={form.serial_number} onChange={event => setForm({ ...form, serial_number: event.target.value })} /></label>
@@ -199,10 +290,10 @@ export function HandoverReturnPage() {
         <label><span>Issued By</span><input value={form.issued_by} onChange={event => setForm({ ...form, issued_by: event.target.value })} placeholder={user?.full_name} /></label>
         <label><span>Asset Updated Status</span><input value={form.asset_updated_status} onChange={event => setForm({ ...form, asset_updated_status: event.target.value })} /></label>
         <label className="span-2"><span>Activity Remarks / Reason — Selected Month Only</span><textarea value={form.remarks} onChange={event => setForm({ ...form, remarks: event.target.value })} /></label>
-        <label className="checkbox-field span-2"><input type="checkbox" checked={form.apply_to_asset} disabled={!!selectedAsset && CUSTODY_ACTIONS.has(form.action_type)} onChange={event => setForm({ ...form, apply_to_asset: event.target.checked })} /><span>{selectedAsset && CUSTODY_ACTIONS.has(form.action_type) ? 'Linked Asset Register update is required for live Handover, Return or Transfer' : 'Update the linked Asset Register assignment/status for Handover, Return or Transfer'}</span></label>
-        <div className="span-2 form-actions"><button className="primary-button" disabled={!!busy || (!!selectedAsset && CUSTODY_ACTIONS.has(form.action_type) && !currentCustodyActionAllowed)}><PlusCircle size={17} /> {busy === 'save' ? 'Saving…' : `Save ${form.action_type === 'transfer' ? 'Transfer' : form.action_type === 'return' ? 'Return' : 'Handover / Activity'}`}</button></div>
+        <label className="checkbox-field span-2"><input type="checkbox" checked disabled /><span>Linked Asset Register update is required for live Handover, Transfer and Return.</span></label>
+        <div className="span-2 form-actions"><button className="primary-button" disabled={!!busy || (!!selectedAsset && !currentCustodyActionAllowed)}><PlusCircle size={17} /> {busy === 'save' ? 'Saving…' : `Save ${form.action_type === 'transfer' ? 'Transfer' : form.action_type === 'return' ? 'Return' : 'Handover'}`}</button></div>
       </form>
-      <div className="historical-import-strip"><span><FileUp size={18} /> Import the original historical workbooks safely and idempotently.</span><label className="secondary-button file-button"><Laptop size={17} /> {busy === 'import-laptop' ? 'Importing…' : 'Import Laptop Excel'}<input hidden type="file" accept=".xlsx" onChange={event => void importWorkbook(event, 'laptop')} /></label><label className="secondary-button file-button"><Monitor size={17} /> {busy === 'import-desktop' ? 'Importing…' : 'Import Desktop Excel'}<input hidden type="file" accept=".xlsx" onChange={event => void importWorkbook(event, 'desktop')} /></label></div>
+      <div className="historical-import-strip"><span><FileUp size={18} /> Historical Excel imports remain available and do not change the simplified live custody workflow.</span><label className="secondary-button file-button"><Laptop size={17} /> {busy === 'import-laptop' ? 'Importing…' : 'Import Laptop Excel'}<input hidden type="file" accept=".xlsx" onChange={event => void importWorkbook(event, 'laptop')} /></label><label className="secondary-button file-button"><Monitor size={17} /> {busy === 'import-desktop' ? 'Importing…' : 'Import Desktop Excel'}<input hidden type="file" accept=".xlsx" onChange={event => void importWorkbook(event, 'desktop')} /></label></div>
     </section>}
 
     <section className="panel"><div className="panel-title-row"><div><span className="section-kicker">AUDIT REGISTER</span><h2>{monthLabel(selectedMonth)} Handover & Return History</h2></div><span className="record-count">{records.length}</span></div><div className="table-scroll"><table className="activity-table"><thead><tr><th>Date / Time</th><th>Device</th><th>Asset / DC</th><th>Custody Movement</th><th>Department</th><th>Action</th><th>Condition</th><th>Performed By</th><th>Remarks</th><th>Source</th></tr></thead><tbody>{records.map(record => <tr key={record.id}><td>{record.activity_date}<small>{record.activity_time || 'Time not in source Excel'}</small></td><td>{record.device_category}</td><td>{record.internal_asset_no || record.asset_code_snapshot || '—'}<small>{record.dc_number}</small></td><td>{custodyMovement(record)}</td><td>{record.department || '—'}</td><td><span className="activity-badge handover_return">{record.action_type}</span></td><td>{record.condition || '—'}</td><td>{record.performed_by || record.issued_by || 'Historical record'}</td><td>{record.remarks || '—'}</td><td>{record.imported ? `${record.source_sheet} row ${record.source_row}` : 'Software entry'}</td></tr>)}</tbody></table></div></section>
