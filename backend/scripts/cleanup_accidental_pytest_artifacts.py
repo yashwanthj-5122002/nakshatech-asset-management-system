@@ -10,6 +10,15 @@ reviewing the printed exact IDs/codes.
 
 import argparse
 from collections import defaultdict
+from pathlib import Path
+import sys
+
+# ``python scripts/<name>.py`` sets sys.path[0] to ``/app/scripts`` inside the
+# backend container. Add the backend repository root before importing ``app`` so
+# this utility works both as a direct script and from local source checkouts.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from sqlalchemy import or_, select
 
