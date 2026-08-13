@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
@@ -105,6 +105,48 @@ def list_handover_records(
         query.order_by(ITHandoverRecord.activity_date.desc(), ITHandoverRecord.activity_time.desc(), ITHandoverRecord.id.desc()).limit(limit)
     ).all())
     return hydrate_handover_custody_movements(db, records)
+
+
+@router.get("/custody-employees")
+def search_custody_employees(
+    search: str = Query(..., min_length=2, max_length=120),
+    limit: int = Query(default=15, ge=1, le=50),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> list[dict]:
+    """Autocomplete active organization users for Handover/Transfer.
+
+    Manual entry remains supported in the UI for legitimate legacy/external
+    custodians that do not yet have an application account.
+    """
+    query = search.strip().lower()
+    if len(query) < 2:
+        return []
+    pattern = f"%{query}%"
+    rows = list(db.scalars(
+        select(User)
+        .where(
+            User.is_active.is_(True),
+            or_(
+                func.lower(func.coalesce(User.full_name, "")).like(pattern),
+                func.lower(func.coalesce(User.email, "")).like(pattern),
+                func.lower(func.coalesce(User.employee_id, "")).like(pattern),
+                func.lower(func.coalesce(User.department, "")).like(pattern),
+            ),
+        )
+        .order_by(User.full_name.asc(), User.email.asc())
+        .limit(limit)
+    ).all())
+    return [
+        {
+            "id": row.id,
+            "full_name": row.full_name,
+            "email": row.email,
+            "employee_id": row.employee_id,
+            "department": row.department,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/handover-records", response_model=HandoverResponse)
