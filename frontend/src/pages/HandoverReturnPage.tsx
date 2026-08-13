@@ -4,7 +4,7 @@ import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, uploadExcel } from '../lib/api'
-import { CUSTODY_ACTIONS, custodyActionAllowed, custodyGuidance, defaultCustodyAction } from '../lib/assetCustody'
+import { custodyActionAllowed, custodyGuidance, defaultCustodyAction } from '../lib/assetCustody'
 import { DEPARTMENT_OPTIONS, MANUAL_ENTRY_VALUE } from '../lib/assetOptions'
 import { isFullAccessRole } from '../lib/roles'
 import { monthLabel } from '../lib/itMonth'
@@ -156,7 +156,8 @@ export function HandoverReturnPage() {
   }
 
   function selectAsset(asset: Asset) {
-    const action_type = defaultCustodyAction(asset)
+    const suggestedAction = defaultCustodyAction(asset)
+    const action_type = suggestedAction === 'other' ? 'handover' : suggestedAction
     setSelectedAsset(asset)
     setError('')
     setMessage('')
@@ -205,11 +206,15 @@ export function HandoverReturnPage() {
     event.preventDefault()
     setError('')
     setMessage('')
-    if (selectedAsset && !custodyActionAllowed(selectedAsset, form.action_type)) {
+    if (!selectedAsset) {
+      setError('Select an Asset Register record from the live search results before saving a custody activity.')
+      return
+    }
+    if (!custodyActionAllowed(selectedAsset, form.action_type)) {
       setError(custodyGuidance(selectedAsset))
       return
     }
-    if (selectedAsset && form.action_type === 'transfer' && selectedAsset.used_by?.trim().toLowerCase() === form.employee_name.trim().toLowerCase()) {
+    if (form.action_type === 'transfer' && selectedAsset.used_by?.trim().toLowerCase() === form.employee_name.trim().toLowerCase()) {
       setError('Transfer To / New Custodian must be different from the current custodian.')
       return
     }
@@ -218,12 +223,12 @@ export function HandoverReturnPage() {
       const payload = {
         ...form,
         return_status: 'available',
-        employee_name: form.action_type === 'return' ? (selectedAsset?.used_by || form.employee_name) : form.employee_name,
-        dc_number: form.action_type === 'return' ? (selectedAsset?.workstation_no || form.dc_number) : form.dc_number,
-        department: form.action_type === 'return' ? (selectedAsset?.department || form.department) : form.department,
-        work_mode: form.action_type === 'return' ? (selectedAsset?.work_mode || form.work_mode) : form.work_mode,
+        employee_name: form.action_type === 'return' ? (selectedAsset.used_by || form.employee_name) : form.employee_name,
+        dc_number: form.action_type === 'return' ? (selectedAsset.workstation_no || form.dc_number) : form.dc_number,
+        department: form.action_type === 'return' ? (selectedAsset.department || form.department) : form.department,
+        work_mode: form.action_type === 'return' ? (selectedAsset.work_mode || form.work_mode) : form.work_mode,
         reporting_month: selectedMonth,
-        asset_id: form.asset_id ? Number(form.asset_id) : null,
+        asset_id: selectedAsset.id,
         apply_to_asset: true,
       }
       const result = await apiFetch<ITHandoverRecord>('/it-activity/handover-records', { method: 'POST', body: JSON.stringify(payload) })
@@ -275,7 +280,7 @@ export function HandoverReturnPage() {
         {form.action_type === 'return' && <label><span>Return Outcome</span><select value="available" disabled><option value="available">Available after inspection</option></select></label>}
         {form.action_type === 'return'
           ? <label><span>Returning From</span><input value={selectedAsset?.used_by || form.employee_name || ''} readOnly placeholder="Select an assigned asset" /></label>
-          : <label className="asset-lookup-block"><span>{destinationLabel}</span><input required value={form.employee_name} onChange={event => setForm({ ...form, employee_name: event.target.value })} placeholder={form.action_type === 'transfer' ? 'Start typing new employee / custodian' : 'Start typing employee / custodian'} autoComplete="off" />{employeeSuggestions.length > 0 && <div className="asset-search-results">{employeeSuggestions.map(name => <button type="button" key={name} onClick={() => { setForm(current => ({ ...current, employee_name: name })); setEmployeeSuggestions([]) }}>{name}</button>)}</div>}<small>Select a suggestion when available, or continue typing to enter a valid employee/custodian manually.</small></label>}
+          : <div className="asset-lookup-block"><label><span>{destinationLabel}</span><input required value={form.employee_name} onChange={event => setForm({ ...form, employee_name: event.target.value })} placeholder={form.action_type === 'transfer' ? 'Start typing new employee / custodian' : 'Start typing employee / custodian'} autoComplete="off" /></label>{employeeSuggestions.length > 0 && <div className="asset-search-results">{employeeSuggestions.map(name => <button type="button" key={name} onClick={() => { setForm(current => ({ ...current, employee_name: name })); setEmployeeSuggestions([]) }}>{name}</button>)}</div>}<small>Select a suggestion when available, or continue typing to enter a valid employee/custodian manually.</small></div>}
         <label><span>{form.action_type === 'transfer' ? 'New Workstation / DC Number' : form.action_type === 'return' ? 'Current Workstation / DC Number' : 'Workstation / DC Number'}</span><input readOnly={form.action_type === 'return'} value={form.dc_number} onChange={event => setForm({ ...form, dc_number: event.target.value })} /></label>
         {form.action_type === 'return'
           ? <label><span>Current Department</span><input readOnly value={form.department} /></label>
@@ -291,7 +296,7 @@ export function HandoverReturnPage() {
         <label><span>Asset Updated Status</span><input value={form.asset_updated_status} onChange={event => setForm({ ...form, asset_updated_status: event.target.value })} /></label>
         <label className="span-2"><span>Activity Remarks / Reason — Selected Month Only</span><textarea value={form.remarks} onChange={event => setForm({ ...form, remarks: event.target.value })} /></label>
         <label className="checkbox-field span-2"><input type="checkbox" checked disabled /><span>Linked Asset Register update is required for live Handover, Transfer and Return.</span></label>
-        <div className="span-2 form-actions"><button className="primary-button" disabled={!!busy || (!!selectedAsset && !currentCustodyActionAllowed)}><PlusCircle size={17} /> {busy === 'save' ? 'Saving…' : `Save ${form.action_type === 'transfer' ? 'Transfer' : form.action_type === 'return' ? 'Return' : 'Handover'}`}</button></div>
+        <div className="span-2 form-actions"><button className="primary-button" disabled={!!busy || !selectedAsset || !currentCustodyActionAllowed}><PlusCircle size={17} /> {busy === 'save' ? 'Saving…' : `Save ${form.action_type === 'transfer' ? 'Transfer' : form.action_type === 'return' ? 'Return' : 'Handover'}`}</button></div>
       </form>
       <div className="historical-import-strip"><span><FileUp size={18} /> Historical Excel imports remain available and do not change the simplified live custody workflow.</span><label className="secondary-button file-button"><Laptop size={17} /> {busy === 'import-laptop' ? 'Importing…' : 'Import Laptop Excel'}<input hidden type="file" accept=".xlsx" onChange={event => void importWorkbook(event, 'laptop')} /></label><label className="secondary-button file-button"><Monitor size={17} /> {busy === 'import-desktop' ? 'Importing…' : 'Import Desktop Excel'}<input hidden type="file" accept=".xlsx" onChange={event => void importWorkbook(event, 'desktop')} /></label></div>
     </section>}
