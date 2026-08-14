@@ -74,6 +74,7 @@ def _return_payload(mode: str, *, vendor: str = "UAT Rental Vendor") -> AssetVen
         remarks="Pytest vendor return",
         reporting_month="2026-08",
         spare_location="IT Store",
+        confirm_vendor_return=True,
     )
 
 
