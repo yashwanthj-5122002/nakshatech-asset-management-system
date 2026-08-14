@@ -122,23 +122,24 @@ def perform_vendor_return(
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
     if canonical_device_type(asset.device_type) != "Computer":
-        raise HTTPException(status_code=400, detail="Rental vendor return is currently available only for Desktop / Computer assets")
+        raise HTTPException(status_code=400, detail="Return / Remove is currently available only for Desktop / Computer assets")
     if not is_active_inventory_asset(asset):
-        raise HTTPException(status_code=409, detail="This asset has already been returned to the vendor")
+        raise HTTPException(status_code=409, detail="This asset has already been returned / removed from active inventory")
     if db.scalar(select(AssetVendorReturn.id).where(AssetVendorReturn.asset_id == asset.id).limit(1)) is not None:
-        raise HTTPException(status_code=409, detail="This asset already has a vendor return record")
-    if _clean(asset.used_by):
-        raise HTTPException(
-            status_code=409,
-            detail="This desktop is still assigned to an employee. Complete the normal Handover & Return to IT before returning it to the vendor.",
-        )
+        raise HTTPException(status_code=409, detail="This asset already has a return record")
+
+    # Asset Register -> Return / Remove is the terminal rental/vendor return.
+    # It may be performed directly even when the desktop is still assigned;
+    # the previous custodian is snapshotted below and the live custody is cleared
+    # in the same transaction. Normal employee-only custody returns remain in
+    # the Handover & Return workflow and are not changed here.
     open_work = db.scalar(
         select(WorkRecord.id)
         .where(WorkRecord.asset_id == asset.id, WorkRecord.status.in_(ACTIVE_WORK_STATUSES))
         .limit(1)
     )
     if open_work is not None:
-        raise HTTPException(status_code=409, detail="Close the active IT Work Record before returning this desktop to the vendor")
+        raise HTTPException(status_code=409, detail="Close the active IT Work Record before returning / removing this desktop")
     open_replacement = db.scalar(
         select(ReplacementRecord.id)
         .where(
@@ -148,13 +149,13 @@ def perform_vendor_return(
         .limit(1)
     )
     if open_replacement is not None:
-        raise HTTPException(status_code=409, detail="Resolve the open complete-asset replacement workflow before vendor return")
+        raise HTTPException(status_code=409, detail="Resolve the open complete-asset replacement workflow before returning / removing this desktop")
 
     monitors = split_monitor_tags(asset.monitor_asset_tags)
     if payload.return_mode == "return_without_monitor" and not monitors:
         raise HTTPException(
             status_code=400,
-            detail="Return Without Monitor requires at least one Monitor Asset Tag on the selected desktop",
+            detail="Keep Monitor requires at least one Monitor Asset Tag on the selected desktop",
         )
 
     if payload.return_mode == "return_without_monitor":
@@ -168,7 +169,7 @@ def perform_vendor_return(
             if owner is not None:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Monitor {monitor_tag} is also active on {owner.cpu_asset_tag or owner.asset_code}. Correct the duplicate before vendor return.",
+                    detail=f"Monitor {monitor_tag} is also active on {owner.cpu_asset_tag or owner.asset_code}. Correct the duplicate before return / remove.",
                 )
 
     snapshot = asset_snapshot(asset)
@@ -213,7 +214,7 @@ def perform_vendor_return(
                 current_asset_id=None,
                 location=payload.spare_location or "IT Store",
                 retained_date=payload.return_date,
-                remarks=f"Retained when rental desktop {asset.cpu_asset_tag or asset.asset_code} was returned to {payload.vendor_name}",
+                remarks=f"Retained when desktop {asset.cpu_asset_tag or asset.asset_code} was returned / removed",
             ))
 
     history_before = {
