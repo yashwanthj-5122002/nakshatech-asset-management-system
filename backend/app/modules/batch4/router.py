@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_roles
 from app.core.database import get_db
 from app.models.entities import User
+from app.modules.asset_return.router import router as asset_return_router
 from app.modules.batch4.it_control import (
     create_replacement_without_management_approval,
     process_legacy_replacement_without_management_approval,
@@ -164,3 +165,10 @@ def disabled_it_work_management_decision(
         status_code=410,
         detail="Management approval for IT Work has been removed. Management has read-only oversight; IT completes its own operational work.",
     )
+
+
+# The rental/vendor-return module is additive. Its few exact endpoint overrides
+# (Asset list/dashboard/report reads and Component Changes) are intentionally
+# included through the existing Batch 4 route replacement mechanism so unrelated
+# legacy and Batch 3 operations remain untouched.
+router.include_router(asset_return_router)
