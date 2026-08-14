@@ -27,6 +27,15 @@ def stage_spare_monitor_component_change(db: Session, payload, user: User) -> No
     existing component workflow rejects the request.
     """
 
+    target = db.scalar(select(Asset).where(Asset.id == payload.asset_id).with_for_update())
+    if target is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if str(target.status or "").strip().lower() == "returned_to_vendor":
+        raise HTTPException(
+            status_code=409,
+            detail="This asset has been returned to the vendor and cannot receive component changes",
+        )
+
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     for item in payload.items:
         if item.component_type.strip().lower() != "monitor":
