@@ -57,6 +57,7 @@ services:
       ACCESS_TOKEN_MINUTES: 480
       CORS_ORIGINS: http://localhost:3100,http://localhost:8088
       TRUSTED_HOSTS: localhost,127.0.0.1,backend
+      PURCHASE_APPROVAL_PUBLIC_URL: ${PURCHASE_APPROVAL_PUBLIC_URL:-}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@nakshatech.com}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
       SEED_SOFTWARE_TEAM_EMAIL: ${SEED_SOFTWARE_TEAM_EMAIL:-software.team@nakshatech.com}
