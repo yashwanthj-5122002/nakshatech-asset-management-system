@@ -5,8 +5,10 @@ import {
   Eye,
   FileCheck2,
   IndianRupee,
+  Mail,
   PackageCheck,
   PencilLine,
+  RefreshCw,
   RotateCcw,
   Search,
   Send,
@@ -28,6 +30,29 @@ import type {
   PurchaseRequestStatus,
   PurchaseRequestSummary,
 } from '../types'
+
+type PurchaseApprovalEmailActivity = {
+  id: number
+  event_type: string
+  recipient_name?: string
+  recipient_email: string
+  subject: string
+  delivery_status: string
+  error_message?: string
+  created_at: string
+}
+
+type PurchaseRequestWithEmail = ITPurchaseRequest & {
+  approval_recipient_name?: string
+  approval_recipient_email?: string
+  approval_email_status?: string
+  approval_email_sent_at?: string
+  approval_email_last_error?: string
+  approval_token_expires_at?: string
+  approval_token_consumed_at?: string
+  decision_source?: string
+  email_activity?: PurchaseApprovalEmailActivity[]
+}
 
 const emptySummary: PurchaseRequestSummary = {
   total: 0,
@@ -54,6 +79,8 @@ const initialForm = {
   required_by_date: '',
   priority: 'medium',
   it_remarks: '',
+  approval_recipient_name: '',
+  approval_recipient_email: '',
 }
 
 function formatMoney(value?: number) {
@@ -78,6 +105,14 @@ function labelStatus(status: string) {
   return status.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())
 }
 
+function emailResultText(record: PurchaseRequestWithEmail) {
+  const recipient = record.approval_recipient_email || 'the selected approver'
+  if (record.approval_email_status === 'sent') return ` Approval email sent to ${recipient}.`
+  if (record.approval_email_status === 'logged') return ` Approval email recorded in UAT console mode for ${recipient}.`
+  if (record.approval_email_status === 'failed') return ` The request was saved, but email delivery failed for ${recipient}; use Resend Approval Email.`
+  return ''
+}
+
 export function PurchaseRequestsPage() {
   const { user } = useAuth()
   const { selectedMonth } = useITMonthUrl()
@@ -87,8 +122,8 @@ export function PurchaseRequestsPage() {
   const canApprove = user?.role === 'management'
 
   const [summary, setSummary] = useState<PurchaseRequestSummary>(emptySummary)
-  const [records, setRecords] = useState<ITPurchaseRequest[]>([])
-  const [selected, setSelected] = useState<ITPurchaseRequest | null>(null)
+  const [records, setRecords] = useState<PurchaseRequestWithEmail[]>([])
+  const [selected, setSelected] = useState<PurchaseRequestWithEmail | null>(null)
   const [form, setForm] = useState(initialForm)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | PurchaseRequestStatus>('all')
@@ -117,7 +152,7 @@ export function PurchaseRequestsPage() {
     try {
       const [summaryResult, recordResult] = await Promise.all([
         apiFetch<PurchaseRequestSummary>(`/it-activity/purchase-requests/summary?${buildQuery(false)}`),
-        apiFetch<ITPurchaseRequest[]>(`/it-activity/purchase-requests?${buildQuery(true)}&limit=1000`),
+        apiFetch<PurchaseRequestWithEmail[]>(`/it-activity/purchase-requests?${buildQuery(true)}&limit=1000`),
       ])
       setSummary(summaryResult)
       setRecords(recordResult)
@@ -126,15 +161,33 @@ export function PurchaseRequestsPage() {
     }
   }
 
+  async function refreshSelected(id: number) {
+    try {
+      const detail = await apiFetch<PurchaseRequestWithEmail>(`/it-activity/purchase-requests/${id}`)
+      setSelected(detail)
+    } catch {
+      // Background focus synchronization must not replace a useful page with a transient error.
+    }
+  }
+
   useEffect(() => {
     void loadData()
   }, [selectedMonth, statusFilter, departmentFilter, priorityFilter, search])
+
+  useEffect(() => {
+    const synchronizeAfterEmailAction = () => {
+      void loadData()
+      if (selected?.id) void refreshSelected(selected.id)
+    }
+    window.addEventListener('focus', synchronizeAfterEmailAction)
+    return () => window.removeEventListener('focus', synchronizeAfterEmailAction)
+  }, [selected?.id, selectedMonth, statusFilter, departmentFilter, priorityFilter, search])
 
   async function openDetails(id: number) {
     setBusy(`view-${id}`)
     setError('')
     try {
-      const detail = await apiFetch<ITPurchaseRequest>(`/it-activity/purchase-requests/${id}`)
+      const detail = await apiFetch<PurchaseRequestWithEmail>(`/it-activity/purchase-requests/${id}`)
       setSelected(detail)
       setDecisionAction('approve')
       setApprovedAmount(detail.estimated_total_amount ? String(detail.estimated_total_amount) : '')
@@ -163,14 +216,14 @@ export function PurchaseRequestsPage() {
       const path = editingId
         ? `/it-activity/purchase-requests/${editingId}/resubmit`
         : '/it-activity/purchase-requests'
-      const result = await apiFetch<ITPurchaseRequest>(path, {
+      const result = await apiFetch<PurchaseRequestWithEmail>(path, {
         method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify(payload),
       })
       setMessage(
-        editingId
+        (editingId
           ? `${result.request_code} was updated and resubmitted for management approval.`
-          : `${result.request_code} was submitted for management approval.`,
+          : `${result.request_code} was submitted for management approval.`) + emailResultText(result),
       )
       setForm(initialForm)
       setEditingId(null)
@@ -182,7 +235,7 @@ export function PurchaseRequestsPage() {
     }
   }
 
-  function editSentBack(record: ITPurchaseRequest) {
+  function editSentBack(record: PurchaseRequestWithEmail) {
     setEditingId(record.id)
     setForm({
       requesting_department: record.requesting_department,
@@ -197,6 +250,8 @@ export function PurchaseRequestsPage() {
       required_by_date: record.required_by_date || '',
       priority: record.priority,
       it_remarks: record.it_remarks || '',
+      approval_recipient_name: record.approval_recipient_name || '',
+      approval_recipient_email: record.approval_recipient_email || '',
     })
     setSelected(null)
     window.setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
@@ -208,7 +263,7 @@ export function PurchaseRequestsPage() {
     setMessage('')
     setError('')
     try {
-      const result = await apiFetch<ITPurchaseRequest>(
+      const result = await apiFetch<PurchaseRequestWithEmail>(
         `/it-activity/purchase-requests/${selected.id}/decision`,
         {
           method: 'POST',
@@ -220,7 +275,7 @@ export function PurchaseRequestsPage() {
         },
       )
       setSelected(result)
-      setMessage(`${result.request_code} is now ${labelStatus(result.status)}.`)
+      setMessage(`${result.request_code} is now ${labelStatus(result.status)}. IT notification email was recorded.`)
       await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save management decision')
@@ -229,7 +284,26 @@ export function PurchaseRequestsPage() {
     }
   }
 
-  function createPurchase(record: ITPurchaseRequest) {
+  async function resendApprovalEmail(record: PurchaseRequestWithEmail) {
+    setBusy(`resend-${record.id}`)
+    setMessage('')
+    setError('')
+    try {
+      const updated = await apiFetch<PurchaseRequestWithEmail>(
+        `/it-activity/purchase-requests/${record.id}/approval-email/resend`,
+        { method: 'POST' },
+      )
+      setSelected(updated)
+      setMessage(`${record.request_code} received a new secure approval link.${emailResultText(updated)}`)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to resend approval email')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  function createPurchase(record: PurchaseRequestWithEmail) {
     const params = new URLSearchParams({ month: selectedMonth, requestId: String(record.id) })
     navigate(`/it/purchases?${params.toString()}`)
   }
@@ -272,7 +346,7 @@ export function PurchaseRequestsPage() {
       <DashboardHeader
         eyebrow="PURCHASE GOVERNANCE"
         title="Purchase Permission & Approvals"
-        description={`Track requests, management decisions and completed procurement for ${monthLabel(selectedMonth)}. Quotation and supporting documents are not required for permission requests.`}
+        description={`Track requests, email approvals, management decisions and completed procurement for ${monthLabel(selectedMonth)}. Quotation and supporting documents are not required for permission requests.`}
       />
 
       {message && <div className="success-message">{message}</div>}
@@ -356,6 +430,15 @@ export function PurchaseRequestsPage() {
               <span>Business Requirement / Reason</span>
               <textarea required value={form.business_reason} onChange={event => setForm({ ...form, business_reason: event.target.value })} />
             </label>
+            <label>
+              <span>Approval Recipient Name *</span>
+              <input required value={form.approval_recipient_name} onChange={event => setForm({ ...form, approval_recipient_name: event.target.value })} placeholder="Manager / UAT approver name" />
+            </label>
+            <label>
+              <span>Approval Email *</span>
+              <input required type="email" value={form.approval_recipient_email} onChange={event => setForm({ ...form, approval_recipient_email: event.target.value })} placeholder="approver@nakshatech.com" />
+            </label>
+            <div className="approval-note span-2"><Mail size={16} /> One secure approval email is sent only to this organization address. During UAT, enter the designated test colleague; production can use the responsible Management email.</div>
             <label className="span-2">
               <span>IT Remarks</span>
               <textarea value={form.it_remarks} onChange={event => setForm({ ...form, it_remarks: event.target.value })} />
@@ -444,6 +527,7 @@ export function PurchaseRequestsPage() {
                 <th>Estimated</th>
                 <th>Priority</th>
                 <th>Status</th>
+                <th>Approval Email</th>
                 <th>Requested</th>
                 <th>Decision / Purchase</th>
                 <th>Actions</th>
@@ -459,6 +543,7 @@ export function PurchaseRequestsPage() {
                   <td>{formatMoney(record.estimated_total_amount)}</td>
                   <td><span className={`priority priority-${record.priority}`}>{record.priority}</span></td>
                   <td><span className={`status ${record.status}`}>{labelStatus(record.status)}</span></td>
+                  <td>{record.approval_recipient_email || 'Legacy / not linked'}<small>{record.approval_email_status ? labelStatus(record.approval_email_status) : ''}</small></td>
                   <td>{formatDateTime(record.requested_at)}<small>{record.requested_by_name}</small></td>
                   <td>
                     {record.purchase_code || record.decided_by_name || 'Awaiting management'}
@@ -484,7 +569,7 @@ export function PurchaseRequestsPage() {
                 </tr>
               ))}
               {records.length === 0 && (
-                <tr><td colSpan={10}><div className="empty-state">No purchase requests match the selected filters.</div></td></tr>
+                <tr><td colSpan={11}><div className="empty-state">No purchase requests match the selected filters.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -512,14 +597,19 @@ export function PurchaseRequestsPage() {
               <div><span>Estimated Amount</span><strong>{formatMoney(selected.estimated_total_amount)}</strong></div>
               <div><span>Requested By IT</span><strong>{selected.requested_by_name}<small>{selected.requested_by_email}</small></strong></div>
               <div><span>Requested At</span><strong>{formatDateTime(selected.requested_at)}</strong></div>
+              <div><span>Approval Recipient</span><strong>{selected.approval_recipient_name || 'Legacy / not linked'}<small>{selected.approval_recipient_email || ''}</small></strong></div>
+              <div><span>Email Delivery</span><strong>{selected.approval_email_status ? labelStatus(selected.approval_email_status) : 'Not linked'}<small>{formatDateTime(selected.approval_email_sent_at)}</small></strong></div>
               <div><span>Required By</span><strong>{selected.required_by_date || 'Not specified'}</strong></div>
               <div><span>Priority</span><strong>{labelStatus(selected.priority)}</strong></div>
               <div><span>Management Decision</span><strong>{selected.decided_by_name || 'Awaiting management'}<small>{formatDateTime(selected.decided_at)}</small></strong></div>
+              <div><span>Decision Source</span><strong>{selected.decision_source ? labelStatus(selected.decision_source) : 'Awaiting decision'}</strong></div>
               <div><span>Approved Amount</span><strong>{formatMoney(selected.approved_amount)}</strong></div>
+              <div><span>Approval Link Expires</span><strong>{selected.status === 'pending_approval' ? formatDateTime(selected.approval_token_expires_at) : 'Decision completed'}</strong></div>
               <div className="span-2"><span>Business Requirement</span><strong>{selected.business_reason}</strong></div>
               <div className="span-2"><span>Item Description</span><strong>{selected.item_description || 'Not provided'}</strong></div>
               <div className="span-2"><span>IT Remarks</span><strong>{selected.it_remarks || 'Not provided'}</strong></div>
               <div className="span-2"><span>Management Remarks</span><strong>{selected.management_remarks || 'Not provided'}</strong></div>
+              {selected.approval_email_last_error && <div className="span-2"><span>Email Error</span><strong>{selected.approval_email_last_error}</strong></div>}
               {selected.purchase_code && (
                 <div className="span-2 purchase-link-summary">
                   <PackageCheck />
@@ -563,7 +653,27 @@ export function PurchaseRequestsPage() {
               </div>
             </section>
 
+            <section className="purchase-request-history">
+              <h3>Email Activity / Proof</h3>
+              <div className="timeline">
+                {(selected.email_activity || []).map(activity => (
+                  <div key={activity.id}>
+                    <i />
+                    <p>
+                      <strong>{labelStatus(activity.event_type)} · {labelStatus(activity.delivery_status)}</strong>
+                      <span>{activity.recipient_name || 'Recipient'} · {activity.recipient_email}</span>
+                      <small>{formatDateTime(activity.created_at)}{activity.error_message ? ` · ${activity.error_message}` : ''}</small>
+                    </p>
+                  </div>
+                ))}
+                {!(selected.email_activity || []).length && <div className="empty-state">No approval email activity is linked to this legacy request.</div>}
+              </div>
+            </section>
+
             <div className="form-actions purchase-request-modal-actions">
+              {canCreate && selected.status === 'pending_approval' && selected.approval_recipient_email && (
+                <button className="secondary-button" disabled={busy === `resend-${selected.id}`} onClick={() => void resendApprovalEmail(selected)}><RefreshCw size={17} /> {busy === `resend-${selected.id}` ? 'Resending…' : 'Resend Approval Email'}</button>
+              )}
               {canCreate && selected.status === 'sent_back' && (
                 <button className="secondary-button" onClick={() => editSentBack(selected)}><PencilLine size={17} /> Edit & Resubmit</button>
               )}
