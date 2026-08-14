@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
@@ -14,7 +15,9 @@ from app.api.router import (
     update_asset_status as base_update_asset_status,
 )
 from app.core.database import get_db
-from app.models.entities import Asset, User
+from app.models.entities import Asset, ReplacementRecord, User
+from app.modules.asset_return.schemas import AssetVendorReturnCreate
+from app.modules.asset_return.service import perform_vendor_return
 from app.schemas.asset import AssetAssignment, AssetResponse, AssetReturn, AssetStatusUpdate, AssetUpdate
 from app.schemas.component_replacement import ComponentReplacementCreate
 from app.schemas.work import WorkRecordCreate
@@ -22,6 +25,7 @@ from app.schemas.work import WorkRecordCreate
 
 router = APIRouter(tags=["Rental Asset Return Guards"])
 RETURNED_TO_VENDOR_STATUS = "returned_to_vendor"
+FINALIZED_ASSET_STATUSES = {"replaced", "retired", "disposed", "missing", RETURNED_TO_VENDOR_STATUS}
 
 
 def _assert_active_asset(db: Session, asset_id: int) -> Asset:
@@ -37,6 +41,46 @@ def _assert_active_asset(db: Session, asset_id: int) -> Asset:
             ),
         )
     return asset
+
+
+def _assert_vendor_return_ready(db: Session, asset_id: int) -> Asset:
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    status = str(asset.status or "").strip().lower()
+    if status in FINALIZED_ASSET_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail="A finalized, missing, or already vendor-returned asset cannot be returned to a rental vendor",
+        )
+    active_replacement = db.scalar(
+        select(ReplacementRecord.id)
+        .where(
+            or_(ReplacementRecord.old_asset_id == asset_id, ReplacementRecord.new_asset_id == asset_id),
+            or_(
+                ReplacementRecord.approval_status.in_(["pending", "returned"]),
+                ReplacementRecord.final_action.in_(["replacement_pending", "procurement_required"]),
+            ),
+        )
+        .limit(1)
+    )
+    if active_replacement is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Resolve the active complete-asset replacement/procurement workflow before vendor return",
+        )
+    return asset
+
+
+@router.post("/assets/{asset_id}/vendor-return")
+def guarded_vendor_return(
+    asset_id: int,
+    payload: AssetVendorReturnCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    _assert_vendor_return_ready(db, asset_id)
+    return perform_vendor_return(db, asset_id, payload, user)
 
 
 @router.patch("/assets/{asset_id}", response_model=AssetResponse)
