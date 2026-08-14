@@ -123,6 +123,12 @@ export function ManagementApprovalCenter() {
     void load()
   }, [selectedMonth])
 
+  useEffect(() => {
+    const synchronizeEmailDecision = () => { void load() }
+    window.addEventListener('focus', synchronizeEmailDecision)
+    return () => window.removeEventListener('focus', synchronizeEmailDecision)
+  }, [selectedMonth])
+
   const filteredRequests = useMemo(() => {
     const requests = data?.purchase_requests || []
     return statusFilter === 'all' ? requests : requests.filter(item => item.status === statusFilter)
