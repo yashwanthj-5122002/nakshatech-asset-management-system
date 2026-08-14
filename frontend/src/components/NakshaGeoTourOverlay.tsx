@@ -300,11 +300,11 @@ function layerLabel(stage: TourStage) {
   return 'NAKSHA GIS · GLOBAL VIEW'
 }
 
-function layerDescription(stage: TourStage, localDetailReady: boolean) {
+function layerDescription(stage: TourStage, districtDetailReady: boolean) {
   if (stage === 'india') return 'India located · state / union territory boundaries visible'
   if (stage === 'karnataka') {
-    return localDetailReady
-      ? 'Karnataka highlighted · district boundaries visible · taluk detail where available'
+    return districtDetailReady
+      ? 'Karnataka highlighted · district boundaries visible'
       : 'Karnataka highlighted · loading district boundaries'
   }
   if (stage === 'bengaluru') return 'Bengaluru Urban highlighted with surrounding Karnataka districts visible'
@@ -320,7 +320,6 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
   const [stage, setStage] = useState<TourStage>('world')
   const [states, setStates] = useState<TourPolygon[]>([])
   const [districts, setDistricts] = useState<TourPolygon[]>([])
-  const [taluks, setTaluks] = useState<TourPolygon[]>([])
   const [attribution, setAttribution] = useState('')
   const [fading, setFading] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
@@ -347,8 +346,8 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
   const polygons = useMemo(() => {
     if (stage === 'world') return countries
     if (stage === 'india') return [...countries, ...states]
-    return [...countries, ...states, ...districts, ...taluks]
-  }, [countries, districts, stage, states, taluks])
+    return [...countries, ...states, ...districts]
+  }, [countries, districts, stage, states])
 
   useEffect(() => {
     const host = hostRef.current
@@ -391,7 +390,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
       }
 
       const stateRequest = loadIndiaStates()
-      const districtRequest = compact ? null : loadKarnatakaDistricts()
+      const districtRequest = loadKarnatakaDistricts()
 
       controls.enablePan = false
       controls.enableZoom = false
@@ -407,46 +406,31 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
       setStage('india')
       globe.pointOfView(INDIA_POV, reducedMotion ? 0 : 1450)
 
-      let stateRows: TourPolygon[] = []
       try {
         const result = await stateRequest
         if (cancelled) return
-        stateRows = result.features
-        setStates(stateRows)
+        setStates(result.features)
         setAttribution(result.attribution)
       } catch {
-        stateRows = []
+        setStates([])
       }
 
       await sleep(reducedMotion ? 300 : 1800, isCancelled)
       if (cancelled) return
 
-      const selectedKarnataka = stateRows.find(isKarnataka) ?? null
       setStage('karnataka')
       globe.pointOfView(KARNATAKA_POV, reducedMotion ? 0 : 1350)
 
       let districtRows: TourPolygon[] = []
-      if (!compact && districtRequest) {
-        try {
-          const result = await districtRequest
-          if (cancelled) return
-          districtRows = result.features
-          setDistricts(districtRows)
-          if (!attribution) setAttribution(result.attribution)
-        } catch {
-          districtRows = []
-        }
-      }
-
-      if (selectedKarnataka && !compact) {
-        try {
-          const result = await loadIndiaBoundary('ADM3', 'taluk')
-          if (cancelled) return
-          setTaluks(result.features.filter((feature) => childBelongsToParent(feature, selectedKarnataka)))
-          if (!attribution) setAttribution(result.attribution)
-        } catch {
-          setTaluks([])
-        }
+      try {
+        const result = await districtRequest
+        if (cancelled) return
+        districtRows = result.features
+        setDistricts(districtRows)
+        if (!attribution) setAttribution(result.attribution)
+      } catch {
+        districtRows = []
+        setDistricts([])
       }
 
       await sleep(reducedMotion ? 350 : districtRows.length ? 2200 : 1500, isCancelled)
@@ -464,7 +448,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
 
     void runTour()
     return () => { cancelled = true }
-  }, [compact, ready, reducedMotion])
+  }, [ready, reducedMotion])
 
   const polygonCapColor = (polygon: TourPolygon) => {
     if (polygon.__layer === 'country') {
@@ -505,11 +489,10 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
     if (polygon.__layer === 'district') {
       return stage === 'bengaluru' && isBengaluruUrban(polygon) ? 0.030 : 0.024
     }
-    if (polygon.__layer === 'taluk') return 0.026
     return String(polygon.id ?? '').padStart(3, '0') === INDIA_NUMERIC_ID && stage !== 'world' ? 0.005 : 0.002
   }
 
-  const localDetailReady = districts.length > 0 || taluks.length > 0
+  const districtDetailReady = districts.length > 0
   const points = stage === 'bengaluru' ? [BENGALURU_POINT] : []
 
   return (
@@ -558,7 +541,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
         <span className="naksha-geo-tour-pulse" />
         <div>
           <strong>{layerLabel(stage)}</strong>
-          <small>{layerDescription(stage, localDetailReady)}</small>
+          <small>{layerDescription(stage, districtDetailReady)}</small>
         </div>
       </div>
 
