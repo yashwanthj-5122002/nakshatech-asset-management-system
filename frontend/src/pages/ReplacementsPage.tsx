@@ -1,4 +1,4 @@
-import { Repeat2, Save, Settings2, ShieldCheck, ShoppingCart } from 'lucide-react'
+import { Mail, Repeat2, Save, Settings2, ShieldCheck, ShoppingCart } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
@@ -32,6 +32,8 @@ export function ReplacementsPage() {
     damage_category: 'technical_failure',
     inspection_finding: '',
     final_action: 'replacement_pending',
+    approval_recipient_name: '',
+    approval_recipient_email: '',
   })
 
   async function load() {
@@ -65,11 +67,13 @@ export function ReplacementsPage() {
           damage_category: form.damage_category,
           inspection_finding: form.inspection_finding || null,
           final_action: 'replacement_pending',
+          approval_recipient_name: form.approval_recipient_name,
+          approval_recipient_email: form.approval_recipient_email,
         }),
       })
       setMessage(created.final_action === 'procurement_required'
-        ? `${created.replacement_code} processed by IT. No suitable spare was available, so a Purchase Request was created for Management approval.`
-        : `${created.replacement_code} processed by IT. An available spare was used; no Management approval was required.`)
+        ? `${created.replacement_code} processed by IT. No suitable spare was available, so a Purchase Request and secure approval email were created.`
+        : `${created.replacement_code} processed by IT. An available spare was used; no Management approval or approval email was required.`)
       setForm(current => ({ ...current, old_asset_id: '', new_asset_id: '', reason: '', inspection_finding: '' }))
       await load()
     } catch (err) {
@@ -89,10 +93,12 @@ export function ReplacementsPage() {
         body: JSON.stringify({
           new_asset_id: null,
           remarks: 'Migrated to final Batch 4 IT-controlled replacement workflow',
+          approval_recipient_name: form.approval_recipient_name,
+          approval_recipient_email: form.approval_recipient_email,
         }),
       })
       setMessage(updated.final_action === 'procurement_required'
-        ? `${record.replacement_code} migrated. A Purchase Request is now waiting for Management purchase approval.`
+        ? `${record.replacement_code} migrated. A Purchase Request and approval email are now waiting for the selected approver.`
         : `${record.replacement_code} migrated and completed using an available spare.`)
       await load()
     } catch (err) {
@@ -129,6 +135,9 @@ export function ReplacementsPage() {
             <label>Old / Failed Asset<select required value={form.old_asset_id} onChange={event => setForm({ ...form, old_asset_id: event.target.value, new_asset_id: '' })}><option value="">Select by CPU tag and workstation</option>{assets.filter(asset => !['disposed', 'replaced', 'retired'].includes(asset.status)).map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No physical tag'} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · Internal {asset.asset_code}</option>)}</select></label>
             <label>Preferred Available Spare (optional)<select value={form.new_asset_id} onChange={event => setForm({ ...form, new_asset_id: event.target.value })}><option value="">Automatic: use compatible Available spare first</option>{compatibleAvailableAssets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || 'No physical tag'} · {asset.device_type} · {asset.model || asset.processor || 'Specification not recorded'} · Internal {asset.asset_code}</option>)}</select></label>
             <div className="approval-note">If no compatible Available spare exists, the system automatically creates one Purchase Request. That Purchase Request — not the technical replacement — goes to Management for permission.</div>
+            <label>Approval Recipient Name<input required value={form.approval_recipient_name} onChange={event => setForm({ ...form, approval_recipient_name: event.target.value })} placeholder="Manager / UAT approver name" /></label>
+            <label>Approval Email<input required type="email" value={form.approval_recipient_email} onChange={event => setForm({ ...form, approval_recipient_email: event.target.value })} placeholder="approver@nakshatech.com" /></label>
+            <div className="approval-note"><Mail size={15} /> This recipient is used only if procurement is required. If IT uses an Available spare, no purchase approval email is sent.</div>
             <label>Damage Category<select value={form.damage_category} onChange={event => setForm({ ...form, damage_category: event.target.value })}><option value="normal_wear_and_tear">Normal wear and tear</option><option value="technical_failure">Technical failure</option><option value="accidental_damage">Accidental damage</option><option value="user_negligence">User negligence / improper usage</option><option value="lost">Lost</option><option value="stolen">Stolen</option><option value="unknown">Unknown</option></select></label>
             <label>Reason<textarea required rows={3} value={form.reason} onChange={event => setForm({ ...form, reason: event.target.value })} placeholder="Describe why the asset must be replaced" /></label>
             <label>IT Inspection Finding<textarea rows={3} value={form.inspection_finding} onChange={event => setForm({ ...form, inspection_finding: event.target.value })} placeholder="Example: motherboard failed; not economically repairable" /></label>
@@ -157,7 +166,7 @@ export function ReplacementsPage() {
                 <small>{record.damage_category.replaceAll('_', ' ')} · {record.final_action.replaceAll('_', ' ')}</small>
                 {record.inspection_finding && <blockquote>{record.inspection_finding}</blockquote>}
                 {record.decision_remarks && <div className="approval-note">{record.decision_remarks}</div>}
-                {record.final_action === 'procurement_required' && <div className="approval-note"><ShoppingCart size={15} /> Purchase permission is waiting with Management. IT cannot procure until that Purchase Request is approved.</div>}
+                {record.final_action === 'procurement_required' && <div className="approval-note"><ShoppingCart size={15} /> Purchase permission is waiting with Management and the selected approval email recipient. IT cannot procure until that Purchase Request is approved.</div>}
                 {legacyNeedsProcessing && <button className="secondary-button" disabled={busy === `legacy-${record.id}`} onClick={() => void processLegacy(record)}><Settings2 size={15} /> {busy === `legacy-${record.id}` ? 'Processing…' : 'Process Legacy Record Under IT Control'}</button>}
               </article>
             })}
