@@ -482,7 +482,6 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
           pathPointLng={(point: unknown) => (point as Coordinate)[0]}
           pathPointAlt={0.012}
           pathColor={(path: unknown) => pathColor(path as BoundaryPath)}
-          pathStroke={0}
           pathResolution={2}
           pathTransitionDuration={reducedMotion ? 0 : 240}
           pointsData={points}
