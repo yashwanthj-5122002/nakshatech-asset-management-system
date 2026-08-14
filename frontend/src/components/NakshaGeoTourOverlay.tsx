@@ -48,9 +48,7 @@ type IndiaDistrictTopology = {
 }
 
 type IndiaMapData = {
-  indiaBoundary: TourPolygon
   states: TourPolygon[]
-  karnatakaState: TourPolygon
   karnatakaDistricts: TourPolygon[]
   attribution: string
 }
@@ -63,10 +61,11 @@ type TourPoint = {
   lng: number
 }
 
+const INDIA_NUMERIC_ID = '356'
 const WORLD_POV = { lat: 18, lng: 58, altitude: 1.58 }
 const INDIA_POV = { lat: 21.0, lng: 78.7, altitude: 0.88 }
-const KARNATAKA_POV = { lat: 15.25, lng: 75.9, altitude: 0.58 }
-const BENGALURU_POV = { lat: 12.9716, lng: 77.5946, altitude: 0.44 }
+const KARNATAKA_POV = { lat: 15.25, lng: 75.7, altitude: 0.57 }
+const BENGALURU_POV = { lat: 12.9716, lng: 77.5946, altitude: 0.42 }
 const BENGALURU_POINT: TourPoint = { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 }
 
 const INDIA_MAPS_REVISION = '2884453'
@@ -109,6 +108,10 @@ function isKarnatakaName(value: string) {
 function isBengaluruUrbanName(value: string) {
   const name = normalizeName(value)
   return name === 'bengaluru urban' || name === 'bangalore urban' || name === 'bengaluru' || name === 'bangalore'
+}
+
+function isIndiaCountry(feature: TourPolygon) {
+  return String(feature.id ?? '').padStart(3, '0') === INDIA_NUMERIC_ID || normalizeName(feature.displayName) === 'india'
 }
 
 function isKarnataka(feature: TourPolygon) {
@@ -207,29 +210,6 @@ function buildIndiaMapData(topology: IndiaDistrictTopology): IndiaMapData {
     throw new Error(`Unexpected India state topology (${states.length} state geometries)`)
   }
 
-  const allDistrictGeometries = districtObject.geometries.filter(
-    (geometry) => stateNameFromProperties(geometry.properties),
-  )
-  const indiaMerged = topojsonMerge(
-    topology as never,
-    allDistrictGeometries as never,
-  ) as unknown
-  if (!isPolygonGeometry(indiaMerged)) {
-    throw new Error('Unable to derive India boundary from district topology')
-  }
-
-  const indiaBoundary: TourPolygon = {
-    type: 'Feature',
-    id: 'INDIA-BOUNDARY',
-    properties: { name: 'India' },
-    geometry: indiaMerged,
-    __layer: 'country',
-    displayName: 'India',
-  }
-
-  const karnatakaState = states.find(isKarnataka)
-  if (!karnatakaState) throw new Error('Karnataka state geometry unavailable')
-
   const karnatakaDistricts: TourPolygon[] = districtFeatures
     .filter((feature) => isKarnatakaName(stateNameFromProperties(feature.properties)))
     .map((feature, index) => ({
@@ -249,11 +229,9 @@ function buildIndiaMapData(topology: IndiaDistrictTopology): IndiaMapData {
   }
 
   return {
-    indiaBoundary,
     states,
-    karnatakaState,
     karnatakaDistricts,
-    attribution: 'India Maps Data · WGS84 TopoJSON · district/state geometry derived from one topology',
+    attribution: 'India Maps Data · state boundaries derived from districts · Karnataka district boundaries',
   }
 }
 
@@ -342,10 +320,9 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
   }, [])
 
   const polygons = useMemo(() => {
-    if (stage === 'world') return countries
-    if (!indiaData) return []
-    if (stage === 'india') return [indiaData.indiaBoundary, ...indiaData.states]
-    return [indiaData.karnatakaState, ...indiaData.karnatakaDistricts]
+    if (stage === 'world' || !indiaData) return countries
+    if (stage === 'india') return [...countries, ...indiaData.states]
+    return [...countries, ...indiaData.states, ...indiaData.karnatakaDistricts]
   }, [countries, indiaData, stage])
 
   useEffect(() => {
@@ -415,7 +392,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
         setBoundaryError(true)
       }
 
-      await sleep(reducedMotion ? 300 : data ? 2100 : 900, isCancelled)
+      await sleep(reducedMotion ? 300 : data ? 1900 : 900, isCancelled)
       if (cancelled) return
 
       if (!data) {
@@ -426,13 +403,13 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
       }
 
       setStage('karnataka')
-      globe.pointOfView(KARNATAKA_POV, reducedMotion ? 0 : 1450)
-      await sleep(reducedMotion ? 350 : 2300, isCancelled)
+      globe.pointOfView(KARNATAKA_POV, reducedMotion ? 0 : 1350)
+      await sleep(reducedMotion ? 350 : 2200, isCancelled)
       if (cancelled) return
 
       setStage('bengaluru')
-      globe.pointOfView(BENGALURU_POV, reducedMotion ? 0 : 1500)
-      await sleep(reducedMotion ? 600 : 2800, isCancelled)
+      globe.pointOfView(BENGALURU_POV, reducedMotion ? 0 : 1550)
+      await sleep(reducedMotion ? 600 : 3000, isCancelled)
       if (cancelled) return
 
       setFading(true)
@@ -445,40 +422,49 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
   }, [ready, reducedMotion])
 
   const polygonCapColor = (polygon: TourPolygon) => {
-    if (stage === 'world') return 'rgba(5, 36, 62, .74)'
-
     if (polygon.__layer === 'country') {
-      return 'rgba(5, 65, 94, .08)'
+      return isIndiaCountry(polygon) && stage !== 'world'
+        ? 'rgba(5, 65, 94, .18)'
+        : 'rgba(5, 36, 62, .74)'
     }
 
     if (polygon.__layer === 'state') {
-      return stage === 'india'
-        ? 'rgba(5, 54, 78, .08)'
-        : 'rgba(9, 153, 185, .14)'
+      if (isKarnataka(polygon) && (stage === 'karnataka' || stage === 'bengaluru')) {
+        return 'rgba(9, 153, 185, .34)'
+      }
+      return stage === 'india' ? 'rgba(5, 54, 78, .11)' : 'rgba(4, 44, 66, .07)'
     }
 
     if (stage === 'bengaluru' && isBengaluruUrban(polygon)) {
-      return 'rgba(51, 224, 239, .42)'
+      return 'rgba(51, 224, 239, .46)'
     }
-    return 'rgba(6, 96, 126, .05)'
+    return 'rgba(6, 96, 126, .08)'
   }
 
   const polygonStrokeColor = (polygon: TourPolygon) => {
-    if (stage === 'world') return 'rgba(57, 156, 207, .42)'
-
-    if (polygon.__layer === 'country') return '#5ee9f5'
-    if (polygon.__layer === 'state') {
-      return stage === 'india' ? 'rgba(116, 232, 244, .94)' : '#bdf8ff'
+    if (polygon.__layer === 'country') {
+      return isIndiaCountry(polygon) && stage !== 'world'
+        ? '#5ee9f5'
+        : 'rgba(57, 156, 207, .42)'
     }
+
+    if (polygon.__layer === 'state') {
+      if (isKarnataka(polygon) && stage !== 'india') return '#c4fbff'
+      return 'rgba(116, 232, 244, .94)'
+    }
+
     if (stage === 'bengaluru' && isBengaluruUrban(polygon)) return '#ffffff'
-    return 'rgba(210, 250, 255, .90)'
+    return 'rgba(202, 249, 253, .90)'
   }
 
   const polygonAltitude = (polygon: TourPolygon) => {
-    if (stage === 'world') return 0.002
-    if (polygon.__layer === 'country') return 0.003
-    if (polygon.__layer === 'state') return stage === 'india' ? 0.012 : 0.008
-    return stage === 'bengaluru' && isBengaluruUrban(polygon) ? 0.021 : 0.014
+    if (polygon.__layer === 'state') {
+      return isKarnataka(polygon) && stage !== 'india' ? 0.020 : 0.012
+    }
+    if (polygon.__layer === 'district') {
+      return stage === 'bengaluru' && isBengaluruUrban(polygon) ? 0.030 : 0.024
+    }
+    return isIndiaCountry(polygon) && stage !== 'world' ? 0.005 : 0.002
   }
 
   const points = stage === 'bengaluru' && indiaData ? [BENGALURU_POINT] : []
@@ -498,26 +484,26 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
           animateIn={!reducedMotion}
           polygonsData={polygons}
           polygonCapColor={(polygon: unknown) => polygonCapColor(polygon as TourPolygon)}
-          polygonSideColor={() => 'rgba(2, 21, 38, .20)'}
+          polygonSideColor={() => 'rgba(2, 21, 38, .24)'}
           polygonStrokeColor={(polygon: unknown) => polygonStrokeColor(polygon as TourPolygon)}
           polygonAltitude={(polygon: unknown) => polygonAltitude(polygon as TourPolygon)}
           polygonCapCurvatureResolution={compact ? 8 : 4}
-          polygonsTransitionDuration={reducedMotion ? 0 : 420}
+          polygonsTransitionDuration={reducedMotion ? 0 : 360}
           pointsData={points}
           pointLat="lat"
           pointLng="lng"
           pointColor={() => '#f2ffff'}
-          pointAltitude={0.026}
-          pointRadius={0.14}
+          pointAltitude={0.038}
+          pointRadius={0.30}
           pointResolution={10}
           labelsData={points}
           labelLat="lat"
           labelLng="lng"
           labelText="name"
           labelColor={() => 'rgba(232,253,255,.98)'}
-          labelAltitude={0.034}
-          labelSize={0.16}
-          labelDotRadius={0.035}
+          labelAltitude={0.052}
+          labelSize={0.48}
+          labelDotRadius={0.075}
           labelResolution={2}
           onGlobeReady={() => setReady(true)}
           enablePointerInteraction={false}
