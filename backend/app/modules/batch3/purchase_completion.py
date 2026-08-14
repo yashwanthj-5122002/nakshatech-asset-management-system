@@ -8,11 +8,13 @@ from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import ApprovalDecisionHistory, Asset, ReplacementRecord, User
 from app.modules.batch3.models import ReplacementWorkflowState
 from app.modules.batch3.replacement_workflow import apply_spare_replacement
+from app.modules.it_activity.approval_email import notify_purchase_completed
 from app.modules.it_activity.models import ITPurchaseRecord, ITPurchaseRequest, ITPurchaseRequestHistory
 from app.modules.it_activity.schemas import PurchaseCreate
 from app.modules.it_activity.service import make_code
 from app.services.approval_workflow_service import WORKFLOW_PURCHASE_REQUEST, utc_now_naive
 from app.services.asset_lifecycle_service import canonical_device_type, lifecycle_bucket
+
 
 def _finalize_procured_replacement(
     db: Session,
@@ -187,4 +189,6 @@ def create_purchase_record_batch3(
 
     db.commit()
     db.refresh(record)
+    if purchase_request is not None:
+        notify_purchase_completed(db, purchase_request, record)
     return record
