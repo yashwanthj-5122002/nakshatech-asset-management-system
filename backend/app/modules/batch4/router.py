@@ -4,6 +4,7 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
@@ -12,6 +13,7 @@ from app.models.entities import Asset, ReplacementRecord, User
 from app.modules.asset_return.analytics_compat import install_asset_return_compatibility
 from app.modules.asset_return.mutation_guards import router as asset_return_guard_router
 from app.modules.asset_return.router import router as asset_return_router
+from app.modules.asset_return.service import active_inventory_assets
 from app.modules.batch4.it_control import (
     create_replacement_without_management_approval,
     process_legacy_replacement_without_management_approval,
@@ -34,6 +36,7 @@ from app.modules.it_activity.approval_email import (
 from app.modules.it_activity.schemas import PurchaseRequestDecision, PurchaseRequestResponse
 from app.modules.it_activity.service import decide_purchase_request, purchase_request_to_dict
 from app.schemas.work import WorkApprovalDecision, WorkRecordUpdate
+from app.services.asset_lifecycle_service import inventory_summary, is_primary_device_type
 
 
 router = APIRouter(tags=["Batch 4 Management Control"])
@@ -59,13 +62,29 @@ def _assert_replacement_record_active(db: Session, replacement_id: int) -> None:
     _assert_replacement_asset_active(db, record.new_asset_id)
 
 
+def _active_management_control_center(db: Session, month: str | None) -> dict:
+    data = management_control_center(db, month)
+    all_assets = active_inventory_assets(list(db.scalars(select(Asset)).all()))
+    primary_assets = [asset for asset in all_assets if is_primary_device_type(asset.device_type)]
+    summary = inventory_summary(primary_assets)
+    executive = data.setdefault("executive", {})
+    executive.update({
+        "primary_assets": summary["total"],
+        "assigned_assets": summary["assigned"],
+        "available_assets": summary["available"],
+        "repair_assets": summary["repair"],
+        "replacement_pending_assets": summary["replacement_pending"],
+    })
+    return data
+
+
 @router.get("/management/control-center")
 def management_control_center_endpoint(
     month: str | None = Query(default=None, description="Optional reporting month in YYYY-MM format"),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("management", "admin")),
 ) -> dict:
-    return management_control_center(db, month)
+    return _active_management_control_center(db, month)
 
 
 @router.get("/management/control-center.xlsx")
@@ -74,7 +93,7 @@ def management_control_center_excel(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("management", "admin")),
 ):
-    data = management_control_center(db, month)
+    data = _active_management_control_center(db, month)
     content = build_management_control_workbook(data)
     suffix = month or "current"
     return StreamingResponse(
@@ -194,9 +213,9 @@ def disabled_it_work_management_decision(
     )
 
 
-# Guard routes are included first so a stale mutation or vendor-return request is
-# rejected before it can reach an older compatible route. The return module then
-# supplies the read models, active-inventory dashboard/report overrides and spare
-# monitor integration. Unrelated legacy and Batch 3 endpoints remain unchanged.
+# Guard routes are included first so a stale mutation request is rejected before
+# it can reach an older compatible route. The return module then supplies the
+# read models, active-inventory dashboard/report overrides and spare monitor
+# integration. Unrelated legacy and Batch 3 endpoints remain unchanged.
 router.include_router(asset_return_guard_router)
 router.include_router(asset_return_router)
