@@ -2,11 +2,25 @@
  * NakshaTech login interaction layer.
  * Visual-only: no authentication, routing, credential or API behavior changes.
  */
+
 .final-login-shell {
   --login-panel-x: 50%;
   --login-panel-y: 50%;
   --login-tilt-x: 0deg;
   --login-tilt-y: 0deg;
+}
+
+/* Keep static login presentation clean. Inputs remain selectable/editable. */
+.final-login-screen,
+.final-login-screen * {
+  user-select: none;
+}
+
+.final-login-screen input,
+.final-login-screen textarea,
+.final-login-screen select,
+.final-login-screen option {
+  user-select: text;
 }
 
 .final-login-header,
@@ -38,13 +52,14 @@
   box-shadow:
     0 34px 86px rgba(0, 0, 0, .42),
     0 0 0 1px rgba(41, 203, 229, .055),
-    inset 0 1px 0 rgba(255, 255, 255, .10),
+    inset 0 1px 0 rgba(255,255,255,.10),
     inset 0 0 46px rgba(38, 126, 197, .045);
 }
 
 .final-login-panel > * {
   animation: naksha-login-element 420ms cubic-bezier(.2, .75, .25, 1) both;
 }
+
 .final-login-panel > *:nth-child(1) { animation-delay: 110ms; }
 .final-login-panel > *:nth-child(2) { animation-delay: 145ms; }
 .final-login-panel > *:nth-child(3) { animation-delay: 180ms; }
@@ -198,7 +213,6 @@
   }
 }
 
-
 @media (prefers-reduced-motion: reduce) {
   .final-login-header,
   .final-login-copy,
@@ -217,29 +231,5 @@
   .final-login-submit i {
     transform: none !important;
     transition: none !important;
-  }
-}
-
-/* Clean geospatial motion canvas: terrain contours, survey nodes and data-flow arcs. */
-.login-network-motion-canvas {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  opacity: .94;
-  filter: saturate(104%);
-}
-
-@media (max-width: 860px), (pointer: coarse) {
-  .login-network-motion-canvas {
-    opacity: .70;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .login-network-motion-canvas {
-    opacity: .54;
   }
 }
