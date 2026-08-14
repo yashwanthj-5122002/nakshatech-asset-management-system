@@ -81,7 +81,7 @@ const navItems: NavItem[] = [
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/replacements', label: 'Component Changes', icon: Repeat2, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/it/handover-return', label: 'Handover & Return', icon: ArrowRightLeft, roles: ['admin', 'management', 'it'], group: 'it' },
-  { to: '/it/rental-returns', label: 'Rental Returns & Spares', icon: PackageCheck, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/it/rental-returns', label: 'Returned Assets & Spares', icon: PackageCheck, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/it/purchase-requests', label: 'Purchase Requests', icon: FileCheck2, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'management', managementLabel: 'Purchase Order Approval' },
   { to: '/it/purchases', label: 'Purchase & Procurement', icon: ShoppingCart, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'management' },
   { to: '/it/recent-changes', label: 'Recent Changes', icon: History, roles: ['admin', 'management', 'it'], group: 'it' },
