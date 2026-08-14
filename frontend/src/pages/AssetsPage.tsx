@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   CalendarDays,
   ChevronRight,
+  FileDown,
   Filter,
   Pencil,
   Plus,
@@ -18,7 +19,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
-import { apiFetch } from '../lib/api'
+import { apiFetch, downloadFile } from '../lib/api'
 import { formatIndiaDateTime, isCurrentIndiaMonth } from '../lib/date'
 import { isFullAccessRole } from '../lib/roles'
 import { withITMonth } from '../lib/itMonth'
@@ -44,6 +45,13 @@ const auditFieldLabels: Record<string, string> = {
 }
 
 type AssetHistoryItem = NonNullable<Asset['history']>[number]
+type VendorReturnResult = {
+  return_code: string
+  asset_code: string
+  cpu_asset_tag?: string | null
+  return_mode: 'complete_return' | 'return_without_monitor'
+  retained_monitor_tags?: string | null
+}
 
 function parseAuditObject(raw?: string): Record<string, unknown> {
   if (!raw) return {}
@@ -133,7 +141,7 @@ export function AssetsPage() {
   const [assignmentOpen, setAssignmentOpen] = useState(false)
   const [returnOpen, setReturnOpen] = useState(false)
   const [assignment, setAssignment] = useState({ used_by: '', department: '', workstation_no: '', location: 'Head Office', work_mode: 'office', assigned_date: new Date().toISOString().slice(0, 10), remarks: '' })
-  const [returnForm, setReturnForm] = useState({ final_status: 'available', return_date: new Date().toISOString().slice(0, 10), condition: 'working', all_components_returned: true, remarks: '' })
+  const [returnForm, setReturnForm] = useState({ return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -198,12 +206,38 @@ export function AssetsPage() {
     if (!selected) return
     setBusy(true); setError(''); setMessage('')
     try {
-      const updated = await apiFetch<Asset>(`/assets/${selected.id}/return`, { method: 'POST', body: JSON.stringify({ ...returnForm, reporting_month: selectedMonth }) })
+      const result = await apiFetch<VendorReturnResult>(`/assets/${selected.id}/vendor-return`, {
+        method: 'POST',
+        body: JSON.stringify({
+          return_mode: returnForm.return_mode,
+          return_date: returnForm.return_date,
+          vendor_name: 'Rental / Vendor Return',
+          reason: returnForm.return_mode === 'complete_return'
+            ? 'Complete asset returned / removed from active inventory'
+            : 'Desktop returned / removed; monitor retained by NakshaTech',
+          remarks: returnForm.remarks || null,
+          reporting_month: selectedMonth,
+          spare_location: 'IT Store',
+          confirm_vendor_return: true,
+        }),
+      })
       setReturnOpen(false)
-      setMessage(`${updated.cpu_asset_tag || updated.asset_code} returned. Current status: ${updated.status.replaceAll('_', ' ')}.`)
-      await load(); await openAsset(updated.id)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Return failed') }
+      setSelected(null)
+      setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+      const retained = result.retained_monitor_tags ? ` Monitor retained: ${result.retained_monitor_tags}.` : ''
+      setMessage(`${result.cpu_asset_tag || result.asset_code} returned / removed from active IT assets. Total IT Assets and Computers decrease by 1.${retained}`)
+      await load()
+    } catch (err) { setError(err instanceof Error ? err.message : 'Return / remove failed') }
     finally { setBusy(false) }
+  }
+
+  async function exportReturnedAssets() {
+    setError('')
+    try {
+      await downloadFile('/reports/returned-assets.xlsx', 'NakshaTech Returned Assets.xlsx')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to download Returned Assets Excel')
+    }
   }
 
   async function archiveAsset() {
@@ -247,6 +281,7 @@ export function AssetsPage() {
         description={`This is the live Asset Register. New edits are assigned to ${monthInfo?.label || selectedMonth}; the actual system date and time are also preserved separately.`}
         actions={<>
           {historicalReporting && <button className="secondary-button" onClick={returnToPresent}><RotateCcw size={17} /> Return to Present</button>}
+          <button className="secondary-button" onClick={() => void exportReturnedAssets()}><FileDown size={17} /> Returned Assets Excel</button>
           {canEdit && <button className="primary-button" onClick={() => navigate(withITMonth('/assets/new', selectedMonth))}><Plus size={17} /> Add IT Asset</button>}
         </>}
       />
@@ -288,7 +323,7 @@ export function AssetsPage() {
             <button className="secondary-button" onClick={() => navigate(withITMonth(`/assets/${selected.id}/edit`, selectedMonth))}><Pencil size={15} /> Edit Full Record</button>
             <button className="secondary-button" onClick={openAssignment}><ArrowRightLeft size={15} /> Assign / Transfer</button>
             <button className="secondary-button" onClick={() => navigate(withITMonth(`/work?mode=component&asset=${selected.id}`, selectedMonth))}><Repeat2 size={15} /> Change Component</button>
-            <button className="secondary-button" onClick={() => setReturnOpen(true)} disabled={!selected.used_by}><RotateCcw size={15} /> Return</button>
+            {selected.device_type === 'Computer' && <button className="danger-button" onClick={() => setReturnOpen(true)}><RotateCcw size={15} /> Return / Remove</button>}
             <button className="secondary-button" onClick={() => void archiveAsset()}><Archive size={15} /> Retire</button>
             {selected.can_delete_test_record && <button className="danger-button full-action" onClick={() => void deleteTestAsset()}><Trash2 size={15} /> Delete QA Test Record</button>}
           </div>}
@@ -337,14 +372,13 @@ export function AssetsPage() {
         <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Saving...' : selected.used_by ? 'Confirm Transfer' : 'Confirm Assignment'}</button>
       </form></section></div>}
 
-      {returnOpen && selected && <div className="modal-backdrop"><section className="modal-card workflow-modal"><button className="icon-button modal-close" onClick={() => setReturnOpen(false)}><X /></button><div className="modal-heading"><RotateCcw /><div><span className="section-kicker">ASSET RETURN</span><h2>{selected.cpu_asset_tag || selected.asset_code} / {selected.workstation_no || 'No workstation'}</h2></div></div>{error && <div className="error-message modal-error">{error}</div>}<form className="data-form form-grid" onSubmit={returnAsset}>
-        <div className="full-span form-guidance"><strong>Returning from:</strong> {selected.used_by || 'No current custodian'} · {selected.department || 'No department'} · {selected.workstation_no || 'No workstation'} · {(selected.work_mode || 'office').replaceAll('_', ' ')}</div>
-        <label>Final Status<select value={returnForm.final_status} onChange={e => setReturnForm({ ...returnForm, final_status: e.target.value })}><option value="available">Available after inspection</option><option value="repair">Under repair</option><option value="damaged">Damaged</option><option value="returned">Returned, awaiting inspection</option></select></label>
-        <label>Return Date<input type="date" value={returnForm.return_date} onChange={e => setReturnForm({ ...returnForm, return_date: e.target.value })} /></label>
-        <label>Condition<select value={returnForm.condition} onChange={e => setReturnForm({ ...returnForm, condition: e.target.value })}><option value="working">Working</option><option value="minor_damage">Minor damage</option><option value="not_working">Not working</option><option value="destroyed">Destroyed</option></select></label>
-        <label className="checkbox-label"><input type="checkbox" checked={returnForm.all_components_returned} onChange={e => setReturnForm({ ...returnForm, all_components_returned: e.target.checked })} /> All components returned</label>
-        <label className="full-span">Return Activity Remarks — Selected Month Only<textarea rows={3} value={returnForm.remarks} onChange={e => setReturnForm({ ...returnForm, remarks: e.target.value })} /></label>
-        <button className="primary-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Saving...' : 'Complete Return'}</button>
+      {returnOpen && selected && <div className="modal-backdrop"><section className="modal-card workflow-modal"><button className="icon-button modal-close" onClick={() => setReturnOpen(false)}><X /></button><div className="modal-heading"><RotateCcw /><div><span className="section-kicker">RETURN / REMOVE ASSET</span><h2>{selected.cpu_asset_tag || selected.asset_code} / {selected.workstation_no || 'No workstation'}</h2></div></div>{error && <div className="error-message modal-error">{error}</div>}<form className="data-form form-grid" onSubmit={returnAsset}>
+        <div className="full-span form-guidance"><strong>This removes one Desktop from active IT assets.</strong> The dashboard Total IT Assets and Computers will reduce by 1. The full return is preserved in Returned Assets Excel.</div>
+        <label className="full-span">Return Option<select value={returnForm.return_mode} onChange={e => setReturnForm({ ...returnForm, return_mode: e.target.value as typeof returnForm.return_mode })}><option value="complete_return">Complete Return — Desktop + Monitor returned</option><option value="return_without_monitor">Return Desktop — Keep Monitor with NakshaTech</option></select></label>
+        <label>Return Date<input required type="date" value={returnForm.return_date} onChange={e => setReturnForm({ ...returnForm, return_date: e.target.value })} /></label>
+        <div className="form-guidance"><strong>Monitor:</strong> {selected.monitor_asset_tags || 'Not recorded'}{returnForm.return_mode === 'return_without_monitor' ? ' · will be recorded as retained spare' : ' · returned with Desktop'}</div>
+        <label className="full-span">Remarks (optional)<textarea rows={3} value={returnForm.remarks} onChange={e => setReturnForm({ ...returnForm, remarks: e.target.value })} /></label>
+        <button className="danger-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Removing...' : 'Confirm Return / Remove'}</button>
       </form></section></div>}
     </>
   )
