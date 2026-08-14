@@ -1,11 +1,16 @@
-import { Download, Monitor, PackageCheck, RotateCcw, Save } from 'lucide-react'
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import {
+  CheckCircle2,
+  Download,
+  Monitor,
+  PackageCheck,
+  PackageOpen,
+  RotateCcw,
+} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
-import { useAuth } from '../context/AuthContext'
-import { useITMonthUrl } from '../context/ITMonthContext'
+import { StatCard } from '../components/StatCard'
 import { apiFetch, downloadFile } from '../lib/api'
 import { formatIndiaDateTime } from '../lib/date'
-import type { Asset } from '../types'
 
 interface SpareMonitorRecord {
   id: number
@@ -55,58 +60,36 @@ function pretty(value?: string | null) {
   return (value || 'Not recorded').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
 }
 
-function indiaToday() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date())
+function returnModeLabel(mode: VendorReturnRecord['return_mode']) {
+  return mode === 'complete_return'
+    ? 'Complete Return — Desktop + Monitor'
+    : 'Desktop Returned — Monitor Retained'
+}
+
+function displayDate(value?: string | null) {
+  if (!value) return 'Not recorded'
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value
 }
 
 export function RentalAssetReturnsPage() {
-  const { user } = useAuth()
-  const { selectedMonth } = useITMonthUrl()
-  const canReturn = user?.role === 'it' || user?.role === 'admin'
-  const [assets, setAssets] = useState<Asset[]>([])
   const [returns, setReturns] = useState<VendorReturnRecord[]>([])
   const [spares, setSpares] = useState<SpareMonitorRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [form, setForm] = useState({
-    asset_id: '',
-    return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor',
-    return_date: indiaToday(),
-    vendor_name: '',
-    return_reference: '',
-    condition: 'Good / working',
-    reason: 'Rental period completed',
-    remarks: '',
-    spare_location: 'IT Store',
-    confirm_vendor_return: false,
-  })
-
-  const selectedAsset = useMemo(
-    () => assets.find(asset => asset.id === Number(form.asset_id)),
-    [assets, form.asset_id],
-  )
 
   async function load() {
     setLoading(true)
     setError('')
     try {
-      const [assetRows, returnRows, spareRows] = await Promise.all([
-        apiFetch<Asset[]>('/assets?device_type=Computer&limit=2000'),
+      const [returnRows, spareRows] = await Promise.all([
         apiFetch<VendorReturnRecord[]>('/asset-vendor-returns'),
         apiFetch<SpareMonitorRecord[]>('/spare-monitors'),
       ])
-      setAssets(assetRows)
       setReturns(returnRows)
       setSpares(spareRows)
-      if (form.asset_id && !assetRows.some(asset => asset.id === Number(form.asset_id))) {
-        setForm(current => ({ ...current, asset_id: '', confirm_vendor_return: false }))
-      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load rental return data')
+      setError(err instanceof Error ? err.message : 'Unable to load returned asset data')
     } finally {
       setLoading(false)
     }
@@ -114,135 +97,113 @@ export function RentalAssetReturnsPage() {
 
   useEffect(() => { void load() }, [])
 
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!canReturn) return
-    setMessage('')
-    setError('')
-    setBusy(true)
-    try {
-      if (!form.asset_id) throw new Error('Select the rental Desktop / Computer to return.')
-      if (!form.confirm_vendor_return) throw new Error('Confirm that this is a rental/vendor asset being physically returned.')
-      if (selectedAsset?.used_by) {
-        throw new Error('This desktop is still assigned. Complete Handover & Return to IT before vendor return.')
-      }
-      if (form.return_mode === 'return_without_monitor' && !selectedAsset?.monitor_asset_tags?.trim()) {
-        throw new Error('Return Without Monitor requires a Monitor Asset Tag on the selected desktop.')
-      }
-      const created = await apiFetch<VendorReturnRecord>(`/assets/${form.asset_id}/vendor-return`, {
-        method: 'POST',
-        body: JSON.stringify({
-          return_mode: form.return_mode,
-          return_date: form.return_date,
-          vendor_name: form.vendor_name,
-          return_reference: form.return_reference || null,
-          condition: form.condition || null,
-          reason: form.reason,
-          remarks: form.remarks || null,
-          reporting_month: selectedMonth,
-          spare_location: form.return_mode === 'return_without_monitor' ? form.spare_location : null,
-          confirm_vendor_return: form.confirm_vendor_return,
-        }),
-      })
-      const retained = created.retained_monitor_tags ? ` Retained monitor(s): ${created.retained_monitor_tags}.` : ''
-      setMessage(`${created.return_code} recorded. ${created.cpu_asset_tag || created.asset_code} is removed from active inventory.${retained}`)
-      setForm(current => ({
-        ...current,
-        asset_id: '',
-        return_mode: 'complete_return',
-        return_date: indiaToday(),
-        vendor_name: '',
-        return_reference: '',
-        condition: 'Good / working',
-        reason: 'Rental period completed',
-        remarks: '',
-        spare_location: 'IT Store',
-        confirm_vendor_return: false,
-      }))
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to record vendor return')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const summary = useMemo(() => ({
+    returned: returns.length,
+    complete: returns.filter(record => record.return_mode === 'complete_return').length,
+    monitorRetained: returns.filter(record => record.return_mode === 'return_without_monitor').length,
+    spares: spares.length,
+    available: spares.filter(spare => spare.status === 'available').length,
+    inUse: spares.filter(spare => spare.status === 'in_use').length,
+  }), [returns, spares])
 
   async function exportReturns() {
     setError('')
     try {
-      await downloadFile('/reports/returned-assets.xlsx', 'NakshaTech Returned Rental Assets.xlsx')
+      await downloadFile('/reports/returned-assets.xlsx', 'NakshaTech Returned Assets and Spare Monitors.xlsx')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to download Returned Asset Register')
+      setError(err instanceof Error ? err.message : 'Unable to download Returned Assets and Spare Monitors Excel')
     }
   }
 
   return (
     <>
       <DashboardHeader
-        eyebrow="RENTAL ASSET CONTROL"
-        title="Rental Returns & Spare Monitors"
-        description="Remove returned rental desktops from active inventory without destroying audit history. Retained monitors remain available to IT for future component replacement."
-        actions={<button className="secondary-button" onClick={() => void exportReturns()}><Download size={17} /> Returned Assets Excel</button>}
+        eyebrow="ASSET RETURN REGISTER"
+        title="Returned Assets & Spare Monitors"
+        description="Read-only visualization of computers removed through Asset Register → Return / Remove and monitors retained for reuse through Component Changes. Return actions remain in Asset Register only."
+        actions={<button className="secondary-button" onClick={() => void exportReturns()}><Download size={17} /> Returned Assets & Spares Excel</button>}
       />
-      {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
-      <section className="dashboard-grid work-layout">
-        <article className="panel work-form-panel">
-          <div className="panel-heading"><div><span className="section-kicker">VENDOR RETURN</span><h2>Return / Remove Rental Desktop</h2></div><RotateCcw /></div>
-          {!canReturn && <div className="approval-note">Management has read-only visibility. IT/Admin records the physical vendor return.</div>}
-          {canReturn && <form className="data-form form-grid" onSubmit={submit}>
-            <label className="full-span">Desktop / Computer<select required value={form.asset_id} onChange={event => setForm({ ...form, asset_id: event.target.value, confirm_vendor_return: false })}><option value="">Select active desktop</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || asset.asset_code} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · Monitor {asset.monitor_asset_tags || 'not recorded'}</option>)}</select></label>
-
-            {selectedAsset && <div className="selected-system-card full-span">
-              <div><strong>{selectedAsset.cpu_asset_tag || selectedAsset.asset_code}</strong><span>{selectedAsset.asset_code} · {selectedAsset.department || 'No department'} · {pretty(selectedAsset.status)}</span></div>
-              <div><strong>Monitor: {selectedAsset.monitor_asset_tags || 'Not recorded'}</strong><span>{selectedAsset.used_by ? `Currently assigned to ${selectedAsset.used_by}` : 'Currently in IT / unassigned custody'}</span></div>
-            </div>}
-
-            {selectedAsset?.used_by && <div className="error-message full-span">This desktop is still assigned to {selectedAsset.used_by}. Complete the normal Handover & Return first; vendor return is blocked until IT has custody.</div>}
-
-            <label>Return Type<select value={form.return_mode} onChange={event => setForm({ ...form, return_mode: event.target.value as typeof form.return_mode, confirm_vendor_return: false })}><option value="complete_return">Complete Return — Desktop + Monitor</option><option value="return_without_monitor">Return Desktop Without Monitor — Monitor stays with NakshaTech</option></select></label>
-            <label>Return Date<input required type="date" value={form.return_date} onChange={event => setForm({ ...form, return_date: event.target.value })} /></label>
-            <label>Vendor / Rental Company<input required value={form.vendor_name} onChange={event => setForm({ ...form, vendor_name: event.target.value })} placeholder="Rental vendor name" /></label>
-            <label>Return Reference / DC No.<input value={form.return_reference} onChange={event => setForm({ ...form, return_reference: event.target.value })} placeholder="Optional reference" /></label>
-            <label>Condition at Return<input value={form.condition} onChange={event => setForm({ ...form, condition: event.target.value })} /></label>
-            {form.return_mode === 'return_without_monitor' && <label>Retained Monitor Location<input required value={form.spare_location} onChange={event => setForm({ ...form, spare_location: event.target.value })} /></label>}
-            <label className="full-span">Reason<textarea required rows={2} value={form.reason} onChange={event => setForm({ ...form, reason: event.target.value })} /></label>
-            <label className="full-span">Remarks<textarea rows={2} value={form.remarks} onChange={event => setForm({ ...form, remarks: event.target.value })} placeholder="Return condition, vendor acknowledgement or other audit note" /></label>
-
-            {form.return_mode === 'complete_return'
-              ? <div className="form-guidance full-span">Complete Return removes the desktop from active inventory. The CPU/Desktop and its monitor tag(s) remain only in immutable return/audit history.</div>
-              : <div className="form-guidance full-span">Return Without Monitor removes the desktop from active inventory and moves its monitor tag(s) into the Available Spare Monitor pool for later Component Changes.</div>}
-
-            <label className="full-span approval-note"><input type="checkbox" checked={form.confirm_vendor_return} onChange={event => setForm({ ...form, confirm_vendor_return: event.target.checked })} /> I confirm this is a rental/vendor Desktop being physically returned and should be removed from active inventory.</label>
-            <button className="primary-button full-span" disabled={busy || Boolean(selectedAsset?.used_by) || !form.confirm_vendor_return}><Save size={17} /> {busy ? 'Recording…' : 'Confirm Vendor Return'}</button>
-          </form>}
-        </article>
-
-        <article className="panel work-record-panel">
-          <div className="panel-heading"><div><span className="section-kicker">SPARE COMPONENT POOL</span><h2>Retained Monitors</h2></div><Monitor /></div>
-          <div className="record-list detailed-records">
-            {spares.map(spare => <article key={spare.id}>
-              <div className="record-top"><div><strong>{spare.monitor_tag}</strong><span>From {spare.source_asset_code}</span></div><span className={`status ${spare.status}`}>{pretty(spare.status)}</span></div>
-              <p>{spare.status === 'in_use' ? `Installed on ${spare.current_cpu_asset_tag || spare.current_asset_code || 'another desktop'}` : `Stored at ${spare.location}`}</p>
-              <div className="record-meta"><span>Retained {spare.retained_date}</span>{spare.assigned_by_name && <span>Last handled by {spare.assigned_by_name}</span>}<span>{spare.remarks || 'No additional remarks'}</span></div>
-            </article>)}
-            {!spares.length && <div className="empty-state"><Monitor size={26} /><strong>No retained monitors</strong><span>Return Without Monitor will add the retained monitor here automatically.</span></div>}
-          </div>
-        </article>
+      <section className="stats-grid" aria-label="Returned asset and spare monitor summaries">
+        <StatCard icon={PackageCheck} label="Returned Assets" value={summary.returned} tone="navy" note="Removed from active IT inventory" />
+        <StatCard icon={RotateCcw} label="Complete Returns" value={summary.complete} tone="blue" note="Desktop and monitor returned" />
+        <StatCard icon={Monitor} label="Monitor Retained" value={summary.monitorRetained} tone="cyan" note="Desktop returned, monitor kept" />
+        <StatCard icon={Monitor} label="Spare Monitors" value={summary.spares} tone="purple" note="Current retained monitor register" />
+        <StatCard icon={PackageOpen} label="Available Spares" value={summary.available} tone="teal" note="Ready for Component Changes" />
+        <StatCard icon={CheckCircle2} label="Monitors In Use" value={summary.inUse} tone="green" note="Reused through Component Changes" />
       </section>
 
-      <section className="panel">
-        <div className="panel-heading"><div><span className="section-kicker">IMMUTABLE REGISTER</span><h2>Returned Rental Assets</h2></div><PackageCheck /></div>
-        {loading ? <div className="empty-state">Loading returned assets…</div> : <div className="record-list detailed-records">
-          {returns.map(record => <article key={record.id}>
-            <div className="record-top"><div><strong>{record.return_code} · {record.cpu_asset_tag || record.asset_code}</strong><span>{record.vendor_name} · {record.return_date}</span></div><span className="status completed">{pretty(record.return_mode)}</span></div>
-            <h3>{record.asset_code} · {record.device_type}</h3>
-            <p>{record.reason}</p>
-            <div className="record-meta"><span>Previous: {record.previous_used_by || 'Unassigned'} · {record.previous_department || 'No department'} · {record.previous_workstation_no || 'No workstation'}</span><span>Monitor before return: {record.monitor_tags || 'Not recorded'}</span>{record.retained_monitor_tags && <span>Retained: {record.retained_monitor_tags}</span>}<span>Recorded by {record.performed_by}</span><span>{formatIndiaDateTime(record.created_at)}</span></div>
-          </article>)}
-          {!returns.length && <div className="empty-state"><PackageCheck size={26} /><strong>No vendor returns recorded</strong><span>Completed rental returns will remain here even after the desktop disappears from active inventory.</span></div>}
-        </div>}
+      <section className="dashboard-grid two-column">
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">IMMUTABLE RETURN HISTORY</span>
+              <h2>Returned Assets</h2>
+              <small className="panel-helper">This register is populated only by Asset Register → Return / Remove.</small>
+            </div>
+            <PackageCheck />
+          </div>
+          {loading ? <div className="empty-state">Loading returned assets…</div> : <div className="record-list detailed-records">
+            {returns.map(record => <article key={record.id}>
+              <div className="record-top">
+                <div>
+                  <strong>{record.cpu_asset_tag || record.asset_code}</strong>
+                  <span>{record.return_code} · Returned {displayDate(record.return_date)}</span>
+                </div>
+                <span className="status completed">Returned / Removed</span>
+              </div>
+              <h3>{returnModeLabel(record.return_mode)}</h3>
+              <p>{record.remarks || record.reason || 'No return remarks recorded.'}</p>
+              <div className="record-meta">
+                <span>Asset ID: {record.asset_code}</span>
+                <span>Previous user: {record.previous_used_by || 'Unassigned'}</span>
+                <span>Previous department: {record.previous_department || 'Not recorded'}</span>
+                <span>Previous workstation: {record.previous_workstation_no || 'Not recorded'}</span>
+                <span>Monitor before return: {record.monitor_tags || 'Not recorded'}</span>
+                {record.retained_monitor_tags && <span>Retained monitor: {record.retained_monitor_tags}</span>}
+                {record.vendor_name && <span>Vendor / return source: {record.vendor_name}</span>}
+                {record.return_reference && <span>Reference / DC: {record.return_reference}</span>}
+                <span>Recorded by {record.performed_by} · {formatIndiaDateTime(record.created_at)}</span>
+              </div>
+            </article>)}
+            {!returns.length && <div className="empty-state"><PackageCheck size={26} /><strong>No returned assets yet</strong><span>Assets removed through Asset Register → Return / Remove will appear here automatically.</span></div>}
+          </div>}
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">SPARE COMPONENT REGISTER</span>
+              <h2>Spare Monitors</h2>
+              <small className="panel-helper">Retained monitors are reused only through Component Changes.</small>
+            </div>
+            <Monitor />
+          </div>
+          {loading ? <div className="empty-state">Loading spare monitors…</div> : <div className="record-list detailed-records">
+            {spares.map(spare => <article key={spare.id}>
+              <div className="record-top">
+                <div>
+                  <strong>{spare.monitor_tag}</strong>
+                  <span>Source asset {spare.source_asset_code} · Retained {displayDate(spare.retained_date)}</span>
+                </div>
+                <span className={`status ${spare.status}`}>{pretty(spare.status)}</span>
+              </div>
+              <h3>{spare.status === 'in_use'
+                ? `Installed on ${spare.current_cpu_asset_tag || spare.current_asset_code || 'another desktop'}`
+                : `Stored at ${spare.location || 'IT Store'}`}</h3>
+              <p>{spare.remarks || 'No additional remarks recorded.'}</p>
+              <div className="record-meta">
+                <span>Source return ID: {spare.source_return_id}</span>
+                <span>Status: {pretty(spare.status)}</span>
+                {spare.current_asset_code && <span>Current asset: {spare.current_cpu_asset_tag || spare.current_asset_code}</span>}
+                {spare.assigned_at && <span>Installed / assigned: {formatIndiaDateTime(spare.assigned_at)}</span>}
+                {spare.assigned_by_name && <span>Last handled by {spare.assigned_by_name}</span>}
+              </div>
+            </article>)}
+            {!spares.length && <div className="empty-state"><Monitor size={26} /><strong>No spare monitors yet</strong><span>Choosing “Return Desktop — Keep Monitor” in Asset Register will add the retained monitor here automatically.</span></div>}
+          </div>}
+        </article>
       </section>
     </>
   )
