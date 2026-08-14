@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     totp_encryption_key: str = ""
     totp_valid_window: int = 1
 
+    # Purchase approval email channel. PURCHASE_APPROVAL_PUBLIC_URL may point to
+    # a LAN/staging URL during UAT so a test colleague can open the secure link.
+    # When blank it falls back to APP_PUBLIC_URL.
+    purchase_approval_public_url: str = ""
+    purchase_approval_email_heading: str = "NakshaTech Purchase Approval"
+    purchase_approval_email_token_hours: int = 72
+
     seed_excel_path: str = str(Path(__file__).resolve().parents[1] / "data" / "nakshatech_asset_template.xlsx")
 
     # Historical/server backup settings.
@@ -134,6 +141,10 @@ class Settings(BaseSettings):
     @property
     def allowed_email_domain_list(self) -> list[str]:
         return [item.strip().lower().lstrip("@") for item in self.allowed_email_domains.split(",") if item.strip()]
+
+    @property
+    def purchase_approval_base_url(self) -> str:
+        return (self.purchase_approval_public_url.strip() or self.app_public_url.strip()).rstrip("/")
 
     @property
     def docs_url(self) -> str | None:
