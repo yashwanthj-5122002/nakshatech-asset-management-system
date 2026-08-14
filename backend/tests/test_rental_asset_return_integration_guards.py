@@ -65,6 +65,7 @@ def _return_payload() -> AssetVendorReturnCreate:
         condition="Good / working",
         reason="Rental period completed",
         reporting_month=month_start().strftime("%Y-%m"),
+        confirm_vendor_return=True,
     )
 
 
