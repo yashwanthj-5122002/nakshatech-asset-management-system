@@ -218,11 +218,11 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
 
         <section className="final-login-copy" aria-labelledby="login-page-title">
           <h1 id="login-page-title">
-            <span>Smart Internal</span>
-            <strong>Asset Management</strong>
+            <span>One Platform.</span>
+            <strong>Complete Asset Control.</strong>
           </h1>
           <span className="final-login-copy-rule" aria-hidden="true" />
-          <p>Manage IT assets, drone operations, workflows, and admin visibility — all in one intelligent platform.</p>
+          <p>Track assets, ownership, operations, requests, and lifecycle activity across NakshaTech.</p>
         </section>
 
         <LoginGlobeSlot />
