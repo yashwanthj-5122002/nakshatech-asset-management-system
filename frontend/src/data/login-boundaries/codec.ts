@@ -35,18 +35,11 @@ function decodeRing(encoded: string) {
 }
 
 export function decodeBoundaries(data: EncodedBoundary[]): LoginBoundaryFeature[] {
-  const grouped = new Map<string, string[][][]>()
-  for (const boundary of data) {
-    const polygons = grouped.get(boundary.n) ?? []
-    polygons.push(...boundary.g)
-    grouped.set(boundary.n, polygons)
-  }
-
-  return [...grouped.entries()].map(([name, encodedPolygons]) => {
-    const polygons = encodedPolygons.map((polygon) => polygon.map(decodeRing))
+  return data.map((boundary) => {
+    const polygons = boundary.g.map((polygon) => polygon.map(decodeRing))
     return {
       type: 'Feature',
-      properties: { name },
+      properties: { name: boundary.n },
       geometry: polygons.length === 1
         ? { type: 'Polygon', coordinates: polygons[0] }
         : { type: 'MultiPolygon', coordinates: polygons },
