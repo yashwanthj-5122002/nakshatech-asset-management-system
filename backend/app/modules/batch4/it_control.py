@@ -21,6 +21,7 @@ from app.modules.batch3.replacement_workflow import (
     get_or_create_replacement_state,
     select_available_spare,
 )
+from app.modules.it_activity.approval_email import issue_purchase_approval_email, normalize_approval_email
 from app.schemas.replacement import ReplacementCreate, ReplacementResubmit
 from app.schemas.work import WorkRecordUpdate
 from app.services.approval_workflow_service import utc_now_naive, validate_it_work_operational_transition
@@ -38,6 +39,18 @@ def _clear_replacement_approval_fields(record: ReplacementRecord) -> None:
     record.approved_at = None
 
 
+def _approval_recipient_from_payload(payload, *, requester_email: str) -> tuple[str | None, str | None]:
+    name = str(getattr(payload, "approval_recipient_name", "") or "").strip()
+    email = str(getattr(payload, "approval_recipient_email", "") or "").strip()
+    if not name and not email:
+        # Direct service calls and historical tests remain backward compatible.
+        # Live Batch 4 HTTP schemas require both values.
+        return None, None
+    if not name or not email:
+        raise HTTPException(status_code=422, detail="Approval Recipient Name and Approval Email must both be provided")
+    return name, normalize_approval_email(email, requester_email=requester_email)
+
+
 def _process_replacement(
     db: Session,
     *,
@@ -46,10 +59,13 @@ def _process_replacement(
     selected_new_asset_id: int | None,
     user: User,
     remarks: str | None,
+    approval_recipient_name: str | None = None,
+    approval_recipient_email: str | None = None,
 ) -> ReplacementRecord:
     state = get_or_create_replacement_state(db, record, old_asset)
     _clear_replacement_approval_fields(record)
     old_asset.status = "replacement_pending"
+    purchase_request = None
 
     spare = select_available_spare(
         db,
@@ -110,6 +126,13 @@ def _process_replacement(
     record.updated_at = utc_now_naive()
     db.commit()
     db.refresh(record)
+    if purchase_request is not None and approval_recipient_name and approval_recipient_email:
+        issue_purchase_approval_email(
+            db,
+            purchase_request,
+            approval_recipient_name,
+            approval_recipient_email,
+        )
     return record
 
 
@@ -118,6 +141,10 @@ def create_replacement_without_management_approval(
     payload: ReplacementCreate,
     user: User,
 ) -> dict:
+    approval_recipient_name, approval_recipient_email = _approval_recipient_from_payload(
+        payload,
+        requester_email=user.email,
+    )
     acquire_asset_code_lock(db)
     old_asset = db.scalar(select(Asset).where(Asset.id == payload.old_asset_id).with_for_update())
     if old_asset is None:
@@ -141,6 +168,8 @@ def create_replacement_without_management_approval(
 
     previous_status = old_asset.status
     values = payload.model_dump()
+    values.pop("approval_recipient_name", None)
+    values.pop("approval_recipient_email", None)
     values["reporting_month"] = normalize_reporting_month(values.get("reporting_month"))
     selected_new_asset_id = values.pop("new_asset_id", None)
     values["final_action"] = "replacement_pending"
@@ -180,6 +209,8 @@ def create_replacement_without_management_approval(
         selected_new_asset_id=selected_new_asset_id,
         user=user,
         remarks=payload.inspection_finding or payload.reason,
+        approval_recipient_name=approval_recipient_name,
+        approval_recipient_email=approval_recipient_email,
     )
     return _replacement_response(processed)
 
@@ -191,7 +222,13 @@ def process_legacy_replacement_without_management_approval(
     selected_new_asset_id: int | None,
     remarks: str | None,
     user: User,
+    approval_recipient_name: str | None = None,
+    approval_recipient_email: str | None = None,
 ) -> dict:
+    if approval_recipient_name or approval_recipient_email:
+        if not approval_recipient_name or not approval_recipient_email:
+            raise HTTPException(status_code=422, detail="Approval Recipient Name and Approval Email must both be provided")
+        approval_recipient_email = normalize_approval_email(approval_recipient_email, requester_email=user.email)
     record = db.scalar(
         select(ReplacementRecord)
         .where(ReplacementRecord.id == replacement_id)
@@ -216,6 +253,8 @@ def process_legacy_replacement_without_management_approval(
         selected_new_asset_id=selected_new_asset_id,
         user=user,
         remarks=remarks or "Legacy replacement migrated to IT-controlled Batch 4 workflow",
+        approval_recipient_name=approval_recipient_name,
+        approval_recipient_email=approval_recipient_email,
     )
     return _replacement_response(processed)
 
@@ -232,6 +271,10 @@ def resubmit_legacy_replacement_as_it_controlled(
     update the returned legacy record, but it never recreates a Management
     replacement approval. The replacement is processed immediately by IT.
     """
+    approval_recipient_name, approval_recipient_email = _approval_recipient_from_payload(
+        payload,
+        requester_email=user.email,
+    )
     record = db.scalar(
         select(ReplacementRecord)
         .where(ReplacementRecord.id == replacement_id)
@@ -262,6 +305,8 @@ def resubmit_legacy_replacement_as_it_controlled(
         selected_new_asset_id=payload.new_asset_id,
         user=user,
         remarks=payload.inspection_finding or payload.reason,
+        approval_recipient_name=approval_recipient_name,
+        approval_recipient_email=approval_recipient_email,
     ))
 
 
