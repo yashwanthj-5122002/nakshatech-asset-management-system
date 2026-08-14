@@ -1,16 +1,29 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
+from html import escape
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
 from app.core.database import get_db
 from app.models.entities import Asset, User
+from app.modules.it_activity.approval_email import (
+    approval_result_html,
+    approval_review_html,
+    channel_for_request,
+    consume_channel_for_application_decision,
+    enrich_purchase_request_payload,
+    issue_purchase_approval_email,
+    mark_channel_for_email_decision,
+    normalize_approval_email,
+    notify_requester_of_decision,
+    resolve_approval_token,
+)
 from app.modules.it_activity.excel_service import (
     EXCEL_MIME,
     build_monthly_it_activity_workbook,
@@ -21,6 +34,7 @@ from app.modules.it_activity.models import ITHandoverRecord, ITPurchaseRecord, I
 from app.modules.it_activity.schemas import (
     HandoverCreate,
     HandoverResponse,
+    PurchaseApprovalRecipient,
     PurchaseCreate,
     PurchaseRequestCreate,
     PurchaseRequestDecision,
@@ -44,6 +58,42 @@ from app.modules.it_activity.service import (
 from app.services.asset_lifecycle_service import canonical_device_type
 
 router = APIRouter(tags=["IT Activity"])
+
+
+def _purchase_payload(
+    db: Session,
+    record: ITPurchaseRequest,
+    *,
+    include_history: bool = False,
+    include_email_activity: bool = False,
+) -> dict:
+    return enrich_purchase_request_payload(
+        db,
+        record,
+        purchase_request_to_dict(record, include_history=include_history),
+        include_email_activity=include_email_activity,
+    )
+
+
+def _required_recipient(name: str | None, email: str | None, *, requester_email: str) -> tuple[str, str]:
+    clean_name = (name or "").strip()
+    if not clean_name or not (email or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Approval Recipient Name and Approval Email are mandatory for a Purchase Request",
+        )
+    return clean_name, normalize_approval_email(email or "", requester_email=requester_email)
+
+
+def _public_error_page(title: str, detail: str) -> str:
+    return f"""
+<!doctype html>
+<html><body style="margin:0;padding:32px;background:#eef4f8;font-family:Arial,Helvetica,sans-serif;color:#183b56;">
+<div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #dbe5ef;border-radius:10px;overflow:hidden;">
+<div style="padding:20px 26px;background:#0b6f8f;color:#fff;font-weight:800;letter-spacing:.08em;">NAKSHATECH</div>
+<div style="padding:26px;"><h2 style="margin-top:0;">{escape(title)}</h2><p style="line-height:1.6;color:#526579;">{escape(detail)}</p></div>
+</div></body></html>
+""".strip()
 
 
 @router.get("/summary")
@@ -247,7 +297,7 @@ def list_purchase_requests(
         .order_by(ITPurchaseRequest.requested_at.desc(), ITPurchaseRequest.id.desc())
         .limit(limit)
     ).unique().all())
-    return [purchase_request_to_dict(record) for record in records]
+    return [_purchase_payload(db, record) for record in records]
 
 
 @router.get("/purchase-requests/{request_id}", response_model=PurchaseRequestResponse)
@@ -259,7 +309,7 @@ def get_purchase_request(
     record = db.get(ITPurchaseRequest, request_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Purchase request was not found")
-    return purchase_request_to_dict(record, include_history=True)
+    return _purchase_payload(db, record, include_history=True, include_email_activity=True)
 
 
 @router.post("/purchase-requests", response_model=PurchaseRequestResponse)
@@ -268,8 +318,14 @@ def add_purchase_request(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
+    recipient_name, recipient_email = _required_recipient(
+        payload.approval_recipient_name,
+        payload.approval_recipient_email,
+        requester_email=user.email,
+    )
     record = create_purchase_request(db, payload, user)
-    return purchase_request_to_dict(record, include_history=True)
+    issue_purchase_approval_email(db, record, recipient_name, recipient_email)
+    return _purchase_payload(db, record, include_history=True, include_email_activity=True)
 
 
 @router.put("/purchase-requests/{request_id}/resubmit", response_model=PurchaseRequestResponse)
@@ -279,8 +335,61 @@ def resubmit_request(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
+    existing = db.get(ITPurchaseRequest, request_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Purchase request was not found")
+    existing_channel = channel_for_request(db, request_id)
+    recipient_name = payload.approval_recipient_name or (existing_channel.approver_name if existing_channel else None)
+    recipient_email = payload.approval_recipient_email or (existing_channel.approver_email if existing_channel else None)
+    recipient_name, recipient_email = _required_recipient(
+        recipient_name,
+        recipient_email,
+        requester_email=existing.requested_by_email,
+    )
     record = resubmit_purchase_request(db, request_id, payload, user)
-    return purchase_request_to_dict(record, include_history=True)
+    issue_purchase_approval_email(
+        db,
+        record,
+        recipient_name,
+        recipient_email,
+        resubmitted=True,
+    )
+    return _purchase_payload(db, record, include_history=True, include_email_activity=True)
+
+
+@router.post("/purchase-requests/{request_id}/approval-email", response_model=PurchaseRequestResponse)
+def set_purchase_approval_email(
+    request_id: int,
+    payload: PurchaseApprovalRecipient,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    record = db.get(ITPurchaseRequest, request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Purchase request was not found")
+    recipient_name, recipient_email = _required_recipient(
+        payload.approval_recipient_name,
+        payload.approval_recipient_email,
+        requester_email=record.requested_by_email,
+    )
+    issue_purchase_approval_email(db, record, recipient_name, recipient_email)
+    return _purchase_payload(db, record, include_history=True, include_email_activity=True)
+
+
+@router.post("/purchase-requests/{request_id}/approval-email/resend", response_model=PurchaseRequestResponse)
+def resend_purchase_approval_email(
+    request_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+) -> dict:
+    record = db.get(ITPurchaseRequest, request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Purchase request was not found")
+    channel = channel_for_request(db, request_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="This Purchase Request has no approval email recipient")
+    issue_purchase_approval_email(db, record, channel.approver_name, channel.approver_email)
+    return _purchase_payload(db, record, include_history=True, include_email_activity=True)
 
 
 @router.post("/purchase-requests/{request_id}/decision", response_model=PurchaseRequestResponse)
@@ -291,7 +400,158 @@ def make_purchase_request_decision(
     user: User = Depends(require_roles("management")),
 ) -> dict:
     record = decide_purchase_request(db, request_id, payload, user)
-    return purchase_request_to_dict(record, include_history=True)
+    if channel_for_request(db, record.id) is not None:
+        consume_channel_for_application_decision(db, record)
+        notify_requester_of_decision(db, record, source="Asset Management System")
+    return _purchase_payload(db, record, include_history=True, include_email_activity=True)
+
+
+@router.get(
+    "/purchase-approval-email/{token}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def review_purchase_approval_email(
+    token: str,
+    action: str = Query(default="approve"),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    try:
+        channel, record = resolve_approval_token(db, token)
+    except HTTPException as exc:
+        return HTMLResponse(
+            _public_error_page("Purchase approval link unavailable", str(exc.detail)),
+            status_code=exc.status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+    return HTMLResponse(
+        approval_review_html(record, channel, token, action),
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"},
+    )
+
+
+@router.post(
+    "/purchase-approval-email/{token}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def decide_purchase_approval_email(
+    token: str,
+    action: str = Form(...),
+    approved_amount: str = Form(default=""),
+    management_remarks: str = Form(default=""),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    try:
+        channel, record = resolve_approval_token(db, token)
+    except HTTPException as exc:
+        return HTMLResponse(
+            _public_error_page("Purchase approval link unavailable", str(exc.detail)),
+            status_code=exc.status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    if record.status != "pending_approval":
+        return HTMLResponse(
+            approval_result_html(
+                record,
+                channel,
+                title="Decision already completed",
+                message=f"This Purchase Request is already {record.status.replace('_', ' ')}. No further decision was recorded.",
+            ),
+            headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"},
+        )
+    if channel.token_consumed_at is not None:
+        return HTMLResponse(
+            approval_result_html(record, channel, title="Approval link already used", message="This secure approval link has already been consumed."),
+            status_code=409,
+            headers={"Cache-Control": "no-store"},
+        )
+    if channel.token_expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+        return HTMLResponse(
+            approval_result_html(record, channel, title="Approval link expired", message="This approval link has expired. IT must resend the approval email."),
+            status_code=410,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    normalized_action = action.strip().lower()
+    if normalized_action not in {"approve", "send_back", "reject"}:
+        return HTMLResponse(_public_error_page("Invalid decision", "Use Approve, Send Back or Reject."), status_code=400)
+    remarks = management_remarks.strip() or None
+    if normalized_action in {"send_back", "reject"} and not remarks:
+        return HTMLResponse(
+            _public_error_page("Management remarks required", "Enter a reason before confirming Send Back or Reject."),
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
+    amount: float | None = None
+    if normalized_action == "approve":
+        try:
+            amount = float(approved_amount) if approved_amount.strip() else record.estimated_total_amount
+        except ValueError:
+            return HTMLResponse(
+                _public_error_page("Invalid approved amount", "Approved Amount must be a valid number."),
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+        if amount is not None and amount < 0:
+            return HTMLResponse(
+                _public_error_page("Invalid approved amount", "Approved Amount cannot be negative."),
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+
+    email_actor = User(
+        email=channel.approver_email,
+        full_name=channel.approver_name,
+        password_hash="email-approval-not-persisted",
+        role="management",
+        branch=record.branch or "Head Office",
+    )
+    mark_channel_for_email_decision(db, channel)
+    try:
+        record = decide_purchase_request(
+            db,
+            record.id,
+            PurchaseRequestDecision(
+                action=normalized_action,
+                approved_amount=amount,
+                management_remarks=remarks,
+            ),
+            email_actor,
+        )
+    except HTTPException as exc:
+        db.rollback()
+        current = db.get(ITPurchaseRequest, record.id)
+        current_channel = channel_for_request(db, record.id)
+        if current is not None and current_channel is not None and current.status != "pending_approval":
+            return HTMLResponse(
+                approval_result_html(
+                    current,
+                    current_channel,
+                    title="Decision already completed",
+                    message=f"Another valid decision completed this request first. Current status: {current.status.replace('_', ' ')}.",
+                ),
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+            )
+        return HTMLResponse(
+            _public_error_page("Decision could not be saved", str(exc.detail)),
+            status_code=exc.status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    notify_requester_of_decision(db, record, source="Email Approval")
+    final_channel = channel_for_request(db, record.id) or channel
+    return HTMLResponse(
+        approval_result_html(
+            record,
+            final_channel,
+            title=f"Purchase Request {record.status.replace('_', ' ').title()}",
+            message="Your email decision was recorded successfully and the Asset Management System has been updated.",
+        ),
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"},
+    )
 
 
 @router.get("/purchases", response_model=list[PurchaseResponse])
