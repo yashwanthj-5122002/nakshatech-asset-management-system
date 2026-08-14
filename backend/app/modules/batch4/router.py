@@ -15,11 +15,21 @@ from app.modules.batch4.it_control import (
     resubmit_legacy_replacement_as_it_controlled,
     update_work_without_management_approval,
 )
-from app.modules.batch4.schemas import ITReplacementProcess, ManagementPurchaseDecision
+from app.modules.batch4.schemas import (
+    ITReplacementCreate,
+    ITReplacementProcess,
+    ITReplacementResubmit,
+    ManagementPurchaseDecision,
+)
 from app.modules.batch4.service import build_management_control_workbook, management_control_center
+from app.modules.it_activity.approval_email import (
+    channel_for_request,
+    consume_channel_for_application_decision,
+    enrich_purchase_request_payload,
+    notify_requester_of_decision,
+)
 from app.modules.it_activity.schemas import PurchaseRequestDecision, PurchaseRequestResponse
 from app.modules.it_activity.service import decide_purchase_request, purchase_request_to_dict
-from app.schemas.replacement import ReplacementCreate, ReplacementResubmit
 from app.schemas.work import WorkApprovalDecision, WorkRecordUpdate
 
 
@@ -80,19 +90,26 @@ def management_purchase_approval_decision(
         ),
         user,
     )
-    # The Management endpoint commits the decision before returning. Convert the
-    # response through the same PurchaseRequestResponse model used by the normal
-    # Purchase Request routes so SQLAlchemy history objects cannot fail FastAPI's
-    # post-commit response serialization and leave the browser showing stale data.
+    if channel_for_request(db, request.id) is not None:
+        consume_channel_for_application_decision(db, request)
+        notify_requester_of_decision(db, request, source="Asset Management System")
+
+    # Keep the post-commit response JSON-safe. The email-channel enrichment is
+    # also validated through PurchaseRequestResponse before FastAPI returns it.
     response = PurchaseRequestResponse.model_validate(
-        purchase_request_to_dict(request, include_history=True)
+        enrich_purchase_request_payload(
+            db,
+            request,
+            purchase_request_to_dict(request, include_history=True),
+            include_email_activity=True,
+        )
     )
     return response.model_dump(mode="json")
 
 
 @router.post("/replacements")
 def create_replacement_batch4(
-    payload: ReplacementCreate,
+    payload: ITReplacementCreate,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
@@ -112,13 +129,15 @@ def process_legacy_replacement_batch4(
         selected_new_asset_id=payload.new_asset_id,
         remarks=payload.remarks,
         user=user,
+        approval_recipient_name=payload.approval_recipient_name,
+        approval_recipient_email=payload.approval_recipient_email,
     )
 
 
 @router.put("/replacements/{replacement_id}/resubmit")
 def resubmit_legacy_replacement_batch4(
     replacement_id: int,
-    payload: ReplacementResubmit,
+    payload: ITReplacementResubmit,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
