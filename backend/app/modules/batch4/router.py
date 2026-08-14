@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
 from app.core.database import get_db
-from app.models.entities import User
+from app.models.entities import Asset, ReplacementRecord, User
+from app.modules.asset_return.analytics_compat import install_asset_return_compatibility
+from app.modules.asset_return.mutation_guards import router as asset_return_guard_router
 from app.modules.asset_return.router import router as asset_return_router
 from app.modules.batch4.it_control import (
     create_replacement_without_management_approval,
@@ -35,6 +37,26 @@ from app.schemas.work import WorkApprovalDecision, WorkRecordUpdate
 
 
 router = APIRouter(tags=["Batch 4 Management Control"])
+install_asset_return_compatibility()
+
+
+def _assert_replacement_asset_active(db: Session, asset_id: int | None) -> None:
+    if asset_id is None:
+        return
+    asset = db.get(Asset, asset_id)
+    if asset is not None and str(asset.status or "").strip().lower() == "returned_to_vendor":
+        raise HTTPException(
+            status_code=409,
+            detail="This asset has been returned to the vendor and cannot enter replacement processing",
+        )
+
+
+def _assert_replacement_record_active(db: Session, replacement_id: int) -> None:
+    record = db.get(ReplacementRecord, replacement_id)
+    if record is None:
+        return
+    _assert_replacement_asset_active(db, record.old_asset_id)
+    _assert_replacement_asset_active(db, record.new_asset_id)
 
 
 @router.get("/management/control-center")
@@ -114,6 +136,8 @@ def create_replacement_batch4(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
+    _assert_replacement_asset_active(db, payload.old_asset_id)
+    _assert_replacement_asset_active(db, payload.new_asset_id)
     return create_replacement_without_management_approval(db, payload, user)
 
 
@@ -124,6 +148,8 @@ def process_legacy_replacement_batch4(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
+    _assert_replacement_record_active(db, replacement_id)
+    _assert_replacement_asset_active(db, payload.new_asset_id)
     return process_legacy_replacement_without_management_approval(
         db,
         replacement_id,
@@ -142,6 +168,7 @@ def resubmit_legacy_replacement_batch4(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "it")),
 ) -> dict:
+    _assert_replacement_record_active(db, replacement_id)
     return resubmit_legacy_replacement_as_it_controlled(db, replacement_id, payload, user)
 
 
@@ -167,8 +194,9 @@ def disabled_it_work_management_decision(
     )
 
 
-# The rental/vendor-return module is additive. Its few exact endpoint overrides
-# (Asset list/dashboard/report reads and Component Changes) are intentionally
-# included through the existing Batch 4 route replacement mechanism so unrelated
-# legacy and Batch 3 operations remain untouched.
+# Guard routes are included first so a stale mutation or vendor-return request is
+# rejected before it can reach an older compatible route. The return module then
+# supplies the read models, active-inventory dashboard/report overrides and spare
+# monitor integration. Unrelated legacy and Batch 3 endpoints remain unchanged.
+router.include_router(asset_return_guard_router)
 router.include_router(asset_return_router)
