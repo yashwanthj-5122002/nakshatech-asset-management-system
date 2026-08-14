@@ -19,6 +19,7 @@ class AssetVendorReturnCreate(BaseModel):
     remarks: str | None = None
     reporting_month: str | None = None
     spare_location: str | None = Field(default="IT Store", max_length=180)
+    confirm_vendor_return: bool = False
 
     @field_validator(
         "vendor_name",
@@ -38,7 +39,9 @@ class AssetVendorReturnCreate(BaseModel):
         return text or None
 
     @model_validator(mode="after")
-    def validate_spare_location(self):
+    def validate_return(self):
         if self.return_mode == "return_without_monitor" and not self.spare_location:
             raise ValueError("Spare monitor location is required when retaining the monitor")
+        if not self.confirm_vendor_return:
+            raise ValueError("Confirm that this is a rental/vendor asset being physically returned")
         return self
