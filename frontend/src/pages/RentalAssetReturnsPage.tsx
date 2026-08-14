@@ -55,6 +55,12 @@ function pretty(value?: string | null) {
   return (value || 'Not recorded').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase())
 }
 
+function indiaToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}
+
 export function RentalAssetReturnsPage() {
   const { user } = useAuth()
   const { selectedMonth } = useITMonthUrl()
@@ -69,13 +75,14 @@ export function RentalAssetReturnsPage() {
   const [form, setForm] = useState({
     asset_id: '',
     return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor',
-    return_date: new Date().toISOString().slice(0, 10),
+    return_date: indiaToday(),
     vendor_name: '',
     return_reference: '',
     condition: 'Good / working',
     reason: 'Rental period completed',
     remarks: '',
     spare_location: 'IT Store',
+    confirm_vendor_return: false,
   })
 
   const selectedAsset = useMemo(
@@ -96,7 +103,7 @@ export function RentalAssetReturnsPage() {
       setReturns(returnRows)
       setSpares(spareRows)
       if (form.asset_id && !assetRows.some(asset => asset.id === Number(form.asset_id))) {
-        setForm(current => ({ ...current, asset_id: '' }))
+        setForm(current => ({ ...current, asset_id: '', confirm_vendor_return: false }))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load rental return data')
@@ -115,6 +122,7 @@ export function RentalAssetReturnsPage() {
     setBusy(true)
     try {
       if (!form.asset_id) throw new Error('Select the rental Desktop / Computer to return.')
+      if (!form.confirm_vendor_return) throw new Error('Confirm that this is a rental/vendor asset being physically returned.')
       if (selectedAsset?.used_by) {
         throw new Error('This desktop is still assigned. Complete Handover & Return to IT before vendor return.')
       }
@@ -133,6 +141,7 @@ export function RentalAssetReturnsPage() {
           remarks: form.remarks || null,
           reporting_month: selectedMonth,
           spare_location: form.return_mode === 'return_without_monitor' ? form.spare_location : null,
+          confirm_vendor_return: form.confirm_vendor_return,
         }),
       })
       const retained = created.retained_monitor_tags ? ` Retained monitor(s): ${created.retained_monitor_tags}.` : ''
@@ -141,12 +150,14 @@ export function RentalAssetReturnsPage() {
         ...current,
         asset_id: '',
         return_mode: 'complete_return',
+        return_date: indiaToday(),
         vendor_name: '',
         return_reference: '',
         condition: 'Good / working',
         reason: 'Rental period completed',
         remarks: '',
         spare_location: 'IT Store',
+        confirm_vendor_return: false,
       }))
       await load()
     } catch (err) {
@@ -181,7 +192,7 @@ export function RentalAssetReturnsPage() {
           <div className="panel-heading"><div><span className="section-kicker">VENDOR RETURN</span><h2>Return / Remove Rental Desktop</h2></div><RotateCcw /></div>
           {!canReturn && <div className="approval-note">Management has read-only visibility. IT/Admin records the physical vendor return.</div>}
           {canReturn && <form className="data-form form-grid" onSubmit={submit}>
-            <label className="full-span">Desktop / Computer<select required value={form.asset_id} onChange={event => setForm({ ...form, asset_id: event.target.value })}><option value="">Select active desktop</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || asset.asset_code} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · Monitor {asset.monitor_asset_tags || 'not recorded'}</option>)}</select></label>
+            <label className="full-span">Desktop / Computer<select required value={form.asset_id} onChange={event => setForm({ ...form, asset_id: event.target.value, confirm_vendor_return: false })}><option value="">Select active desktop</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.cpu_asset_tag || asset.asset_code} · {asset.workstation_no || 'No workstation'} · {asset.used_by || 'Unassigned'} · Monitor {asset.monitor_asset_tags || 'not recorded'}</option>)}</select></label>
 
             {selectedAsset && <div className="selected-system-card full-span">
               <div><strong>{selectedAsset.cpu_asset_tag || selectedAsset.asset_code}</strong><span>{selectedAsset.asset_code} · {selectedAsset.department || 'No department'} · {pretty(selectedAsset.status)}</span></div>
@@ -190,7 +201,7 @@ export function RentalAssetReturnsPage() {
 
             {selectedAsset?.used_by && <div className="error-message full-span">This desktop is still assigned to {selectedAsset.used_by}. Complete the normal Handover & Return first; vendor return is blocked until IT has custody.</div>}
 
-            <label>Return Type<select value={form.return_mode} onChange={event => setForm({ ...form, return_mode: event.target.value as typeof form.return_mode })}><option value="complete_return">Complete Return — Desktop + Monitor</option><option value="return_without_monitor">Return Desktop Without Monitor — Monitor stays with NakshaTech</option></select></label>
+            <label>Return Type<select value={form.return_mode} onChange={event => setForm({ ...form, return_mode: event.target.value as typeof form.return_mode, confirm_vendor_return: false })}><option value="complete_return">Complete Return — Desktop + Monitor</option><option value="return_without_monitor">Return Desktop Without Monitor — Monitor stays with NakshaTech</option></select></label>
             <label>Return Date<input required type="date" value={form.return_date} onChange={event => setForm({ ...form, return_date: event.target.value })} /></label>
             <label>Vendor / Rental Company<input required value={form.vendor_name} onChange={event => setForm({ ...form, vendor_name: event.target.value })} placeholder="Rental vendor name" /></label>
             <label>Return Reference / DC No.<input value={form.return_reference} onChange={event => setForm({ ...form, return_reference: event.target.value })} placeholder="Optional reference" /></label>
@@ -203,7 +214,8 @@ export function RentalAssetReturnsPage() {
               ? <div className="form-guidance full-span">Complete Return removes the desktop from active inventory. The CPU/Desktop and its monitor tag(s) remain only in immutable return/audit history.</div>
               : <div className="form-guidance full-span">Return Without Monitor removes the desktop from active inventory and moves its monitor tag(s) into the Available Spare Monitor pool for later Component Changes.</div>}
 
-            <button className="primary-button full-span" disabled={busy || Boolean(selectedAsset?.used_by)}><Save size={17} /> {busy ? 'Recording…' : 'Confirm Vendor Return'}</button>
+            <label className="full-span approval-note"><input type="checkbox" checked={form.confirm_vendor_return} onChange={event => setForm({ ...form, confirm_vendor_return: event.target.checked })} /> I confirm this is a rental/vendor Desktop being physically returned and should be removed from active inventory.</label>
+            <button className="primary-button full-span" disabled={busy || Boolean(selectedAsset?.used_by) || !form.confirm_vendor_return}><Save size={17} /> {busy ? 'Recording…' : 'Confirm Vendor Return'}</button>
           </form>}
         </article>
 
