@@ -25,6 +25,7 @@ import { ManagementApprovalCenter } from './pages/ManagementApprovalCenter'
 import { ManagementITWorkReadOnlyPage } from './pages/ManagementITWorkReadOnlyPage'
 import { ReplacementsPage } from './pages/ReplacementsPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { RentalAssetReturnsPage } from './pages/RentalAssetReturnsPage'
 import { NakshaCopilotPage } from './features/naksha_copilot/NakshaCopilotPage'
 import { DataQualityCentrePage } from './features/data_quality/DataQualityCentrePage'
 import { WelcomePage } from './pages/WelcomePage'
@@ -79,6 +80,7 @@ export default function App() {
       <Route path="/assets/:id/edit" element={<ProtectedRoute roles={['it', 'admin']}><WithLayout><AssetFormPage /></WithLayout></ProtectedRoute>} />
       <Route path="/replacements" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ReplacementsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/handover-return" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><HandoverReturnPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/it/rental-returns" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><RentalAssetReturnsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/purchase-requests" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><PurchaseRequestsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/purchases" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><PurchaseProcurementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it/recent-changes" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><RecentChangesPage /></WithLayout></ProtectedRoute>} />
