@@ -9,6 +9,7 @@ from app.api.router import (
     assign_asset as base_assign_asset,
     create_component_replacement as base_create_component_replacement,
     create_work_record as base_create_work_record,
+    delete_test_asset as base_delete_test_asset,
     return_asset as base_return_asset,
     update_asset as base_update_asset,
     update_asset_status as base_update_asset_status,
@@ -92,6 +93,16 @@ def archive_active_asset(
 ):
     _assert_active_asset(db, asset_id)
     return base_archive_asset(asset_id=asset_id, reporting_month=reporting_month, db=db, user=user)
+
+
+@router.delete("/assets/{asset_id}", status_code=204)
+def delete_active_test_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "it")),
+):
+    _assert_active_asset(db, asset_id)
+    return base_delete_test_asset(asset_id=asset_id, db=db, user=user)
 
 
 @router.post("/component-replacements")
