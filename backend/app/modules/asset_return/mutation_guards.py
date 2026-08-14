@@ -34,7 +34,7 @@ def _assert_active_asset(db: Session, asset_id: int) -> Asset:
             status_code=409,
             detail=(
                 "This asset has been returned to the vendor and is locked from operational changes. "
-                "Use Rental Returns & Spares for its audit record."
+                "Use Returned Assets & Spares for its audit record."
             ),
         )
     return asset
