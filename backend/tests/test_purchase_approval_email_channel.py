@@ -11,7 +11,8 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.models.entities import Asset, User
 from app.modules.batch4.it_control import create_replacement_without_management_approval
-from app.modules.batch4.schemas import ITReplacementCreate
+from app.modules.batch4.router import management_purchase_approval_decision
+from app.modules.batch4.schemas import ITReplacementCreate, ManagementPurchaseDecision
 from app.modules.it_activity.approval_email import (
     channel_for_request,
     email_logs_for_request,
@@ -135,7 +136,7 @@ def test_email_approval_updates_single_purchase_request_and_is_idempotent(approv
         assert db.get(ITPurchaseRequest, request_id).status == "approved"
 
 
-def test_resubmission_rotates_token_and_email_failure_does_not_lose_request(approval_email_settings):
+def test_email_send_back_requires_remarks_and_resubmission_rotates_token(approval_email_settings):
     with SessionLocal() as db:
         it_user = _user(db, "resubmit-it@nakshatech.com", "it", "Resubmit IT")
         request = _purchase_request(db, it_user, item_name="UAT Software")
@@ -146,10 +147,29 @@ def test_resubmission_rotates_token_and_email_failure_does_not_lose_request(appr
             "test.reviewer@nakshatech.com",
         )
         first_token = first.raw_token
-        request.status = "sent_back"
-        request.management_remarks = "Revise the amount"
-        db.commit()
+        request_id = request.id
 
+    client = TestClient(app)
+    missing_remarks = client.post(
+        f"/api/it-activity/purchase-approval-email/{first_token}",
+        data={"action": "send_back", "management_remarks": ""},
+    )
+    assert missing_remarks.status_code == 400
+    with SessionLocal() as db:
+        assert db.get(ITPurchaseRequest, request_id).status == "pending_approval"
+
+    sent_back = client.post(
+        f"/api/it-activity/purchase-approval-email/{first_token}",
+        data={"action": "send_back", "management_remarks": "Revise the amount"},
+    )
+    assert sent_back.status_code == 200
+    with SessionLocal() as db:
+        request = db.get(ITPurchaseRequest, request_id)
+        assert request is not None
+        assert request.status == "sent_back"
+        assert request.management_remarks == "Revise the amount"
+        it_user = db.scalar(select(User).where(User.email == "resubmit-it@nakshatech.com"))
+        assert it_user is not None
         request = resubmit_purchase_request(
             db,
             request.id,
@@ -177,17 +197,17 @@ def test_resubmission_rotates_token_and_email_failure_does_not_lose_request(appr
             "test.reviewer@nakshatech.com",
             resubmitted=True,
         )
-        assert second.raw_token != first_token
+        second_token = second.raw_token
+        assert second_token != first_token
         assert request.status == "pending_approval"
 
-    client = TestClient(app)
     old_link = client.get(f"/api/it-activity/purchase-approval-email/{first_token}?action=approve")
     assert old_link.status_code == 404
-    new_link = client.get(f"/api/it-activity/purchase-approval-email/{second.raw_token}?action=approve")
+    new_link = client.get(f"/api/it-activity/purchase-approval-email/{second_token}?action=approve")
     assert new_link.status_code == 200
 
     with SessionLocal() as db:
-        request = db.scalar(select(ITPurchaseRequest).where(ITPurchaseRequest.item_name == "UAT Software"))
+        request = db.get(ITPurchaseRequest, request_id)
         assert request is not None
         settings.email_delivery_mode = "disabled-for-test"
         failed = issue_purchase_approval_email(
@@ -199,6 +219,44 @@ def test_resubmission_rotates_token_and_email_failure_does_not_lose_request(appr
         assert failed.channel.email_status == "failed"
         assert failed.channel.email_last_error == "Email delivery is not configured"
         assert db.get(ITPurchaseRequest, request.id).status == "pending_approval"
+
+
+def test_asset_management_decision_consumes_email_link_and_records_source(approval_email_settings):
+    with SessionLocal() as db:
+        it_user = _user(db, "app-decision-it@nakshatech.com", "it", "App Decision IT")
+        manager = _user(db, "app.manager@nakshatech.com", "management", "App Manager")
+        request = _purchase_request(db, it_user, item_name="App Decision Laptop")
+        issued = issue_purchase_approval_email(
+            db,
+            request,
+            "Email Recipient",
+            "email.recipient@nakshatech.com",
+        )
+        token = issued.raw_token
+        request_id = request.id
+        response = management_purchase_approval_decision(
+            "purchase_request",
+            request.id,
+            ManagementPurchaseDecision(
+                action="approve",
+                remarks="Approved in Asset Management",
+                approved_amount=73000,
+            ),
+            db,
+            manager,
+        )
+        assert response["status"] == "approved"
+        channel = channel_for_request(db, request_id)
+        assert channel is not None
+        assert channel.decision_source == "asset_management"
+        assert channel.token_consumed_at is not None
+
+    client = TestClient(app)
+    old_email = client.get(f"/api/it-activity/purchase-approval-email/{token}?action=reject")
+    assert old_email.status_code == 200
+    assert "already approved" in old_email.text.lower()
+    with SessionLocal() as db:
+        assert db.get(ITPurchaseRequest, request_id).status == "approved"
 
 
 def test_replacement_procurement_creates_same_email_approval_channel(approval_email_settings):
