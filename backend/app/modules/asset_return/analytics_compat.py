@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Asset, MonthlyAssetSnapshot, MonthlySnapshotRun
+from app.models.entities import Asset, MonthlyAssetSnapshot, MonthlySnapshotRun, ReplacementRecord
 from app.modules.asset_return.service import active_inventory_assets
 
 
@@ -29,6 +30,7 @@ def install_asset_return_compatibility() -> None:
         return
 
     import app.api.router as base_api
+    import app.modules.asset_return.router as return_router
     import app.modules.data_quality.service as data_quality_service
     import app.modules.naksha_copilot.service as copilot_service
     import app.services.asset_lifecycle_service as lifecycle_service
@@ -38,6 +40,7 @@ def install_asset_return_compatibility() -> None:
     original_get_snapshot_run = snapshot_service.get_snapshot_run
     original_previous_month = snapshot_service.previous_month
     original_serialise_asset = snapshot_service._serialise_asset
+    original_vendor_return = return_router.perform_vendor_return
 
     def active_assets_for_month(db: Session, start):
         assets, source = original_assets_for_month(db, start)
@@ -86,10 +89,42 @@ def install_asset_return_compatibility() -> None:
         db.refresh(run)
         return run
 
+    def guarded_vendor_return(db: Session, asset_id: int, payload, user):
+        asset = db.get(Asset, asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        status = str(asset.status or "").strip().lower()
+        if status in {"replaced", "retired", "disposed", "missing", "returned_to_vendor"}:
+            raise HTTPException(
+                status_code=409,
+                detail="A finalized, missing, or already vendor-returned asset cannot be returned to a rental vendor",
+            )
+        active_replacement = db.scalar(
+            select(ReplacementRecord.id)
+            .where(
+                or_(ReplacementRecord.old_asset_id == asset_id, ReplacementRecord.new_asset_id == asset_id),
+                or_(
+                    ReplacementRecord.approval_status.in_(["pending", "returned"]),
+                    ReplacementRecord.final_action.in_(["replacement_pending", "procurement_required"]),
+                ),
+            )
+            .limit(1)
+        )
+        if active_replacement is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Resolve the active complete-asset replacement/procurement workflow before vendor return",
+            )
+        return original_vendor_return(db, asset_id, payload, user)
+
     # Vendor-returned assets are terminal for every existing custody helper. This
     # also protects the separate Handover & Return endpoint from direct/stale API
     # calls that bypass the new workspace.
     lifecycle_service.TERMINAL_LIFECYCLE_STATUSES.add("returned_to_vendor")
+
+    # The public vendor-return route resolves this module global at request time,
+    # so replace only its service binding instead of registering a duplicate route.
+    return_router.perform_vendor_return = guarded_vendor_return
 
     # Read-only analytics must describe the active fleet, not inactive vendor
     # return evidence. Historical months before a return remain unchanged because
