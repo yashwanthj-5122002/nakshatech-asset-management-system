@@ -121,7 +121,7 @@ def test_complete_vendor_return_preserves_history_and_removes_asset_from_active_
         assert db.get(Asset, asset_id) is not None
 
 
-def test_vendor_return_is_blocked_until_employee_custody_is_closed():
+def test_asset_register_return_can_remove_an_assigned_desktop_directly():
     with SessionLocal() as db:
         it_user = _user(db)
         asset = _desktop(
@@ -132,13 +132,35 @@ def test_vendor_return_is_blocked_until_employee_custody_is_closed():
             used_by="Assigned Employee",
             workstation="WS-RET-002",
         )
-        with pytest.raises(HTTPException) as exc:
-            perform_vendor_return(db, asset.id, _return_payload("complete_return"), it_user)
-        assert exc.value.status_code == 409
-        assert "Handover & Return" in str(exc.value.detail)
+        asset_id = asset.id
+
+        result = perform_vendor_return(db, asset.id, _return_payload("complete_return"), it_user)
+        assert result["return_mode"] == "complete_return"
+        assert result["previous_used_by"] == "Assigned Employee"
+        assert result["previous_workstation_no"] == "WS-RET-002"
+
         db.refresh(asset)
-        assert asset.status == "assigned"
-        assert db.scalar(select(AssetVendorReturn).where(AssetVendorReturn.asset_id == asset.id)) is None
+        assert asset.status == "returned_to_vendor"
+        assert asset.used_by is None
+        assert asset.workstation_no is None
+
+        return_record = db.scalar(select(AssetVendorReturn).where(AssetVendorReturn.asset_id == asset_id))
+        assert return_record is not None
+        assert return_record.previous_used_by == "Assigned Employee"
+        assert return_record.previous_workstation_no == "WS-RET-002"
+
+        active_rows = list_active_assets(
+            search=None,
+            department=None,
+            device_type=None,
+            status=None,
+            work_mode=None,
+            month=None,
+            limit=500,
+            db=db,
+            user=it_user,
+        )
+        assert all(row["id"] != asset_id for row in active_rows)
 
 
 def test_return_without_monitor_creates_available_spare_and_excel_register():
