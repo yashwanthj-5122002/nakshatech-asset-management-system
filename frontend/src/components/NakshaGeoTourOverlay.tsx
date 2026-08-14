@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
-import { feature as topojsonFeature, merge as topojsonMerge } from 'topojson-client'
+import { feature as topojsonFeature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
 import '../login-geo-tour.css'
 
@@ -28,31 +28,6 @@ type GeoFeatureCollection = {
   features: BaseGeoFeature[]
 }
 
-type DistrictTopologyGeometry = {
-  type: 'Polygon' | 'MultiPolygon'
-  arcs: unknown
-  properties?: Record<string, unknown>
-}
-
-type IndiaDistrictTopology = {
-  type: 'Topology'
-  objects: {
-    districts: {
-      type: 'GeometryCollection'
-      geometries: DistrictTopologyGeometry[]
-    }
-  }
-  arcs: unknown
-  transform?: unknown
-  bbox?: unknown
-}
-
-type IndiaMapData = {
-  states: TourPolygon[]
-  karnatakaDistricts: TourPolygon[]
-  attribution: string
-}
-
 type TourStage = 'world' | 'india' | 'karnataka' | 'bengaluru'
 
 type TourPoint = {
@@ -61,20 +36,23 @@ type TourPoint = {
   lng: number
 }
 
+type TourBoundaryData = {
+  states: TourPolygon[]
+  districts: TourPolygon[]
+}
+
 const INDIA_NUMERIC_ID = '356'
+const INDIA_STATES_URL = '/geo/india-states.geojson'
+const KARNATAKA_DISTRICTS_URL = '/geo/karnataka-districts.geojson'
+
+// Keep the camera values from the visually approved tour.
 const WORLD_POV = { lat: 18, lng: 58, altitude: 1.58 }
 const INDIA_POV = { lat: 21.0, lng: 78.7, altitude: 0.88 }
 const KARNATAKA_POV = { lat: 15.25, lng: 75.7, altitude: 0.57 }
 const BENGALURU_POV = { lat: 12.9716, lng: 77.5946, altitude: 0.42 }
 const BENGALURU_POINT: TourPoint = { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 }
 
-const INDIA_MAPS_REVISION = '2884453'
-const INDIA_TOPOLOGY_SOURCES = [
-  `https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@${INDIA_MAPS_REVISION}/topojson/india.json`,
-  `https://raw.githubusercontent.com/udit-001/india-maps-data/${INDIA_MAPS_REVISION}/topojson/india.json`,
-]
-
-let indiaMapDataRequest: Promise<IndiaMapData> | null = null
+let boundaryDataRequest: Promise<TourBoundaryData> | null = null
 
 function normalizeName(value: string) {
   return value
@@ -91,23 +69,15 @@ function isPolygonGeometry(geometry: unknown): geometry is PolygonGeometry {
   return type === 'Polygon' || type === 'MultiPolygon'
 }
 
-function stateNameFromProperties(properties?: Record<string, unknown>) {
-  const value = properties?.st_nm ?? properties?.state ?? properties?.State ?? properties?.STATE
-  return value === undefined || value === null ? '' : String(value).trim()
-}
-
-function districtNameFromProperties(properties?: Record<string, unknown>) {
-  const value = properties?.district ?? properties?.District ?? properties?.DISTRICT ?? properties?.name
-  return value === undefined || value === null ? '' : String(value).trim()
-}
-
-function isKarnatakaName(value: string) {
-  return normalizeName(value) === 'karnataka'
-}
-
-function isBengaluruUrbanName(value: string) {
-  const name = normalizeName(value)
-  return name === 'bengaluru urban' || name === 'bangalore urban' || name === 'bengaluru' || name === 'bangalore'
+function propertyText(feature: BaseGeoFeature, keys: string[]) {
+  const properties = feature.properties ?? {}
+  for (const key of keys) {
+    const value = properties[key]
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim()
+    }
+  }
+  return ''
 }
 
 function isIndiaCountry(feature: TourPolygon) {
@@ -115,136 +85,84 @@ function isIndiaCountry(feature: TourPolygon) {
 }
 
 function isKarnataka(feature: TourPolygon) {
-  return isKarnatakaName(feature.displayName)
+  return normalizeName(feature.displayName) === 'karnataka'
 }
 
 function isBengaluruUrban(feature: TourPolygon) {
-  return isBengaluruUrbanName(feature.displayName)
+  const name = normalizeName(feature.displayName)
+  return name === 'bengaluru urban' || name === 'bangalore urban' || name === 'bengaluru' || name === 'bangalore'
 }
 
-async function fetchJson<T>(url: string, timeoutMs = 16000): Promise<T> {
+async function fetchGeoJson(url: string): Promise<GeoFeatureCollection> {
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  const timeout = window.setTimeout(() => controller.abort(), 20000)
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: 'application/json, application/topo+json;q=0.9, */*;q=0.8' },
+      headers: { Accept: 'application/geo+json, application/json;q=0.9, */*;q=0.8' },
       cache: 'force-cache',
     })
-    if (!response.ok) throw new Error(`Boundary request failed (${response.status})`)
-    return await response.json() as T
+    if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`)
+    const data = await response.json() as GeoFeatureCollection
+    if (data.type !== 'FeatureCollection' || !Array.isArray(data.features)) {
+      throw new Error(`${url} is not a GeoJSON FeatureCollection`)
+    }
+    return data
   } finally {
     window.clearTimeout(timeout)
   }
 }
 
-async function fetchIndiaTopology() {
-  let lastError: unknown = new Error('India topology unavailable')
-  for (const url of INDIA_TOPOLOGY_SOURCES) {
-    try {
-      const topology = await fetchJson<IndiaDistrictTopology>(url)
-      if (
-        topology?.type === 'Topology' &&
-        topology.objects?.districts?.type === 'GeometryCollection' &&
-        Array.isArray(topology.objects.districts.geometries) &&
-        topology.objects.districts.geometries.length > 500
-      ) {
-        return topology
-      }
-      lastError = new Error('India topology has an unexpected structure')
-    } catch (error) {
-      lastError = error
-    }
-  }
-  throw lastError
-}
-
-function buildIndiaMapData(topology: IndiaDistrictTopology): IndiaMapData {
-  const districtObject = topology.objects.districts
-  const districtCollection = topojsonFeature(
-    topology as never,
-    districtObject as never,
-  ) as unknown as GeoFeatureCollection
-
-  const districtFeatures = districtCollection.features.filter(
-    (feature) => isPolygonGeometry(feature.geometry),
-  )
-
-  const stateGeometryGroups = new Map<string, DistrictTopologyGeometry[]>()
-  for (const geometry of districtObject.geometries) {
-    const stateName = stateNameFromProperties(geometry.properties)
-    if (!stateName) continue
-    const key = normalizeName(stateName)
-    const group = stateGeometryGroups.get(key) ?? []
-    group.push(geometry)
-    stateGeometryGroups.set(key, group)
-  }
-
-  const states: TourPolygon[] = []
-  for (const [stateKey, geometries] of stateGeometryGroups.entries()) {
-    if (!geometries.length) continue
-    const stateName = stateNameFromProperties(geometries[0].properties)
-    const merged = topojsonMerge(
-      topology as never,
-      geometries as never,
-    ) as unknown
-    if (!isPolygonGeometry(merged)) continue
-
-    states.push({
-      type: 'Feature',
-      id: `IND-STATE-${stateKey}`,
-      properties: {
-        name: stateName,
-        st_nm: stateName,
-        st_code: geometries[0].properties?.st_code,
-      },
-      geometry: merged,
-      __layer: 'state',
-      displayName: stateName,
-    })
-  }
-
-  states.sort((a, b) => a.displayName.localeCompare(b.displayName))
+function normalizeStates(collection: GeoFeatureCollection) {
+  const states = collection.features
+    .filter((feature) => isPolygonGeometry(feature.geometry))
+    .map((feature, index) => ({
+      ...feature,
+      id: feature.id ?? `IND-STATE-${index}`,
+      __layer: 'state' as const,
+      displayName: propertyText(feature, ['st_nm', 'state', 'State', 'STATE', 'name', 'NAME']),
+    }))
+    .filter((feature) => Boolean(feature.displayName))
 
   if (states.length < 28 || states.length > 50 || !states.some(isKarnataka)) {
-    throw new Error(`Unexpected India state topology (${states.length} state geometries)`)
+    throw new Error(`India state file has unexpected content (${states.length} polygon features)`)
   }
+  return states
+}
 
-  const karnatakaDistricts: TourPolygon[] = districtFeatures
-    .filter((feature) => isKarnatakaName(stateNameFromProperties(feature.properties)))
+function normalizeDistricts(collection: GeoFeatureCollection) {
+  const districts = collection.features
+    .filter((feature) => isPolygonGeometry(feature.geometry))
     .map((feature, index) => ({
       ...feature,
       id: feature.id ?? `KA-DISTRICT-${index}`,
       __layer: 'district' as const,
-      displayName: districtNameFromProperties(feature.properties) || `District ${index + 1}`,
+      displayName: propertyText(feature, ['dtname', 'district', 'District', 'DISTRICT', 'name', 'NAME']),
     }))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    .filter((feature) => Boolean(feature.displayName))
 
-  if (
-    karnatakaDistricts.length < 20 ||
-    karnatakaDistricts.length > 50 ||
-    !karnatakaDistricts.some(isBengaluruUrban)
-  ) {
-    throw new Error(`Unexpected Karnataka district topology (${karnatakaDistricts.length} districts)`)
+  if (districts.length < 20 || districts.length > 50 || !districts.some(isBengaluruUrban)) {
+    throw new Error(`Karnataka district file has unexpected content (${districts.length} polygon features)`)
   }
-
-  return {
-    states,
-    karnatakaDistricts,
-    attribution: 'India Maps Data · state boundaries derived from districts · Karnataka district boundaries',
-  }
+  return districts
 }
 
-function getIndiaMapData() {
-  if (!indiaMapDataRequest) {
-    indiaMapDataRequest = fetchIndiaTopology()
-      .then(buildIndiaMapData)
+function getBoundaryData() {
+  if (!boundaryDataRequest) {
+    boundaryDataRequest = Promise.all([
+      fetchGeoJson(INDIA_STATES_URL),
+      fetchGeoJson(KARNATAKA_DISTRICTS_URL),
+    ])
+      .then(([stateCollection, districtCollection]) => ({
+        states: normalizeStates(stateCollection),
+        districts: normalizeDistricts(districtCollection),
+      }))
       .catch((error) => {
-        indiaMapDataRequest = null
+        boundaryDataRequest = null
         throw error
       })
   }
-  return indiaMapDataRequest
+  return boundaryDataRequest
 }
 
 function sleep(duration: number, cancelled: () => boolean) {
@@ -268,23 +186,19 @@ function layerLabel(stage: TourStage) {
   return 'NAKSHA GIS · GLOBAL VIEW'
 }
 
-function layerDescription(stage: TourStage, data: IndiaMapData | null, boundaryError: boolean) {
-  if (boundaryError) return 'Administrative boundary data unavailable · continuing with the secure login globe'
+function layerDescription(stage: TourStage, data: TourBoundaryData | null, boundaryError: boolean) {
+  if (boundaryError) return 'Local administrative boundary files unavailable · continuing with the secure login globe'
   if (stage === 'india') {
     return data
-      ? `India located · ${data.states.length} state / union territory boundaries visible`
-      : 'India located · loading state / union territory boundaries'
+      ? `India located · ${data.states.length} supplied state / union territory boundaries visible`
+      : 'India located · loading supplied state / union territory boundaries'
   }
   if (stage === 'karnataka') {
     return data
-      ? `Karnataka highlighted · ${data.karnatakaDistricts.length} district boundaries visible`
-      : 'Karnataka highlighted · loading district boundaries'
+      ? `Karnataka highlighted · ${data.districts.length} supplied district boundaries visible`
+      : 'Karnataka highlighted · loading supplied district boundaries'
   }
-  if (stage === 'bengaluru') {
-    return data
-      ? 'Bengaluru Urban highlighted · Karnataka district context retained'
-      : 'Bengaluru focus · loading Karnataka district context'
-  }
+  if (stage === 'bengaluru') return 'Bengaluru Urban highlighted · Karnataka district context retained'
   return 'Rotating world view · beginning geographic fly-in'
 }
 
@@ -295,7 +209,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
   const [dimensions, setDimensions] = useState({ width: 1280, height: 760 })
   const [ready, setReady] = useState(false)
   const [stage, setStage] = useState<TourStage>('world')
-  const [indiaData, setIndiaData] = useState<IndiaMapData | null>(null)
+  const [boundaryData, setBoundaryData] = useState<TourBoundaryData | null>(null)
   const [boundaryError, setBoundaryError] = useState(false)
   const [fading, setFading] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
@@ -320,10 +234,10 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
   }, [])
 
   const polygons = useMemo(() => {
-    if (stage === 'world' || !indiaData) return countries
-    if (stage === 'india') return [...countries, ...indiaData.states]
-    return [...countries, ...indiaData.states, ...indiaData.karnatakaDistricts]
-  }, [countries, indiaData, stage])
+    if (stage === 'world' || !boundaryData) return countries
+    if (stage === 'india') return [...countries, ...boundaryData.states]
+    return [...countries, ...boundaryData.states, ...boundaryData.districts]
+  }, [boundaryData, countries, stage])
 
   useEffect(() => {
     const host = hostRef.current
@@ -365,7 +279,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
         return
       }
 
-      const mapRequest = getIndiaMapData()
+      const dataRequest = getBoundaryData()
 
       controls.enablePan = false
       controls.enableZoom = false
@@ -381,13 +295,14 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
       setStage('india')
       globe.pointOfView(INDIA_POV, reducedMotion ? 0 : 1450)
 
-      let data: IndiaMapData | null = null
+      let data: TourBoundaryData | null = null
       try {
-        data = await mapRequest
+        data = await dataRequest
         if (cancelled) return
-        setIndiaData(data)
+        setBoundaryData(data)
         setBoundaryError(false)
-      } catch {
+      } catch (error) {
+        console.warn('Naksha login administrative boundary files could not be loaded.', error)
         if (cancelled) return
         setBoundaryError(true)
       }
@@ -435,9 +350,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
       return stage === 'india' ? 'rgba(5, 54, 78, .11)' : 'rgba(4, 44, 66, .07)'
     }
 
-    if (stage === 'bengaluru' && isBengaluruUrban(polygon)) {
-      return 'rgba(51, 224, 239, .46)'
-    }
+    if (stage === 'bengaluru' && isBengaluruUrban(polygon)) return 'rgba(51, 224, 239, .46)'
     return 'rgba(6, 96, 126, .08)'
   }
 
@@ -467,7 +380,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
     return isIndiaCountry(polygon) && stage !== 'world' ? 0.005 : 0.002
   }
 
-  const points = stage === 'bengaluru' && indiaData ? [BENGALURU_POINT] : []
+  const points = stage === 'bengaluru' && boundaryData ? [BENGALURU_POINT] : []
 
   return (
     <div ref={hostRef} className={`naksha-geo-tour ${fading ? 'is-fading' : ''}`} aria-hidden="true">
@@ -515,7 +428,7 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
         <span className="naksha-geo-tour-pulse" />
         <div>
           <strong>{layerLabel(stage)}</strong>
-          <small>{layerDescription(stage, indiaData, boundaryError)}</small>
+          <small>{layerDescription(stage, boundaryData, boundaryError)}</small>
         </div>
       </div>
 
@@ -530,7 +443,9 @@ export function NakshaGeoTourOverlay({ onComplete }: { onComplete: () => void })
       </div>
 
       <div className="naksha-geo-tour-source">
-        {indiaData ? `Administrative boundaries: ${indiaData.attribution}` : 'Administrative boundaries: loading validated India topology'}
+        {boundaryData
+          ? 'Administrative boundaries: NakshaTech supplied India States + Karnataka Districts GeoJSON'
+          : 'Administrative boundaries: loading local NakshaTech GeoJSON'}
       </div>
     </div>
   )
