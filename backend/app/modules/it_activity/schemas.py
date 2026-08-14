@@ -113,6 +113,11 @@ class PurchaseRequestCreate(BaseModel):
     required_by_date: date | None = None
     priority: str = "medium"
     it_remarks: str | None = None
+    # Optional at the shared schema layer for backward-compatible service tests.
+    # The live HTTP create route requires both fields so every new UI request has
+    # exactly one email approval recipient.
+    approval_recipient_name: str | None = None
+    approval_recipient_email: str | None = None
 
     @field_validator("item_type")
     @classmethod
@@ -133,6 +138,11 @@ class PurchaseRequestCreate(BaseModel):
 
 class PurchaseRequestResubmit(PurchaseRequestCreate):
     pass
+
+
+class PurchaseApprovalRecipient(BaseModel):
+    approval_recipient_name: str = Field(min_length=1, max_length=255)
+    approval_recipient_email: str = Field(min_length=3, max_length=255)
 
 
 class PurchaseRequestDecision(BaseModel):
@@ -160,6 +170,19 @@ class PurchaseRequestHistoryResponse(BaseModel):
     performed_by_name: str
     performed_by_email: str
     performed_by_role: str
+    created_at: datetime
+
+
+class PurchaseApprovalEmailActivityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_type: str
+    recipient_name: str | None = None
+    recipient_email: str
+    subject: str
+    delivery_status: str
+    error_message: str | None = None
     created_at: datetime
 
 
@@ -200,6 +223,15 @@ class PurchaseRequestResponse(BaseModel):
     actual_purchase_amount: float | None = None
     purchase_date: date | None = None
     histories: list[PurchaseRequestHistoryResponse] = Field(default_factory=list)
+    approval_recipient_name: str | None = None
+    approval_recipient_email: str | None = None
+    approval_email_status: str | None = None
+    approval_email_sent_at: datetime | None = None
+    approval_email_last_error: str | None = None
+    approval_token_expires_at: datetime | None = None
+    approval_token_consumed_at: datetime | None = None
+    decision_source: str | None = None
+    email_activity: list[PurchaseApprovalEmailActivityResponse] = Field(default_factory=list)
 
 
 class PurchaseCreate(BaseModel):
