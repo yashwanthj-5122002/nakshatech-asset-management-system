@@ -9,6 +9,7 @@ import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { feature as topojsonFeature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
 import '../login-geo-tour.css'
+import '../login-globe-perimeter.css'
 
 type PolygonGeometry = {
   type: 'Polygon' | 'MultiPolygon'
@@ -48,8 +49,6 @@ type NetworkArc = {
 const DEFAULT_POV = { lat: 18, lng: 58, altitude: 1.56 }
 const MOBILE_POV = { lat: 17, lng: 66, altitude: 2.08 }
 
-// Decorative coordinates only. These do not represent live NakshaTech locations,
-// asset routes, customers, or operational telemetry.
 const NETWORK_NODES: NetworkNode[] = [
   { id: 'n1', lat: 37.8, lng: -122.4 },
   { id: 'n2', lat: 51.5, lng: -0.1 },
