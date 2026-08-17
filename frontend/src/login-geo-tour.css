@@ -7,6 +7,37 @@
   isolation: isolate;
 }
 
+.naksha-geo-tour::before,
+.naksha-geo-tour::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(54px);
+  opacity: .30;
+  mix-blend-mode: screen;
+}
+
+.naksha-geo-tour::before {
+  z-index: 0;
+  left: 8%;
+  top: 9%;
+  width: 48%;
+  height: 48%;
+  background: radial-gradient(circle at 50% 50%, rgba(26, 193, 224, .20), rgba(8, 79, 152, .08) 52%, transparent 74%);
+  animation: naksha-aurora-drift-a 18s ease-in-out infinite alternate;
+}
+
+.naksha-geo-tour::after {
+  z-index: 0;
+  left: 22%;
+  bottom: 3%;
+  width: 42%;
+  height: 34%;
+  background: radial-gradient(circle at 50% 50%, rgba(26, 115, 205, .14), rgba(12, 54, 118, .06) 56%, transparent 76%);
+  animation: naksha-aurora-drift-b 22s ease-in-out infinite alternate;
+}
+
 .naksha-geo-tour-stage {
   position: absolute;
   inset: 0;
@@ -27,9 +58,9 @@
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 42% 49%, rgba(19, 191, 224, .10), transparent 24%),
-    radial-gradient(circle at 42% 51%, rgba(6, 99, 162, .10), transparent 43%),
-    linear-gradient(90deg, rgba(1, 11, 23, .06), transparent 56%, rgba(1, 10, 20, .16));
+    radial-gradient(circle at 42% 49%, rgba(19, 191, 224, .09), transparent 24%),
+    radial-gradient(circle at 42% 51%, rgba(6, 99, 162, .085), transparent 43%),
+    linear-gradient(90deg, rgba(1, 11, 23, .045), transparent 56%, rgba(1, 10, 20, .14));
 }
 
 .naksha-particle-globe-haze {
@@ -40,11 +71,11 @@
   width: 64%;
   height: 84%;
   pointer-events: none;
-  opacity: .78;
+  opacity: .72;
   background:
-    radial-gradient(circle at 48% 50%, rgba(41, 222, 239, .09), transparent 36%),
-    radial-gradient(circle at 46% 51%, rgba(13, 102, 171, .08), transparent 58%);
-  filter: blur(19px);
+    radial-gradient(circle at 48% 50%, rgba(41, 222, 239, .075), transparent 36%),
+    radial-gradient(circle at 46% 51%, rgba(13, 102, 171, .07), transparent 58%);
+  filter: blur(21px);
   transform: translateZ(0);
 }
 
@@ -54,8 +85,8 @@
   transform: translate3d(0, var(--globe-entry-y), 0) scale(.985);
   transform-origin: 42% 52%;
   filter:
-    drop-shadow(0 30px 56px rgba(0, 0, 0, .38))
-    drop-shadow(0 0 26px rgba(22, 179, 220, .08));
+    drop-shadow(0 30px 56px rgba(0, 0, 0, .36))
+    drop-shadow(0 0 24px rgba(22, 179, 220, .07));
   transition:
     opacity .72s ease,
     transform .9s cubic-bezier(.2, .78, .2, 1),
@@ -68,17 +99,39 @@
 }
 
 .naksha-particle-globe.is-ready .naksha-particle-globe-haze {
-  animation: naksha-particle-haze 8s ease-in-out infinite alternate;
+  animation: naksha-particle-haze 10s ease-in-out infinite alternate;
 }
 
 @keyframes naksha-particle-haze {
   from {
-    opacity: .68;
-    transform: translate3d(-4px, 2px, 0) scale(.99);
+    opacity: .62;
+    transform: translate3d(-3px, 2px, 0) scale(.992);
   }
   to {
-    opacity: .86;
-    transform: translate3d(5px, -3px, 0) scale(1.015);
+    opacity: .79;
+    transform: translate3d(4px, -3px, 0) scale(1.012);
+  }
+}
+
+@keyframes naksha-aurora-drift-a {
+  from {
+    transform: translate3d(-2%, 1%, 0) scale(.98);
+    opacity: .22;
+  }
+  to {
+    transform: translate3d(5%, -3%, 0) scale(1.05);
+    opacity: .34;
+  }
+}
+
+@keyframes naksha-aurora-drift-b {
+  from {
+    transform: translate3d(2%, 2%, 0) scale(1.01);
+    opacity: .18;
+  }
+  to {
+    transform: translate3d(-4%, -2%, 0) scale(1.06);
+    opacity: .29;
   }
 }
 
@@ -94,12 +147,18 @@
     opacity: .72;
   }
 
+  .naksha-geo-tour::before,
+  .naksha-geo-tour::after {
+    opacity: .16;
+    filter: blur(44px);
+  }
+
   .naksha-particle-globe-haze {
     left: -5%;
     top: 4%;
     width: 110%;
     height: 76%;
-    opacity: .42;
+    opacity: .38;
   }
 
   .naksha-particle-globe-stage {
@@ -124,6 +183,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .naksha-geo-tour::before,
+  .naksha-geo-tour::after,
   .naksha-particle-globe-stage,
   .naksha-particle-globe-haze {
     animation: none !important;
