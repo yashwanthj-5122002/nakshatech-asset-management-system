@@ -1,0 +1,182 @@
+.naksha-ambient-perimeter {
+  position: absolute;
+  z-index: 2;
+  left: 42%;
+  top: 51%;
+  width: min(42vw, 640px);
+  aspect-ratio: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(.97);
+  transition: opacity .6s ease .32s, transform .8s cubic-bezier(.2,.75,.2,1) .28s;
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-perimeter {
+  opacity: .92;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.naksha-ambient-perimeter-arc,
+.naksha-ambient-perimeter-ticks,
+.naksha-ambient-telemetry-marker {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.naksha-ambient-perimeter-arc {
+  border: 1px solid transparent;
+  filter: drop-shadow(0 0 6px rgba(55,218,238,.11));
+}
+
+.naksha-ambient-perimeter-arc--north {
+  border-top-color: rgba(92,232,245,.30);
+  border-right-color: rgba(92,232,245,.07);
+  transform: rotate(-14deg);
+  clip-path: inset(0 0 54% 0);
+}
+
+.naksha-ambient-perimeter-arc--east {
+  inset: 3.5%;
+  border-right-color: rgba(76,220,239,.24);
+  border-bottom-color: rgba(76,220,239,.055);
+  transform: rotate(8deg);
+  clip-path: inset(12% 0 0 55%);
+}
+
+.naksha-ambient-perimeter-arc--south {
+  inset: 7%;
+  border-bottom-color: rgba(87,225,241,.16);
+  border-left-color: rgba(87,225,241,.04);
+  transform: rotate(-9deg);
+  clip-path: inset(54% 40% 0 0);
+}
+
+.naksha-ambient-perimeter-ticks {
+  inset: -2.5%;
+  opacity: .36;
+  background: repeating-conic-gradient(
+    from 2deg,
+    rgba(125,239,248,.44) 0deg 0.35deg,
+    transparent 0.35deg 5.4deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 0 94%, #000 94.3% 95.1%, transparent 95.4%);
+  mask: radial-gradient(circle, transparent 0 94%, #000 94.3% 95.1%, transparent 95.4%);
+  animation: naksha-perimeter-drift 38s linear infinite;
+}
+
+.naksha-ambient-telemetry-marker {
+  animation: naksha-telemetry-sweep 14s linear infinite;
+}
+
+.naksha-ambient-telemetry-marker::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b7fbff;
+  box-shadow: 0 0 0 4px rgba(77,226,241,.08), 0 0 14px rgba(77,226,241,.55);
+  transform: translateX(-50%);
+}
+
+.naksha-ambient-telemetry-marker > i {
+  position: absolute;
+  left: 50%;
+  top: -14px;
+  width: 1px;
+  height: 12px;
+  background: linear-gradient(rgba(138,244,252,.78), transparent);
+  transform: translateX(-50%);
+}
+
+.naksha-ambient-cardinal {
+  position: absolute;
+  color: rgba(171,228,238,.32);
+  font-size: .46rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-shadow: 0 0 9px rgba(65,210,233,.12);
+}
+
+.naksha-ambient-cardinal--north {
+  left: 50%;
+  top: -18px;
+  transform: translateX(-50%);
+}
+
+.naksha-ambient-cardinal--east {
+  right: -18px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.naksha-ambient-network-label {
+  position: absolute;
+  z-index: 5;
+  left: 42%;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  opacity: 0;
+  color: rgba(169,209,224,.38);
+  font-size: .48rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px);
+  transition: opacity .55s ease, transform .55s cubic-bezier(.2,.75,.2,1);
+}
+
+.naksha-ambient-network-label i {
+  width: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(55,201,226,.32), transparent);
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-network-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: .9s;
+}
+
+/* Retire the previous full ellipse orbit treatment. */
+.naksha-ambient-orbits,
+.naksha-ambient-orbit,
+.naksha-ambient-orbit-label {
+  display: none !important;
+}
+
+@keyframes naksha-perimeter-drift {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes naksha-telemetry-sweep {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1420px) and (min-width: 861px) {
+  .naksha-ambient-perimeter,
+  .naksha-ambient-network-label { left: 38%; }
+  .naksha-ambient-perimeter { width: min(45vw, 600px); }
+}
+
+@media (max-width: 1100px) and (min-width: 861px) {
+  .naksha-ambient-cardinal { display: none; }
+  .naksha-ambient-perimeter-ticks { opacity: .24; }
+}
+
+@media (max-width: 860px) {
+  .naksha-ambient-perimeter { display: none; }
+  .naksha-ambient-network-label { left: 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .naksha-ambient-perimeter-ticks,
+  .naksha-ambient-telemetry-marker {
+    animation: none !important;
+  }
+}
