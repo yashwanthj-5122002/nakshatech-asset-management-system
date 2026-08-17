@@ -265,10 +265,14 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
         />
       </div>
 
-      <div className="naksha-ambient-orbits" aria-hidden="true">
-        <span className="naksha-ambient-orbit naksha-ambient-orbit--outer"><i /></span>
-        <span className="naksha-ambient-orbit naksha-ambient-orbit--mid"><i /></span>
-        <span className="naksha-ambient-orbit naksha-ambient-orbit--inner"><i /></span>
+      <div className="naksha-ambient-perimeter" aria-hidden="true">
+        <span className="naksha-ambient-perimeter-arc naksha-ambient-perimeter-arc--north" />
+        <span className="naksha-ambient-perimeter-arc naksha-ambient-perimeter-arc--east" />
+        <span className="naksha-ambient-perimeter-arc naksha-ambient-perimeter-arc--south" />
+        <span className="naksha-ambient-perimeter-ticks" />
+        <span className="naksha-ambient-telemetry-marker"><i /></span>
+        <span className="naksha-ambient-cardinal naksha-ambient-cardinal--north">N</span>
+        <span className="naksha-ambient-cardinal naksha-ambient-cardinal--east">E</span>
       </div>
 
       <div className="naksha-ambient-globe-vignette" />
@@ -299,7 +303,7 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
         </div>
       </div>
 
-      <div className="naksha-ambient-orbit-label" aria-hidden="true">
+      <div className="naksha-ambient-network-label" aria-hidden="true">
         <span>GLOBAL</span>
         <i />
         <span>CONNECTED</span>
