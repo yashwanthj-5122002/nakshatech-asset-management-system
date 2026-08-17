@@ -211,7 +211,7 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
   return (
     <div
       ref={hostRef}
-      className={`naksha-geo-tour naksha-ambient-globe${pointerActive ? ' is-pointer-active' : ''}`}
+      className={`naksha-geo-tour naksha-ambient-globe${ready ? ' is-ready' : ''}${pointerActive ? ' is-pointer-active' : ''}`}
       aria-hidden="true"
     >
       <div className="naksha-geo-tour-stage naksha-ambient-globe-stage">
@@ -265,6 +265,12 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
         />
       </div>
 
+      <div className="naksha-ambient-orbits" aria-hidden="true">
+        <span className="naksha-ambient-orbit naksha-ambient-orbit--outer"><i /></span>
+        <span className="naksha-ambient-orbit naksha-ambient-orbit--mid"><i /></span>
+        <span className="naksha-ambient-orbit naksha-ambient-orbit--inner"><i /></span>
+      </div>
+
       <div className="naksha-ambient-globe-vignette" />
       <div className="naksha-ambient-scan" />
 
@@ -275,6 +281,12 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
         onPointerMove={movePointer}
         onPointerLeave={resetPointer}
       >
+        <span className="naksha-ambient-inspection-lens">
+          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--top" />
+          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--right" />
+          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--bottom" />
+          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--left" />
+        </span>
         <span className="naksha-ambient-cursor" />
         <span className="naksha-ambient-cursor-trail" />
       </div>
