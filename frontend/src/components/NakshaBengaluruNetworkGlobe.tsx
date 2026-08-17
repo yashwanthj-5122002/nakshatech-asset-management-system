@@ -32,7 +32,12 @@ type IndiaStatePolygon = BaseGeoFeature & {
   isIndiaState: true
 }
 
-type GlobePolygon = CountryPolygon | IndiaStatePolygon
+type IndiaNationalBoundaryPolygon = BaseGeoFeature & {
+  displayName: string
+  isIndiaNationalBoundary: true
+}
+
+type GlobePolygon = CountryPolygon | IndiaStatePolygon | IndiaNationalBoundaryPolygon
 
 type GlobePov = {
   lat: number
@@ -71,6 +76,7 @@ const BENGALURU = {
 }
 
 const INDIA_STATES_RENDER_URL = '/data/india-states-globe.b64'
+const INDIA_NATIONAL_BOUNDARY_RENDER_URL = '/data/india-national-boundary-globe.b64'
 const EXPECTED_INDIA_STATE_COUNT = 36
 
 const NETWORK_SOURCES: NetworkNode[] = [
@@ -131,7 +137,11 @@ function isIndiaStatePolygon(feature: GlobePolygon): feature is IndiaStatePolygo
   return 'isIndiaState' in feature && feature.isIndiaState === true
 }
 
-async function decodeIndiaStateRenderData(encoded: string): Promise<GeoFeatureCollection> {
+function isIndiaNationalBoundaryPolygon(feature: GlobePolygon): feature is IndiaNationalBoundaryPolygon {
+  return 'isIndiaNationalBoundary' in feature && feature.isIndiaNationalBoundary === true
+}
+
+async function decodeCompressedGeoJson(encoded: string, expectedFeatureCount: number): Promise<GeoFeatureCollection> {
   const binary = window.atob(encoded.trim())
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
   const decompressionStream = new DecompressionStream('gzip')
@@ -142,9 +152,9 @@ async function decodeIndiaStateRenderData(encoded: string): Promise<GeoFeatureCo
   if (
     parsed.type !== 'FeatureCollection'
     || !Array.isArray(parsed.features)
-    || parsed.features.length !== EXPECTED_INDIA_STATE_COUNT
+    || parsed.features.length !== expectedFeatureCount
   ) {
-    throw new Error('Invalid India state map data')
+    throw new Error('Invalid India map data')
   }
 
   return parsed
@@ -159,6 +169,7 @@ export function NakshaBengaluruNetworkGlobe() {
   const [coarsePointer, setCoarsePointer] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
   const [indiaStates, setIndiaStates] = useState<IndiaStatePolygon[]>([])
+  const [indiaNationalBoundary, setIndiaNationalBoundary] = useState<IndiaNationalBoundaryPolygon | null>(null)
 
   const countries = useMemo<CountryPolygon[]>(() => {
     const topology = worldAtlas as unknown as { objects: { countries: unknown } }
@@ -177,24 +188,37 @@ export function NakshaBengaluruNetworkGlobe() {
 
   const polygons = useMemo<GlobePolygon[]>(() => {
     if (!indiaStates.length) return countries
+
+    const indiaLayers: GlobePolygon[] = [...indiaStates]
+    if (indiaNationalBoundary) indiaLayers.push(indiaNationalBoundary)
+
     return [
       ...countries.filter(country => !isIndia(country)),
-      ...indiaStates,
+      ...indiaLayers,
     ]
-  }, [countries, indiaStates])
+  }, [countries, indiaNationalBoundary, indiaStates])
 
   useEffect(() => {
     let cancelled = false
 
-    void fetch(INDIA_STATES_RENDER_URL, { cache: 'force-cache' })
-      .then(response => {
-        if (!response.ok) throw new Error(`India state map returned HTTP ${response.status}`)
-        return response.text()
-      })
-      .then(decodeIndiaStateRenderData)
-      .then(collection => {
+    void Promise.all([
+      fetch(INDIA_STATES_RENDER_URL, { cache: 'force-cache' })
+        .then(response => {
+          if (!response.ok) throw new Error(`India state map returned HTTP ${response.status}`)
+          return response.text()
+        })
+        .then(encoded => decodeCompressedGeoJson(encoded, EXPECTED_INDIA_STATE_COUNT)),
+      fetch(INDIA_NATIONAL_BOUNDARY_RENDER_URL, { cache: 'force-cache' })
+        .then(response => {
+          if (!response.ok) throw new Error(`India national boundary returned HTTP ${response.status}`)
+          return response.text()
+        })
+        .then(encoded => decodeCompressedGeoJson(encoded, 1)),
+    ])
+      .then(([stateCollection, nationalCollection]) => {
         if (cancelled) return
-        const states = collection.features
+
+        const states = stateCollection.features
           .filter(item => isPolygonGeometry(item.geometry))
           .map<IndiaStatePolygon>(item => ({
             ...item,
@@ -203,13 +227,24 @@ export function NakshaBengaluruNetworkGlobe() {
             isIndiaState: true,
           }))
 
-        if (states.length !== EXPECTED_INDIA_STATE_COUNT) {
-          throw new Error('India state map is incomplete')
+        const nationalFeature = nationalCollection.features.find(item => isPolygonGeometry(item.geometry))
+        if (states.length !== EXPECTED_INDIA_STATE_COUNT || !nationalFeature) {
+          throw new Error('India map data is incomplete')
         }
+
         setIndiaStates(states)
+        setIndiaNationalBoundary({
+          ...nationalFeature,
+          properties: nationalFeature.properties ?? {},
+          displayName: 'India national boundary',
+          isIndiaNationalBoundary: true,
+        })
       })
       .catch(() => {
-        if (!cancelled) setIndiaStates([])
+        if (!cancelled) {
+          setIndiaStates([])
+          setIndiaNationalBoundary(null)
+        }
       })
 
     return () => {
@@ -333,15 +368,29 @@ export function NakshaBengaluruNetworkGlobe() {
   }, [])
 
   const polygonCapColor = useCallback((polygon: GlobePolygon) => {
-    if (isIndiaStatePolygon(polygon)) return 'rgba(10, 116, 157, .46)'
+    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(21, 201, 228, .055)'
+    if (isIndiaStatePolygon(polygon)) return 'rgba(10, 116, 157, .42)'
     if (isIndia(polygon as CountryPolygon)) return 'rgba(11, 138, 180, .40)'
     return 'rgba(5, 36, 62, .72)'
   }, [])
 
+  const polygonSideColor = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(28, 207, 235, .16)'
+    if (isIndiaStatePolygon(polygon)) return 'rgba(3, 47, 68, .20)'
+    return 'rgba(2, 21, 38, .30)'
+  }, [])
+
   const polygonStrokeColor = useCallback((polygon: GlobePolygon) => {
-    if (isIndiaStatePolygon(polygon)) return 'rgba(116, 239, 248, .82)'
+    if (isIndiaNationalBoundaryPolygon(polygon)) return '#67f2ff'
+    if (isIndiaStatePolygon(polygon)) return 'rgba(73, 173, 201, .58)'
     if (isIndia(polygon as CountryPolygon)) return '#74eff8'
     return 'rgba(57, 156, 207, .45)'
+  }, [])
+
+  const polygonAltitude = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaNationalBoundaryPolygon(polygon)) return 0.014
+    if (isIndiaStatePolygon(polygon)) return 0.007
+    return 0.0025
   }, [])
 
   return (
@@ -365,9 +414,9 @@ export function NakshaBengaluruNetworkGlobe() {
           animateIn={!reducedMotion}
           polygonsData={polygons}
           polygonCapColor={(polygon: unknown) => polygonCapColor(polygon as GlobePolygon)}
-          polygonSideColor={() => 'rgba(2, 21, 38, .30)'}
+          polygonSideColor={(polygon: unknown) => polygonSideColor(polygon as GlobePolygon)}
           polygonStrokeColor={(polygon: unknown) => polygonStrokeColor(polygon as GlobePolygon)}
-          polygonAltitude={(polygon: unknown) => isIndiaStatePolygon(polygon as GlobePolygon) ? 0.009 : 0.0025}
+          polygonAltitude={(polygon: unknown) => polygonAltitude(polygon as GlobePolygon)}
           polygonCapCurvatureResolution={coarsePointer ? 7 : 4}
           polygonsTransitionDuration={reducedMotion ? 0 : 260}
           arcsData={NETWORK_ARCS}
@@ -420,8 +469,8 @@ export function NakshaBengaluruNetworkGlobe() {
           <div>
             <strong>Bengaluru Global Network</strong>
             <small>
-              {indiaStates.length === EXPECTED_INDIA_STATE_COUNT
-                ? '36 India state / union territory boundaries · global routes converging on Bengaluru'
+              {indiaStates.length === EXPECTED_INDIA_STATE_COUNT && indiaNationalBoundary
+                ? 'India national outline · 36 state / union territory boundaries · global routes converging on Bengaluru'
                 : 'Animated global routes converging on the NakshaTech hub in Bengaluru'}
             </small>
           </div>
@@ -434,7 +483,7 @@ export function NakshaBengaluruNetworkGlobe() {
       </div>
 
       <div className="naksha-login-globe-source">
-        India state geometry from supplied GeoJSON · controlled India-facing sweep
+        India national outline + state geometry from supplied GeoJSON · controlled India-facing sweep
       </div>
     </div>
   )
