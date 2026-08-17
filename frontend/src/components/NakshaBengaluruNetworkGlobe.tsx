@@ -314,13 +314,13 @@ export function NakshaBengaluruNetworkGlobe() {
           pointRadius={(node: unknown) => (node as NetworkNode).kind === 'hub' ? 0.34 : 0.115}
           pointResolution={coarsePointer ? 7 : 10}
           pointsTransitionDuration={0}
-          ringsData={HUB_RING}
+          ringsData={reducedMotion ? [] : HUB_RING}
           ringLat="lat"
           ringLng="lng"
           ringColor={() => (time: number) => `rgba(70, 235, 244, ${Math.max(0, 0.72 - time)})`}
           ringMaxRadius={2.7}
           ringPropagationSpeed={1.35}
-          ringRepeatPeriod={reducedMotion ? 0 : 1450}
+          ringRepeatPeriod={1450}
           labelsData={[BENGALURU]}
           labelLat="lat"
           labelLng="lng"
@@ -341,7 +341,7 @@ export function NakshaBengaluruNetworkGlobe() {
           <span className="naksha-login-globe-pulse" aria-hidden="true" />
           <div>
             <strong>Bengaluru Global Network</strong>
-            <small>Live global routes converging on the NakshaTech hub in Bengaluru</small>
+            <small>Animated global routes converging on the NakshaTech hub in Bengaluru</small>
           </div>
         </div>
       </div>
