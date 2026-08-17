@@ -76,7 +76,11 @@ const BENGALURU = {
 }
 
 const INDIA_STATES_RENDER_URL = '/data/india-states-globe.b64'
-const INDIA_NATIONAL_BOUNDARY_RENDER_URL = '/data/india-national-boundary-globe.b64'
+const INDIA_NATIONAL_BOUNDARY_RENDER_URLS = [
+  '/data/india-national-boundary-osm/part-01.b64',
+  '/data/india-national-boundary-osm/part-02.b64',
+  '/data/india-national-boundary-osm/part-03.b64',
+] as const
 const EXPECTED_INDIA_STATE_COUNT = 36
 
 const NETWORK_SOURCES: NetworkNode[] = [
@@ -160,6 +164,12 @@ async function decodeCompressedGeoJson(encoded: string, expectedFeatureCount: nu
   return parsed
 }
 
+async function fetchText(url: string, label: string): Promise<string> {
+  const response = await fetch(url, { cache: 'force-cache' })
+  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`)
+  return response.text()
+}
+
 export function NakshaBengaluruNetworkGlobe() {
   const globeRef = useRef<GlobeMethods>()
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -202,18 +212,14 @@ export function NakshaBengaluruNetworkGlobe() {
     let cancelled = false
 
     void Promise.all([
-      fetch(INDIA_STATES_RENDER_URL, { cache: 'force-cache' })
-        .then(response => {
-          if (!response.ok) throw new Error(`India state map returned HTTP ${response.status}`)
-          return response.text()
-        })
+      fetchText(INDIA_STATES_RENDER_URL, 'India state map')
         .then(encoded => decodeCompressedGeoJson(encoded, EXPECTED_INDIA_STATE_COUNT)),
-      fetch(INDIA_NATIONAL_BOUNDARY_RENDER_URL, { cache: 'force-cache' })
-        .then(response => {
-          if (!response.ok) throw new Error(`India national boundary returned HTTP ${response.status}`)
-          return response.text()
-        })
-        .then(encoded => decodeCompressedGeoJson(encoded, 1)),
+      Promise.all(
+        INDIA_NATIONAL_BOUNDARY_RENDER_URLS.map((url, index) =>
+          fetchText(url, `India national boundary chunk ${index + 1}`),
+        ),
+      )
+        .then(parts => decodeCompressedGeoJson(parts.join(''), 1)),
     ])
       .then(([stateCollection, nationalCollection]) => {
         if (cancelled) return
@@ -236,7 +242,7 @@ export function NakshaBengaluruNetworkGlobe() {
         setIndiaNationalBoundary({
           ...nationalFeature,
           properties: nationalFeature.properties ?? {},
-          displayName: 'India national boundary',
+          displayName: String(nationalFeature.properties?.name ?? 'India'),
           isIndiaNationalBoundary: true,
         })
       })
@@ -368,14 +374,14 @@ export function NakshaBengaluruNetworkGlobe() {
   }, [])
 
   const polygonCapColor = useCallback((polygon: GlobePolygon) => {
-    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(21, 201, 228, .055)'
+    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(21, 201, 228, .035)'
     if (isIndiaStatePolygon(polygon)) return 'rgba(10, 116, 157, .42)'
     if (isIndia(polygon as CountryPolygon)) return 'rgba(11, 138, 180, .40)'
     return 'rgba(5, 36, 62, .72)'
   }, [])
 
   const polygonSideColor = useCallback((polygon: GlobePolygon) => {
-    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(28, 207, 235, .16)'
+    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(28, 207, 235, .14)'
     if (isIndiaStatePolygon(polygon)) return 'rgba(3, 47, 68, .20)'
     return 'rgba(2, 21, 38, .30)'
   }, [])
@@ -470,7 +476,7 @@ export function NakshaBengaluruNetworkGlobe() {
             <strong>Bengaluru Global Network</strong>
             <small>
               {indiaStates.length === EXPECTED_INDIA_STATE_COUNT && indiaNationalBoundary
-                ? 'India national outline · 36 state / union territory boundaries · global routes converging on Bengaluru'
+                ? 'OSM India national outline · 36 state / union territory boundaries · global routes converging on Bengaluru'
                 : 'Animated global routes converging on the NakshaTech hub in Bengaluru'}
             </small>
           </div>
@@ -483,7 +489,7 @@ export function NakshaBengaluruNetworkGlobe() {
       </div>
 
       <div className="naksha-login-globe-source">
-        India national outline + state geometry from supplied GeoJSON · controlled India-facing sweep
+        India national outline from supplied OSM GeoJSON · 36 state / UT boundaries · controlled India-facing sweep
       </div>
     </div>
   )
