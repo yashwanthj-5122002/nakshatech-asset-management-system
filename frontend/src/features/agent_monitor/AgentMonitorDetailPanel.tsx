@@ -3,7 +3,6 @@ import {
   AppWindow,
   Clock3,
   Cpu,
-  Globe2,
   HardDrive,
   History,
   MemoryStick,
@@ -29,7 +28,7 @@ import type {
   UserUsageResponse,
 } from './agent-monitor-types'
 
-type DetailTab = 'overview' | 'hardware' | 'network' | 'users' | 'switches' | 'software' | 'activity' | 'browser' | 'ports' | 'history'
+type DetailTab = 'overview' | 'hardware' | 'network' | 'users' | 'switches' | 'software' | 'activity' | 'ports' | 'history'
 type ResourceKey = 'inventory' | 'users' | 'sessions' | 'switches' | 'app-summary' | 'mouse-summary' | 'inactivity' | 'ports' | 'boot' | 'heartbeats' | 'events' | 'inventory-history'
 
 interface Props { agentId: string; onClose: () => void }
@@ -42,14 +41,13 @@ const TABS: Array<{ id: DetailTab; label: string; icon: ReactNode }> = [
   { id: 'switches', label: 'User Switches', icon: <History size={15} /> },
   { id: 'software', label: 'Software', icon: <AppWindow size={15} /> },
   { id: 'activity', label: 'Activity', icon: <MousePointer2 size={15} /> },
-  { id: 'browser', label: 'Browser', icon: <Globe2 size={15} /> },
   { id: 'ports', label: 'Ports', icon: <Wifi size={15} /> },
   { id: 'history', label: 'History', icon: <Clock3 size={15} /> },
 ]
 
 const TAB_RESOURCES: Record<DetailTab, ResourceKey[]> = {
   overview: [], hardware: ['inventory'], network: ['inventory'], users: ['users', 'sessions'], switches: ['switches'],
-  software: ['inventory', 'app-summary'], activity: ['app-summary', 'mouse-summary', 'inactivity'], browser: ['inventory'],
+  software: ['inventory', 'app-summary'], activity: ['app-summary', 'mouse-summary', 'inactivity'],
   ports: ['ports'], history: ['boot', 'heartbeats', 'events', 'inventory-history'],
 }
 
@@ -82,10 +80,6 @@ function bytes(value: unknown): string {
 function pick(source: Record<string, unknown>, ...keys: string[]): unknown {
   for (const key of keys) if (source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key]
   return null
-}
-function browserRows(inventory: Record<string, unknown>): Record<string, unknown>[] {
-  const history = record(inventory.browser_history)
-  return Object.entries(history).flatMap(([browser, entries]) => array(entries).map(entry => ({ ...entry, browser })))
 }
 
 function Card({ title, icon, rows }: { title: string; icon: ReactNode; rows: Array<[string, unknown]> }) {
@@ -244,8 +238,6 @@ export function AgentMonitorDetailPanel({ agentId, onClose }: Props) {
           <section className="agent-detail-block"><h3><Clock3 size={18} />Inactivity Reports</h3><SimpleTable rows={(resources.inactivity as PaginatedResponse | undefined)?.items || []} columns={[{ key: 'created_at', label: 'Time', format: 'date' }, { key: 'event_type', label: 'Event' }, { key: 'severity', label: 'Severity' }, { key: 'event_json', label: 'Details' }]} /></section>
         </div>}
 
-        {tab === 'browser' && <section className="agent-detail-block"><h3><Globe2 size={18} />Browser Activity</h3><SimpleTable rows={browserRows(inventory)} columns={[{ key: 'browser', label: 'Browser' }, { key: 'profile_nt_id', label: 'NT ID / Profile' }, { key: 'url', label: 'URL' }, { key: 'title', label: 'Title' }, { key: 'visit_time_utc', label: 'Visited', format: 'date' }]} empty="No Chrome or Edge history has been reported in the latest inventory." /></section>}
-
         {tab === 'ports' && <div className="agent-detail-stack">
           <section className="agent-detail-block"><h3><Wifi size={18} />Current Listening Ports</h3><SimpleTable rows={array(ports.current)} columns={[{ key: 'protocol', label: 'Protocol' }, { key: 'local_address', label: 'Address' }, { key: 'local_port', label: 'Port' }, { key: 'state', label: 'State' }, { key: 'process_name', label: 'Process' }, { key: 'process_id', label: 'PID' }, { key: 'exposure', label: 'Exposure' }]} /></section>
           <section className="agent-detail-block"><h3><History size={18} />Removed Port History</h3><SimpleTable rows={array(ports.removed)} columns={[{ key: 'protocol', label: 'Protocol' }, { key: 'local_address', label: 'Address' }, { key: 'local_port', label: 'Port' }, { key: 'process_name', label: 'Process' }, { key: 'last_detected_at', label: 'Last Detected', format: 'date' }]} /></section>
@@ -271,7 +263,6 @@ function UserUsage({ usage, loading, onClose }: { usage: UserUsageResponse | nul
     <div className="agent-detail-stack">
       <div className="agent-usage-kpis">{Object.entries(summary).slice(0, 8).map(([key, value]) => <div key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{value}</strong></div>)}</div>
       <section className="agent-detail-block"><h3><AppWindow size={18} />Software Usage</h3><SimpleTable rows={usage.software_usage || []} columns={[{ key: 'application_name', label: 'Application' }, { key: 'started_at', label: 'Started', format: 'date' }, { key: 'ended_at', label: 'Ended', format: 'date' }, { key: 'duration_seconds', label: 'Duration (s)' }]} /></section>
-      <section className="agent-detail-block"><h3><Globe2 size={18} />Browser Activity</h3><SimpleTable rows={usage.browser_activity || []} columns={[{ key: 'visit_time_utc', label: 'Visited', format: 'date' }, { key: 'browser', label: 'Browser' }, { key: 'title', label: 'Title' }, { key: 'url', label: 'URL' }]} /></section>
       <section className="agent-detail-block"><h3><MousePointer2 size={18} />Mouse / Inactivity</h3><SimpleTable rows={[...(usage.mouse_activity?.items || []), ...(usage.inactivity_reports || [])]} columns={[{ key: 'created_at', label: 'Time', format: 'date' }, { key: 'application_name', label: 'Application' }, { key: 'event_type', label: 'Event' }, { key: 'total_clicks', label: 'Clicks' }, { key: 'idle_seconds', label: 'Idle Seconds' }]} /></section>
       <section className="agent-detail-block"><h3><Activity size={18} />Running Processes</h3><SimpleTable rows={usage.running_processes || []} columns={[{ key: 'snapshot_at', label: 'Snapshot', format: 'date' }, { key: 'name', label: 'Process' }, { key: 'pid', label: 'PID' }, { key: 'parent_pid', label: 'Parent PID' }, { key: 'session_id', label: 'Session' }]} /></section>
       <section className="agent-detail-block"><h3><Clock3 size={18} />Sessions</h3><SimpleTable rows={usage.sessions || []} columns={[{ key: 'login_time', label: 'Login', format: 'date' }, { key: 'logout_time', label: 'Logout', format: 'date' }, { key: 'session_type', label: 'Type' }, { key: 'connection_type', label: 'Connection' }, { key: 'active_seconds', label: 'Active (s)' }, { key: 'idle_seconds', label: 'Idle (s)' }, { key: 'session_end_reason', label: 'End Reason' }]} /></section>
