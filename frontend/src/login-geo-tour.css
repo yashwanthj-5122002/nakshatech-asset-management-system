@@ -8,7 +8,7 @@
 .naksha-geo-tour-stage {
   position: absolute;
   inset: 0;
-  transition: transform .32s cubic-bezier(.2,.75,.2,1), filter .32s ease;
+  transition: transform .32s cubic-bezier(.2,.75,.2,1), filter .32s ease, opacity .65s ease;
 }
 
 .naksha-geo-tour-stage canvas {
@@ -23,31 +23,140 @@
 }
 
 .naksha-ambient-globe-stage {
+  opacity: 0;
+  transform:
+    translate3d(var(--ambient-shift-x), calc(var(--ambient-shift-y) + 14px), 0)
+    perspective(1200px)
+    rotateX(var(--ambient-tilt-x))
+    rotateY(var(--ambient-tilt-y))
+    scale(.985);
+  transform-origin: 43% 52%;
+  filter: drop-shadow(0 30px 56px rgba(0,0,0,.36));
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-globe-stage {
+  opacity: 1;
   transform:
     translate3d(var(--ambient-shift-x), var(--ambient-shift-y), 0)
     perspective(1200px)
     rotateX(var(--ambient-tilt-x))
-    rotateY(var(--ambient-tilt-y));
-  transform-origin: 43% 52%;
-  filter: drop-shadow(0 30px 56px rgba(0,0,0,.36));
+    rotateY(var(--ambient-tilt-y))
+    scale(1);
 }
 
 .naksha-ambient-globe.is-pointer-active .naksha-ambient-globe-stage {
   filter:
     drop-shadow(0 32px 64px rgba(0,0,0,.42))
-    drop-shadow(0 0 28px rgba(20,183,224,.09));
+    drop-shadow(0 0 30px rgba(20,183,224,.11));
 }
 
 .naksha-ambient-globe-vignette {
   position: absolute;
   inset: 3% 17% 1% 15%;
+  opacity: 0;
   pointer-events: none;
   background:
     radial-gradient(circle at 45% 51%, transparent 0 30%, rgba(5,148,196,.055) 54%, transparent 72%),
     radial-gradient(circle at 45% 51%, rgba(24,207,232,.08), transparent 58%);
   filter: blur(14px);
   mix-blend-mode: screen;
+  transition: opacity .75s ease .2s;
 }
+
+.naksha-ambient-globe.is-ready .naksha-ambient-globe-vignette { opacity: 1; }
+
+.naksha-ambient-orbits {
+  position: absolute;
+  z-index: 2;
+  left: 42%;
+  top: 51%;
+  width: min(43vw, 665px);
+  aspect-ratio: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(.96);
+  transition: opacity .7s ease .42s, transform .9s cubic-bezier(.2,.75,.2,1) .32s;
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-orbits {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.naksha-ambient-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px solid rgba(61,213,236,.14);
+  border-radius: 50%;
+  box-shadow: inset 0 0 24px rgba(35,177,211,.025), 0 0 18px rgba(35,177,211,.035);
+  transform-style: preserve-3d;
+}
+
+.naksha-ambient-orbit::before,
+.naksha-ambient-orbit::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.naksha-ambient-orbit::before {
+  width: 5px;
+  height: 5px;
+  background: #8df6ff;
+  box-shadow: 0 0 12px rgba(89,228,242,.72);
+}
+
+.naksha-ambient-orbit::after {
+  width: 2px;
+  height: 2px;
+  background: rgba(211,252,255,.84);
+  box-shadow: 0 0 9px rgba(86,226,242,.7);
+}
+
+.naksha-ambient-orbit > i {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border-top: 1px solid rgba(104,239,250,.42);
+  border-right: 1px solid transparent;
+  border-bottom: 1px solid rgba(44,165,203,.08);
+  border-left: 1px solid transparent;
+}
+
+.naksha-ambient-orbit--outer {
+  width: 112%;
+  height: 112%;
+  margin: -56%;
+  transform: rotateX(67deg) rotateZ(17deg);
+  animation: naksha-orbit-outer 24s linear infinite;
+}
+
+.naksha-ambient-orbit--mid {
+  width: 96%;
+  height: 96%;
+  margin: -48%;
+  transform: rotateX(74deg) rotateZ(-29deg);
+  animation: naksha-orbit-mid 19s linear infinite reverse;
+}
+
+.naksha-ambient-orbit--inner {
+  width: 82%;
+  height: 82%;
+  margin: -41%;
+  transform: rotateX(61deg) rotateZ(51deg);
+  animation: naksha-orbit-inner 15s linear infinite;
+}
+
+.naksha-ambient-orbit--outer::before { transform: translate(-50%, -50%) translateX(332px); }
+.naksha-ambient-orbit--outer::after { transform: translate(-50%, -50%) translateX(-332px); }
+.naksha-ambient-orbit--mid::before { transform: translate(-50%, -50%) translateX(282px); }
+.naksha-ambient-orbit--mid::after { transform: translate(-50%, -50%) translateX(-282px); }
+.naksha-ambient-orbit--inner::before { transform: translate(-50%, -50%) translateX(238px); }
+.naksha-ambient-orbit--inner::after { transform: translate(-50%, -50%) translateX(-238px); }
 
 .naksha-ambient-scan {
   position: absolute;
@@ -56,11 +165,14 @@
   top: 15%;
   width: min(52vw, 760px);
   height: 2px;
-  opacity: .34;
+  opacity: 0;
   pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(59,220,240,.12) 18%, rgba(92,240,250,.76) 48%, rgba(59,220,240,.12) 80%, transparent);
   box-shadow: 0 0 18px rgba(48,211,235,.18);
-  animation: naksha-ambient-scan 10s cubic-bezier(.42,0,.58,1) infinite;
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-scan {
+  animation: naksha-ambient-scan 10s cubic-bezier(.42,0,.58,1) 1.05s infinite;
 }
 
 .naksha-ambient-globe-hitbox {
@@ -76,12 +188,13 @@
   overflow: hidden;
   background: radial-gradient(
     circle 118px at var(--ambient-glow-x, 50%) var(--ambient-glow-y, 50%),
-    rgba(45,224,240,.075),
-    rgba(45,224,240,.018) 42%,
+    rgba(45,224,240,.085),
+    rgba(45,224,240,.022) 42%,
     transparent 72%
   );
 }
 
+.naksha-ambient-inspection-lens,
 .naksha-ambient-cursor,
 .naksha-ambient-cursor-trail {
   position: absolute;
@@ -93,6 +206,62 @@
   opacity: 0;
   transition: opacity .18s ease;
 }
+
+.naksha-ambient-inspection-lens {
+  width: 104px;
+  height: 104px;
+  border: 1px solid rgba(77,226,241,.26);
+  background:
+    radial-gradient(circle, rgba(68,220,237,.035), transparent 58%),
+    linear-gradient(rgba(100,236,247,.08), rgba(100,236,247,.08)) center/1px 100% no-repeat,
+    linear-gradient(90deg, rgba(100,236,247,.08), rgba(100,236,247,.08)) center/100% 1px no-repeat;
+  box-shadow:
+    inset 0 0 28px rgba(35,193,220,.045),
+    0 0 26px rgba(35,193,220,.055);
+  transition: left .055s linear, top .055s linear, opacity .18s ease, transform .2s ease;
+}
+
+.naksha-ambient-inspection-lens::before,
+.naksha-ambient-inspection-lens::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 1px dashed rgba(95,232,244,.14);
+}
+
+.naksha-ambient-inspection-lens::after {
+  inset: 28px;
+  border-style: solid;
+  border-color: rgba(122,241,249,.12);
+}
+
+.naksha-ambient-lens-tick {
+  position: absolute;
+  display: block;
+  background: rgba(137,245,252,.58);
+  box-shadow: 0 0 8px rgba(84,227,240,.3);
+}
+
+.naksha-ambient-lens-tick--top,
+.naksha-ambient-lens-tick--bottom {
+  left: 50%;
+  width: 1px;
+  height: 10px;
+  transform: translateX(-50%);
+}
+.naksha-ambient-lens-tick--top { top: -5px; }
+.naksha-ambient-lens-tick--bottom { bottom: -5px; }
+
+.naksha-ambient-lens-tick--left,
+.naksha-ambient-lens-tick--right {
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+.naksha-ambient-lens-tick--left { left: -5px; }
+.naksha-ambient-lens-tick--right { right: -5px; }
 
 .naksha-ambient-cursor {
   width: 11px;
@@ -125,9 +294,22 @@
   transition: left .13s ease-out, top .13s ease-out, opacity .22s ease;
 }
 
+.naksha-ambient-globe.is-pointer-active .naksha-ambient-inspection-lens,
 .naksha-ambient-globe.is-pointer-active .naksha-ambient-cursor,
 .naksha-ambient-globe.is-pointer-active .naksha-ambient-cursor-trail {
   opacity: 1;
+}
+
+.naksha-ambient-globe.is-pointer-active .naksha-ambient-inspection-lens {
+  transform: translate(-50%, -50%) scale(1.02);
+  animation: naksha-lens-breathe 2.6s ease-in-out infinite;
+}
+
+.naksha-ambient-status,
+.naksha-ambient-orbit-label {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+  transition: opacity .55s ease, transform .55s cubic-bezier(.2,.75,.2,1);
 }
 
 .naksha-ambient-status {
@@ -135,7 +317,6 @@
   z-index: 5;
   left: 42%;
   bottom: 48px;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -148,6 +329,33 @@
   box-shadow: 0 14px 34px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.025);
   backdrop-filter: blur(13px) saturate(116%);
   pointer-events: none;
+}
+
+.naksha-ambient-orbit-label {
+  position: absolute;
+  z-index: 5;
+  left: 42%;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(169,209,224,.38);
+  font-size: .48rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  pointer-events: none;
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-status {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: .72s;
+}
+
+.naksha-ambient-globe.is-ready .naksha-ambient-orbit-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: .9s;
 }
 
 .naksha-ambient-status > div {
@@ -177,22 +385,6 @@
   animation: naksha-ambient-pulse 2.2s ease-in-out infinite;
 }
 
-.naksha-ambient-orbit-label {
-  position: absolute;
-  z-index: 5;
-  left: 42%;
-  bottom: 20px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: rgba(169,209,224,.38);
-  font-size: .48rem;
-  font-weight: 700;
-  letter-spacing: .14em;
-  pointer-events: none;
-}
-
 .naksha-ambient-orbit-label i {
   width: 18px;
   height: 1px;
@@ -202,6 +394,23 @@
 @keyframes naksha-ambient-pulse {
   0%, 100% { opacity: .58; transform: scale(.86); }
   50% { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes naksha-lens-breathe {
+  0%, 100% { box-shadow: inset 0 0 28px rgba(35,193,220,.045), 0 0 24px rgba(35,193,220,.05); }
+  50% { box-shadow: inset 0 0 34px rgba(35,193,220,.075), 0 0 32px rgba(35,193,220,.08); }
+}
+
+@keyframes naksha-orbit-outer {
+  to { transform: rotateX(67deg) rotateZ(377deg); }
+}
+
+@keyframes naksha-orbit-mid {
+  to { transform: rotateX(74deg) rotateZ(331deg); }
+}
+
+@keyframes naksha-orbit-inner {
+  to { transform: rotateX(61deg) rotateZ(411deg); }
 }
 
 @keyframes naksha-ambient-scan {
@@ -218,12 +427,24 @@
     width: 49vw;
   }
   .naksha-ambient-status,
-  .naksha-ambient-orbit-label { left: 38%; }
+  .naksha-ambient-orbit-label,
+  .naksha-ambient-orbits { left: 38%; }
   .naksha-ambient-scan { left: 13%; }
 }
 
+@media (max-width: 1100px) and (min-width: 861px) {
+  .naksha-ambient-orbits { width: 48vw; }
+  .naksha-ambient-orbit--outer::before,
+  .naksha-ambient-orbit--outer::after,
+  .naksha-ambient-orbit--mid::before,
+  .naksha-ambient-orbit--mid::after,
+  .naksha-ambient-orbit--inner::before,
+  .naksha-ambient-orbit--inner::after { display: none; }
+}
+
 @media (max-width: 860px) {
-  .naksha-ambient-globe-hitbox {
+  .naksha-ambient-globe-hitbox,
+  .naksha-ambient-orbits {
     display: none;
   }
   .naksha-ambient-status,
@@ -242,8 +463,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .naksha-ambient-scan,
-  .naksha-ambient-status-pulse {
-    animation: none;
+  .naksha-ambient-status-pulse,
+  .naksha-ambient-orbit,
+  .naksha-ambient-inspection-lens {
+    animation: none !important;
   }
   .naksha-ambient-scan { display: none; }
 }
