@@ -82,5 +82,14 @@
 .agent-switch-history-toolbar label { min-width:min(500px,65vw); height:40px; display:flex; align-items:center; gap:8px; padding:0 11px; border:1px solid #d9e4eb; border-radius:10px; background:#fff; color:#708196; }
 .agent-switch-history-toolbar input { width:100%; border:0; outline:0; color:#173b5c; background:transparent; }
 .agent-switch-history-table-wrap { margin:16px 18px 24px; width:auto; }
+
+/* Temporary UI-only privacy gate. Browser history continues to be collected and
+   retained by the System Manager backend, but it is intentionally not exposed
+   in Software Team until organizational permission is approved. */
+.agent-detail-tabs button:has(.lucide-globe-2),
+.agent-user-usage-panel .agent-detail-block:has(> h3 > .lucide-globe-2) {
+  display:none;
+}
+
 @media (max-width:900px) { .agent-monitor-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .agent-monitor-toolbar { align-items:stretch; flex-direction:column; } .agent-monitor-actions { align-items:stretch; flex-direction:column; } .agent-monitor-actions label { min-width:0; } .agent-detail-grid { grid-template-columns:1fr; } .agent-usage-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .agent-detail-tabs { top:111px; } .agent-switch-history-toolbar { flex-direction:column; } .agent-switch-history-toolbar label { min-width:0; width:100%; } }
 @media (max-width:560px) { .agent-monitor-stats { grid-template-columns:1fr; } .agent-detail-drawer--expanded,.agent-switch-history-drawer { width:100vw; } .agent-detail-card dl { grid-template-columns:1fr; } .agent-usage-kpis { grid-template-columns:1fr; } .agent-detail-tabs { top:121px; } .agent-detail-content--tabs { padding:12px; } .agent-switch-history-table-wrap { margin:12px; } }
