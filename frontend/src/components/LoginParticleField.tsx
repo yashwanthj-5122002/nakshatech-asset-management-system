@@ -38,6 +38,7 @@ const DEPTH_PARALLAX = [11, 23, 42] as const
 const DEPTH_SPEED = [0.10, 0.18, 0.29] as const
 const DEPTH_ALPHA = [0.30, 0.53, 0.86] as const
 const DEPTH_RADIUS = [0.48, 0.82, 1.22] as const
+const FIELD_RADIUS = [210, 255, 305] as const
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
@@ -183,6 +184,21 @@ export function LoginParticleField() {
       active: false,
     }
 
+    const field = {
+      x: width * 0.42,
+      y: height * 0.5,
+      velocityX: 0,
+      velocityY: 0,
+    }
+
+    const ripple = {
+      active: false,
+      x: 0,
+      y: 0,
+      startedAt: 0,
+      lastTriggeredAt: 0,
+    }
+
     const measureAvoidRect = () => {
       const panel = document.querySelector<HTMLElement>('.final-login-panel')
       canvasRect = canvas.getBoundingClientRect()
@@ -222,6 +238,12 @@ export function LoginParticleField() {
       pointer.lastTargetY = pointer.y
       pointer.velocityX = 0
       pointer.velocityY = 0
+
+      field.x = pointer.x
+      field.y = pointer.y
+      field.velocityX = 0
+      field.velocityY = 0
+      ripple.active = false
       measureAvoidRect()
     }
 
@@ -231,13 +253,26 @@ export function LoginParticleField() {
       const nextX = clamp(event.clientX - canvasRect.left, 0, width)
       const nextY = clamp(event.clientY - canvasRect.top, 0, height)
 
-      pointer.velocityX = pointer.velocityX * 0.55 + (nextX - pointer.lastTargetX) * 0.45
-      pointer.velocityY = pointer.velocityY * 0.55 + (nextY - pointer.lastTargetY) * 0.45
+      pointer.velocityX = pointer.velocityX * 0.52 + (nextX - pointer.lastTargetX) * 0.48
+      pointer.velocityY = pointer.velocityY * 0.52 + (nextY - pointer.lastTargetY) * 0.48
       pointer.lastTargetX = nextX
       pointer.lastTargetY = nextY
       pointer.targetX = nextX
       pointer.targetY = nextY
       pointer.active = true
+
+      const speed = Math.hypot(pointer.velocityX, pointer.velocityY)
+      const now = performance.now()
+      const clearOfPanel = !avoidRect || distanceFromRect(nextX, nextY, avoidRect) > 44
+      const overGlobeSide = !compact && nextX < width * 0.67 && clearOfPanel
+
+      if (overGlobeSide && speed > 8 && now - ripple.lastTriggeredAt > 1150) {
+        ripple.active = true
+        ripple.x = nextX
+        ripple.y = nextY
+        ripple.startedAt = now
+        ripple.lastTriggeredAt = now
+      }
     }
 
     const onPointerLeave = () => {
@@ -256,6 +291,67 @@ export function LoginParticleField() {
       }
     }
 
+    const drawPointerGlow = (cursorSpeed: number) => {
+      if (!pointer.active || reducedMotion || compact) return
+
+      let visibility = 1
+      if (avoidRect) {
+        const distanceToPanel = distanceFromRect(field.x, field.y, avoidRect)
+        if (distanceToPanel === 0) visibility = 0.04
+        else if (distanceToPanel < 120) visibility = 0.12 + (distanceToPanel / 120) * 0.62
+      }
+
+      if (visibility <= 0.04) return
+
+      const glowRadius = 190 + cursorSpeed * 78
+      const glow = context.createRadialGradient(
+        field.x,
+        field.y,
+        0,
+        field.x,
+        field.y,
+        glowRadius,
+      )
+      glow.addColorStop(0, `rgba(81, 226, 243, ${0.050 * visibility})`)
+      glow.addColorStop(0.22, `rgba(30, 190, 225, ${0.035 * visibility})`)
+      glow.addColorStop(0.58, `rgba(16, 118, 194, ${0.018 * visibility})`)
+      glow.addColorStop(1, 'rgba(5, 45, 92, 0)')
+
+      context.save()
+      context.globalCompositeOperation = 'screen'
+      context.fillStyle = glow
+      context.fillRect(
+        field.x - glowRadius,
+        field.y - glowRadius,
+        glowRadius * 2,
+        glowRadius * 2,
+      )
+      context.restore()
+    }
+
+    const drawGlobeRipple = (time: number) => {
+      if (!ripple.active || reducedMotion || compact) return
+
+      const progress = clamp((time - ripple.startedAt) / 920, 0, 1)
+      if (progress >= 1) {
+        ripple.active = false
+        return
+      }
+
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const radius = 24 + eased * 118
+      const alpha = (1 - progress) * 0.055
+
+      context.save()
+      context.globalCompositeOperation = 'lighter'
+      context.beginPath()
+      context.arc(ripple.x, ripple.y, radius, 0, Math.PI * 2)
+      context.strokeStyle = `rgba(82, 222, 241, ${alpha})`
+      context.lineWidth = 0.7 + (1 - progress) * 0.45
+      context.stroke()
+      context.restore()
+    }
+
     const drawFrame = (time: number) => {
       animationFrame = 0
       const delta = clamp((time - lastFrameTime) / 16.667, 0.35, 2.2)
@@ -264,19 +360,42 @@ export function LoginParticleField() {
 
       if (frameNumber % 12 === 0) measureAvoidRect()
 
-      pointer.x += (pointer.targetX - pointer.x) * 0.10
-      pointer.y += (pointer.targetY - pointer.y) * 0.10
-      pointer.velocityX *= 0.90
-      pointer.velocityY *= 0.90
+      pointer.x += (pointer.targetX - pointer.x) * 0.115
+      pointer.y += (pointer.targetY - pointer.y) * 0.115
+      pointer.velocityX *= Math.pow(0.895, delta)
+      pointer.velocityY *= Math.pow(0.895, delta)
+
+      if (!reducedMotion) {
+        const spring = pointer.active ? 0.020 : 0.012
+        field.velocityX += (pointer.x - field.x) * spring * delta
+        field.velocityY += (pointer.y - field.y) * spring * delta
+        const drag = Math.pow(pointer.active ? 0.82 : 0.79, delta)
+        field.velocityX *= drag
+        field.velocityY *= drag
+        field.x += field.velocityX * delta
+        field.y += field.velocityY * delta
+      } else {
+        field.x = pointer.x
+        field.y = pointer.y
+      }
 
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
       context.clearRect(0, 0, width, height)
-      context.globalCompositeOperation = 'lighter'
       context.lineCap = 'round'
 
       const normalizedPointerX = width ? (pointer.x / width) * 2 - 1 : 0
       const normalizedPointerY = height ? (pointer.y / height) * 2 - 1 : 0
-      const cursorSpeed = clamp(Math.hypot(pointer.velocityX, pointer.velocityY) / 28, 0, 1)
+      const cursorSpeed = clamp(Math.hypot(pointer.velocityX, pointer.velocityY) / 26, 0, 1)
+      const rawVelocityLength = Math.hypot(pointer.velocityX, pointer.velocityY)
+      const velocityNormalX = rawVelocityLength > 0.01 ? pointer.velocityX / rawVelocityLength : 0
+      const velocityNormalY = rawVelocityLength > 0.01 ? pointer.velocityY / rawVelocityLength : 0
+      const perpendicularX = -velocityNormalY
+      const perpendicularY = velocityNormalX
+
+      drawPointerGlow(cursorSpeed)
+      drawGlobeRipple(time)
+
+      context.globalCompositeOperation = 'lighter'
 
       for (const particle of particles) {
         const depth = particle.depth
@@ -296,15 +415,30 @@ export function LoginParticleField() {
         let screenY = particle.y - normalizedPointerY * parallax * 0.78 - pointer.velocityY * inertiaScale
 
         if (pointer.active && !reducedMotion) {
-          const dx = screenX - pointer.x
-          const dy = screenY - pointer.y
+          const dx = screenX - field.x
+          const dy = screenY - field.y
           const distance = Math.hypot(dx, dy)
-          const influenceRadius = 118 + depth * 42
+          const influenceRadius = FIELD_RADIUS[depth]
+
           if (distance > 0.01 && distance < influenceRadius) {
-            const influence = 1 - distance / influenceRadius
-            const displacement = influence * influence * (7 + depth * 7.5)
-            screenX += (dx / distance) * displacement
-            screenY += (dy / distance) * displacement
+            const normalizedDistance = distance / influenceRadius
+            const falloff = 1 - normalizedDistance
+            const influence = falloff * falloff * (3 - 2 * falloff)
+            const radialStrength = influence * (5.5 + depth * 8.2) * (0.72 + cursorSpeed * 0.72)
+
+            screenX += (dx / distance) * radialStrength
+            screenY += (dy / distance) * radialStrength
+
+            const wakeStrength = influence * (0.040 + depth * 0.036)
+            screenX -= pointer.velocityX * wakeStrength
+            screenY -= pointer.velocityY * wakeStrength
+
+            if (rawVelocityLength > 0.01) {
+              const side = dx * perpendicularX + dy * perpendicularY >= 0 ? 1 : -1
+              const bendStrength = influence * cursorSpeed * (0.75 + depth * 1.25)
+              screenX += perpendicularX * side * bendStrength
+              screenY += perpendicularY * side * bendStrength
+            }
           }
         }
 
@@ -321,7 +455,7 @@ export function LoginParticleField() {
         }
 
         if (Number.isFinite(particle.previousX) && Number.isFinite(particle.previousY) && !reducedMotion) {
-          const trailAlpha = alpha * (0.035 + depth * 0.020 + cursorSpeed * 0.022)
+          const trailAlpha = alpha * (0.034 + depth * 0.020 + cursorSpeed * 0.024)
           context.beginPath()
           context.moveTo(particle.previousX, particle.previousY)
           context.lineTo(screenX, screenY)
