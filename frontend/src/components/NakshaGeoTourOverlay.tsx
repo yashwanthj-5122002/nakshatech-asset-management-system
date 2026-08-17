@@ -1,15 +1,9 @@
-import {
-  type PointerEvent as ReactPointerEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { feature as topojsonFeature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
+import { LoginParticleField } from './LoginParticleField'
 import '../login-geo-tour.css'
-import '../login-globe-perimeter.css'
 
 type PolygonGeometry = {
   type: 'Polygon' | 'MultiPolygon'
@@ -77,13 +71,10 @@ function isPolygonGeometry(geometry: unknown): geometry is PolygonGeometry {
 export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: () => void }) {
   const globeRef = useRef<GlobeMethods>()
   const hostRef = useRef<HTMLDivElement | null>(null)
-  const hitboxRef = useRef<HTMLDivElement | null>(null)
-  const pointerFrameRef = useRef<number | null>(null)
   const [dimensions, setDimensions] = useState({ width: 1280, height: 760 })
   const [ready, setReady] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
   const [compact, setCompact] = useState(false)
-  const [pointerActive, setPointerActive] = useState(false)
 
   const countries = useMemo<WorldCountry[]>(() => {
     const topology = worldAtlas as unknown as { objects: { countries: unknown } }
@@ -129,7 +120,6 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
       observer.disconnect()
       motionQuery.removeEventListener?.('change', syncPreferences)
       pointerQuery.removeEventListener?.('change', resize)
-      if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current)
     }
   }, [])
 
@@ -145,7 +135,7 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
     controls.enableZoom = false
     controls.enableRotate = false
     controls.autoRotate = !reducedMotion && !compact
-    controls.autoRotateSpeed = 0.24
+    controls.autoRotateSpeed = 0.22
 
     globe.pointOfView(compact ? MOBILE_POV : DEFAULT_POV, reducedMotion ? 0 : 720)
   }, [compact, ready, reducedMotion])
@@ -159,61 +149,17 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
 
-  function resetPointer() {
-    const host = hostRef.current
-    const hitbox = hitboxRef.current
-    if (!host || !hitbox) return
-
-    setPointerActive(false)
-    host.style.setProperty('--ambient-shift-x', '0px')
-    host.style.setProperty('--ambient-shift-y', '0px')
-    host.style.setProperty('--ambient-tilt-x', '0deg')
-    host.style.setProperty('--ambient-tilt-y', '0deg')
-    hitbox.style.setProperty('--ambient-cursor-x', '50%')
-    hitbox.style.setProperty('--ambient-cursor-y', '50%')
-    hitbox.style.setProperty('--ambient-glow-x', '50%')
-    hitbox.style.setProperty('--ambient-glow-y', '50%')
-  }
-
-  function movePointer(event: ReactPointerEvent<HTMLDivElement>) {
-    if (compact || reducedMotion) return
-    const host = hostRef.current
-    const hitbox = hitboxRef.current
-    if (!host || !hitbox) return
-
-    if (pointerFrameRef.current !== null) window.cancelAnimationFrame(pointerFrameRef.current)
-    const clientX = event.clientX
-    const clientY = event.clientY
-
-    pointerFrameRef.current = window.requestAnimationFrame(() => {
-      const rect = hitbox.getBoundingClientRect()
-      const x = Math.max(0, Math.min(rect.width, clientX - rect.left))
-      const y = Math.max(0, Math.min(rect.height, clientY - rect.top))
-      const nx = rect.width ? (x / rect.width) * 2 - 1 : 0
-      const ny = rect.height ? (y / rect.height) * 2 - 1 : 0
-
-      host.style.setProperty('--ambient-shift-x', `${nx * 7}px`)
-      host.style.setProperty('--ambient-shift-y', `${ny * 5}px`)
-      host.style.setProperty('--ambient-tilt-x', `${ny * -0.65}deg`)
-      host.style.setProperty('--ambient-tilt-y', `${nx * 0.85}deg`)
-      hitbox.style.setProperty('--ambient-cursor-x', `${x}px`)
-      hitbox.style.setProperty('--ambient-cursor-y', `${y}px`)
-      hitbox.style.setProperty('--ambient-glow-x', `${x}px`)
-      hitbox.style.setProperty('--ambient-glow-y', `${y}px`)
-      setPointerActive(true)
-      pointerFrameRef.current = null
-    })
-  }
-
-  const visibleRings = reducedMotion ? [] : NETWORK_NODES
-
   return (
     <div
       ref={hostRef}
-      className={`naksha-geo-tour naksha-ambient-globe${ready ? ' is-ready' : ''}${pointerActive ? ' is-pointer-active' : ''}`}
+      className={`naksha-geo-tour naksha-particle-globe${ready ? ' is-ready' : ''}`}
       aria-hidden="true"
     >
-      <div className="naksha-geo-tour-stage naksha-ambient-globe-stage">
+      <LoginParticleField />
+
+      <div className="naksha-particle-globe-haze" />
+
+      <div className="naksha-geo-tour-stage naksha-particle-globe-stage">
         <Globe
           ref={globeRef}
           width={dimensions.width}
@@ -237,77 +183,24 @@ export function NakshaGeoTourOverlay({ onComplete: _onComplete }: { onComplete: 
           arcStartLng="startLng"
           arcEndLat="endLat"
           arcEndLng="endLng"
-          arcColor={() => 'rgba(62, 217, 241, .56)'}
-          arcAltitudeAutoScale={0.22}
-          arcStroke={0.28}
-          arcDashLength={0.28}
-          arcDashGap={0.72}
-          arcDashAnimateTime={reducedMotion ? 0 : 4200}
+          arcColor={() => 'rgba(62, 217, 241, .50)'}
+          arcAltitudeAutoScale={0.20}
+          arcStroke={0.24}
+          arcDashLength={0.24}
+          arcDashGap={0.76}
+          arcDashAnimateTime={reducedMotion ? 0 : 4800}
           arcsTransitionDuration={0}
           pointsData={NETWORK_NODES}
           pointLat="lat"
           pointLng="lng"
-          pointColor={() => 'rgba(220, 252, 255, .96)'}
+          pointColor={() => 'rgba(220, 252, 255, .94)'}
           pointAltitude={0.012}
-          pointRadius={0.11}
+          pointRadius={0.095}
           pointResolution={8}
-          ringsData={visibleRings}
-          ringLat="lat"
-          ringLng="lng"
-          ringColor={() => 'rgba(62, 225, 241, .42)'}
-          ringMaxRadius={2.2}
-          ringPropagationSpeed={1.25}
-          ringRepeatPeriod={2200}
           onGlobeReady={() => setReady(true)}
           enablePointerInteraction={false}
           showPointerCursor={false}
         />
-      </div>
-
-      <div className="naksha-ambient-perimeter" aria-hidden="true">
-        <span className="naksha-ambient-perimeter-arc naksha-ambient-perimeter-arc--north" />
-        <span className="naksha-ambient-perimeter-arc naksha-ambient-perimeter-arc--east" />
-        <span className="naksha-ambient-perimeter-arc naksha-ambient-perimeter-arc--south" />
-        <span className="naksha-ambient-perimeter-ticks" />
-        <span className="naksha-ambient-telemetry-marker"><i /></span>
-        <span className="naksha-ambient-cardinal naksha-ambient-cardinal--north">N</span>
-        <span className="naksha-ambient-cardinal naksha-ambient-cardinal--east">E</span>
-      </div>
-
-      <div className="naksha-ambient-globe-vignette" />
-      <div className="naksha-ambient-scan" />
-
-      <div
-        ref={hitboxRef}
-        className="naksha-ambient-globe-hitbox"
-        onPointerEnter={() => !compact && setPointerActive(true)}
-        onPointerMove={movePointer}
-        onPointerLeave={resetPointer}
-      >
-        <span className="naksha-ambient-inspection-lens">
-          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--top" />
-          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--right" />
-          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--bottom" />
-          <i className="naksha-ambient-lens-tick naksha-ambient-lens-tick--left" />
-        </span>
-        <span className="naksha-ambient-cursor" />
-        <span className="naksha-ambient-cursor-trail" />
-      </div>
-
-      <div className="naksha-ambient-status">
-        <span className="naksha-ambient-status-pulse" />
-        <div>
-          <strong>NAKSHA DIGITAL ASSET NETWORK</strong>
-          <small>Interactive ambient visualization</small>
-        </div>
-      </div>
-
-      <div className="naksha-ambient-network-label" aria-hidden="true">
-        <span>GLOBAL</span>
-        <i />
-        <span>CONNECTED</span>
-        <i />
-        <span>CONTROLLED</span>
       </div>
     </div>
   )
