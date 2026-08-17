@@ -96,9 +96,16 @@ services:
       NAKSHA_COPILOT_MAX_OUTPUT_TOKENS: ${NAKSHA_COPILOT_MAX_OUTPUT_TOKENS:-900}
 
       AGENT_MONITOR_ENABLED: ${AGENT_MONITOR_ENABLED:-false}
+      # Local Asset Management runs in Docker while the authoritative v1.5
+      # System Manager backend is published on the Windows host at port 8000.
+      # Prefer that backend so the monitor and localhost:3001 System Manager UI
+      # always read the same live database. Set this explicitly to override.
+      AGENT_MONITOR_PREFERRED_BASE_URL: ${AGENT_MONITOR_PREFERRED_BASE_URL:-http://host.docker.internal:8000}
       AGENT_MONITOR_BASE_URL: ${AGENT_MONITOR_BASE_URL:-}
       AGENT_MONITOR_ADMIN_KEY: ${AGENT_MONITOR_ADMIN_KEY:-}
 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8100:8000"
     volumes:
