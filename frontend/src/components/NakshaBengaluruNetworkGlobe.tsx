@@ -27,6 +27,13 @@ type CountryPolygon = BaseGeoFeature & {
   displayName: string
 }
 
+type IndiaStatePolygon = BaseGeoFeature & {
+  displayName: string
+  isIndiaState: true
+}
+
+type GlobePolygon = CountryPolygon | IndiaStatePolygon
+
 type GlobePov = {
   lat: number
   lng: number
@@ -63,6 +70,9 @@ const BENGALURU = {
   kind: 'hub' as const,
 }
 
+const INDIA_STATES_RENDER_URL = '/data/india-states-globe.b64'
+const EXPECTED_INDIA_STATE_COUNT = 36
+
 const NETWORK_SOURCES: NetworkNode[] = [
   { id: 'san-francisco', name: 'San Francisco', lat: 37.7749, lng: -122.4194, kind: 'source' },
   { id: 'new-york', name: 'New York', lat: 40.7128, lng: -74.0060, kind: 'source' },
@@ -92,10 +102,10 @@ const HUB_RING = [{ lat: BENGALURU.lat, lng: BENGALURU.lng }]
 
 const DESKTOP_POV: GlobePov = { lat: 14.8, lng: BENGALURU.lng, altitude: 1.52 }
 const MOBILE_POV: GlobePov = { lat: 15.5, lng: BENGALURU.lng, altitude: 2.02 }
-const SWEEP_MAX_LNG = 16
-const SWEEP_MAX_LAT = 2.1
-const POINTER_MAX_LNG = 5.5
-const POINTER_MAX_LAT = 2.8
+const SWEEP_MAX_LNG = 11
+const SWEEP_MAX_LAT = 1.6
+const POINTER_MAX_LNG = 3.5
+const POINTER_MAX_LAT = 2.2
 const SWEEP_PERIOD_MS = 18000
 
 function isPolygonGeometry(geometry: BaseGeoFeature['geometry'] | undefined): geometry is PolygonGeometry {
@@ -117,6 +127,29 @@ function isIndia(feature: CountryPolygon) {
   return countryId(feature) === '356'
 }
 
+function isIndiaStatePolygon(feature: GlobePolygon): feature is IndiaStatePolygon {
+  return 'isIndiaState' in feature && feature.isIndiaState === true
+}
+
+async function decodeIndiaStateRenderData(encoded: string): Promise<GeoFeatureCollection> {
+  const binary = window.atob(encoded.trim())
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+  const decompressionStream = new DecompressionStream('gzip')
+  const stream = new Blob([bytes]).stream().pipeThrough(decompressionStream)
+  const json = await new Response(stream).text()
+  const parsed = JSON.parse(json) as GeoFeatureCollection
+
+  if (
+    parsed.type !== 'FeatureCollection'
+    || !Array.isArray(parsed.features)
+    || parsed.features.length !== EXPECTED_INDIA_STATE_COUNT
+  ) {
+    throw new Error('Invalid India state map data')
+  }
+
+  return parsed
+}
+
 export function NakshaBengaluruNetworkGlobe() {
   const globeRef = useRef<GlobeMethods>()
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -125,6 +158,7 @@ export function NakshaBengaluruNetworkGlobe() {
   const [ready, setReady] = useState(false)
   const [coarsePointer, setCoarsePointer] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(false)
+  const [indiaStates, setIndiaStates] = useState<IndiaStatePolygon[]>([])
 
   const countries = useMemo<CountryPolygon[]>(() => {
     const topology = worldAtlas as unknown as { objects: { countries: unknown } }
@@ -139,6 +173,48 @@ export function NakshaBengaluruNetworkGlobe() {
         ...item,
         displayName: String(item.properties?.name ?? 'Country'),
       }))
+  }, [])
+
+  const polygons = useMemo<GlobePolygon[]>(() => {
+    if (!indiaStates.length) return countries
+    return [
+      ...countries.filter(country => !isIndia(country)),
+      ...indiaStates,
+    ]
+  }, [countries, indiaStates])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void fetch(INDIA_STATES_RENDER_URL, { cache: 'force-cache' })
+      .then(response => {
+        if (!response.ok) throw new Error(`India state map returned HTTP ${response.status}`)
+        return response.text()
+      })
+      .then(decodeIndiaStateRenderData)
+      .then(collection => {
+        if (cancelled) return
+        const states = collection.features
+          .filter(item => isPolygonGeometry(item.geometry))
+          .map<IndiaStatePolygon>(item => ({
+            ...item,
+            properties: item.properties ?? {},
+            displayName: String(item.properties?.st_nm ?? 'India'),
+            isIndiaState: true,
+          }))
+
+        if (states.length !== EXPECTED_INDIA_STATE_COUNT) {
+          throw new Error('India state map is incomplete')
+        }
+        setIndiaStates(states)
+      })
+      .catch(() => {
+        if (!cancelled) setIndiaStates([])
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -256,13 +332,15 @@ export function NakshaBengaluruNetworkGlobe() {
     pointerOffsetRef.current = { lat: 0, lng: 0 }
   }, [])
 
-  const polygonCapColor = useCallback((polygon: CountryPolygon) => {
-    if (isIndia(polygon)) return 'rgba(11, 138, 180, .40)'
+  const polygonCapColor = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaStatePolygon(polygon)) return 'rgba(10, 116, 157, .46)'
+    if (isIndia(polygon as CountryPolygon)) return 'rgba(11, 138, 180, .40)'
     return 'rgba(5, 36, 62, .72)'
   }, [])
 
-  const polygonStrokeColor = useCallback((polygon: CountryPolygon) => {
-    if (isIndia(polygon)) return '#74eff8'
+  const polygonStrokeColor = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaStatePolygon(polygon)) return 'rgba(116, 239, 248, .82)'
+    if (isIndia(polygon as CountryPolygon)) return '#74eff8'
     return 'rgba(57, 156, 207, .45)'
   }, [])
 
@@ -285,11 +363,11 @@ export function NakshaBengaluruNetworkGlobe() {
           atmosphereAltitude={0.13}
           rendererConfig={{ antialias: !coarsePointer, alpha: true }}
           animateIn={!reducedMotion}
-          polygonsData={countries}
-          polygonCapColor={(polygon: unknown) => polygonCapColor(polygon as CountryPolygon)}
+          polygonsData={polygons}
+          polygonCapColor={(polygon: unknown) => polygonCapColor(polygon as GlobePolygon)}
           polygonSideColor={() => 'rgba(2, 21, 38, .30)'}
-          polygonStrokeColor={(polygon: unknown) => polygonStrokeColor(polygon as CountryPolygon)}
-          polygonAltitude={(polygon: unknown) => isIndia(polygon as CountryPolygon) ? 0.009 : 0.0025}
+          polygonStrokeColor={(polygon: unknown) => polygonStrokeColor(polygon as GlobePolygon)}
+          polygonAltitude={(polygon: unknown) => isIndiaStatePolygon(polygon as GlobePolygon) ? 0.009 : 0.0025}
           polygonCapCurvatureResolution={coarsePointer ? 7 : 4}
           polygonsTransitionDuration={reducedMotion ? 0 : 260}
           arcsData={NETWORK_ARCS}
@@ -341,7 +419,11 @@ export function NakshaBengaluruNetworkGlobe() {
           <span className="naksha-login-globe-pulse" aria-hidden="true" />
           <div>
             <strong>Bengaluru Global Network</strong>
-            <small>Animated global routes converging on the NakshaTech hub in Bengaluru</small>
+            <small>
+              {indiaStates.length === EXPECTED_INDIA_STATE_COUNT
+                ? '36 India state / union territory boundaries · global routes converging on Bengaluru'
+                : 'Animated global routes converging on the NakshaTech hub in Bengaluru'}
+            </small>
           </div>
         </div>
       </div>
@@ -352,7 +434,7 @@ export function NakshaBengaluruNetworkGlobe() {
       </div>
 
       <div className="naksha-login-globe-source">
-        Controlled India-facing sweep · global network visualization
+        India state geometry from supplied GeoJSON · controlled India-facing sweep
       </div>
     </div>
   )
