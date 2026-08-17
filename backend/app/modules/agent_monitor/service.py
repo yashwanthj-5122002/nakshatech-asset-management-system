@@ -37,6 +37,14 @@ class AgentMonitorService:
         url = f"{base_url}{path}"
         if query:
             clean_query = {key: value for key, value in query.items() if value not in (None, "")}
+
+            # Compatibility alias: the Asset Management UI originally used
+            # INACTIVITY_REPORT, while System Manager v1.5 stores submitted
+            # employee inactivity check-ins as INACTIVITY_EXPLANATION events.
+            # Keep the browser contract stable and translate only at the gateway.
+            if clean_query.get("event_type") == "INACTIVITY_REPORT":
+                clean_query["event_type"] = "INACTIVITY_EXPLANATION"
+
             if clean_query:
                 url = f"{url}?{urlencode(clean_query)}"
         try:
