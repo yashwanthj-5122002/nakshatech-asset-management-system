@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import '../login-particle-field.css'
 
 type ParticleDepth = 0 | 1 | 2
+type ParticleTone = 0 | 1 | 2
 
 type Particle = {
   x: number
@@ -13,6 +14,8 @@ type Particle = {
   alpha: number
   phase: number
   twinkle: number
+  glow: number
+  tone: ParticleTone
   previousX: number
   previousY: number
 }
@@ -24,46 +27,123 @@ type AvoidRect = {
   bottom: number
 }
 
+type StarCluster = {
+  x: number
+  y: number
+  spreadX: number
+  spreadY: number
+}
+
 const DEPTH_PARALLAX = [11, 23, 42] as const
-const DEPTH_SPEED = [0.11, 0.20, 0.31] as const
-const DEPTH_ALPHA = [0.34, 0.56, 0.88] as const
-const DEPTH_RADIUS = [0.60, 0.92, 1.28] as const
+const DEPTH_SPEED = [0.10, 0.18, 0.29] as const
+const DEPTH_ALPHA = [0.30, 0.53, 0.86] as const
+const DEPTH_RADIUS = [0.48, 0.82, 1.22] as const
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function particleCount(width: number, height: number, compact: boolean) {
-  const density = compact ? 11000 : 5200
-  return clamp(Math.round((width * height) / density), compact ? 92 : 180, compact ? 190 : 390)
+function wrap(value: number, max: number) {
+  if (max <= 0) return 0
+  return ((value % max) + max) % max
 }
 
-function createParticle(width: number, height: number, index: number): Particle {
-  const depth = (index % 3) as ParticleDepth
-  const speed = DEPTH_SPEED[depth]
-  const angle = Math.random() * Math.PI * 2
-  const speedVariance = 0.48 + Math.random() * 0.86
-  const radiusVariance = 0.72 + Math.random() * 0.62
+function particleCount(width: number, height: number, compact: boolean) {
+  const density = compact ? 7200 : 2700
+  return clamp(Math.round((width * height) / density), compact ? 120 : 360, compact ? 270 : 820)
+}
+
+function chooseDepth(): ParticleDepth {
+  const roll = Math.random()
+  if (roll < 0.62) return 0
+  if (roll < 0.90) return 1
+  return 2
+}
+
+function chooseTone(): ParticleTone {
+  const roll = Math.random()
+  if (roll < 0.68) return 0
+  if (roll < 0.91) return 1
+  return 2
+}
+
+function clusteredPosition(
+  width: number,
+  height: number,
+  clusters: StarCluster[],
+) {
+  if (!clusters.length || Math.random() > 0.30) {
+    return {
+      x: Math.random() * width,
+      y: Math.random() * height,
+    }
+  }
+
+  const cluster = clusters[Math.floor(Math.random() * clusters.length)]
+  const gaussianX = (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2
+  const gaussianY = (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2
 
   return {
-    x: Math.random() * width,
-    y: Math.random() * height,
+    x: wrap(cluster.x + gaussianX * cluster.spreadX, width),
+    y: wrap(cluster.y + gaussianY * cluster.spreadY, height),
+  }
+}
+
+function createParticle(
+  width: number,
+  height: number,
+  clusters: StarCluster[],
+): Particle {
+  const depth = chooseDepth()
+  const speed = DEPTH_SPEED[depth]
+  const angle = Math.random() * Math.PI * 2
+  const speedVariance = 0.42 + Math.random() * 0.90
+  const radiusVariance = depth === 0
+    ? 0.62 + Math.random() * 0.74
+    : 0.70 + Math.random() * 0.66
+  const position = clusteredPosition(width, height, clusters)
+  const brightStar = depth > 0 && Math.random() < 0.045
+
+  return {
+    x: position.x,
+    y: position.y,
     vx: Math.cos(angle) * speed * speedVariance,
     vy: Math.sin(angle) * speed * speedVariance,
     depth,
-    radius: DEPTH_RADIUS[depth] * radiusVariance,
-    alpha: DEPTH_ALPHA[depth] * (0.68 + Math.random() * 0.32),
+    radius: DEPTH_RADIUS[depth] * radiusVariance * (brightStar ? 1.22 : 1),
+    alpha: Math.min(0.98, DEPTH_ALPHA[depth] * (0.56 + Math.random() * 0.44) * (brightStar ? 1.16 : 1)),
     phase: Math.random() * Math.PI * 2,
-    twinkle: 0.00055 + Math.random() * 0.0011,
+    twinkle: 0.00038 + Math.random() * 0.00105,
+    glow: brightStar ? 1.25 + Math.random() * 0.35 : 0.68 + Math.random() * 0.32,
+    tone: chooseTone(),
     previousX: Number.NaN,
     previousY: Number.NaN,
   }
+}
+
+function createParticles(width: number, height: number, compact: boolean) {
+  const count = particleCount(width, height, compact)
+  const clusterCount = compact ? 3 : 6
+  const clusters: StarCluster[] = Array.from({ length: clusterCount }, () => ({
+    x: Math.random() * width,
+    y: Math.random() * height,
+    spreadX: width * (0.09 + Math.random() * 0.11),
+    spreadY: height * (0.08 + Math.random() * 0.12),
+  }))
+
+  return Array.from({ length: count }, () => createParticle(width, height, clusters))
 }
 
 function distanceFromRect(x: number, y: number, rect: AvoidRect) {
   const dx = Math.max(rect.left - x, 0, x - rect.right)
   const dy = Math.max(rect.top - y, 0, y - rect.bottom)
   return Math.hypot(dx, dy)
+}
+
+function starColor(tone: ParticleTone, alpha: number) {
+  if (tone === 1) return `rgba(232, 249, 255, ${alpha})`
+  if (tone === 2) return `rgba(203, 230, 255, ${alpha})`
+  return `rgba(112, 226, 247, ${alpha})`
 }
 
 export function LoginParticleField() {
@@ -132,8 +212,7 @@ export function LoginParticleField() {
       canvas.height = Math.max(1, Math.round(height * dpr))
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-      const count = particleCount(width, height, compact)
-      particles = Array.from({ length: count }, (_, index) => createParticle(width, height, index))
+      particles = createParticles(width, height, compact)
 
       pointer.x = width * 0.42
       pointer.y = height * 0.5
@@ -229,8 +308,11 @@ export function LoginParticleField() {
           }
         }
 
-        const twinkle = reducedMotion ? 0.92 : 0.76 + Math.sin(time * particle.twinkle + particle.phase) * 0.24
-        let alpha = particle.alpha * twinkle * (1 + cursorSpeed * (0.05 + depth * 0.05))
+        const twinkleAmplitude = depth === 0 ? 0.12 : depth === 1 ? 0.18 : 0.22
+        const twinkle = reducedMotion
+          ? 0.92
+          : 0.88 + Math.sin(time * particle.twinkle + particle.phase) * twinkleAmplitude
+        let alpha = particle.alpha * twinkle * (1 + cursorSpeed * (0.035 + depth * 0.045))
 
         if (avoidRect) {
           const distanceToPanel = distanceFromRect(screenX, screenY, avoidRect)
@@ -239,26 +321,24 @@ export function LoginParticleField() {
         }
 
         if (Number.isFinite(particle.previousX) && Number.isFinite(particle.previousY) && !reducedMotion) {
-          const trailAlpha = alpha * (0.055 + depth * 0.024 + cursorSpeed * 0.025)
+          const trailAlpha = alpha * (0.035 + depth * 0.020 + cursorSpeed * 0.022)
           context.beginPath()
           context.moveTo(particle.previousX, particle.previousY)
           context.lineTo(screenX, screenY)
           context.strokeStyle = `rgba(73, 218, 242, ${trailAlpha})`
-          context.lineWidth = 0.48 + depth * 0.14
+          context.lineWidth = 0.42 + depth * 0.13
           context.stroke()
         }
 
-        const glowRadius = particle.radius * (2.9 + depth * 0.55)
+        const glowRadius = particle.radius * (2.5 + depth * 0.48) * particle.glow
         context.beginPath()
         context.arc(screenX, screenY, glowRadius, 0, Math.PI * 2)
-        context.fillStyle = `rgba(38, 180, 224, ${alpha * 0.075})`
+        context.fillStyle = `rgba(50, 188, 226, ${alpha * 0.055 * particle.glow})`
         context.fill()
 
         context.beginPath()
         context.arc(screenX, screenY, particle.radius, 0, Math.PI * 2)
-        context.fillStyle = depth === 2
-          ? `rgba(225, 253, 255, ${alpha})`
-          : `rgba(101, 226, 247, ${alpha})`
+        context.fillStyle = starColor(particle.tone, alpha)
         context.fill()
 
         particle.previousX = screenX
