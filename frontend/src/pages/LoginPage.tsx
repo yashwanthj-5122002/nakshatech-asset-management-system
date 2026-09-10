@@ -7,18 +7,14 @@ import {
   User,
 } from 'lucide-react'
 import { Component, lazy, Suspense, type ChangeEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { NakshaGeoTourOverlay } from '../components/NakshaGeoTourOverlay'
 import { useAuth } from '../context/AuthContext'
-import { apiFetch } from '../lib/api'
-import { roleDisplayName, roleHomePath } from '../lib/roles'
-import type { ManagementLoginAccount, Role } from '../types'
+import { roleHomePath } from '../lib/roles'
 import '../management-auth.css'
 import '../login-interactive.css'
 import '../login-globe.css'
 
-const PRIVILEGED_LOGIN_ROLES: Role[] = ['management', 'it', 'software_team', 'drone', 'admin']
-const PROVISIONED_LOGIN_ROLES: Role[] = ['management', 'it', 'software_team']
 const GEO_TOUR_REPLAY_DELAY_MS = 9000
 
 const LazyNakshaInteractiveGlobe = lazy(async () => {
@@ -56,16 +52,11 @@ function LoginGlobeSlot() {
   )
 }
 
-function usesProvisionedSelector(role: Role | ''): role is Role {
-  return Boolean(role && PROVISIONED_LOGIN_ROLES.includes(role))
-}
-
 export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'employee' }) {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const employeeMode = mode === 'employee'
-  const [selectedRole, setSelectedRole] = useState<Role | ''>(employeeMode ? 'employee' : '')
-  const [privilegedAccounts, setPrivilegedAccounts] = useState<ManagementLoginAccount[]>([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -155,7 +146,6 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
   }, [employeeMode])
 
   useEffect(() => {
-    setSelectedRole(employeeMode ? 'employee' : '')
     setEmail('')
     setPassword('')
     setError('')
@@ -169,47 +159,25 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
     }
   }, [])
 
-  useEffect(() => {
-    setPrivilegedAccounts([])
-    if (!usesProvisionedSelector(selectedRole)) return
-    const role = selectedRole
-    let cancelled = false
-    void apiFetch<{ accounts: ManagementLoginAccount[] }>(`/auth/privileged/accounts?role=${encodeURIComponent(role)}`)
-      .then(result => { if (!cancelled) setPrivilegedAccounts(result.accounts) })
-      .catch(err => {
-        if (!cancelled) setError(err instanceof Error ? err.message : `Unable to load ${roleDisplayName(role)} account`)
-      })
-    return () => { cancelled = true }
-  }, [selectedRole])
-
-  function selectRole(role: Role) {
-    setSelectedRole(role)
-    setEmail('')
-    setPassword('')
-    setError('')
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (!selectedRole) {
-      setError('Select your access role before signing in.')
-      return
-    }
     if (!email.trim()) {
-      setError(usesProvisionedSelector(selectedRole) ? `Select the ${roleDisplayName(selectedRole)} user.` : 'Enter your official email.')
+      setError('Enter your official email.')
       return
     }
     setLoading(true)
     setError('')
     setNotice('')
     try {
-      const result = await login(selectedRole, email.trim(), password, remember, employeeMode ? 'employee_support' : undefined)
+      const result = await login(employeeMode ? 'employee' : undefined, email.trim(), password, remember, employeeMode ? 'employee_support' : undefined)
       if (result.mfa_setup_required || result.password_change_required) {
         navigate('/verify-authenticator')
       } else if (result.branch_selection_required) {
         navigate('/select-branch')
       } else if (result.user) {
-        navigate(roleHomePath(result.user.role))
+        const requestedFrom = (location.state as { from?: string } | null)?.from
+        const safeRequestedPath = requestedFrom?.startsWith('/') && !requestedFrom.startsWith('//') ? requestedFrom : null
+        navigate(safeRequestedPath || roleHomePath(result.user.role))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
@@ -242,7 +210,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
           ? <NakshaGeoTourOverlay key={geoTourRun} onComplete={() => setShowGeoTour(false)} />
           : <LoginGlobeSlot />}
 
-        <section className="final-login-panel-zone" aria-label={employeeMode ? 'Employee Support login' : 'Authorized employee login'}>
+        <section className="final-login-panel-zone" aria-label={employeeMode ? 'Legacy Employee Support login' : 'NakshaTech organization login'}>
           <form className="final-login-panel" ref={panelRef} onSubmit={submit}>
             <Link className="final-login-back" to="/">
               <ArrowLeft size={17} aria-hidden="true" />
@@ -250,88 +218,44 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
             </Link>
 
             <div className="final-login-heading">
-              <span>{employeeMode ? 'Employee Support Access' : 'Authorized Employee Access'}</span>
+              <span>{employeeMode ? 'Employee Support Access' : 'Secure Organization Access'}</span>
               <h2>{employeeMode ? 'Employee Login' : 'Welcome Back'}</h2>
-              <p>{employeeMode ? 'Sign in to raise and track your own support tickets.' : 'Select your assigned role, then use the credentials issued for that role.'}</p>
+              <p>
+                {employeeMode
+                  ? 'Legacy Employee Support access is retained for backward compatibility.'
+                  : 'Use your NakshaTech email and password. Your workspace opens automatically from your assigned account role.'}
+              </p>
             </div>
-
-            {!employeeMode && (
-              <fieldset className="management-role-picker">
-                <legend>Select Access Role</legend>
-                <div>
-                  {PRIVILEGED_LOGIN_ROLES.map(role => (
-                    <button
-                      key={role}
-                      type="button"
-                      className={selectedRole === role ? 'selected' : ''}
-                      onClick={() => selectRole(role)}
-                      aria-pressed={selectedRole === role}
-                    >
-                      {roleDisplayName(role)}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-            )}
 
             <div className="final-login-notice" role="status">
               <ShieldCheck size={18} aria-hidden="true" />
               <span>
                 {employeeMode
-                  ? 'Employee Support sign-in uses your organization email and password. Authorized Management users may also sign in here to raise their own support tickets with Employee-level permissions.'
-                  : selectedRole === 'management'
-                  ? 'Management access is restricted to Vinod and Chethan. First login uses the issued temporary password, one Authenticator verification, and then a new permanent password.'
-                  : selectedRole === 'software_team'
-                    ? 'Software Team access is restricted to software.team@nakshatech.com and uses the same controlled first-login activation.'
-                    : selectedRole === 'it'
-                      ? 'IT access is restricted to it-support@nakshatech.com and uses the same controlled first-login activation.'
-                      : 'Normal sign-in uses your organization email and password. Account creation is available only for Employee Support users.'}
+                  ? 'This compatibility login keeps the existing Employee Support access mode available for old bookmarks and workflows.'
+                  : 'One secure login for Management, Admin, IT, Software Team, Drone, Finance, HR, Business Development, Ortho / LiDAR and Employees. Access permissions are read from your authenticated account — no manual department selection.'}
               </span>
             </div>
 
-            {usesProvisionedSelector(selectedRole) ? (
-              <label className="final-login-field" htmlFor="privileged-login-email">
-                <span>Select User</span>
-                <div className="final-login-input-shell management-account-select">
-                  <User size={19} aria-hidden="true" />
-                  <select
-                    id="privileged-login-email"
-                    value={email}
-                    onChange={(event: ChangeEvent<HTMLSelectElement>) => setEmail(event.target.value)}
-                    required
-                  >
-                    <option value="">Select User</option>
-                    {privilegedAccounts.map(account => (
-                      <option key={account.email} value={account.email}>
-                        {account.display_name} — {account.email}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </label>
-            ) : (
-              <label className="final-login-field" htmlFor="login-email">
-                <span>Official Email</span>
-                <div className="final-login-input-shell">
-                  <User size={19} aria-hidden="true" />
-                  <input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => setEmail(event.target.value)}
-                    placeholder="Enter your official email"
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    required
-                    disabled={!selectedRole}
-                  />
-                </div>
-              </label>
-            )}
+            <label className="final-login-field" htmlFor="login-email">
+              <span>Official Email</span>
+              <div className="final-login-input-shell">
+                <User size={19} aria-hidden="true" />
+                <input
+                  id="login-email"
+                  type="email"
+                  value={email}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => setEmail(event.target.value)}
+                  placeholder="Enter your official email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  required
+                />
+              </div>
+            </label>
 
             <label className="final-login-field" htmlFor="login-password">
-              <span>{usesProvisionedSelector(selectedRole) ? 'Temporary or Permanent Password' : 'Password'}</span>
+              <span>Password</span>
               <div className="final-login-input-shell">
                 <LockKeyhole size={19} aria-hidden="true" />
                 <input
@@ -342,7 +266,6 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
                   placeholder="Enter your password"
                   autoComplete="current-password"
                   required
-                  disabled={!selectedRole}
                 />
                 <button
                   type="button"
@@ -369,19 +292,15 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
             {notice && <div className="final-login-notice management-success-notice" role="status">{notice}</div>}
             {error && <div className="error-message" role="alert">{error}</div>}
 
-            <button className="final-login-submit" type="submit" disabled={loading || !selectedRole}>
+            <button className="final-login-submit" type="submit" disabled={loading}>
               <span>{loading ? 'Signing in...' : 'Login'}</span>
               <i aria-hidden="true">→</i>
             </button>
 
-            {employeeMode ? (
-              <div className="final-login-create-account">
-                <span>First time using Employee Support?</span>
-                <Link to="/register">Create account with organization email</Link>
-              </div>
-            ) : selectedRole ? (
-              <div className="management-provisioned-note">This role is provisioned by NakshaTech. Public sign-up is disabled.</div>
-            ) : null}
+            <div className="final-login-create-account">
+              <span>First time using NakshaTech?</span>
+              <Link to="/register">Create employee account with organization email</Link>
+            </div>
 
             <footer>© {new Date().getFullYear()} NakshaTech. All rights reserved.</footer>
           </form>

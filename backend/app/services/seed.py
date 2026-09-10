@@ -9,10 +9,13 @@ from app.core.management_access import (
     ADMIN_ROLE,
     AUTHORIZED_EMAILS_BY_ROLE,
     FIRST_LOGIN_ACCOUNTS_BY_ROLE,
+    FINANCE_ROLE,
+    HR_ROLE,
     IT_ROLE,
     MANAGEMENT_ROLE,
     SOFTWARE_TEAM_ROLE,
 )
+from app.core.roles import BD_ROLE, ORTHO_ROLE
 from app.core.security import hash_password
 from app.models.entities import Asset, Drone, DroneLocation, ReplacementRecord, User, WorkRecord
 from app.modules.employee_portal.models import AuthenticatorCredential
@@ -48,6 +51,8 @@ def _temporary_passwords_by_role() -> dict[str, tuple[str, ...]]:
         ),
         SOFTWARE_TEAM_ROLE: (settings.seed_software_team_password,),
         IT_ROLE: (settings.seed_it_password,),
+        FINANCE_ROLE: (settings.seed_finance_password,),
+        HR_ROLE: (settings.seed_hr_password,),
     }
 
 
@@ -118,7 +123,7 @@ def ensure_privileged_accounts(db: Session) -> None:
                         AuthenticatorCredential.is_confirmed.is_(True),
                     )
                 ))
-            legacy_department_account = role in {SOFTWARE_TEAM_ROLE, IT_ROLE} and not confirmed_authenticator
+            legacy_department_account = role in {SOFTWARE_TEAM_ROLE, IT_ROLE, FINANCE_ROLE, HR_ROLE} and not confirmed_authenticator
             if user is None:
                 user = User(
                     email=email,
@@ -182,6 +187,117 @@ def ensure_privileged_accounts(db: Session) -> None:
 def ensure_management_accounts(db: Session) -> None:
     """Backward-compatible alias used by existing tests and deployments."""
     ensure_privileged_accounts(db)
+
+
+_OBSOLETE_OPERATIONS_TEST_EMPLOYEE_IDS = {
+    "TEST-BD-EMP",
+    "TEST-ORTHO-TL",
+    "TEST-ORTHO-PROD",
+    "TEST-ORTHO-QC",
+    "TEST-ORTHO-QA",
+}
+
+
+def _operations_test_account_specs() -> list[tuple[str, str, str, str, str, str, str]]:
+    """Return only the three V7.0.7 test identities requested by the workflow owner.
+
+    BD and Ortho each use one manager login. The normal employee fixture stays
+    an ordinary employee account for tickets/expenses and never receives an
+    Ortho or BD role.
+    """
+    return [
+        (settings.seed_bd_manager_email, "BD Manager Test", settings.seed_bd_manager_password, BD_ROLE, "Business Development", "Manager", "TEST-BD-MGR"),
+        (settings.seed_ortho_pm_email, "Ortho Project Manager Test", settings.seed_ortho_pm_password, ORTHO_ROLE, "Ortho", "Project Manager", "TEST-ORTHO-PM"),
+        (settings.seed_employee_test_email, "Employee Test", settings.seed_employee_test_password, "employee", "Employee", "Employee", "TEST-EMPLOYEE-001"),
+    ]
+
+
+def ensure_operations_test_accounts(db: Session) -> None:
+    """Provision the local/UAT BD manager, Ortho PM, and normal employee logins.
+
+    Clear-text credentials are supplied only through environment-backed
+    settings. PostgreSQL stores password hashes. This helper is disabled by
+    default and production configuration rejects enabling it.
+
+    The V7.0.7 permission model intentionally has no separate TL/Production/QC/QA
+    login roles. Those people are assignees recorded by the Project Manager; the
+    Project Manager performs all Ortho workflow updates in the single /ortho
+    dashboard.
+    """
+    if not settings.seed_operations_test_users_enabled:
+        return
+
+    allowed_domains = set(settings.allowed_email_domain_list)
+    specs = _operations_test_account_specs()
+    configured_emails = {email.strip().lower() for email, *_ in specs}
+
+    # If the superseded V7.0.5 seven-account test design ever ran, keep its
+    # extra fixtures from remaining active. These IDs were reserved exclusively
+    # for generated test users.
+    obsolete = db.scalars(select(User).where(User.employee_id.in_(_OBSOLETE_OPERATIONS_TEST_EMPLOYEE_IDS))).all()
+    for user in obsolete:
+        if user.email.strip().lower() == settings.seed_employee_test_email.strip().lower() and user.employee_id == "TEST-BD-EMP":
+            # Migrate the exact old employee1 fixture into the requested normal
+            # employee account instead of leaving it as a BD user.
+            user.employee_id = "TEST-EMPLOYEE-001"
+            user.role = "employee"
+            user.department = "Employee"
+            user.designation = "Employee"
+            continue
+        if user.email.strip().lower() not in configured_emails:
+            user.is_active = False
+            user.account_status = "disabled_superseded_test_fixture"
+            user.mfa_required = False
+            user.must_change_password = False
+            user.token_version = (user.token_version or 0) + 1
+
+    for configured_email, full_name, password, role, department, designation, employee_id in specs:
+        email = configured_email.strip().lower()
+        if not email or not password:
+            raise RuntimeError(f"BD/Ortho/employee test credential configuration is incomplete for {designation}")
+        if "@" not in email or email.rsplit("@", 1)[1] not in allowed_domains:
+            raise RuntimeError(f"Test account must use an allowed organization email: {email}")
+        if len(password) < 10:
+            raise RuntimeError(f"Test password must be at least 10 characters for {email}")
+
+        user = db.scalar(select(User).where(func.lower(User.email) == email))
+        if user is not None and user.employee_id not in {employee_id, "TEST-BD-EMP" if employee_id == "TEST-EMPLOYEE-001" else employee_id}:
+            raise RuntimeError(
+                f"Refusing to repurpose existing user {email}: the address is not a managed V7 test fixture"
+            )
+        if user is None:
+            user = User(
+                email=email,
+                full_name=full_name,
+                password_hash=hash_password(password),
+                role=role,
+                branch="Head Office",
+                employee_id=employee_id,
+                department=department,
+                designation=designation,
+                email_verified=True,
+                account_status="active",
+                mfa_required=False,
+                must_change_password=False,
+                is_active=True,
+            )
+            db.add(user)
+            continue
+
+        user.full_name = full_name
+        user.password_hash = hash_password(password)
+        user.role = role
+        user.employee_id = employee_id
+        user.branch = user.branch or "Head Office"
+        user.department = department
+        user.designation = designation
+        user.email_verified = True
+        user.account_status = "active"
+        user.mfa_required = False
+        user.must_change_password = False
+        user.is_active = True
+
+    db.commit()
 
 
 def seed_database(db: Session) -> None:

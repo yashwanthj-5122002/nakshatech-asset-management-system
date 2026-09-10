@@ -19,6 +19,10 @@ export function roleHomePath(role: Role): string {
     management: '/management',
     it: '/it',
     drone: '/drone',
+    finance: '/finance',
+    hr: '/hr/travel-km',
+    bd: '/bd',
+    ortho: '/ortho',
     employee: '/support',
   }
   return paths[role]
@@ -31,6 +35,10 @@ export function roleDisplayName(role: Role): string {
     management: 'Management',
     it: 'IT Department',
     drone: 'Drone Department',
+    finance: 'Finance Department',
+    hr: 'HR Department',
+    bd: 'Business Development',
+    ortho: 'Ortho / LiDAR',
     employee: 'Employee Support',
   }
   return labels[role]

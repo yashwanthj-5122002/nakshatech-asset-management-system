@@ -1,4 +1,4 @@
-import { ArrowRight, LifeBuoy, LogIn } from 'lucide-react'
+import { ArrowRight, LogIn } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { WelcomeGeoNetwork } from '../components/WelcomeGeoNetwork'
 import '../welcome-geospatial-network.css'
@@ -20,9 +20,6 @@ export function WelcomePage() {
             <Link className="outline-login" to="/login" aria-label="Open privileged login page">
               <span>Login</span>
             </Link>
-            <Link className="outline-login employee-login-link" to="/employee-login" aria-label="Open employee support login page">
-              <span>Employee Login</span>
-            </Link>
           </div>
         </header>
 
@@ -41,11 +38,6 @@ export function WelcomePage() {
               <Link className="welcome-login" to="/login">
                 <LogIn size={22} aria-hidden="true" />
                 <span>Login</span>
-                <ArrowRight className="welcome-login-arrow" size={20} aria-hidden="true" />
-              </Link>
-              <Link className="welcome-login welcome-employee-login" to="/employee-login">
-                <LifeBuoy size={22} aria-hidden="true" />
-                <span>Employee Login</span>
                 <ArrowRight className="welcome-login-arrow" size={20} aria-hidden="true" />
               </Link>
             </div>

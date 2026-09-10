@@ -1,4 +1,4 @@
-"""Shared pytest bootstrap and database isolation for backend tests.
+﻿"""Shared pytest bootstrap and database isolation for backend tests.
 
 The backend test suite imports modules from the top-level ``app`` package.
 When pytest is invoked through its console entry point inside the Docker
@@ -33,13 +33,14 @@ if str(BACKEND_ROOT) not in sys.path:
 PYTEST_DB = Path(tempfile.gettempdir()) / f"nakshatech_pytest_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{PYTEST_DB}"
 os.environ.setdefault("JWT_SECRET", "pytest-suite-secret-only-change-me-32-characters")
-os.environ.setdefault("EMAIL_DELIVERY_MODE", "console")
+os.environ["EMAIL_DELIVERY_MODE"] = "console"
 os.environ.setdefault("NAKSHA_COPILOT_ENABLED", "false")
 os.environ.setdefault("LOCAL_BACKUP_AGENT_ENABLED", "false")
 
 # Import the database module now, before test-module collection can import any
 # application router/service and bind the global engine to another DATABASE_URL.
 from app.core.database import Base, engine  # noqa: E402
+from app.modules.drone import models as drone_models  # noqa: E402,F401
 
 
 @pytest.fixture(autouse=True)
@@ -62,3 +63,4 @@ def isolated_application_database():
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     engine.dispose()
     PYTEST_DB.unlink(missing_ok=True)
+

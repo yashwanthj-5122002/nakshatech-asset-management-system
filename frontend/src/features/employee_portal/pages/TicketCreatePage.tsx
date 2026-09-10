@@ -1,27 +1,16 @@
 import {
-  AppWindow,
-  BatteryCharging,
   Building2,
-  CircleHelp,
   Cpu,
   Gauge,
   HardDrive,
   Keyboard,
-  KeyRound,
-  MemoryStick,
   Monitor,
   MousePointer2,
   Paperclip,
-  PlaneTakeoff,
-  Printer,
   Search,
   Send,
-  Settings2,
-  ShieldAlert,
   Upload,
   UserRound,
-  Users,
-  Wifi,
   X,
 } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -36,44 +25,22 @@ import type {
   TicketCatalog,
   TicketComponentOption,
   TicketDepartment,
-  TicketImpactAssessment,
   TicketPriority,
-  TicketPriorityPreview,
 } from '../../../types'
 
-const departments: Array<{ value: TicketDepartment; label: string; description: string; icon: typeof Cpu }> = [
-  { value: 'it', label: 'IT Department', description: 'Laptop, desktop, Wi-Fi, printer, hardware, or access issues.', icon: Cpu },
-  { value: 'drone', label: 'Drone Department', description: 'Drone hardware, batteries, trackers, flight, or survey equipment.', icon: PlaneTakeoff },
-  { value: 'software_team', label: 'Software Team', description: 'CRM errors, application bugs, login issues, data, or feature requests.', icon: Settings2 },
-  { value: 'management', label: 'Management', description: 'Administrative, resource, policy, or escalation requests.', icon: Users },
+const departments: Array<{ value: TicketDepartment; label: string }> = [
+  { value: 'it', label: 'IT Department' },
+  { value: 'drone', label: 'Drone Department' },
+  { value: 'software_team', label: 'Software Team' },
+  { value: 'management', label: 'Management' },
 ]
 
-const componentIcons: Record<string, typeof Cpu> = {
-  system: Cpu,
-  monitor: Monitor,
-  mouse: MousePointer2,
-  keyboard: Keyboard,
-  memory: MemoryStick,
-  storage: HardDrive,
-  network: Wifi,
-  operating_system: Settings2,
-  software: AppWindow,
-  printer: Printer,
-  power_ups: BatteryCharging,
-  login_account: KeyRound,
-  other: CircleHelp,
-}
-
-const emptyImpact: TicketImpactAssessment = {
-  work_stopped: false,
-  alternative_available: true,
-  multiple_users_affected: false,
-  data_loss_risk: false,
-  security_risk: false,
-  client_delivery_affected: false,
-  recurring_issue: false,
-  started_when: '',
-}
+const priorities: Array<{ value: TicketPriority; label: string; help: string }> = [
+  { value: 'low', label: 'Low', help: 'Can wait without affecting normal work' },
+  { value: 'medium', label: 'Moderate', help: 'Needs attention, but work can continue' },
+  { value: 'high', label: 'High', help: 'Work is significantly affected' },
+  { value: 'critical', label: 'Critical', help: 'Work or delivery is completely blocked' },
+]
 
 const emptyForm = {
   department: 'it' as TicketDepartment,
@@ -105,16 +72,6 @@ function assetPrimaryLabel(asset: TicketAsset): string {
   return asset.cpu_asset_tag || asset.asset_code
 }
 
-function priorityLabel(priority: TicketPriority): string {
-  return priority === 'medium' ? 'Moderate' : priority.charAt(0).toUpperCase() + priority.slice(1)
-}
-
-function formatSla(minutes: number): string {
-  if (minutes < 60) return `${minutes} minutes`
-  if (minutes < 1440) return `${Math.round(minutes / 60)} hours`
-  return `${Math.round(minutes / 1440)} day`
-}
-
 function componentTag(asset: TicketAsset, component: string): string | undefined {
   if (component === 'monitor') return asset.monitor_asset_tags
   if (component === 'mouse') return asset.mouse_asset_tag
@@ -125,30 +82,13 @@ function componentTag(asset: TicketAsset, component: string): string | undefined
   return undefined
 }
 
-interface ImpactQuestionProps {
-  label: string
-  help: string
-  value: boolean
-  onChange: (value: boolean) => void
-  invertLabels?: boolean
-}
-
-function ImpactQuestion({ label, help, value, onChange, invertLabels = false }: ImpactQuestionProps) {
-  return <article className="ticket-impact-question">
-    <div><strong>{label}</strong><span>{help}</span></div>
-    <div className="ticket-binary-toggle" role="group" aria-label={label}>
-      <button type="button" className={value ? 'selected' : ''} onClick={() => onChange(true)}>{invertLabels ? 'Available' : 'Yes'}</button>
-      <button type="button" className={!value ? 'selected' : ''} onClick={() => onChange(false)}>{invertLabels ? 'Not Available' : 'No'}</button>
-    </div>
-  </article>
-}
-
 export function TicketCreatePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [form, setForm] = useState(emptyForm)
   const [catalog, setCatalog] = useState<TicketCatalog>({ components: [] })
   const [catalogError, setCatalogError] = useState('')
+  const [workstationNumber, setWorkstationNumber] = useState('')
   const [assetQuery, setAssetQuery] = useState('')
   const [assetResults, setAssetResults] = useState<TicketAsset[]>([])
   const [selectedAsset, setSelectedAsset] = useState<TicketAsset | null>(null)
@@ -156,9 +96,6 @@ export function TicketCreatePage() {
   const [assetError, setAssetError] = useState('')
   const [componentCode, setComponentCode] = useState('')
   const [problemCode, setProblemCode] = useState('')
-  const [impact, setImpact] = useState<TicketImpactAssessment>(emptyImpact)
-  const [priorityPreview, setPriorityPreview] = useState<TicketPriorityPreview | null>(null)
-  const [priorityLoading, setPriorityLoading] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [attachments, setAttachments] = useState<DraftTicketAttachment[]>([])
@@ -172,6 +109,11 @@ export function TicketCreatePage() {
     [catalog.components, componentCode],
   )
 
+  const assetSearchTerm = useMemo(() => {
+    if (selectedAsset || form.department !== 'it') return ''
+    return assetQuery.trim() || workstationNumber.trim()
+  }, [assetQuery, form.department, selectedAsset, workstationNumber])
+
   const descriptionCharacterCount = form.description.trim().length
   const descriptionIsValid = descriptionCharacterCount >= MIN_TICKET_DESCRIPTION_CHARACTERS
 
@@ -182,15 +124,9 @@ export function TicketCreatePage() {
   }, [])
 
   useEffect(() => {
-    if (form.department !== 'it' || selectedAsset) {
+    if (!assetSearchTerm) {
       setAssetResults([])
       setAssetLoading(false)
-      return
-    }
-
-    const query = assetQuery.trim()
-    if (!query) {
-      setAssetResults([])
       setAssetError('')
       return
     }
@@ -199,7 +135,7 @@ export function TicketCreatePage() {
     const timer = window.setTimeout(() => {
       setAssetLoading(true)
       setAssetError('')
-      void apiFetch<TicketAsset[]>(`/ticket-assets?query=${encodeURIComponent(query)}&limit=20`)
+      void apiFetch<TicketAsset[]>(`/ticket-assets?query=${encodeURIComponent(assetSearchTerm)}&limit=20`)
         .then(items => {
           if (!cancelled) setAssetResults(items)
         })
@@ -212,53 +148,17 @@ export function TicketCreatePage() {
         .finally(() => {
           if (!cancelled) setAssetLoading(false)
         })
-    }, 250)
+    }, 220)
 
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [assetQuery, form.department, selectedAsset])
-
-  useEffect(() => {
-    if (form.department !== 'it' || !componentCode || !problemCode) {
-      setPriorityPreview(null)
-      setPriorityLoading(false)
-      return
-    }
-
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      setPriorityLoading(true)
-      void apiFetch<TicketPriorityPreview>('/ticket-priority-preview', {
-        method: 'POST',
-        body: JSON.stringify({ component: componentCode, problem_code: problemCode, impact }),
-      })
-        .then(result => {
-          if (!cancelled) setPriorityPreview(result)
-        })
-        .catch(err => {
-          if (!cancelled) {
-            setPriorityPreview(null)
-            setError(err instanceof Error ? err.message : 'Could not calculate ticket priority')
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setPriorityLoading(false)
-        })
-    }, 180)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [componentCode, form.department, impact, problemCode])
+  }, [assetSearchTerm])
 
   function resetItClassification() {
     setComponentCode('')
     setProblemCode('')
-    setImpact(emptyImpact)
-    setPriorityPreview(null)
   }
 
   function selectDepartment(department: TicketDepartment) {
@@ -266,6 +166,7 @@ export function TicketCreatePage() {
     setError('')
     if (department !== 'it') {
       setSelectedAsset(null)
+      setWorkstationNumber('')
       setAssetQuery('')
       setAssetResults([])
       setAssetError('')
@@ -275,6 +176,7 @@ export function TicketCreatePage() {
 
   function chooseAsset(asset: TicketAsset) {
     setSelectedAsset(asset)
+    setWorkstationNumber(asset.workstation_no || workstationNumber)
     setAssetQuery(assetPrimaryLabel(asset))
     setAssetResults([])
     setAssetError('')
@@ -283,23 +185,18 @@ export function TicketCreatePage() {
     setForm(current => ({ ...current, location: current.location || asset.location || '' }))
   }
 
-  function clearAsset() {
+  function clearAsset({ preserveWorkstation = true }: { preserveWorkstation?: boolean } = {}) {
     setSelectedAsset(null)
     setAssetQuery('')
     setAssetResults([])
     setAssetError('')
     resetItClassification()
+    if (!preserveWorkstation) setWorkstationNumber('')
   }
 
   function selectComponent(item: TicketComponentOption) {
     setComponentCode(item.code)
     setProblemCode('')
-    setPriorityPreview(null)
-    setError('')
-  }
-
-  function updateImpact<K extends keyof TicketImpactAssessment>(key: K, value: TicketImpactAssessment[K]) {
-    setImpact(current => ({ ...current, [key]: value }))
     setError('')
   }
 
@@ -407,19 +304,15 @@ export function TicketCreatePage() {
 
     if (form.department === 'it') {
       if (!selectedAsset) {
-        setError('Search and select the affected CPU / asset tag before submitting the IT ticket.')
+        setError('Enter the workstation or search the Asset Register, then select the affected asset.')
         return
       }
       if (!componentCode) {
-        setError('Select which part of the system is not working.')
+        setError('Select the faulty component.')
         return
       }
       if (!problemCode) {
-        setError('Select the exact problem affecting the component.')
-        return
-      }
-      if (!priorityPreview) {
-        setError('Wait for the automatic priority calculation to finish.')
+        setError('Select the problem affecting the component.')
         return
       }
     }
@@ -434,7 +327,6 @@ export function TicketCreatePage() {
           asset_id: selectedAsset?.id,
           component: form.department === 'it' ? componentCode : undefined,
           problem_code: form.department === 'it' ? problemCode : undefined,
-          impact: form.department === 'it' ? impact : undefined,
         }),
       })
       if (attachments.length) {
@@ -462,209 +354,81 @@ export function TicketCreatePage() {
     <DashboardHeader
       eyebrow="EMPLOYEE SUPPORT"
       title="Raise a New Ticket"
-      description={`Select the affected asset and actual work impact. The system calculates priority automatically. Branch: ${user?.selected_branch_name || user?.branch}.`}
+      description={`Enter the issue in a simple form, select the affected asset and priority, and submit it to the responsible team. Branch: ${user?.selected_branch_name || user?.branch}.`}
     />
-    <form className="panel-card ticket-create-form" onSubmit={submit}>
-      <div className="ticket-form-section">
-        <span className="section-kicker">1 · SELECT RESPONSIBLE TEAM</span>
-        <div className="ticket-department-grid">
-          {departments.map(item => {
-            const Icon = item.icon
-            return <button
-              type="button"
-              key={item.value}
-              className={form.department === item.value ? 'selected' : ''}
-              onClick={() => selectDepartment(item.value)}
-            >
-              <Icon />
-              <div><strong>{item.label}</strong><span>{item.description}</span></div>
-            </button>
-          })}
+    <form className="panel-card ticket-create-form ticket-simple-create-form" onSubmit={submit}>
+      <section className="ticket-simple-section">
+        <div className="ticket-simple-section-heading"><span>1</span><div><h2>Request details</h2><p>Choose the responsible team and your reporting manager.</p></div></div>
+        <div className="ticket-simple-grid">
+          <label><span>Responsible Team *</span><select value={form.department} onChange={event => selectDepartment(event.target.value as TicketDepartment)}>{departments.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label><span>Reporting Manager Email *</span><input type="email" value={form.reporting_manager_email} onChange={event => setForm({ ...form, reporting_manager_email: event.target.value })} placeholder="name@nakshatech.com" autoComplete="email" pattern="[^\s@]+@nakshatech\.com" required /></label>
         </div>
-      </div>
+      </section>
 
-      {form.department === 'it' && <div className="ticket-form-section ticket-asset-section">
-        <div className="ticket-section-heading">
-          <div><span className="section-kicker">2 · SELECT THE AFFECTED ASSET</span><p>Search the current Asset Register using the existing CPU tag, internal asset code, workstation number, system name, user, or connected component tag.</p></div>
-          {selectedAsset && <button type="button" className="ghost-button compact" onClick={clearAsset}><X size={15} />Change Asset</button>}
+      {form.department === 'it' && <section className="ticket-simple-section">
+        <div className="ticket-simple-section-heading"><span>2</span><div><h2>Select workstation and asset</h2><p>Enter the workstation number or search by CPU / Asset Tag. Select the correct asset before continuing.</p></div></div>
+        <div className="ticket-simple-grid ticket-asset-search-grid">
+          <label><span>Workstation Number</span><input value={workstationNumber} onChange={event => { const value = event.target.value; setWorkstationNumber(value); if (selectedAsset && value !== (selectedAsset.workstation_no || '')) clearAsset({ preserveWorkstation: true }) }} placeholder="Example: 8405" autoComplete="off" /></label>
+          <label><span>CPU / Asset Tag</span><div className="ticket-simple-search-field"><Search size={18} /><input value={assetQuery} onChange={event => { setAssetQuery(event.target.value); if (selectedAsset) clearAsset({ preserveWorkstation: true }) }} placeholder="Example: 2646 or NT-PC-0098" autoComplete="off" />{assetLoading && <small>Searching…</small>}</div></label>
         </div>
-
-        {!selectedAsset && <div className="ticket-asset-search-wrap">
-          <label className="ticket-asset-search">
-            <Search size={19} />
-            <input
-              autoComplete="off"
-              value={assetQuery}
-              onChange={event => setAssetQuery(event.target.value)}
-              placeholder="Search CPU / physical asset tag, for example 2446"
-              aria-label="Search Asset Register"
-            />
-            {assetLoading && <span className="ticket-search-state">Searching…</span>}
-          </label>
-          {assetError && <div className="error-message">{assetError}</div>}
-          {!assetLoading && assetQuery.trim() && !assetError && assetResults.length === 0 && <div className="ticket-asset-empty">No active asset matches “{assetQuery.trim()}”. Check the CPU tag and try again.</div>}
-          {assetResults.length > 0 && <div className="ticket-asset-results">
-            {assetResults.map(asset => <button type="button" key={asset.id} onClick={() => chooseAsset(asset)}>
-              <div className="ticket-asset-result-icon"><Cpu size={20} /></div>
-              <div className="ticket-asset-result-main">
-                <strong>{assetPrimaryLabel(asset)} <small>· Internal {asset.asset_code}</small></strong>
-                <span>{asset.workstation_no || 'No workstation'} · {asset.device_type} · {asset.system_name || 'System name not recorded'}</span>
-                <span>{asset.used_by || 'Unassigned'} · {asset.department || 'Department not recorded'}</span>
-              </div>
-              <span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span>
-            </button>)}
-          </div>}
-        </div>}
-
-        {selectedAsset && <article className="ticket-selected-asset-card">
-          <header>
-            <div><span>SELECTED CPU / ASSET TAG</span><h2>{assetPrimaryLabel(selectedAsset)}</h2><p>Internal reference {selectedAsset.asset_code}</p></div>
-            <span className={`status ${selectedAsset.status}`}>{selectedAsset.status.replaceAll('_', ' ')}</span>
-          </header>
-          <div className="ticket-asset-detail-grid">
-            <div><Gauge size={17} /><span>Workstation</span><strong>{selectedAsset.workstation_no || 'Not recorded'}</strong></div>
-            <div><UserRound size={17} /><span>Used By</span><strong>{selectedAsset.used_by || 'Unassigned'}</strong></div>
-            <div><Building2 size={17} /><span>Department</span><strong>{selectedAsset.department || 'Not recorded'}</strong></div>
-            <div><Cpu size={17} /><span>Device</span><strong>{selectedAsset.device_type} · {selectedAsset.system_name || 'Unnamed system'}</strong></div>
-            <div><HardDrive size={17} /><span>Configuration</span><strong>{[selectedAsset.processor, selectedAsset.memory_gb, selectedAsset.ssd || selectedAsset.hdd].filter(Boolean).join(' · ') || 'Not recorded'}</strong></div>
-            <div><Building2 size={17} /><span>Asset Location</span><strong>{selectedAsset.location || selectedAsset.work_mode || 'Not recorded'}</strong></div>
-          </div>
-          <div className="ticket-component-tags">
-            <span><Monitor size={16} />Monitor <strong>{selectedAsset.monitor_asset_tags || 'Not recorded'}</strong></span>
-            <span><MousePointer2 size={16} />Mouse <strong>{selectedAsset.mouse_asset_tag || 'Not recorded'}</strong></span>
-            <span><Keyboard size={16} />Keyboard <strong>{selectedAsset.keyboard_asset_tag || 'Not recorded'}</strong></span>
-          </div>
-          <p className="ticket-asset-snapshot-note">These current Asset Register details will be saved with the ticket as a historical snapshot.</p>
-        </article>}
-      </div>}
-
-      {form.department === 'it' && selectedAsset && <div className="ticket-form-section ticket-classification-section">
-        <div className="ticket-section-heading"><div><span className="section-kicker">3 · SELECT THE FAULTY COMPONENT</span><p>Choose the exact part of this asset that is affected. Existing component tags are shown where available.</p></div></div>
-        {catalogError && <div className="error-message">{catalogError}</div>}
-        <div className="ticket-component-grid">
-          {catalog.components.map(item => {
-            const Icon = componentIcons[item.code] || CircleHelp
-            const tag = componentTag(selectedAsset, item.code)
-            return <button type="button" key={item.code} className={componentCode === item.code ? 'selected' : ''} onClick={() => selectComponent(item)}>
-              <Icon size={21} />
-              <div><strong>{item.label}</strong><span>{tag ? `Asset tag ${tag}` : 'No separate component tag'}</span></div>
-            </button>
-          })}
-        </div>
-      </div>}
-
-      {form.department === 'it' && selectedComponent && <div className="ticket-form-section ticket-problem-section">
-        <div className="ticket-section-heading"><div><span className="section-kicker">4 · SELECT THE EXACT PROBLEM</span><p>Choose the problem that best describes what is happening with {selectedComponent.label}.</p></div></div>
-        <div className="ticket-problem-grid">
-          {selectedComponent.problems.map(problem => <button type="button" key={problem.code} className={problemCode === problem.code ? 'selected' : ''} onClick={() => { setProblemCode(problem.code); setError('') }}>
-            <span className="ticket-problem-radio" />
-            <strong>{problem.label}</strong>
+        {assetError && <div className="error-message">{assetError}</div>}
+        {!selectedAsset && assetSearchTerm && !assetLoading && !assetError && assetResults.length === 0 && <div className="ticket-asset-empty">No active asset matches “{assetSearchTerm}”. Check the workstation or asset tag.</div>}
+        {!selectedAsset && assetResults.length > 0 && <div className="ticket-simple-asset-results">
+          {assetResults.map(asset => <button type="button" key={asset.id} onClick={() => chooseAsset(asset)}>
+            <Cpu size={20} />
+            <div><strong>{assetPrimaryLabel(asset)}</strong><span>Workstation {asset.workstation_no || 'Not recorded'} · {asset.used_by || 'Unassigned'} · {asset.device_type}</span></div>
+            <small>{asset.status.replaceAll('_', ' ')}</small>
           </button>)}
-        </div>
-      </div>}
-
-      {form.department === 'it' && problemCode && <div className="ticket-form-section ticket-impact-section">
-        <div className="ticket-section-heading"><div><span className="section-kicker">5 · WORK IMPACT ASSESSMENT</span><p>Answer accurately. These answers determine the priority and queue order automatically.</p></div></div>
-        <div className="ticket-impact-grid">
-          <ImpactQuestion label="Is your work completely stopped?" help="Select Yes only when you cannot continue normal work." value={impact.work_stopped} onChange={value => updateImpact('work_stopped', value)} />
-          <ImpactQuestion label="Is another system or workaround available?" help="A spare device or usable temporary method reduces urgency." value={impact.alternative_available} onChange={value => updateImpact('alternative_available', value)} invertLabels />
-          <ImpactQuestion label="Are multiple employees affected?" help="Select Yes when this is not limited to only your system." value={impact.multiple_users_affected} onChange={value => updateImpact('multiple_users_affected', value)} />
-          <ImpactQuestion label="Is there a possible data-loss risk?" help="Files may be lost, corrupted, or become inaccessible." value={impact.data_loss_risk} onChange={value => updateImpact('data_loss_risk', value)} />
-          <ImpactQuestion label="Is there a security risk?" help="Suspicious access, compromise, malware, or exposed credentials." value={impact.security_risk} onChange={value => updateImpact('security_risk', value)} />
-          <ImpactQuestion label="Is a project or client delivery affected?" help="A committed project deadline or client delivery may be delayed." value={impact.client_delivery_affected} onChange={value => updateImpact('client_delivery_affected', value)} />
-          <ImpactQuestion label="Has this problem happened before?" help="Repeated problems may require deeper investigation." value={impact.recurring_issue} onChange={value => updateImpact('recurring_issue', value)} />
-          <label className="ticket-impact-started"><span>When did the problem start? (Optional)</span><input value={impact.started_when || ''} onChange={event => updateImpact('started_when', event.target.value)} placeholder="Example: Today at 10:30 AM" /></label>
-        </div>
-      </div>}
-
-      {form.department === 'it' && problemCode && <div className="ticket-form-section ticket-priority-section">
-        <div className="ticket-section-heading"><div><span className="section-kicker">6 · AUTOMATIC PRIORITY</span><p>The employee cannot manually increase priority. The server recalculates and validates this result when the ticket is submitted.</p></div></div>
-        {priorityLoading && <div className="ticket-priority-loading">Calculating impact-based priority…</div>}
-        {priorityPreview && <article className={`ticket-priority-preview priority-preview-${priorityPreview.priority}`}>
-          <div className="ticket-priority-preview-icon"><ShieldAlert size={24} /></div>
-          <div><span>CALCULATED PRIORITY</span><h3>{priorityPreview.priority_label}</h3><p>{priorityPreview.reason}</p><small>Initial response target: {formatSla(priorityPreview.sla_target_minutes)}</small></div>
-        </article>}
-      </div>}
-
-      <div className="ticket-form-section ticket-field-grid">
-        <span className="section-kicker ticket-grid-span">{form.department === 'it' ? '7' : '2'} · DESCRIBE THE ISSUE</span>
-        <label className="ticket-grid-span"><span>Reporting Manager Email</span><input type="email" value={form.reporting_manager_email} onChange={e => setForm({ ...form, reporting_manager_email: e.target.value })} placeholder="name@nakshatech.com" autoComplete="email" pattern="[^\s@]+@nakshatech\.com" title="Use a valid @nakshatech.com email address" required /><small>The reporting manager will receive email updates when this ticket is raised and resolved.</small></label>
-        <label><span>Issue Title</span><input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Example: Mouse is not detected after restart" required /></label>
-        {form.department !== 'it' && <label><span>Category</span><input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Request category" /></label>}
-        {form.department !== 'it' && <label><span>Priority</span><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value as TicketPriority })}><option value="low">Low</option><option value="medium">Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>}
-        <label><span>Issue Location</span><div className="field-with-icon"><Building2 size={17} /><input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Floor / room / desk / site" /></div></label>
-        <label className="ticket-grid-span ticket-description-field">
-          <span>Problem Description</span>
-          <textarea
-            className={descriptionIsValid ? 'ticket-description-valid' : 'ticket-description-invalid'}
-            value={form.description}
-            onChange={e => { setForm({ ...form, description: e.target.value }); setError('') }}
-            rows={7}
-            minLength={MIN_TICKET_DESCRIPTION_CHARACTERS}
-            aria-invalid={!descriptionIsValid}
-            aria-describedby="ticket-description-rule"
-            placeholder="Explain what happened, when it started, and what you have already tried."
-            required
-          />
-          <small
-            id="ticket-description-rule"
-            className={`ticket-description-rule ${descriptionIsValid ? 'valid' : 'invalid'}`}
-            aria-live="polite"
-          >
-            {descriptionIsValid
-              ? `Description requirement met · ${descriptionCharacterCount} characters`
-              : `Enter at least ${MIN_TICKET_DESCRIPTION_CHARACTERS} characters · ${descriptionCharacterCount}/${MIN_TICKET_DESCRIPTION_CHARACTERS}`}
-          </small>
-        </label>
-      </div>
-
-      <div className="ticket-form-section ticket-attachment-section">
-        <div className="ticket-section-heading">
-          <div>
-            <span className="section-kicker">{form.department === 'it' ? '8' : '3'} · ATTACH EVIDENCE (OPTIONAL)</span>
-            <p>Add screenshots or photos that help the responsible team understand the issue. The ticket can still be submitted without an image.</p>
+        </div>}
+        {selectedAsset && <article className="ticket-simple-selected-asset">
+          <div className="ticket-simple-selected-title"><div><small>SELECTED ASSET</small><strong>{assetPrimaryLabel(selectedAsset)}</strong><span>{selectedAsset.system_name || selectedAsset.asset_code}</span></div><button type="button" className="ghost-button compact" onClick={() => clearAsset({ preserveWorkstation: false })}><X size={15} /> Change</button></div>
+          <div className="ticket-simple-asset-facts">
+            <span><Gauge size={16} /><small>Workstation</small><strong>{selectedAsset.workstation_no || 'Not recorded'}</strong></span>
+            <span><UserRound size={16} /><small>Used By</small><strong>{selectedAsset.used_by || 'Unassigned'}</strong></span>
+            <span><Building2 size={16} /><small>Location</small><strong>{selectedAsset.location || selectedAsset.work_mode || 'Not recorded'}</strong></span>
+            <span><HardDrive size={16} /><small>Device</small><strong>{selectedAsset.device_type}</strong></span>
           </div>
-          <span className="ticket-attachment-count">{attachments.length}/{MAX_TICKET_IMAGES}</span>
+        </article>}
+      </section>}
+
+      {form.department === 'it' && selectedAsset && <section className="ticket-simple-section">
+        <div className="ticket-simple-section-heading"><span>3</span><div><h2>Fault details</h2><p>Select the faulty component from the scrollable list, the exact problem, and the priority.</p></div></div>
+        {catalogError && <div className="error-message">{catalogError}</div>}
+        <div className="ticket-simple-fault-grid">
+          <label><span>Faulty Component *</span><select className="ticket-component-listbox" size={6} value={componentCode} onChange={event => { const item = catalog.components.find(component => component.code === event.target.value); if (item) selectComponent(item) }}>{catalog.components.map(item => <option key={item.code} value={item.code}>{item.label}{componentTag(selectedAsset, item.code) ? ` — ${componentTag(selectedAsset, item.code)}` : ''}</option>)}</select><small>Scroll to view all available components.</small></label>
+          <div className="ticket-simple-fault-side">
+            <label><span>Problem *</span><select value={problemCode} onChange={event => { setProblemCode(event.target.value); setError('') }} disabled={!selectedComponent}><option value="">Select the problem</option>{selectedComponent?.problems.map(problem => <option key={problem.code} value={problem.code}>{problem.label}</option>)}</select></label>
+            <fieldset className="ticket-priority-choice"><legend>Priority *</legend><div>{priorities.map(item => <button type="button" key={item.value} className={`ticket-manual-priority priority-${item.value} ${form.priority === item.value ? 'selected' : ''}`} onClick={() => setForm(current => ({ ...current, priority: item.value }))}><strong>{item.label}</strong><span>{item.help}</span></button>)}</div></fieldset>
+          </div>
         </div>
-        <input
-          ref={fileInputRef}
-          className="ticket-attachment-input"
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          multiple
-          onChange={event => { addAttachmentFiles(Array.from(event.target.files || [])); event.target.value = '' }}
-        />
-        <button
-          type="button"
-          className="ticket-attachment-dropzone"
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }}
-          onDrop={event => { event.preventDefault(); addAttachmentFiles(Array.from(event.dataTransfer.files || [])) }}
-          disabled={Boolean(createdTicket)}
-        >
+      </section>}
+
+      <section className="ticket-simple-section">
+        <div className="ticket-simple-section-heading"><span>{form.department === 'it' ? '4' : '2'}</span><div><h2>Describe the issue</h2><p>Give the team enough information to understand and act on the request.</p></div></div>
+        <div className="ticket-simple-grid">
+          <label><span>Issue Title *</span><input value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Example: Mouse right click not working" required /></label>
+          {form.department !== 'it' && <label><span>Category</span><input value={form.category} onChange={event => setForm({ ...form, category: event.target.value })} placeholder="Request category" /></label>}
+          {form.department !== 'it' && <label><span>Priority *</span><select value={form.priority} onChange={event => setForm({ ...form, priority: event.target.value as TicketPriority })}><option value="low">Low</option><option value="medium">Moderate</option><option value="high">High</option><option value="critical">Critical</option></select></label>}
+          <label><span>Issue Location</span><input value={form.location} onChange={event => setForm({ ...form, location: event.target.value })} placeholder="Floor / room / desk / site" /></label>
+          <label className="ticket-simple-span"><span>Problem Description *</span><textarea className={descriptionIsValid ? 'ticket-description-valid' : 'ticket-description-invalid'} value={form.description} onChange={event => { setForm({ ...form, description: event.target.value }); setError('') }} rows={5} minLength={MIN_TICKET_DESCRIPTION_CHARACTERS} placeholder="Explain the problem clearly and mention anything you already tried." required /><small className={`ticket-description-rule ${descriptionIsValid ? 'valid' : 'invalid'}`}>{descriptionIsValid ? `Ready to submit · ${descriptionCharacterCount} characters` : `Minimum ${MIN_TICKET_DESCRIPTION_CHARACTERS} characters · ${descriptionCharacterCount}/${MIN_TICKET_DESCRIPTION_CHARACTERS}`}</small></label>
+        </div>
+      </section>
+
+      <section className="ticket-simple-section ticket-attachment-section">
+        <div className="ticket-simple-section-heading"><span>{form.department === 'it' ? '5' : '3'}</span><div><h2>Attach screenshot or photo</h2><p>Optional. Add up to five images so the support team can see the issue immediately.</p></div><em>{attachments.length}/{MAX_TICKET_IMAGES}</em></div>
+        <input ref={fileInputRef} className="ticket-attachment-input" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={event => { addAttachmentFiles(Array.from(event.target.files || [])); event.target.value = '' }} />
+        <button type="button" className="ticket-attachment-dropzone ticket-simple-dropzone" onClick={() => fileInputRef.current?.click()} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={event => { event.preventDefault(); addAttachmentFiles(Array.from(event.dataTransfer.files || [])) }} disabled={Boolean(createdTicket)}>
           <span className="ticket-attachment-dropzone-icon"><Upload size={22} /></span>
-          <span><strong>Add screenshot or photo</strong><small>Browse, drag & drop, or paste an image with Ctrl + V · JPG, PNG or WebP · 10 MB max each</small></span>
+          <span><strong>Upload image evidence</strong><small>Browse, drag & drop, or paste with Ctrl + V · JPG, PNG or WebP · 10 MB max each</small></span>
           <Paperclip size={18} />
         </button>
-        {attachments.length > 0 && <div className="ticket-attachment-preview-grid">
-          {attachments.map(item => <article key={item.id} className="ticket-attachment-preview-card">
-            <img src={item.previewUrl} alt={`Preview of ${item.file.name}`} />
-            <div><strong>{item.file.name}</strong><span>{formatAttachmentSize(item.file.size)}</span></div>
-            {!createdTicket && <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.file.name}`}><X size={15} /></button>}
-          </article>)}
-        </div>}
+        {attachments.length > 0 && <div className="ticket-attachment-preview-grid">{attachments.map(item => <article key={item.id} className="ticket-attachment-preview-card"><img src={item.previewUrl} alt={`Preview of ${item.file.name}`} /><div><strong>{item.file.name}</strong><span>{formatAttachmentSize(item.file.size)}</span></div>{!createdTicket && <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.file.name}`}><X size={15} /></button>}</article>)}</div>}
         {attachmentError && <div className={createdTicket ? 'ticket-attachment-warning' : 'error-message'}>{attachmentError}</div>}
-        {createdTicket && <div className="ticket-attachment-recovery">
-          <div><strong>{createdTicket.ticket_code} is already saved.</strong><span>Only the optional evidence upload needs attention. Retrying will not create a duplicate ticket.</span></div>
-          <div>
-            {attachments.length > 0 && <button type="button" className="secondary-button" onClick={retryTicketEvidence} disabled={loading}>{loading ? 'Retrying...' : 'Retry Image Upload'}</button>}
-            <button type="button" className="primary-button" onClick={() => navigate(`/tickets/${createdTicket.id}`, { replace: true })}>Open Ticket</button>
-          </div>
-        </div>}
-      </div>
+        {createdTicket && <div className="ticket-attachment-recovery"><div><strong>{createdTicket.ticket_code} is already saved.</strong><span>Only the optional image upload needs attention. Retrying will not create a duplicate ticket.</span></div><div>{attachments.length > 0 && <button type="button" className="secondary-button" onClick={retryTicketEvidence} disabled={loading}>{loading ? 'Retrying...' : 'Retry Image Upload'}</button>}<button type="button" className="primary-button" onClick={() => navigate(`/tickets/${createdTicket.id}`, { replace: true })}>Open Ticket</button></div></div>}
+      </section>
 
       {error && <div className="error-message">{error}</div>}
-      {!createdTicket && <div className="ticket-form-actions"><button type="button" className="ghost-button" onClick={() => navigate(-1)}>Cancel</button><button className="primary-button" disabled={loading || priorityLoading || !descriptionIsValid}><Send size={17} />{loading ? 'Submitting...' : 'Submit Ticket'}</button></div>}
+      {!createdTicket && <div className="ticket-form-actions ticket-simple-actions"><button type="button" className="ghost-button" onClick={() => navigate(-1)}>Cancel</button><button className="primary-button" disabled={loading || !descriptionIsValid}><Send size={18} />{loading ? 'Submitting...' : 'Submit Ticket'}</button></div>}
     </form>
   </>
 }

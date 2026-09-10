@@ -327,6 +327,33 @@ def calculate_it_ticket_priority(
     return selected_priority, reason, PRIORITY_SLA_MINUTES[selected_priority], problem_label
 
 
+def resolve_manual_it_ticket_priority(
+    component: str,
+    problem_code: str,
+    requested_priority: str,
+) -> tuple[str, str, int, str, str]:
+    """Validate IT classification while keeping employee-selected priority authoritative.
+
+    The legacy impact-based calculator remains available for compatibility and the
+    preview endpoint, but the simplified ticket form intentionally allows the employee
+    to choose Low / Moderate / High / Critical directly.
+    """
+    component_item = TICKET_COMPONENT_CATALOG.get(component)
+    if not component_item:
+        raise HTTPException(status_code=422, detail="Select a valid affected system component")
+    problem = component_item["problems"].get(problem_code)
+    if not problem:
+        raise HTTPException(status_code=422, detail="Select a valid problem for the affected component")
+    if requested_priority not in VALID_TICKET_PRIORITIES:
+        raise HTTPException(status_code=400, detail="Invalid ticket priority")
+
+    problem_label = str(problem[0])
+    component_label = str(component_item["label"])
+    display_priority = "Moderate" if requested_priority == "medium" else requested_priority.title()
+    reason = f"Employee selected {display_priority} priority. {component_label}: {problem_label}."
+    return requested_priority, reason, PRIORITY_SLA_MINUTES[requested_priority], problem_label, component_label
+
+
 def generate_totp_secret() -> str:
     return base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
 

@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import require_roles
 from app.models.entities import User
 from app.modules.agent_monitor.service import AgentMonitorService
+from app.modules.agent_monitor.excel_export import router as agent_excel_export_router
 
 router = APIRouter(prefix="/software-team/agents", tags=["software-team-agent-monitor"])
+router.include_router(agent_excel_export_router)
 
 
 @router.get("/status")

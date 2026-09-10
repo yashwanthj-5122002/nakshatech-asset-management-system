@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
+// @ts-ignore - three is provided transitively by react-globe-gl at runtime.
+import * as THREE from 'three'
 import { feature as topojsonFeature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
 
@@ -37,7 +39,12 @@ type IndiaNationalBoundaryPolygon = BaseGeoFeature & {
   isIndiaNationalBoundary: true
 }
 
-type GlobePolygon = CountryPolygon | IndiaStatePolygon | IndiaNationalBoundaryPolygon
+type IndiaReferenceBoundaryPolygon = BaseGeoFeature & {
+  displayName: string
+  isIndiaReferenceBoundary: true
+}
+
+type GlobePolygon = CountryPolygon | IndiaStatePolygon | IndiaNationalBoundaryPolygon | IndiaReferenceBoundaryPolygon
 
 type GlobePov = {
   lat: number
@@ -77,11 +84,27 @@ const BENGALURU = {
 
 const INDIA_STATES_RENDER_URL = '/data/india-states-globe.b64'
 const INDIA_NATIONAL_BOUNDARY_RENDER_URLS = [
-  '/data/india-national-boundary-osm/part-01.b64',
-  '/data/india-national-boundary-osm/part-02.b64',
-  '/data/india-national-boundary-osm/part-03.b64',
+  '/data/india-national-boundary-supplied-v1/part-01.b64',
+  '/data/india-national-boundary-supplied-v1/part-02.b64',
+  '/data/india-national-boundary-supplied-v1/part-03.b64',
 ] as const
 const EXPECTED_INDIA_STATE_COUNT = 36
+const INDIA_REFERENCE_OUTLINE_URL = '/data/india-reference-outline-v3.geojson'
+// V6.2.9: the visible India shape comes from the user-approved image, not GeoJSON.
+// The image is preprocessed to transparent PNG and is added directly to the Three.js scene.
+const INDIA_APPROVED_IMAGE_URL = '/data/india-approved-image-v1.png?v=6211'
+const INDIA_APPROVED_MASK_URL = '/data/india-approved-mask-v2.png?v=6211'
+// V6.2.11: map the approved India image onto a curved lat/lng patch that sits
+// on the globe surface. The bounds include the mainland, Lakshadweep and
+// Andaman/Nicobar while preserving the supplied image's natural aspect on a sphere.
+const INDIA_IMAGE_MIN_LAT = 5.6
+const INDIA_IMAGE_MAX_LAT = 37.6
+const INDIA_IMAGE_MIN_LNG = 67.0
+const INDIA_IMAGE_MAX_LNG = 98.1
+const INDIA_IMAGE_MASK_ALTITUDE = 0.010
+const INDIA_IMAGE_ALTITUDE = 0.014
+const INDIA_IMAGE_LNG_SEGMENTS = 64
+const INDIA_IMAGE_LAT_SEGMENTS = 68
 
 const NETWORK_SOURCES: NetworkNode[] = [
   { id: 'san-francisco', name: 'San Francisco', lat: 37.7749, lng: -122.4194, kind: 'source' },
@@ -145,6 +168,10 @@ function isIndiaNationalBoundaryPolygon(feature: GlobePolygon): feature is India
   return 'isIndiaNationalBoundary' in feature && feature.isIndiaNationalBoundary === true
 }
 
+function isIndiaReferenceBoundaryPolygon(feature: GlobePolygon): feature is IndiaReferenceBoundaryPolygon {
+  return 'isIndiaReferenceBoundary' in feature && feature.isIndiaReferenceBoundary === true
+}
+
 async function decodeCompressedGeoJson(encoded: string, expectedFeatureCount: number): Promise<GeoFeatureCollection> {
   const binary = window.atob(encoded.trim())
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
@@ -170,6 +197,57 @@ async function fetchText(url: string, label: string): Promise<string> {
   return response.text()
 }
 
+async function fetchGeoJson(url: string, label: string): Promise<GeoFeatureCollection> {
+  const response = await fetch(url, { cache: 'force-cache' })
+  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`)
+  const parsed = await response.json() as GeoFeatureCollection
+  if (parsed.type !== 'FeatureCollection' || !Array.isArray(parsed.features)) {
+    throw new Error(`${label} is invalid`)
+  }
+  return parsed
+}
+
+function createIndiaSurfaceGeometry(
+  globe: GlobeMethods,
+  altitude: number,
+): THREE.BufferGeometry {
+  const positions: number[] = []
+  const uvs: number[] = []
+  const indices: number[] = []
+
+  for (let row = 0; row <= INDIA_IMAGE_LAT_SEGMENTS; row += 1) {
+    const v = row / INDIA_IMAGE_LAT_SEGMENTS
+    const lat = INDIA_IMAGE_MIN_LAT + (INDIA_IMAGE_MAX_LAT - INDIA_IMAGE_MIN_LAT) * v
+
+    for (let column = 0; column <= INDIA_IMAGE_LNG_SEGMENTS; column += 1) {
+      const u = column / INDIA_IMAGE_LNG_SEGMENTS
+      const lng = INDIA_IMAGE_MIN_LNG + (INDIA_IMAGE_MAX_LNG - INDIA_IMAGE_MIN_LNG) * u
+      const coords = globe.getCoords(lat, lng, altitude)
+      positions.push(coords.x, coords.y, coords.z)
+      uvs.push(u, v)
+    }
+  }
+
+  const rowWidth = INDIA_IMAGE_LNG_SEGMENTS + 1
+  for (let row = 0; row < INDIA_IMAGE_LAT_SEGMENTS; row += 1) {
+    for (let column = 0; column < INDIA_IMAGE_LNG_SEGMENTS; column += 1) {
+      const a = row * rowWidth + column
+      const b = a + 1
+      const c = (row + 1) * rowWidth + column
+      const d = c + 1
+      indices.push(a, b, c, b, d, c)
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setIndex(indices)
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.computeVertexNormals()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
 export function NakshaBengaluruNetworkGlobe() {
   const globeRef = useRef<GlobeMethods>()
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -180,6 +258,10 @@ export function NakshaBengaluruNetworkGlobe() {
   const [reducedMotion, setReducedMotion] = useState(false)
   const [indiaStates, setIndiaStates] = useState<IndiaStatePolygon[]>([])
   const [indiaNationalBoundary, setIndiaNationalBoundary] = useState<IndiaNationalBoundaryPolygon | null>(null)
+  const [indiaReferenceBoundary, setIndiaReferenceBoundary] = useState<IndiaReferenceBoundaryPolygon | null>(null)
+  const indiaApprovedSurfaceRef = useRef<THREE.Mesh | null>(null)
+  const indiaApprovedMaskSurfaceRef = useRef<THREE.Mesh | null>(null)
+  const [indiaImageReady, setIndiaImageReady] = useState(false)
 
   const countries = useMemo<CountryPolygon[]>(() => {
     const topology = worldAtlas as unknown as { objects: { countries: unknown } }
@@ -197,16 +279,26 @@ export function NakshaBengaluruNetworkGlobe() {
   }, [])
 
   const polygons = useMemo<GlobePolygon[]>(() => {
+    // V6.2.9: once the approved image texture is ready, remove all legacy India
+    // polygon faces/strokes from the WebGL polygon layer so the old northern
+    // boundary cannot show around the supplied image.
+    if (indiaImageReady) {
+      return countries.filter(country => !isIndia(country))
+    }
+
     if (!indiaStates.length) return countries
 
-    const indiaLayers: GlobePolygon[] = [...indiaStates]
-    if (indiaNationalBoundary) indiaLayers.push(indiaNationalBoundary)
+    // Fallback while the approved SVG texture is loading.
+    const indiaLayers: GlobePolygon[] = []
+    if (indiaReferenceBoundary) indiaLayers.push(indiaReferenceBoundary)
+    indiaLayers.push(...indiaStates)
 
     return [
       ...countries.filter(country => !isIndia(country)),
       ...indiaLayers,
     ]
-  }, [countries, indiaNationalBoundary, indiaStates])
+  }, [countries, indiaImageReady, indiaReferenceBoundary, indiaStates])
+
 
   useEffect(() => {
     let cancelled = false
@@ -220,8 +312,9 @@ export function NakshaBengaluruNetworkGlobe() {
         ),
       )
         .then(parts => decodeCompressedGeoJson(parts.join(''), 1)),
+      fetchGeoJson(INDIA_REFERENCE_OUTLINE_URL, 'India reference outline'),
     ])
-      .then(([stateCollection, nationalCollection]) => {
+      .then(([stateCollection, nationalCollection, referenceCollection]) => {
         if (cancelled) return
 
         const states = stateCollection.features
@@ -234,22 +327,31 @@ export function NakshaBengaluruNetworkGlobe() {
           }))
 
         const nationalFeature = nationalCollection.features.find(item => isPolygonGeometry(item.geometry))
-        if (states.length !== EXPECTED_INDIA_STATE_COUNT || !nationalFeature) {
+        const referenceFeature = referenceCollection.features.find(item => isPolygonGeometry(item.geometry))
+        if (states.length !== EXPECTED_INDIA_STATE_COUNT || !nationalFeature || !referenceFeature) {
           throw new Error('India map data is incomplete')
         }
 
         setIndiaStates(states)
+        // Keep the supplied GeoJSON loaded for integrity/fallback checks; V6.2.6 changes only the visual outline.
         setIndiaNationalBoundary({
           ...nationalFeature,
           properties: nationalFeature.properties ?? {},
           displayName: String(nationalFeature.properties?.name ?? 'India'),
           isIndiaNationalBoundary: true,
         })
+        setIndiaReferenceBoundary({
+          ...referenceFeature,
+          properties: referenceFeature.properties ?? {},
+          displayName: 'India',
+          isIndiaReferenceBoundary: true,
+        })
       })
       .catch(() => {
         if (!cancelled) {
           setIndiaStates([])
           setIndiaNationalBoundary(null)
+          setIndiaReferenceBoundary(null)
         }
       })
 
@@ -257,6 +359,116 @@ export function NakshaBengaluruNetworkGlobe() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!ready) return
+
+    const globe = globeRef.current
+    if (!globe) return
+
+    let cancelled = false
+    const scene = globe.scene()
+    const loader = new THREE.TextureLoader()
+    setIndiaImageReady(false)
+
+    const configureTexture = (texture: THREE.Texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.minFilter = THREE.LinearFilter
+      texture.magFilter = THREE.LinearFilter
+      texture.generateMipmaps = true
+      texture.needsUpdate = true
+    }
+
+    void Promise.all([
+      loader.loadAsync(INDIA_APPROVED_IMAGE_URL),
+      loader.loadAsync(INDIA_APPROVED_MASK_URL),
+    ])
+      .then(([imageTexture, maskTexture]) => {
+        if (cancelled) {
+          imageTexture.dispose()
+          maskTexture.dispose()
+          return
+        }
+
+        configureTexture(imageTexture)
+        configureTexture(maskTexture)
+
+        // V6.2.11: these are curved globe-surface meshes, not camera-facing sprites.
+        // Every vertex is derived from a real latitude/longitude on the current globe,
+        // so India stays painted onto Earth while the existing camera sweep rotates.
+        const maskGeometry = createIndiaSurfaceGeometry(globe, INDIA_IMAGE_MASK_ALTITUDE)
+        const maskMaterial = new THREE.MeshBasicMaterial({
+          map: maskTexture,
+          color: 0xffffff,
+          transparent: true,
+          opacity: 1,
+          alphaTest: 0.01,
+          depthTest: true,
+          depthWrite: false,
+          toneMapped: false,
+          blending: THREE.NormalBlending,
+          side: THREE.DoubleSide,
+        })
+        const maskSurface = new THREE.Mesh(maskGeometry, maskMaterial)
+        maskSurface.name = 'naksha-approved-india-surface-mask'
+        maskSurface.renderOrder = 8990
+        maskSurface.frustumCulled = false
+        maskSurface.visible = true
+
+        const imageGeometry = createIndiaSurfaceGeometry(globe, INDIA_IMAGE_ALTITUDE)
+        const imageMaterial = new THREE.MeshBasicMaterial({
+          map: imageTexture,
+          color: 0xffffff,
+          transparent: true,
+          opacity: 1,
+          alphaTest: 0.005,
+          depthTest: true,
+          depthWrite: false,
+          toneMapped: false,
+          blending: THREE.NormalBlending,
+          side: THREE.DoubleSide,
+        })
+        const imageSurface = new THREE.Mesh(imageGeometry, imageMaterial)
+        imageSurface.name = 'naksha-approved-india-globe-surface'
+        imageSurface.renderOrder = 9000
+        imageSurface.frustumCulled = false
+        imageSurface.visible = true
+
+        scene.add(maskSurface)
+        scene.add(imageSurface)
+        indiaApprovedMaskSurfaceRef.current = maskSurface
+        indiaApprovedSurfaceRef.current = imageSurface
+        setIndiaImageReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) setIndiaImageReady(false)
+      })
+
+    return () => {
+      cancelled = true
+
+      const imageSurface = indiaApprovedSurfaceRef.current
+      if (imageSurface) {
+        scene.remove(imageSurface)
+        imageSurface.geometry.dispose()
+        const material = imageSurface.material as THREE.MeshBasicMaterial
+        material.map?.dispose()
+        material.dispose()
+      }
+      indiaApprovedSurfaceRef.current = null
+
+      const maskSurface = indiaApprovedMaskSurfaceRef.current
+      if (maskSurface) {
+        scene.remove(maskSurface)
+        maskSurface.geometry.dispose()
+        const material = maskSurface.material as THREE.MeshBasicMaterial
+        material.map?.dispose()
+        material.dispose()
+      }
+      indiaApprovedMaskSurfaceRef.current = null
+      setIndiaImageReady(false)
+    }
+  }, [ready])
 
   useEffect(() => {
     const host = hostRef.current
@@ -374,28 +586,32 @@ export function NakshaBengaluruNetworkGlobe() {
   }, [])
 
   const polygonCapColor = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaReferenceBoundaryPolygon(polygon)) return 'rgba(10, 116, 157, .48)'
     if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(21, 201, 228, .035)'
-    if (isIndiaStatePolygon(polygon)) return 'rgba(10, 116, 157, .42)'
+    if (isIndiaStatePolygon(polygon)) return 'rgba(10, 116, 157, .36)'
     if (isIndia(polygon as CountryPolygon)) return 'rgba(11, 138, 180, .40)'
     return 'rgba(5, 36, 62, .72)'
   }, [])
 
   const polygonSideColor = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaReferenceBoundaryPolygon(polygon)) return 'rgba(28, 207, 235, .20)'
     if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(28, 207, 235, .14)'
     if (isIndiaStatePolygon(polygon)) return 'rgba(3, 47, 68, .20)'
     return 'rgba(2, 21, 38, .30)'
   }, [])
 
   const polygonStrokeColor = useCallback((polygon: GlobePolygon) => {
-    if (isIndiaNationalBoundaryPolygon(polygon)) return '#67f2ff'
-    if (isIndiaStatePolygon(polygon)) return 'rgba(73, 173, 201, .58)'
+    if (isIndiaReferenceBoundaryPolygon(polygon)) return '#73f2ff'
+    if (isIndiaNationalBoundaryPolygon(polygon)) return 'rgba(0, 0, 0, 0)'
+    if (isIndiaStatePolygon(polygon)) return 'rgba(73, 173, 201, .46)'
     if (isIndia(polygon as CountryPolygon)) return '#74eff8'
     return 'rgba(57, 156, 207, .45)'
   }, [])
 
   const polygonAltitude = useCallback((polygon: GlobePolygon) => {
+    if (isIndiaReferenceBoundaryPolygon(polygon)) return 0.006
     if (isIndiaNationalBoundaryPolygon(polygon)) return 0.014
-    if (isIndiaStatePolygon(polygon)) return 0.007
+    if (isIndiaStatePolygon(polygon)) return 0.009
     return 0.0025
   }, [])
 
@@ -475,9 +691,11 @@ export function NakshaBengaluruNetworkGlobe() {
           <div>
             <strong>Bengaluru Global Network</strong>
             <small>
-              {indiaStates.length === EXPECTED_INDIA_STATE_COUNT && indiaNationalBoundary
-                ? 'OSM India national outline · 36 state / union territory boundaries · global routes converging on Bengaluru'
-                : 'Animated global routes converging on the NakshaTech hub in Bengaluru'}
+              {indiaImageReady
+                ? 'India fixed to globe surface · all global routes converge on Bengaluru'
+                : indiaStates.length === EXPECTED_INDIA_STATE_COUNT && indiaNationalBoundary && indiaReferenceBoundary
+                  ? 'Loading approved India image · verified fallback map data ready underneath'
+                  : 'Animated global routes converging on the NakshaTech hub in Bengaluru'}
             </small>
           </div>
         </div>
@@ -489,7 +707,7 @@ export function NakshaBengaluruNetworkGlobe() {
       </div>
 
       <div className="naksha-login-globe-source">
-        India national outline from supplied OSM GeoJSON · 36 state / UT boundaries · controlled India-facing sweep
+        Approved India image fixed to globe surface · controlled India-facing sweep · every network route ends at Bengaluru
       </div>
     </div>
   )

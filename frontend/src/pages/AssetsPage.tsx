@@ -91,6 +91,15 @@ const qualityFilterLabels: Record<string, string> = {
   duplicate_ip: 'Duplicate IP addresses',
 }
 
+const returnRemoveDeviceTypes = new Set(['Computer', 'Laptop', 'Smartphone', 'Printer', 'External HDD'])
+
+const deviceCountLabels: Record<string, string> = {
+  Computer: 'Computers',
+  Laptop: 'Laptops',
+  Smartphone: 'Smartphones',
+  Printer: 'Printers',
+}
+
 function applyQualityFilter(assets: Asset[], qualityFilter: string, qualityValues: string[]): Asset[] {
   if (!qualityFilter) return assets
   if (qualityFilter === 'replacement_pending' || qualityFilter === 'repair') {
@@ -204,15 +213,17 @@ export function AssetsPage() {
   async function returnAsset(event: FormEvent) {
     event.preventDefault()
     if (!selected) return
+    const selectedDeviceType = selected.device_type
+    const returnMode = selectedDeviceType === 'Computer' ? returnForm.return_mode : 'complete_return'
     setBusy(true); setError(''); setMessage('')
     try {
       const result = await apiFetch<VendorReturnResult>(`/assets/${selected.id}/vendor-return`, {
         method: 'POST',
         body: JSON.stringify({
-          return_mode: returnForm.return_mode,
+          return_mode: returnMode,
           return_date: returnForm.return_date,
           vendor_name: 'Rental / Vendor Return',
-          reason: returnForm.return_mode === 'complete_return'
+          reason: returnMode === 'complete_return'
             ? 'Complete asset returned / removed from active inventory'
             : 'Desktop returned / removed; monitor retained by NakshaTech',
           remarks: returnForm.remarks || null,
@@ -225,7 +236,12 @@ export function AssetsPage() {
       setSelected(null)
       setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
       const retained = result.retained_monitor_tags ? ` Monitor retained: ${result.retained_monitor_tags}.` : ''
-      setMessage(`${result.cpu_asset_tag || result.asset_code} returned / removed from active IT assets. Total IT Assets and Computers decrease by 1.${retained}`)
+      if (selectedDeviceType === 'External HDD') {
+        setMessage(`${result.cpu_asset_tag || result.asset_code} returned / removed from the active External HDD register. External HDD count decreases by 1. Total IT Assets is unchanged.${retained}`)
+      } else {
+        const countLabel = deviceCountLabels[selectedDeviceType] || `${selectedDeviceType}s`
+        setMessage(`${result.cpu_asset_tag || result.asset_code} returned / removed from active IT assets. Total IT Assets and ${countLabel} decrease by 1.${retained}`)
+      }
       await load()
     } catch (err) { setError(err instanceof Error ? err.message : 'Return / remove failed') }
     finally { setBusy(false) }
@@ -271,6 +287,12 @@ export function AssetsPage() {
       assigned_date: new Date().toISOString().slice(0, 10), remarks: '',
     })
     setAssignmentOpen(true)
+  }
+
+  function openReturnRemove() {
+    if (!selected) return
+    setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+    setReturnOpen(true)
   }
 
   return (
@@ -323,7 +345,7 @@ export function AssetsPage() {
             <button className="secondary-button" onClick={() => navigate(withITMonth(`/assets/${selected.id}/edit`, selectedMonth))}><Pencil size={15} /> Edit Full Record</button>
             <button className="secondary-button" onClick={openAssignment}><ArrowRightLeft size={15} /> Assign / Transfer</button>
             <button className="secondary-button" onClick={() => navigate(withITMonth(`/work?mode=component&asset=${selected.id}`, selectedMonth))}><Repeat2 size={15} /> Change Component</button>
-            {selected.device_type === 'Computer' && <button className="danger-button" onClick={() => setReturnOpen(true)}><RotateCcw size={15} /> Return / Remove</button>}
+            {returnRemoveDeviceTypes.has(selected.device_type) && <button className="danger-button" onClick={openReturnRemove}><RotateCcw size={15} /> Return / Remove</button>}
             <button className="secondary-button" onClick={() => void archiveAsset()}><Archive size={15} /> Retire</button>
             {selected.can_delete_test_record && <button className="danger-button full-action" onClick={() => void deleteTestAsset()}><Trash2 size={15} /> Delete QA Test Record</button>}
           </div>}
@@ -373,10 +395,12 @@ export function AssetsPage() {
       </form></section></div>}
 
       {returnOpen && selected && <div className="modal-backdrop"><section className="modal-card workflow-modal"><button className="icon-button modal-close" onClick={() => setReturnOpen(false)}><X /></button><div className="modal-heading"><RotateCcw /><div><span className="section-kicker">RETURN / REMOVE ASSET</span><h2>{selected.cpu_asset_tag || selected.asset_code} / {selected.workstation_no || 'No workstation'}</h2></div></div>{error && <div className="error-message modal-error">{error}</div>}<form className="data-form form-grid" onSubmit={returnAsset}>
-        <div className="full-span form-guidance"><strong>This removes one Desktop from active IT assets.</strong> The dashboard Total IT Assets and Computers will reduce by 1. The full return is preserved in Returned Assets Excel.</div>
-        <label className="full-span">Return Option<select value={returnForm.return_mode} onChange={e => setReturnForm({ ...returnForm, return_mode: e.target.value as typeof returnForm.return_mode })}><option value="complete_return">Complete Return — Desktop + Monitor returned</option><option value="return_without_monitor">Return Desktop — Keep Monitor with NakshaTech</option></select></label>
+        {selected.device_type === 'External HDD'
+          ? <div className="full-span form-guidance"><strong>This removes one External HDD from the active External HDD register.</strong> External HDD count will reduce by 1. Total IT Assets will not change. The full return is preserved in Returned Assets Excel.</div>
+          : <div className="full-span form-guidance"><strong>This removes one {selected.device_type === 'Computer' ? 'Desktop' : selected.device_type} from active IT assets.</strong> The dashboard Total IT Assets and {deviceCountLabels[selected.device_type] || `${selected.device_type}s`} will reduce by 1. The full return is preserved in Returned Assets Excel.</div>}
+        <label className="full-span">Return Option<select value={selected.device_type === 'Computer' ? returnForm.return_mode : 'complete_return'} disabled={selected.device_type !== 'Computer'} onChange={e => setReturnForm({ ...returnForm, return_mode: e.target.value as typeof returnForm.return_mode })}><option value="complete_return">{selected.device_type === 'Computer' ? 'Complete Return — Desktop + Monitor returned' : `Complete Return — ${selected.device_type} returned`}</option>{selected.device_type === 'Computer' && <option value="return_without_monitor">Return Desktop — Keep Monitor with NakshaTech</option>}</select></label>
         <label>Return Date<input required type="date" value={returnForm.return_date} onChange={e => setReturnForm({ ...returnForm, return_date: e.target.value })} /></label>
-        <div className="form-guidance"><strong>Monitor:</strong> {selected.monitor_asset_tags || 'Not recorded'}{returnForm.return_mode === 'return_without_monitor' ? ' · will be recorded as retained spare' : ' · returned with Desktop'}</div>
+        {selected.device_type === 'Computer' && <div className="form-guidance"><strong>Monitor:</strong> {selected.monitor_asset_tags || 'Not recorded'}{returnForm.return_mode === 'return_without_monitor' ? ' · will be recorded as retained spare' : ' · returned with Desktop'}</div>}
         <label className="full-span">Remarks (optional)<textarea rows={3} value={returnForm.remarks} onChange={e => setReturnForm({ ...returnForm, remarks: e.target.value })} /></label>
         <button className="danger-button full-span" disabled={busy}><Save size={17} /> {busy ? 'Removing...' : 'Confirm Return / Remove'}</button>
       </form></section></div>}

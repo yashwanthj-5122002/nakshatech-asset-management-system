@@ -1,6 +1,7 @@
 import {
   Activity,
   Clock3,
+  Download,
   History,
   Laptop,
   MonitorCheck,
@@ -10,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../components/DashboardHeader'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, downloadFile } from '../../lib/api'
 import { AgentMonitorDetailPanel } from './AgentMonitorDetailPanel'
 import type {
   AgentListItem,
@@ -132,12 +133,31 @@ export function AgentMonitorPage() {
     quiet ? setRefreshing(true) : setLoading(true)
     setError('')
     try {
-      const [statusResponse, agentResponse] = await Promise.all([
-        apiFetch<AgentStatusResponse>('/software-team/agents/status'),
-        apiFetch<AgentListPage>('/software-team/agents?page_size=100'),
-      ])
+      const statusResponse = await apiFetch<AgentStatusResponse>(
+        '/software-team/agents/status'
+      )
+
+      const allAgents: AgentListItem[] = []
+      let page = 1
+      const pageSize = 100
+
+      while (true) {
+        const agentResponse = await apiFetch<AgentListPage>(
+          `/software-team/agents?page=${page}&page_size=${pageSize}`
+        )
+
+        const items = agentResponse.items || []
+        allAgents.push(...items)
+
+        if (items.length < pageSize) {
+          break
+        }
+
+        page += 1
+      }
+
       setStatus(statusResponse)
-      setAgents(agentResponse.items || [])
+      setAgents(allAgents)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load agent monitoring data')
     } finally {
@@ -188,6 +208,7 @@ export function AgentMonitorPage() {
           </div>
           <div className="agent-monitor-actions">
             <label><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Workstation, CPU tag, hostname, user or IP" /></label>
+            <button type="button" className="secondary-button" onClick={() => void downloadFile('/software-team/agents/export.xlsx', 'NakshaTech Agent Inventory.xlsx').catch(err => setError(err instanceof Error ? err.message : 'Unable to download agent inventory'))}><Download size={16} /> Download Agent Excel</button>
             <button type="button" className="secondary-button" onClick={() => setShowSwitchHistory(true)}><History size={16} /> User Switch History</button>
             <button type="button" className="secondary-button" onClick={() => void load(true)} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'spin' : ''} /> Refresh</button>
           </div>

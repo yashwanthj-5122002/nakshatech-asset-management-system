@@ -1,4 +1,4 @@
-export type EncodedBoundary = { n: string; g: string[][][] }
+export type EncodedBoundary = { n: string; g: string[][] }
 
 export type LoginBoundaryFeature = {
   type: 'Feature'

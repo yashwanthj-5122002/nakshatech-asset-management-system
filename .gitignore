@@ -12,3 +12,12 @@ _*_backups/
 *.dump
 database-before-*.sql
 database-backup-*.sql
+# Local patch / installer state
+.*_applied
+.patch_state/
+patch_backups/
+.*_backups/
+.*_last_backup.txt
+_*_last_backup.txt
+LATEST_*_BACKUP.txt
+*.backup_*

@@ -38,8 +38,22 @@ class Settings(BaseSettings):
     seed_management_secondary_password: str = "ChangeMeLocalChethan@2026!"
     seed_it_email: str = "it-support@nakshatech.com"
     seed_it_password: str = "ChangeMeLocalITSupport@2026!"
+    seed_finance_password: str = "ChangeMeLocalFinance@2026!"
+    seed_hr_password: str = "ChangeMeLocalHR@2026!"
     seed_drone_email: str = "drone@nakshatech.com"
     seed_drone_password: str = "ChangeMeLocalDrone@2026!"
+
+    # Local/UAT-only V7.0.7 workflow test logins. These accounts use the
+    # existing unified authentication system; clear-text credentials come
+    # from protected environment configuration and are hashed in PostgreSQL.
+    # Normal employees remain employee-role users and never gain /ortho access.
+    seed_operations_test_users_enabled: bool = False
+    seed_bd_manager_email: str = ""
+    seed_bd_manager_password: str = ""
+    seed_ortho_pm_email: str = ""
+    seed_ortho_pm_password: str = ""
+    seed_employee_test_email: str = ""
+    seed_employee_test_password: str = ""
 
     database_url: str = "postgresql+psycopg://asset_user:asset_password@db:5432/asset_management"
     database_pool_size: int = 5
@@ -68,6 +82,9 @@ class Settings(BaseSettings):
     smtp_use_ssl: bool = False
     it_support_email: str = "software.team@nakshatech.com"
     ticket_email_heading: str = "NakshaTech IT Support"
+    finance_email_heading: str = "NakshaTech Finance CRM"
+    finance_admin_notification_emails: str = "admin@nakshatech.com"
+    finance_team_notification_emails: str = "finance@nakshatech.com"
     app_public_url: str = "http://localhost:3100"
     email_otp_expiry_minutes: int = 10
     email_otp_resend_seconds: int = 60
@@ -158,6 +175,11 @@ class Settings(BaseSettings):
         """Fail fast when an unsafe production configuration is detected."""
         if not self.is_production:
             return
+        # Test-only operational accounts must never be enabled in production.
+        # Check this before unrelated production-secret validation so the guard
+        # remains deterministic even when multiple unsafe settings are present.
+        if self.seed_operations_test_users_enabled:
+            raise RuntimeError("SEED_OPERATIONS_TEST_USERS_ENABLED must be false in production")
         weak_secrets = {
             "change-this-secret-before-production",
             "change-this-secret-before-production-with-at-least-32-characters",
@@ -177,10 +199,12 @@ class Settings(BaseSettings):
             self.seed_management_secondary_password.strip(),
             self.seed_software_team_password.strip(),
             self.seed_it_password.strip(),
+            self.seed_finance_password.strip(),
+            self.seed_hr_password.strip(),
         )
         if any(len(value) < 10 or value.startswith("ChangeMe") for value in privileged_temporary_passwords):
             raise RuntimeError(
-                "Management, Software Team, and IT temporary passwords must be replaced with strong private values"
+                "Management, Software Team, IT, Finance, and HR temporary passwords must be replaced with strong private values"
             )
         if self.employee_portal_enabled:
             if not self.allowed_email_domain_list:

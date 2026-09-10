@@ -14,3 +14,6 @@ pytest>=8.3,<9.0
 httpx>=0.28,<1.0
 qrcode>=8.0,<9.0
 cryptography>=44,<46
+reportlab>=4.2,<5.0
+pypdf>=5.0,<7.0
+Pillow>=11.0,<13.0

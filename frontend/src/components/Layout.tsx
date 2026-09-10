@@ -1,6 +1,7 @@
 import {
   ArrowRightLeft,
   BarChart3,
+  Building2,
   Boxes,
   ChevronDown,
   ClipboardList,
@@ -13,6 +14,7 @@ import {
   History,
   LayoutDashboard,
   LifeBuoy,
+  MapPinned,
   MessageSquarePlus,
   Activity,
   LogOut,
@@ -47,7 +49,7 @@ interface NavItem {
   label: string
   icon: AppIcon
   roles: Role[]
-  group: 'overview' | 'support' | 'management' | 'it' | 'drone' | 'system'
+  group: 'overview' | 'support' | 'management' | 'business' | 'ortho' | 'finance' | 'hr' | 'it' | 'drone' | 'system'
   managementGroup?: NavItem['group']
   managementLabel?: string
 }
@@ -61,6 +63,10 @@ const navGroups: NavGroupDefinition[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'support', label: 'Employee Support' },
   { id: 'management', label: 'Management' },
+  { id: 'business', label: 'Business Development' },
+  { id: 'ortho', label: 'Ortho / LiDAR' },
+  { id: 'finance', label: 'Finance Department' },
+  { id: 'hr', label: 'HR Department' },
   { id: 'it', label: 'IT Department' },
   { id: 'drone', label: 'Drone Department' },
   { id: 'system', label: 'System' },
@@ -69,6 +75,14 @@ const navGroups: NavGroupDefinition[] = [
 const navItems: NavItem[] = [
   { to: '/support', label: 'Support Dashboard', icon: LifeBuoy, roles: ['employee'], group: 'support' },
   { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
+  { to: '/expenses/new', label: 'New Project Expense', icon: FileCheck2, roles: ['employee'], group: 'support' },
+  { to: '/expenses', label: 'My Expense Claims', icon: ShoppingCart, roles: ['employee'], group: 'support' },
+  { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee'], group: 'support' },
+  { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee'], group: 'support' },
+  { to: '/admin/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['admin'], group: 'management' },
+  { to: '/hr/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['hr'], group: 'hr' },
+  { to: '/finance/travel-km', label: 'Travel KM Payments', icon: MapPinned, roles: ['finance'], group: 'finance' },
+  { to: '/management/travel-km', label: 'Employee Travel Oversight', icon: MapPinned, roles: ['management'], group: 'management' },
   { to: '/tickets', label: 'Support Tickets', icon: ClipboardList, roles: ['employee', 'it', 'drone', 'management', 'software_team'], group: 'support' },
   { to: '/software-team/agents', label: 'Agent Monitoring', icon: MonitorCheck, roles: ['software_team'], group: 'system' },
   { to: '/software-team/security', label: 'Users & Audit', icon: Activity, roles: ['software_team'], group: 'system' },
@@ -76,6 +90,12 @@ const navItems: NavItem[] = [
   { to: '/software-team', label: 'Software Team Overview', icon: Code2, roles: ['software_team'], group: 'overview' },
   { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
+  { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/ortho', label: 'Ortho / LiDAR Dashboard', icon: FolderKanban, roles: ['ortho', 'admin', 'management'], group: 'ortho' },
+  { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/finance/clients', label: 'Client & Project Master', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
@@ -106,11 +126,19 @@ const roleLabels: Record<Role, { name: string; subtitle: string }> = {
   management: { name: 'Management', subtitle: 'Oversight & approvals' },
   it: { name: 'IT Department', subtitle: 'Head Office' },
   drone: { name: 'Drone Department', subtitle: 'Survey operations' },
+  finance: { name: 'Finance Department', subtitle: 'Project expenses & approvals' },
+  hr: { name: 'HR Department', subtitle: 'Employee travel verification' },
+  bd: { name: 'Business Development', subtitle: 'Client opportunities & delivery bridge' },
+  ortho: { name: 'Ortho / LiDAR', subtitle: 'Production, QC, QA & delivery' },
   employee: { name: 'Employee Support', subtitle: 'Organization ticket access' },
 }
 
 function isPathInItem(pathname: string, item: NavItem): boolean {
   if (item.to === '/drone') return pathname === '/drone'
+  if (item.to === '/finance') return pathname === '/finance'
+  if (item.to === '/bd') return pathname === '/bd'
+  if (item.to === '/ortho') return pathname === '/ortho'
+  if (item.to === '/expenses') return pathname === '/expenses'
   if (item.to === '/it') return pathname === '/it'
   if (item.to === '/admin') return pathname === '/admin'
   if (item.to === '/software-team') return pathname === '/software-team'
@@ -121,6 +149,8 @@ function canViewItem(role: Role, item: NavItem): boolean {
   // Keep the two full-access home pages separate while sharing all Admin permissions elsewhere.
   if (item.to === '/software-team') return role === 'software_team'
   if (item.to === '/admin') return role === 'admin'
+  // New department modules use exact-role access. Do not inherit the legacy Software Team -> Admin elevation.
+  if (item.to === '/bd' || item.to === '/ortho') return item.roles.includes(role)
   return canAccessRole(role, item.roles)
 }
 
@@ -140,6 +170,10 @@ export function Layout({ children }: { children: ReactNode }) {
   const [openGroups, setOpenGroups] = useState<Record<NavItem['group'], boolean>>({
     overview: true,
     management: false,
+    business: true,
+    ortho: true,
+    finance: true,
+    hr: true,
     it: false,
     drone: false,
     support: true,
@@ -245,7 +279,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="topbar-right">
             <GlobalNotificationBell />
             <div className="topbar-actions">
-              <span className="topbar-context"><PackageCheck size={17} />{currentUser.role === 'drone' ? 'Drone operations workspace' : currentUser.role === 'employee' ? `Branch: ${currentUser.selected_branch_name || currentUser.branch}` : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
+              <span className="topbar-context"><PackageCheck size={17} />{currentUser.role === 'drone' ? 'Drone operations workspace' : currentUser.role === 'bd' || location.pathname.startsWith('/bd') ? 'Business Development workspace' : currentUser.role === 'ortho' || location.pathname.startsWith('/ortho') ? 'Ortho / LiDAR production workspace' : currentUser.role === 'employee' ? `Branch: ${currentUser.selected_branch_name || currentUser.branch}` : currentUser.role === 'finance' || location.pathname.startsWith('/finance') ? 'Finance & project expense workspace' : currentUser.role === 'hr' ? 'HR travel verification workspace' : location.pathname.includes('/travel-km') ? 'Employee travel & KM workflow' : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
               <span className="topbar-user"><Users size={17} /><b>{roleDisplayName(currentUser.role).toUpperCase()}</b><small>{roleMeta.name}</small></span>
             </div>
           </div>

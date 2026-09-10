@@ -16,7 +16,7 @@ interface AuthContextValue {
   user: AuthUser | null
   needsBranchSelection: boolean
   pendingAuthenticatorSetup: PendingAuthenticatorSetup | null
-  login: (role: Role, email: string, password: string, remember: boolean, accessMode?: 'employee_support') => Promise<AuthLoginResponse>
+  login: (role: Role | undefined, email: string, password: string, remember: boolean, accessMode?: 'employee_support') => Promise<AuthLoginResponse>
   acceptAuthResponse: (result: AuthLoginResponse, remember?: boolean) => void
   confirmRegistrationAuthenticator: (code: string) => Promise<AuthLoginResponse>
   completePrivilegedPasswordSetup: (newPassword: string, confirmPassword: string) => Promise<AuthLoginResponse>
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     savePendingAuthenticatorSetup(null)
   }
 
-  async function login(role: Role, email: string, password: string, remember: boolean, accessMode?: 'employee_support') {
+  async function login(role: Role | undefined, email: string, password: string, remember: boolean, accessMode?: 'employee_support') {
     const result = await apiFetch<AuthLoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ role, email, password, access_mode: accessMode }),

@@ -263,26 +263,17 @@
   }
 }
 
-/* LOGIN ROLE ALIGNMENT - 5 ROLE GRID */
+/* LOGIN ROLE ALIGNMENT - SIX ROLE GRID */
 @media (min-width: 721px) {
   .management-role-picker > div {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     align-items: stretch;
   }
 
   .management-role-picker > div > button {
-    grid-column: span 2;
     width: 100%;
     min-width: 0;
-  }
-
-  .management-role-picker > div > button:nth-child(4) {
-    grid-column: 2 / span 2;
-  }
-
-  .management-role-picker > div > button:nth-child(5) {
-    grid-column: 4 / span 2;
   }
 }

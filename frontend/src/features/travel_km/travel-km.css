@@ -1,0 +1,1374 @@
+.travel-km-page {
+  display: grid;
+  gap: 18px;
+}
+
+.travel-km-error,
+.travel-km-success,
+.travel-km-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.travel-km-error {
+  border: 1px solid #f3c4c8;
+  color: #a72f3d;
+  background: #fff4f5;
+}
+
+.travel-km-success {
+  border: 1px solid #bfe4cc;
+  color: #17643a;
+  background: #f0fbf4;
+}
+
+.travel-km-readonly-banner {
+  border: 1px solid #b9dff2;
+  color: #175b7c;
+  background: #eef9fe;
+}
+
+.travel-km-panel {
+  padding: 20px;
+  border: 1px solid #dce6ef;
+  border-radius: 16px;
+  color: #17334f;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(26, 66, 103, .07);
+}
+
+.travel-km-panel h2,
+.travel-km-panel h3 {
+  margin: 0;
+  color: #0d2f52;
+}
+
+.travel-km-panel p {
+  margin: 7px 0 0;
+  color: #6c7e91;
+  line-height: 1.6;
+}
+
+.travel-km-kicker {
+  color: #0788b0;
+  font-size: .64rem;
+  font-weight: 850;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+
+.travel-km-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.travel-km-primary,
+.travel-km-secondary,
+.travel-km-danger,
+.travel-km-warning {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-weight: 800;
+  font-size: .75rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.travel-km-primary:hover,
+.travel-km-secondary:hover,
+.travel-km-danger:hover,
+.travel-km-warning:hover {
+  transform: translateY(-1px);
+}
+
+.travel-km-primary {
+  color: #fff;
+  border-color: #087fa2;
+  background: linear-gradient(135deg, #0b62bb, #078db0);
+  box-shadow: 0 8px 18px rgba(9, 114, 158, .16);
+}
+
+.travel-km-secondary {
+  color: #174d6b;
+  border-color: #c8dce8;
+  background: #fff;
+}
+
+.travel-km-secondary:hover {
+  border-color: #65c5d8;
+  background: #f5fcfe;
+}
+
+.travel-km-danger {
+  color: #b33444;
+  border-color: #efc4ca;
+  background: #fff3f5;
+}
+
+.travel-km-warning {
+  color: #8a5a08;
+  border-color: #ecd498;
+  background: #fff9e8;
+}
+
+.travel-km-primary:disabled,
+.travel-km-secondary:disabled,
+.travel-km-danger:disabled,
+.travel-km-warning:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.travel-km-form {
+  display: grid;
+  gap: 18px;
+}
+
+.travel-km-form-grid,
+.travel-km-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.travel-km-field {
+  display: grid;
+  gap: 7px;
+}
+
+.travel-km-field.full {
+  grid-column: 1 / -1;
+}
+
+.travel-km-field span {
+  color: #587189;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.travel-km-field small {
+  color: #7b8ea0;
+  font-size: .68rem;
+  line-height: 1.5;
+}
+
+.travel-km-field input,
+.travel-km-field select,
+.travel-km-field textarea,
+.travel-km-filter-row input,
+.travel-km-filter-row select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #ccdbe7;
+  border-radius: 9px;
+  outline: 0;
+  color: #17334f;
+  background: #fff;
+  font: inherit;
+  font-size: .76rem;
+}
+
+.travel-km-field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.travel-km-field input:focus,
+.travel-km-field select:focus,
+.travel-km-field textarea:focus,
+.travel-km-filter-row input:focus,
+.travel-km-filter-row select:focus {
+  border-color: #40b8d0;
+  box-shadow: 0 0 0 3px rgba(30, 168, 197, .11);
+}
+
+.travel-km-gps-card {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid #d8e6ef;
+  border-radius: 12px;
+  color: #24445f;
+  background: linear-gradient(180deg, #fbfdff 0%, #f5fafc 100%);
+}
+
+.travel-km-gps-card strong {
+  color: #143b5b;
+}
+
+.travel-km-gps-card span {
+  color: #71869a;
+  font-size: .7rem;
+}
+
+.travel-km-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.travel-km-stat {
+  min-height: 96px;
+  padding: 17px 18px;
+  border: 1px solid #dce6ef;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(26, 66, 103, .06);
+}
+
+.travel-km-stat span {
+  display: block;
+  color: #6f8296;
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.travel-km-stat strong {
+  display: block;
+  margin-top: 8px;
+  color: #0c3156;
+  font-size: 1.22rem;
+}
+
+.travel-km-stat small {
+  display: block;
+  margin-top: 6px;
+  color: #8193a4;
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+.travel-km-table-wrap {
+  overflow: auto;
+  border: 1px solid #dfe8ef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.travel-km-table {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: collapse;
+}
+
+.travel-km-table th {
+  padding: 11px;
+  color: #60788d;
+  background: #f5f9fc;
+  font-size: .65rem;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.travel-km-table td {
+  padding: 12px 11px;
+  border-top: 1px solid #e7eef3;
+  color: #26465f;
+  font-size: .75rem;
+  vertical-align: top;
+}
+
+.travel-km-table td small {
+  color: #8192a2;
+  margin-top: 4px;
+}
+
+.travel-km-table tr:hover td {
+  background: #f8fcfe;
+}
+
+.travel-km-status {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-weight: 850;
+  font-size: .65rem;
+  white-space: nowrap;
+}
+
+.travel-km-status.success {
+  color: #187347;
+  background: #e9f8ef;
+}
+
+.travel-km-status.danger {
+  color: #b43b49;
+  background: #fff0f2;
+}
+
+.travel-km-status.warning {
+  color: #93610c;
+  background: #fff6dd;
+}
+
+.travel-km-status.active {
+  color: #08799d;
+  background: #eaf8fc;
+}
+
+.travel-km-status.neutral {
+  color: #64788a;
+  background: #f0f4f7;
+}
+
+.travel-km-workflow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  margin-top: 18px;
+  padding: 5px 8px 2px;
+}
+
+.travel-km-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: #7890a4;
+  font-size: .68rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.travel-km-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 55%;
+  width: 90%;
+  height: 2px;
+  background: #d8e5ee;
+}
+
+.travel-km-step.done:not(:last-child)::after {
+  background: #4bbbd4;
+}
+
+.travel-km-step i {
+  position: relative;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #c7d9e4;
+  border-radius: 50%;
+  color: #6e8497;
+  background: #fff;
+  font-style: normal;
+}
+
+.travel-km-step.done {
+  color: #31536b;
+}
+
+.travel-km-step.done i {
+  color: #fff;
+  border-color: #1ca9c8;
+  background: #168eaf;
+  box-shadow: 0 0 0 4px rgba(28, 169, 200, .08);
+}
+
+.travel-km-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.travel-km-evidence {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dde8ef;
+  border-radius: 13px;
+  background: #fbfdff;
+}
+
+.travel-km-evidence img {
+  width: 100%;
+  height: 260px;
+  object-fit: contain;
+  border: 1px solid #e2ebf1;
+  border-radius: 10px;
+  background: #f3f7fa;
+}
+
+.travel-km-evidence-placeholder {
+  height: 260px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #b9cedc;
+  border-radius: 10px;
+  color: #8296a6;
+  background: #f8fbfd;
+}
+
+.travel-km-evidence-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.travel-km-evidence-meta div {
+  padding: 10px;
+  border: 1px solid #e5edf3;
+  border-radius: 9px;
+  background: #f8fbfd;
+}
+
+.travel-km-evidence-meta small {
+  display: block;
+  color: #7a8fa1;
+  font-size: .65rem;
+}
+
+.travel-km-evidence-meta strong {
+  display: block;
+  margin-top: 4px;
+  color: #24445f;
+  font-size: .72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.travel-km-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.travel-km-event {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+}
+
+.travel-km-event-dot {
+  width: 11px;
+  height: 11px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #1da8c7;
+  box-shadow: 0 0 0 4px rgba(29, 168, 199, .1);
+}
+
+.travel-km-event-body {
+  padding: 0 0 13px;
+  border-bottom: 1px solid #e5edf3;
+}
+
+.travel-km-event-body strong {
+  color: #173b59;
+}
+
+.travel-km-event-body span,
+.travel-km-event-body small {
+  display: block;
+  margin-top: 3px;
+  color: #74899c;
+  font-size: .69rem;
+  line-height: 1.45;
+}
+
+.travel-km-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.travel-km-summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.travel-km-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e4edf3;
+  border-radius: 9px;
+  background: #f8fbfd;
+}
+
+.travel-km-summary-row strong {
+  overflow: hidden;
+  color: #23465f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.travel-km-summary-row span {
+  color: #718699;
+  font-size: .7rem;
+}
+
+.travel-km-review {
+  display: grid;
+  gap: 13px;
+}
+
+.travel-km-review-note {
+  color: #758a9d;
+  font-size: .7rem;
+}
+
+.travel-km-empty {
+  padding: 30px;
+  color: #8295a6;
+  text-align: center;
+}
+
+.travel-km-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.travel-km-inline > svg {
+  color: #0a8eaf;
+}
+
+.travel-km-filter-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.travel-km-filter-row input {
+  min-width: min(330px, 100%);
+  flex: 1;
+}
+
+.travel-km-filter-row select {
+  width: auto;
+  min-width: 180px;
+}
+
+.travel-km-photo-input {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #0a8eaf;
+}
+
+.travel-km-photo-input input[type=file] {
+  max-width: 100%;
+}
+
+@media (max-width: 1000px) {
+  .travel-km-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .travel-km-summary-grid { grid-template-columns: 1fr; }
+  .travel-km-form-grid,
+  .travel-km-review-grid,
+  .travel-km-evidence-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .travel-km-stat-grid { grid-template-columns: 1fr; }
+  .travel-km-workflow { grid-template-columns: 1fr; gap: 8px; }
+  .travel-km-step { grid-template-columns: 30px 1fr; justify-items: start; text-align: left; }
+  .travel-km-step:not(:last-child)::after { left: 14px; top: 28px; width: 2px; height: 20px; }
+  .travel-km-evidence img,
+  .travel-km-evidence-placeholder { height: 210px; }
+  .travel-km-panel { padding: 15px; }
+  .travel-km-filter-row input,
+  .travel-km-filter-row select { width: 100%; min-width: 0; }
+}
+
+/* Travel KM V3: consent-based foreground live GPS tracking */
+.travel-km-live-panel {
+  overflow: hidden;
+}
+
+.travel-km-live-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.travel-km-live-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid #d8dee8;
+  background: #f7f9fc;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.travel-km-live-badge.is-live {
+  border-color: #a7e4c6;
+  background: #ecfdf3;
+  color: #087a46;
+}
+
+.travel-km-live-badge.is-waiting {
+  border-color: #f5d28d;
+  background: #fffaeb;
+  color: #9a6700;
+}
+
+.travel-km-live-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.travel-km-live-grid > div {
+  min-width: 0;
+  border: 1px solid #e4e7ec;
+  background: #fbfcfe;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.travel-km-live-grid small,
+.travel-km-live-grid strong {
+  display: block;
+}
+
+.travel-km-live-grid small {
+  color: #667085;
+  margin-bottom: 5px;
+}
+
+.travel-km-live-grid strong {
+  color: #101828;
+  word-break: break-word;
+}
+
+.travel-km-route-preview {
+  border: 1px solid #e4e7ec;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  padding: 12px;
+  color: #2563eb;
+}
+
+.travel-km-route-preview svg {
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  display: block;
+}
+
+.travel-km-route-preview circle { fill: #344054; }
+.travel-km-route-preview .travel-km-route-current { fill: #16a34a; }
+
+.travel-km-route-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.travel-km-route-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 90px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px dashed #cfd6e3;
+  border-radius: 12px;
+  color: #667085;
+  background: #fbfcfe;
+}
+
+.travel-km-tracking-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f2f6ff;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .travel-km-live-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .travel-km-live-panel .travel-km-actions > button,
+  .travel-km-live-panel .travel-km-actions > a { width: 100%; justify-content: center; }
+}
+
+@media (max-width: 420px) {
+  .travel-km-live-grid { grid-template-columns: 1fr; }
+}
+
+
+/* Travel KM V4: manual TO/CC email notification card */
+.travel-km-email-card {
+  display: grid;
+  gap: 16px;
+}
+
+.travel-km-email-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.travel-km-email-card-heading > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #0b7fa4;
+}
+
+.travel-km-email-chipbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-height: 48px;
+  padding: 9px 10px;
+  border: 1px solid #ccdbe7;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.travel-km-email-chipbox:focus-within {
+  border-color: #40b8d0;
+  box-shadow: 0 0 0 3px rgba(30, 168, 197, .11);
+}
+
+.travel-km-email-chipbox > svg {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  color: #6d8296;
+}
+
+.travel-km-email-chip-content {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 7px;
+}
+
+.travel-km-email-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.travel-km-email-chip {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid #cfe1ec;
+  border-radius: 999px;
+  color: #174d6b;
+  background: #f5fbfe;
+  font-size: .7rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.travel-km-email-chip button {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: #61788b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.travel-km-email-chip button:hover {
+  color: #a72f3d;
+  background: #ffecef;
+}
+
+.travel-km-email-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.travel-km-email-entry input {
+  min-width: min(300px, 100%);
+  flex: 1;
+  padding: 5px 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.travel-km-email-entry > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #8293a3;
+  font-size: .64rem;
+  white-space: nowrap;
+}
+
+.travel-km-email-error {
+  color: #b33444 !important;
+}
+
+.travel-km-email-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid #cfe5ee;
+  border-radius: 10px;
+  color: #3d647a;
+  background: #f5fbfd;
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+.travel-km-email-note.is-warning {
+  border-color: #edd79b;
+  color: #79550a;
+  background: #fff9e8;
+}
+
+.travel-km-email-readonly {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e1e9f0;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.travel-km-email-readonly > div {
+  display: grid;
+  gap: 5px;
+}
+
+.travel-km-email-readonly small,
+.travel-km-email-history-row small {
+  color: #75889a;
+  font-size: .66rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.travel-km-email-readonly strong {
+  color: #193d5b;
+  overflow-wrap: anywhere;
+}
+
+.travel-km-email-history {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.travel-km-email-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.travel-km-email-history-row {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(220px, 1.2fr) minmax(180px, 1fr);
+  gap: 12px;
+  padding: 12px 13px;
+  border: 1px solid #e1e8ef;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.travel-km-email-history-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.travel-km-email-history-row span {
+  color: #445d73;
+  font-size: .7rem;
+  overflow-wrap: anywhere;
+}
+
+.travel-km-mail-status {
+  width: max-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid #d7e1e9;
+  background: #f7f9fb;
+  color: #53697c !important;
+  font-size: .6rem !important;
+  font-weight: 850;
+  letter-spacing: .05em;
+}
+
+.travel-km-mail-status.sent {
+  border-color: #bee4cc;
+  background: #effaf3;
+  color: #17643a !important;
+}
+
+.travel-km-mail-status.console {
+  border-color: #bdd9ef;
+  background: #f0f7fd;
+  color: #1c5f8b !important;
+}
+
+.travel-km-mail-status.failed {
+  border-color: #f0c2c8;
+  background: #fff3f5;
+  color: #a72f3d !important;
+}
+
+.travel-km-email-history-error {
+  grid-column: 1 / -1;
+  display: flex !important;
+  align-items: flex-start;
+  gap: 6px;
+  color: #a72f3d;
+  font-size: .7rem;
+}
+
+.travel-km-email-none {
+  color: #8393a2;
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .travel-km-email-history-row { grid-template-columns: 1fr; }
+  .travel-km-email-entry { align-items: stretch; }
+  .travel-km-email-entry input { min-width: 0; width: 100%; }
+  .travel-km-email-entry > span { white-space: normal; }
+}
+
+/* V5 Smart Journey Verification + Project/Site Geofence */
+.travel-km-geofence-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #d9e5ed;
+  border-radius: 12px;
+  color: #526d82;
+  background: #f8fbfd;
+}
+
+.travel-km-geofence-banner.is-configured {
+  border-color: #bfe0d0;
+  color: #286147;
+  background: #f2fbf6;
+}
+
+.travel-km-geofence-banner > div {
+  display: grid;
+  gap: 4px;
+}
+
+.travel-km-geofence-banner strong {
+  color: #173c59;
+  font-size: .78rem;
+}
+
+.travel-km-geofence-banner span {
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+.travel-km-smart-panel,
+.travel-km-geofence-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.travel-km-smart-panel {
+  border-color: #cddfe9;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbfd 100%);
+}
+
+.travel-km-smart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.travel-km-smart-outcome {
+  padding: 6px 10px;
+  border: 1px solid #d9e3ea;
+  border-radius: 999px;
+  color: #5c7183;
+  background: #f7f9fb;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.travel-km-smart-outcome.verified {
+  border-color: #b9e2c9;
+  color: #17643a;
+  background: #effaf3;
+}
+
+.travel-km-smart-outcome.review,
+.travel-km-smart-outcome.needs_review,
+.travel-km-smart-outcome.insufficient_gps {
+  border-color: #ead79f;
+  color: #7b570a;
+  background: #fff9e8;
+}
+
+.travel-km-smart-outcome.high_variance {
+  border-color: #efc2c8;
+  color: #a72f3d;
+  background: #fff3f5;
+}
+
+.travel-km-smart-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #dce7ee;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.travel-km-score-ring {
+  width: 88px;
+  height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 8px solid #d8edf3;
+  border-radius: 50%;
+  color: #0b678a;
+  background: #f8fdff;
+}
+
+.travel-km-score-ring strong {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.travel-km-score-ring span {
+  margin-top: 4px;
+  color: #71889a;
+  font-size: .62rem;
+  font-weight: 800;
+}
+
+.travel-km-smart-summary > div:last-child {
+  display: grid;
+  gap: 6px;
+}
+
+.travel-km-smart-summary p,
+.travel-km-smart-summary small {
+  margin: 0;
+  color: #6d8193;
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+.travel-km-smart-metrics,
+.travel-km-geofence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.travel-km-smart-metrics > div,
+.travel-km-geofence-grid > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #e0e8ef;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.travel-km-smart-metrics small,
+.travel-km-geofence-grid small {
+  color: #73889a;
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.travel-km-smart-metrics strong,
+.travel-km-geofence-grid strong {
+  color: #173c59;
+  font-size: .78rem;
+}
+
+.travel-km-score-components {
+  display: grid;
+  gap: 10px;
+}
+
+.travel-km-score-row {
+  display: grid;
+  gap: 6px;
+}
+
+.travel-km-score-row > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #536d82;
+  font-size: .7rem;
+}
+
+.travel-km-score-row strong {
+  color: #1b4969;
+}
+
+.travel-km-score-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eaf0f4;
+}
+
+.travel-km-score-track i {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0b70b7, #159eb3);
+}
+
+.travel-km-smart-flags {
+  display: grid;
+  gap: 8px;
+}
+
+.travel-km-smart-flag,
+.travel-km-smart-clear,
+.travel-km-geofence-empty,
+.travel-km-geofence-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+.travel-km-smart-flag.info {
+  border: 1px solid #cfe2ee;
+  color: #38627b;
+  background: #f3f9fc;
+}
+
+.travel-km-smart-flag.medium {
+  border: 1px solid #ead79f;
+  color: #7b570a;
+  background: #fff9e8;
+}
+
+.travel-km-smart-flag.high {
+  border: 1px solid #efc2c8;
+  color: #a72f3d;
+  background: #fff3f5;
+}
+
+.travel-km-smart-clear,
+.travel-km-geofence-entry {
+  border: 1px solid #bee2ca;
+  color: #17643a;
+  background: #effaf3;
+}
+
+.travel-km-geofence-panel {
+  border-color: #d5e5dc;
+}
+
+.travel-km-geofence-empty {
+  border: 1px solid #dce5eb;
+  color: #667d90;
+  background: #f8fafc;
+}
+
+.travel-km-geofence-admin {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px dashed #b9d3e0;
+  border-radius: 12px;
+  background: #f8fcfe;
+}
+
+.travel-km-geofence-admin p {
+  margin: 0;
+  font-size: .7rem;
+}
+
+.travel-km-checkbox-field {
+  align-content: end;
+}
+
+.travel-km-checkbox-field input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+@media (max-width: 900px) {
+  .travel-km-smart-metrics,
+  .travel-km-geofence-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .travel-km-smart-summary { grid-template-columns: 1fr; }
+  .travel-km-score-ring { width: 76px; height: 76px; }
+  .travel-km-smart-metrics,
+  .travel-km-geofence-grid { grid-template-columns: 1fr; }
+}
+
+/* ========================================================================
+   V7.0.11 - Travel/KM responsive alignment at Chrome 100% zoom
+   ======================================================================== */
+.travel-km-page {
+  min-width: 0;
+  width: 100%;
+  gap: 18px;
+}
+
+.travel-km-panel,
+.travel-km-form,
+.travel-km-stat,
+.travel-km-summary-grid,
+.travel-km-summary-row,
+.travel-km-filter-row {
+  min-width: 0;
+}
+
+.travel-km-panel {
+  padding: clamp(17px, 1.3vw, 21px);
+}
+
+.travel-km-panel p {
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.travel-km-kicker { font-size: 0.68rem; }
+
+.travel-km-primary,
+.travel-km-secondary,
+.travel-km-danger,
+.travel-km-warning {
+  min-height: 42px;
+  font-size: 0.80rem;
+}
+
+.travel-km-field span { font-size: 0.75rem; }
+.travel-km-field small { font-size: 0.72rem; }
+.travel-km-field input,
+.travel-km-field select,
+.travel-km-field textarea,
+.travel-km-filter-row input,
+.travel-km-filter-row select {
+  min-height: 42px;
+  font-size: 0.80rem;
+}
+
+.travel-km-stat span { font-size: 0.70rem; }
+.travel-km-stat strong { font-size: 1.30rem; }
+.travel-km-stat small { font-size: 0.74rem; }
+
+.travel-km-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.travel-km-table {
+  min-width: 980px;
+}
+
+.travel-km-table th { font-size: 0.70rem; }
+.travel-km-table td { font-size: 0.80rem; line-height: 1.45; }
+.travel-km-table td small { font-size: 0.72rem; line-height: 1.4; }
+.travel-km-status { font-size: 0.70rem; }
+
+.travel-km-workflow {
+  min-width: 0;
+  gap: 0;
+}
+.travel-km-step { font-size: 0.73rem; }
+
+.travel-km-filter-row input {
+  min-width: min(360px, 100%);
+}
+
+@media (max-width: 1180px) {
+  .travel-km-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .travel-km-summary-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .travel-km-panel { padding: 15px; }
+  .travel-km-stat-grid { grid-template-columns: 1fr; }
+  .travel-km-form-grid,
+  .travel-km-review-grid,
+  .travel-km-evidence-grid { grid-template-columns: 1fr; }
+  .travel-km-filter-row input,
+  .travel-km-filter-row select {
+    width: 100%;
+    min-width: 0;
+  }
+}

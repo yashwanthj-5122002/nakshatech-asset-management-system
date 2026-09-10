@@ -29,12 +29,20 @@ from app.modules.naksha_copilot.router import router as naksha_copilot_router
 from app.modules.agent_monitor.router import router as agent_monitor_router
 from app.modules.notifications import models as notification_models  # noqa: F401
 from app.modules.notifications.router import router as notification_router
+from app.modules.finance import models as finance_models  # noqa: F401
+from app.modules.finance.router import router as finance_router
+from app.modules.finance.service import ensure_finance_seed_data
+from app.modules.finance.schema_compat import ensure_finance_v2_schema_compatibility
+from app.modules.travel_km import models as travel_km_models  # noqa: F401
+from app.modules.travel_km.router import router as travel_km_router
+from app.modules.operations import models as operations_models  # noqa: F401
+from app.modules.operations.router import router as operations_router
 from app.modules.employee_portal.service import ensure_default_branch
 from app.modules.employee_portal.models import UserBranchAccess
 from app.models.entities import User
 from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
-from app.services.seed import ensure_management_accounts, seed_database
+from app.services.seed import ensure_management_accounts, ensure_operations_test_accounts, seed_database
 
 logger = logging.getLogger(__name__)
 _initialization_lock = threading.Lock()
@@ -279,11 +287,14 @@ def initialize_application() -> None:
                 logger.warning("PostGIS extension could not be enabled: %s", exc)
         Base.metadata.create_all(bind=engine)
         ensure_schema_compatibility()
+        ensure_finance_v2_schema_compatibility()
         with SessionLocal() as db:
             if settings.seed_default_users:
                 seed_database(db)
             ensure_management_accounts(db)
+            ensure_operations_test_accounts(db)
             default_branch = ensure_default_branch(db)
+            ensure_finance_seed_data(db)
             for user in db.scalars(select(User)).all():
                 if not user.branch:
                     user.branch = default_branch.name
@@ -413,6 +424,9 @@ app.include_router(data_quality_router, prefix=settings.api_prefix)
 app.include_router(naksha_copilot_router, prefix=settings.api_prefix)
 app.include_router(agent_monitor_router, prefix=settings.api_prefix)
 app.include_router(notification_router, prefix=settings.api_prefix)
+app.include_router(finance_router, prefix=settings.api_prefix)
+app.include_router(travel_km_router, prefix=settings.api_prefix)
+app.include_router(operations_router, prefix=settings.api_prefix)
 
 
 @app.middleware("http")

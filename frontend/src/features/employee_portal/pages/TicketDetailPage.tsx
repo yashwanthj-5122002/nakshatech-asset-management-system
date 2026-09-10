@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, CheckCircle2, Clock3, Cpu, Gauge, HardDrive, Keyboard, MessageCircle, Monitor, MousePointer2, Paperclip, Send, ShieldAlert, UserCheck, UserRound, Wrench } from 'lucide-react'
+import { ArrowLeft, Building2, CheckCircle2, Clock3, Cpu, Gauge, HardDrive, Keyboard, MessageCircle, Monitor, MousePointer2, Paperclip, Send, ShieldAlert, UserCheck, UserRound, Wrench, X } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -6,7 +6,8 @@ import { useAuth } from '../../../context/AuthContext'
 import { apiBlob, apiFetch } from '../../../lib/api'
 import { formatDuration, formatStandardDateTime } from '../../../lib/dateTime'
 import { ticketSlaDisplay } from '../../../lib/ticketSla'
-import type { SupportTicket, TicketAttachment, TicketPriority, TicketStatus } from '../../../types'
+import type { SupportTicket, TicketAttachment, TicketPriority } from '../../../types'
+import { ticketProgressFromStatus, ticketProgressLabel } from '../ticketProgress'
 
 function priorityLabel(priority: TicketPriority): string {
   return priority === 'medium' ? 'Moderate' : priority.charAt(0).toUpperCase() + priority.slice(1)
@@ -21,7 +22,12 @@ function formatAttachmentSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function TicketAttachmentPreview({ ticketId, attachment }: { ticketId: number; attachment: TicketAttachment }) {
+interface EvidencePreview {
+  url: string
+  attachment: TicketAttachment
+}
+
+function TicketAttachmentPreview({ ticketId, attachment, onOpen }: { ticketId: number; attachment: TicketAttachment; onOpen: (preview: EvidencePreview) => void }) {
   const [url, setUrl] = useState('')
   const [previewError, setPreviewError] = useState(false)
 
@@ -43,10 +49,10 @@ function TicketAttachmentPreview({ ticketId, attachment }: { ticketId: number; a
   }, [attachment.id, ticketId])
 
   if (previewError) return <article className="ticket-evidence-card ticket-evidence-error"><Paperclip size={20} /><div><strong>{attachment.original_filename}</strong><span>Preview unavailable</span></div></article>
-  return <a className="ticket-evidence-card" href={url || undefined} target="_blank" rel="noreferrer" aria-label={`Open ${attachment.original_filename}`}>
+  return <button type="button" className="ticket-evidence-card ticket-evidence-button" onClick={() => { if (url) onOpen({ url, attachment }) }} disabled={!url} aria-label={`Preview ${attachment.original_filename}`}>
     {url ? <img src={url} alt={attachment.original_filename} /> : <div className="ticket-evidence-loading">Loading…</div>}
-    <div><strong>{attachment.original_filename}</strong><span>{formatAttachmentSize(attachment.file_size)} · {attachment.uploaded_by_name}</span></div>
-  </a>
+    <div><strong>{attachment.original_filename}</strong><span>{formatAttachmentSize(attachment.file_size)} · {attachment.uploaded_by_name}</span><small>Click to preview</small></div>
+  </button>
 }
 
 export function TicketDetailPage() {
@@ -54,8 +60,8 @@ export function TicketDetailPage() {
   const { user } = useAuth()
   const [ticket, setTicket] = useState<SupportTicket | null>(null)
   const [message, setMessage] = useState('')
-  const [statusValue, setStatusValue] = useState<TicketStatus>('new')
   const [resolution, setResolution] = useState('')
+  const [evidencePreview, setEvidencePreview] = useState<EvidencePreview | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -63,9 +69,11 @@ export function TicketDetailPage() {
   function load() {
     if (!id) return
     void apiFetch<SupportTicket>(`/tickets/${id}`).then(item => {
-      setTicket(item); setStatusValue(item.status); setResolution(item.resolution || '')
+      setTicket(item)
+      setResolution(item.resolution || '')
     }).catch(err => setError(err instanceof Error ? err.message : 'Could not load ticket'))
   }
+
   useEffect(load, [id])
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30_000)
@@ -75,42 +83,85 @@ export function TicketDetailPage() {
   async function sendMessage(event: FormEvent) {
     event.preventDefault()
     if (!ticket || !message.trim()) return
-    setLoading(true); setError('')
+    setLoading(true)
+    setError('')
     try {
       const updated = await apiFetch<SupportTicket>(`/tickets/${ticket.id}/messages`, { method: 'POST', body: JSON.stringify({ message }) })
-      setTicket(updated); setMessage('')
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not send message') }
-    finally { setLoading(false) }
-  }
-
-  async function updateTicket() {
-    if (!ticket) return
-    setLoading(true); setError('')
-    try {
-      const updated = await apiFetch<SupportTicket>(`/tickets/${ticket.id}`, { method: 'PATCH', body: JSON.stringify({ status: statusValue, resolution: resolution || undefined }) })
       setTicket(updated)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not update ticket') }
-    finally { setLoading(false) }
+      setMessage('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send message')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  async function assignToMe() {
+  async function acceptIssue() {
     if (!ticket) return
-    setLoading(true); setError('')
+    setLoading(true)
+    setError('')
+    try {
+      const updated = await apiFetch<SupportTicket>(`/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'assigned', assign_to_self: true }),
+      })
+      setTicket(updated)
+      setResolution(updated.resolution || '')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not accept ticket')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function takeOwnership() {
+    if (!ticket) return
+    setLoading(true)
+    setError('')
     try {
       const updated = await apiFetch<SupportTicket>(`/tickets/${ticket.id}`, { method: 'PATCH', body: JSON.stringify({ assign_to_self: true }) })
-      setTicket(updated); setStatusValue(updated.status)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not assign ticket') }
-    finally { setLoading(false) }
+      setTicket(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign ticket')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function completeIssue() {
+    if (!ticket) return
+    if (!resolution.trim()) {
+      setError('Enter the resolution notes before marking the issue completed.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const updated = await apiFetch<SupportTicket>(`/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'resolved', resolution: resolution.trim() }),
+      })
+      setTicket(updated)
+      setResolution(updated.resolution || '')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not complete ticket')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function reopen() {
     if (!ticket) return
-    setLoading(true); setError('')
+    setLoading(true)
+    setError('')
     try {
       const updated = await apiFetch<SupportTicket>(`/tickets/${ticket.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'reopened' }) })
-      setTicket(updated); setStatusValue(updated.status)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not reopen ticket') }
-    finally { setLoading(false) }
+      setTicket(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reopen ticket')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!ticket) return <div className="panel-card">{error || 'Loading ticket...'}</div>
@@ -121,6 +172,7 @@ export function TicketDetailPage() {
   )
   const canReply = requester || ticket.can_handle
   const sla = ticketSlaDisplay(ticket, nowMs)
+  const progress = ticketProgressFromStatus(ticket.status)
 
   return <>
     <DashboardHeader eyebrow={`${ticket.ticket_code} · ${ticket.department.replace('_', ' ').toUpperCase()}`} title={ticket.title} description={`${ticket.requester_name} · ${ticket.branch_name} · Raised ${formatStandardDateTime(ticket.created_at)}`} />
@@ -128,17 +180,14 @@ export function TicketDetailPage() {
       <section className="panel-card ticket-conversation-panel">
         <Link to="/tickets" className="ticket-back-link"><ArrowLeft size={16} />Back to tickets</Link>
         <div className="ticket-description-card"><span className="section-kicker">ORIGINAL ISSUE</span><p>{ticket.description}</p>{ticket.location && <small>Issue location: {ticket.location}</small>}{ticket.asset_number && !ticket.asset_snapshot && <small>Asset: {ticket.asset_number}</small>}</div>
+
         {(ticket.attachments?.length || 0) > 0 && <section className="ticket-evidence-section">
-          <div className="ticket-section-heading"><div><span className="section-kicker">ATTACHED EVIDENCE</span><p>Screenshots and photos supplied by the employee for this ticket.</p></div><span className="ticket-attachment-count">{ticket.attachments?.length}</span></div>
-          <div className="ticket-evidence-grid">
-            {ticket.attachments?.map(attachment => <TicketAttachmentPreview key={attachment.id} ticketId={ticket.id} attachment={attachment} />)}
-          </div>
+          <div className="ticket-section-heading"><div><span className="section-kicker">ATTACHED EVIDENCE</span><p>Screenshots and photos supplied by the employee. Click an image to preview it without leaving the ticket.</p></div><span className="ticket-attachment-count">{ticket.attachments?.length}</span></div>
+          <div className="ticket-evidence-grid">{ticket.attachments?.map(attachment => <TicketAttachmentPreview key={attachment.id} ticketId={ticket.id} attachment={attachment} onOpen={setEvidencePreview} />)}</div>
         </section>}
+
         {ticket.asset_snapshot && <article className="ticket-selected-asset-card ticket-detail-asset-card">
-          <header>
-            <div><span>ASSET SNAPSHOT WHEN TICKET WAS RAISED</span><h2>{ticket.asset_snapshot.cpu_asset_tag || ticket.asset_snapshot.asset_code}</h2><p>Internal reference {ticket.asset_snapshot.asset_code}</p></div>
-            <span className={`status ${ticket.asset_snapshot.status}`}>{ticket.asset_snapshot.status.replaceAll('_', ' ')}</span>
-          </header>
+          <header><div><span>ASSET SNAPSHOT WHEN TICKET WAS RAISED</span><h2>{ticket.asset_snapshot.cpu_asset_tag || ticket.asset_snapshot.asset_code}</h2><p>Internal reference {ticket.asset_snapshot.asset_code}</p></div><span className={`status ${ticket.asset_snapshot.status}`}>{ticket.asset_snapshot.status.replaceAll('_', ' ')}</span></header>
           <div className="ticket-asset-detail-grid">
             <div><Gauge size={17} /><span>Workstation</span><strong>{ticket.asset_snapshot.workstation_no || 'Not recorded'}</strong></div>
             <div><UserRound size={17} /><span>Used By</span><strong>{ticket.asset_snapshot.used_by || 'Unassigned'}</strong></div>
@@ -153,6 +202,7 @@ export function TicketDetailPage() {
             <span><Keyboard size={16} />Keyboard <strong>{ticket.asset_snapshot.keyboard_asset_tag || 'Not recorded'}</strong></span>
           </div>
         </article>}
+
         {ticket.component && <article className="ticket-issue-classification-card">
           <header><div><Wrench size={19} /><span>ISSUE CLASSIFICATION</span></div><span className={`ticket-priority priority-${ticket.priority}`}>{priorityLabel(ticket.priority)}</span></header>
           <div className="ticket-classification-grid">
@@ -161,7 +211,7 @@ export function TicketDetailPage() {
             <div><span>Exact problem</span><strong>{ticket.problem_label || ticket.problem_code || 'Not recorded'}</strong></div>
             <div><span>Initial response target</span><strong>{ticket.sla_target_minutes ? `${ticket.sla_target_minutes < 60 ? `${ticket.sla_target_minutes} minutes` : `${Math.round(ticket.sla_target_minutes / 60)} hours`}` : 'Not assigned'}</strong></div>
           </div>
-          {ticket.priority_reason && <div className="ticket-priority-reason"><ShieldAlert size={18} /><div><strong>Why this priority was selected</strong><p>{ticket.priority_reason}</p></div></div>}
+          {ticket.priority_reason && <div className="ticket-priority-reason"><ShieldAlert size={18} /><div><strong>Priority</strong><p>{ticket.priority_reason}</p></div></div>}
           {ticket.impact_assessment && <div className="ticket-impact-summary">
             <span>Work stopped <strong>{booleanLabel(ticket.impact_assessment.work_stopped)}</strong></span>
             <span>Alternative available <strong>{booleanLabel(ticket.impact_assessment.alternative_available)}</strong></span>
@@ -170,16 +220,17 @@ export function TicketDetailPage() {
             <span>Security risk <strong>{booleanLabel(ticket.impact_assessment.security_risk)}</strong></span>
             <span>Delivery affected <strong>{booleanLabel(ticket.impact_assessment.client_delivery_affected)}</strong></span>
             <span>Recurring issue <strong>{booleanLabel(ticket.impact_assessment.recurring_issue)}</strong></span>
-            {ticket.impact_assessment.started_when && <span>Started <strong>{ticket.impact_assessment.started_when}</strong></span>}
           </div>}
         </article>}
+
         <div className="ticket-message-thread">{ticket.messages.map(item => <article key={item.id} className={`ticket-message ${item.author_id === user?.id ? 'mine' : ''}`}><header><strong>{item.author_name}</strong><span>{item.author_role.replace('_', ' ')} · {formatStandardDateTime(item.created_at)}</span></header><p>{item.message}</p></article>)}</div>
         {monitoringReadOnly && <div className="auth-flow-info"><Clock3 size={18} /><span>Monitoring access only. The {ticket.department.replace('_', ' ')} team handles this ticket.</span></div>}
-        {canReply && !monitoringReadOnly && <form className="ticket-reply-form" onSubmit={sendMessage}><textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} placeholder="Add a message or update" required /><button className="primary-button" disabled={loading}><Send size={17} />Send Reply</button></form>}
+        {canReply && !monitoringReadOnly && <form className="ticket-reply-form" onSubmit={sendMessage}><textarea value={message} onChange={event => setMessage(event.target.value)} rows={4} placeholder="Add a message or update" required /><button className="primary-button" disabled={loading}><Send size={17} />Send Reply</button></form>}
         {requester && ticket.status === 'resolved' && <button className="secondary-button" onClick={reopen} disabled={loading}>Issue not fixed — Reopen Ticket</button>}
       </section>
-      <aside className="panel-card ticket-control-panel">
-        <div className="ticket-meta-row"><span>Status</span><span className={`ticket-status status-${ticket.status}`}>{ticket.status.replaceAll('_', ' ')}</span></div>
+
+      <aside className="panel-card ticket-control-panel ticket-simple-control-panel">
+        <div className={`ticket-progress-banner progress-${progress}`}><span className="ticket-progress-dot" /><div><small>WORK STATUS</small><strong>{ticketProgressLabel(ticket.status)}</strong><span>{progress === 'not_started' ? 'Waiting for the department to accept this issue.' : progress === 'ongoing' ? 'The issue has been accepted and work is ongoing.' : 'The support work has been completed.'}</span></div></div>
         <div className="ticket-meta-row"><span>Priority</span><span className={`ticket-priority priority-${ticket.priority}`}>{priorityLabel(ticket.priority)}</span></div>
         <div className="ticket-meta-row"><span>Initial Response SLA</span><span className={`ticket-sla-badge sla-${sla.state}`}>{sla.label}</span></div>
         <div className="ticket-meta-row"><span>SLA Timing</span><strong>{sla.value}</strong></div>
@@ -190,12 +241,19 @@ export function TicketDetailPage() {
         <div className="ticket-meta-row"><span>Reporting Manager</span><strong>{ticket.reporting_manager_email || 'Not recorded'}</strong></div>
         <div className="ticket-meta-row"><span>Raised At</span><strong>{formatStandardDateTime(ticket.created_at)}</strong></div>
         <div className="ticket-meta-row"><span>Last Updated</span><strong>{formatStandardDateTime(ticket.updated_at)}</strong></div>
-        {ticket.status === 'resolved' && <div className="ticket-meta-row"><span>Resolved In</span><strong>{formatDuration(ticket.created_at, ticket.resolved_at || ticket.updated_at)}</strong></div>}
-        {ticket.status === 'closed' && <div className="ticket-meta-row"><span>Closed In</span><strong>{formatDuration(ticket.created_at, ticket.closed_at || ticket.updated_at)}</strong></div>}
-        {ticket.can_handle && <div className="ticket-handler-controls"><span className="section-kicker">DEPARTMENT ACTIONS</span><button className="secondary-button" onClick={assignToMe} disabled={loading}><UserCheck size={17} />Assign to Me</button><label><span>Status</span><select value={statusValue} onChange={e => setStatusValue(e.target.value as TicketStatus)}><option value="new">New</option><option value="assigned">Assigned</option><option value="in_progress">In Progress</option><option value="waiting_for_employee">Waiting for Employee</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="reopened">Reopened</option></select></label><label><span>Resolution Notes</span><textarea value={resolution} onChange={e => setResolution(e.target.value)} rows={5} placeholder="Describe the fix or next action" /></label><button className="primary-button" onClick={updateTicket} disabled={loading}><CheckCircle2 size={17} />Save Update</button></div>}
+        {progress === 'completed' && <div className="ticket-meta-row"><span>Completed In</span><strong>{formatDuration(ticket.created_at, ticket.resolved_at || ticket.closed_at || ticket.updated_at)}</strong></div>}
+
+        {ticket.can_handle && progress === 'not_started' && <div className="ticket-handler-controls ticket-simple-handler"><span className="section-kicker">DEPARTMENT ACTION</span><p>Accepting the issue assigns it to you and changes the visible status to ongoing.</p><button className="ticket-accept-button" onClick={acceptIssue} disabled={loading}><UserCheck size={18} />{loading ? 'Accepting…' : 'Accept Issue'}</button></div>}
+
+        {ticket.can_handle && progress === 'ongoing' && <div className="ticket-handler-controls ticket-simple-handler"><span className="section-kicker">COMPLETE THE WORK</span>{ticket.assigned_to_name && <p>Currently assigned to <strong>{ticket.assigned_to_name}</strong>.</p>}<button className="secondary-button" onClick={takeOwnership} disabled={loading}><UserCheck size={17} />Assign to Me</button><label><span>Resolution Notes *</span><textarea value={resolution} onChange={event => setResolution(event.target.value)} rows={5} placeholder="Describe the fix, replacement, configuration, or action completed" /></label><button className="ticket-complete-button" onClick={completeIssue} disabled={loading}><CheckCircle2 size={18} />{loading ? 'Saving…' : 'Mark Completed'}</button></div>}
+
         {ticket.resolution && <div className="ticket-resolution"><MessageCircle size={18} /><div><strong>Resolution</strong><p>{ticket.resolution}</p></div></div>}
         {error && <div className="error-message">{error}</div>}
       </aside>
     </div>
+
+    {evidencePreview && <div className="ticket-image-lightbox" role="dialog" aria-modal="true" aria-label={`Preview ${evidencePreview.attachment.original_filename}`} onMouseDown={event => { if (event.currentTarget === event.target) setEvidencePreview(null) }}>
+      <div className="ticket-image-lightbox-panel"><header><div><strong>{evidencePreview.attachment.original_filename}</strong><span>{formatAttachmentSize(evidencePreview.attachment.file_size)} · Uploaded by {evidencePreview.attachment.uploaded_by_name}</span></div><button type="button" onClick={() => setEvidencePreview(null)} aria-label="Close image preview"><X size={20} /></button></header><div className="ticket-image-lightbox-body"><img src={evidencePreview.url} alt={evidencePreview.attachment.original_filename} /></div></div>
+    </div>}
   </>
 }

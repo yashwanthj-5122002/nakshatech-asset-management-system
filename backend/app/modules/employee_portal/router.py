@@ -80,6 +80,7 @@ from app.modules.employee_portal.service import (
     TICKET_COMPONENT_CATALOG,
     active_branches,
     calculate_it_ticket_priority,
+    resolve_manual_it_ticket_priority,
     can_handle_ticket,
     can_view_ticket,
     confirm_totp_for_user,
@@ -701,17 +702,27 @@ def create_ticket(
             raise HTTPException(status_code=422, detail="Select the affected system component")
         if not problem_code:
             raise HTTPException(status_code=422, detail="Select the exact problem")
-        if payload.impact is None:
-            raise HTTPException(status_code=422, detail="Complete the work-impact assessment")
-        impact_payload = payload.impact.model_dump()
-        priority, priority_reason, sla_target_minutes, problem_label = calculate_it_ticket_priority(
-            component,
-            problem_code,
-            impact_payload,
-        )
+        if payload.impact is not None:
+            # Backward compatibility: older clients that still submit the impact
+            # questionnaire retain the original automatic-priority behavior. The new
+            # simplified employee form does not submit impact and therefore uses the
+            # employee-selected priority below.
+            impact_payload = payload.impact.model_dump()
+            priority, priority_reason, sla_target_minutes, problem_label = calculate_it_ticket_priority(
+                component,
+                problem_code,
+                impact_payload,
+            )
+            category = str(TICKET_COMPONENT_CATALOG[component]["label"])
+            impact_assessment = json.dumps(impact_payload, ensure_ascii=False)
+        else:
+            priority, priority_reason, sla_target_minutes, problem_label, category = resolve_manual_it_ticket_priority(
+                component,
+                problem_code,
+                requested_priority,
+            )
+            impact_assessment = None
         component_asset_tag = ticket_component_asset_tag(selected_asset, component) if selected_asset else None
-        impact_assessment = json.dumps(impact_payload, ensure_ascii=False)
-        category = str(TICKET_COMPONENT_CATALOG[component]["label"])
 
     ticket = SupportTicket(
         ticket_code=f"PENDING-{secrets.token_hex(12)}",

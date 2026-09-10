@@ -5,6 +5,10 @@ SOFTWARE_TEAM_ROLE = "software_team"
 MANAGEMENT_ROLE = "management"
 IT_ROLE = "it"
 DRONE_ROLE = "drone"
+FINANCE_ROLE = "finance"
+HR_ROLE = "hr"
+BD_ROLE = "bd"
+ORTHO_ROLE = "ortho"
 EMPLOYEE_ROLE = "employee"
 
 VALID_ROLES = {
@@ -13,6 +17,10 @@ VALID_ROLES = {
     MANAGEMENT_ROLE,
     IT_ROLE,
     DRONE_ROLE,
+    FINANCE_ROLE,
+    HR_ROLE,
+    BD_ROLE,
+    ORTHO_ROLE,
     EMPLOYEE_ROLE,
 }
 
@@ -39,6 +47,10 @@ def role_display_name(role: str) -> str:
         MANAGEMENT_ROLE: "Management",
         IT_ROLE: "IT Department",
         DRONE_ROLE: "Drone Department",
+        FINANCE_ROLE: "Finance Department",
+        HR_ROLE: "HR Department",
+        BD_ROLE: "Business Development",
+        ORTHO_ROLE: "Ortho / LiDAR",
         EMPLOYEE_ROLE: "Employee Support",
     }
     return labels.get(normalized, normalized.replace("_", " ").title())

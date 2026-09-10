@@ -1,4 +1,4 @@
-export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'employee'
+export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'finance' | 'hr' | 'bd' | 'ortho' | 'employee'
 
 export interface ManagementLoginAccount {
   display_name: string
@@ -41,6 +41,355 @@ export interface Branch {
   code: string
   name: string
   address?: string
+}
+
+export type FinanceClaimType = 'advance' | 'reimbursement' | 'additional_advance'
+export type FinanceClientSourceTeam = 'bd_team' | 'software_team' | 'team_manager' | 'manager' | 'department_head' | 'management' | 'other'
+export type FinanceProjectMasterStatus = 'active' | 'on_hold' | 'completed' | 'inactive'
+export type FinanceClientType = 'client' | 'uav'
+
+export interface FinanceProjectMasterUser {
+  id: number
+  full_name: string
+  email: string
+  employee_id?: string | null
+  department?: string | null
+  designation?: string | null
+  role: string
+}
+
+export interface FinanceProjectAssignedEmployee {
+  id: number
+  full_name: string
+  email: string
+  employee_id?: string | null
+  department?: string | null
+}
+export type FinanceClaimStatus =
+  | 'draft'
+  | 'submitted'
+  | 'admin_approved'
+  | 'admin_rejected'
+  | 'admin_sent_back'
+  | 'finance_approved'
+  | 'partially_paid'
+  | 'finance_rejected'
+  | 'finance_sent_back'
+  | 'paid'
+
+export interface FinanceProject {
+  id: number
+  project_code: string
+  project_name: string
+  client_id?: number | null
+  client_code?: string | null
+  client_name?: string
+  project_number?: number | null
+  project_source_team?: FinanceClientSourceTeam | null
+  project_source_person_name?: string | null
+  client_awarded_by_name?: string | null
+  project_award_date?: string | null
+  description?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  is_active: boolean
+  lifecycle_status: string
+  expense_allowed: boolean
+  expense_block_reason?: string | null
+  task?: string | null
+  project_status: FinanceProjectMasterStatus
+  project_manager_id?: number | null
+  project_manager_name?: string | null
+  reporting_manager_id?: number | null
+  reporting_manager_name?: string | null
+  assigned_employee_ids: number[]
+  assigned_employees: FinanceProjectAssignedEmployee[]
+}
+
+export interface FinanceClient {
+  id: number
+  vendor_code?: string | null
+  client_type: FinanceClientType
+  import_source?: string | null
+  imported_at?: string | null
+  client_code: string
+  client_name: string
+  primary_phone?: string | null
+  client_email?: string | null
+  contact_person_name: string
+  contact_person_phone?: string | null
+  contact_person_email?: string | null
+  task?: string | null
+  bd_name?: string | null
+  address?: string | null
+  description?: string | null
+  country: string
+  gst_number?: string | null
+  source_team: FinanceClientSourceTeam
+  source_person_name?: string | null
+  is_active: boolean
+  project_count: number
+  active_project_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ExpenseClaimItem {
+  id: number
+  category: string
+  other_category?: string
+  description: string
+  amount: number
+  payment_mode?: FinancePaymentMode | null
+  expense_date?: string | null
+}
+
+export interface ExpenseClaimAttachment {
+  id: number
+  original_filename: string
+  mime_type: string
+  file_size: number
+  content_sha256?: string | null
+  uploaded_by_id: number
+  uploaded_by_name: string
+  created_at: string
+}
+
+export interface ExpenseClaimEvent {
+  id: number
+  action: string
+  actor_name?: string
+  actor_email?: string
+  actor_role?: string
+  from_status?: string
+  to_status: FinanceClaimStatus
+  comments?: string
+  created_at: string
+}
+
+export type FinancePaymentMode = 'bank_transfer' | 'upi' | 'cash' | 'cheque' | 'card' | 'other'
+
+export interface ExpenseClaimPayment {
+  id: number
+  payment_reference: string
+  payment_mode: FinancePaymentMode
+  amount: number
+  payment_date: string
+  recorded_by_id: number
+  recorded_by_name: string
+  comments?: string
+  created_at: string
+}
+
+
+export type ExpenseSettlementStatus =
+  | 'draft'
+  | 'submitted'
+  | 'admin_approved'
+  | 'admin_rejected'
+  | 'admin_sent_back'
+  | 'finance_finalized'
+  | 'finance_rejected'
+  | 'finance_sent_back'
+
+export interface ExpenseSettlementItem {
+  id: number
+  category: string
+  other_category?: string | null
+  description: string
+  amount: number
+  payment_mode: FinancePaymentMode
+  expense_date?: string | null
+}
+
+export interface ExpenseSettlementAttachment {
+  id: number
+  original_filename: string
+  mime_type: string
+  file_size: number
+  content_sha256?: string | null
+  uploaded_by_id: number
+  uploaded_by_name: string
+  created_at: string
+}
+
+export interface ExpenseSettlementEvent {
+  id: number
+  action: string
+  actor_name?: string | null
+  actor_email?: string | null
+  actor_role?: string | null
+  from_status?: string | null
+  to_status: string
+  comments?: string | null
+  created_at: string
+}
+
+export interface ExpenseSettlement {
+  id: number
+  settlement_code: string
+  root_claim_id: number
+  root_claim_code: string
+  requester_id: number
+  requester_name: string
+  project: FinanceProject
+  status: ExpenseSettlementStatus
+  total_advance_received: number
+  total_expense_amount: number
+  balance_to_return: number
+  shortage_amount: number
+  tally_status: 'tallied' | 'balance_to_return' | 'shortage'
+  submitted_at?: string | null
+  finalized_at?: string | null
+  admin_decision_by_name?: string | null
+  admin_decision_at?: string | null
+  admin_comments?: string | null
+  finance_decision_by_name?: string | null
+  finance_decision_at?: string | null
+  finance_comments?: string | null
+  items: ExpenseSettlementItem[]
+  attachments: ExpenseSettlementAttachment[]
+  events: ExpenseSettlementEvent[]
+  can_edit: boolean
+  can_submit: boolean
+  can_admin_decide: boolean
+  can_finance_decide: boolean
+}
+
+export interface ExpenseClaim {
+  id: number
+  claim_code: string
+  requester_id: number
+  requester_name: string
+  requester_email: string
+  requester_department?: string
+  project: FinanceProject
+  claim_type: FinanceClaimType
+  purpose_description: string
+  currency: string
+  total_amount: number
+  previous_advance_amount?: number
+  amount_already_used?: number
+  parent_advance_claim_id?: number | null
+  parent_advance_claim_code?: string | null
+  requested_work_start_date?: string | null
+  requested_work_end_date?: string | null
+  requested_work_days?: number | null
+  approved_work_start_date?: string | null
+  approved_work_end_date?: string | null
+  approved_work_days?: number | null
+  settlement_due_date?: string | null
+  settlement_status: string
+  settlement_overdue: boolean
+  status: FinanceClaimStatus
+  admin_decision_by_name?: string
+  admin_decision_at?: string
+  admin_comments?: string
+  finance_decision_by_name?: string
+  finance_decision_at?: string
+  finance_comments?: string
+  finance_approved_amount?: number
+  remaining_amount: number
+  payment_reference?: string
+  paid_amount?: number
+  paid_at?: string
+  submitted_at?: string
+  created_at: string
+  updated_at: string
+  items: ExpenseClaimItem[]
+  attachments: ExpenseClaimAttachment[]
+  events: ExpenseClaimEvent[]
+  payments: ExpenseClaimPayment[]
+  settlement?: ExpenseSettlement | null
+  linked_additional_advance_ids: number[]
+  can_edit: boolean
+  can_submit: boolean
+  can_admin_decide: boolean
+  can_finance_decide: boolean
+  can_mark_paid: boolean
+  can_settle_advance: boolean
+  can_request_additional_advance: boolean
+}
+
+export interface FinanceBreakdownItem {
+  key: string
+  label: string
+  amount: number
+  count: number
+}
+
+export interface FinanceDashboard {
+  total_claims: number
+  total_requested_amount: number
+  pending_admin_count: number
+  pending_admin_amount: number
+  pending_finance_count: number
+  pending_finance_amount: number
+  approved_count: number
+  approved_amount: number
+  paid_count: number
+  paid_amount: number
+  outstanding_amount: number
+  rejected_count: number
+  sent_back_count: number
+  partially_paid_count: number
+  pending_settlement_count: number
+  overdue_settlement_count: number
+  settlement_under_review_count: number
+  settled_count: number
+  by_type: FinanceBreakdownItem[]
+  by_category: FinanceBreakdownItem[]
+  by_project: FinanceBreakdownItem[]
+  recent_claims: ExpenseClaim[]
+}
+
+export type FinanceReportPeriod = 'month' | 'quarter' | 'year' | 'all'
+
+export interface FinanceReportClaimRow {
+  id: number
+  claim_code: string
+  submitted_at?: string
+  requester_name: string
+  requester_email: string
+  requester_department?: string
+  project_code: string
+  project_name: string
+  claim_type: FinanceClaimType
+  status: FinanceClaimStatus
+  requested_amount: number
+  approved_amount: number
+  paid_amount: number
+  outstanding_amount: number
+  attachment_count: number
+  payment_count: number
+  updated_at: string
+}
+
+export interface FinanceReport {
+  period: FinanceReportPeriod
+  period_label: string
+  start_date?: string
+  end_date?: string
+  available_years: number[]
+  total_records: number
+  page: number
+  page_size: number
+  total_pages: number
+  requested_amount: number
+  approved_amount: number
+  paid_amount: number
+  outstanding_amount: number
+  payment_period_amount: number
+  payment_period_count: number
+  pending_admin_amount: number
+  pending_finance_amount: number
+  integrity_issue_count: number
+  by_project: FinanceBreakdownItem[]
+  by_employee: FinanceBreakdownItem[]
+  by_category: FinanceBreakdownItem[]
+  by_type: FinanceBreakdownItem[]
+  by_status: FinanceBreakdownItem[]
+  claims: FinanceReportClaimRow[]
 }
 
 export type TicketDepartment = 'it' | 'drone' | 'software_team' | 'management'

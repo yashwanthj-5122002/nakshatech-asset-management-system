@@ -17,6 +17,7 @@ from app.services.asset_lifecycle_service import canonical_device_type
 
 
 RETURNED_TO_VENDOR_STATUS = "returned_to_vendor"
+RETURN_REMOVE_DEVICE_TYPES = {"Computer", "Laptop", "Smartphone", "Printer", "External HDD"}
 ACTIVE_WORK_STATUSES = {"open", "pending", "in_progress"}
 OPEN_REPLACEMENT_STATUSES = {"pending", "returned"}
 
@@ -121,8 +122,14 @@ def perform_vendor_return(
     asset = db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update())
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    if canonical_device_type(asset.device_type) != "Computer":
-        raise HTTPException(status_code=400, detail="Return / Remove is currently available only for Desktop / Computer assets")
+    device_type = canonical_device_type(asset.device_type)
+    if device_type not in RETURN_REMOVE_DEVICE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Return / Remove is available only for Computer, Laptop, Smartphone, Printer and External HDD assets",
+        )
+    if payload.return_mode == "return_without_monitor" and device_type != "Computer":
+        raise HTTPException(status_code=400, detail="Keep Monitor is available only for Desktop / Computer assets")
     if not is_active_inventory_asset(asset):
         raise HTTPException(status_code=409, detail="This asset has already been returned / removed from active inventory")
     if db.scalar(select(AssetVendorReturn.id).where(AssetVendorReturn.asset_id == asset.id).limit(1)) is not None:
@@ -139,7 +146,7 @@ def perform_vendor_return(
         .limit(1)
     )
     if open_work is not None:
-        raise HTTPException(status_code=409, detail="Close the active IT Work Record before returning / removing this desktop")
+        raise HTTPException(status_code=409, detail="Close the active IT Work Record before returning / removing this asset")
     open_replacement = db.scalar(
         select(ReplacementRecord.id)
         .where(
@@ -149,7 +156,7 @@ def perform_vendor_return(
         .limit(1)
     )
     if open_replacement is not None:
-        raise HTTPException(status_code=409, detail="Resolve the open complete-asset replacement workflow before returning / removing this desktop")
+        raise HTTPException(status_code=409, detail="Resolve the open complete-asset replacement workflow before returning / removing this asset")
 
     monitors = split_monitor_tags(asset.monitor_asset_tags)
     if payload.return_mode == "return_without_monitor" and not monitors:

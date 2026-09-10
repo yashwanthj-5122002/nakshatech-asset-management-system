@@ -86,6 +86,17 @@ export function RegisterPage() {
     event.preventDefault()
     setError(''); setNotice('')
     if (form.password !== form.confirm_password) { setError('Passwords do not match'); return }
+    if (form.password.length < 10) { setError('Password must contain at least 10 characters'); return }
+    const missingPasswordRules = [
+      !/[A-Z]/.test(form.password) ? 'uppercase letter' : '',
+      !/[a-z]/.test(form.password) ? 'lowercase letter' : '',
+      !/\d/.test(form.password) ? 'number' : '',
+      !/[^A-Za-z0-9]/.test(form.password) ? 'special character' : '',
+    ].filter(Boolean)
+    if (missingPasswordRules.length) {
+      setError(`Password must include at least one ${missingPasswordRules.join(', ')}`)
+      return
+    }
     if (!form.branch_id) { setError('Select a branch'); return }
     setLoading(true)
     try {

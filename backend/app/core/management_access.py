@@ -6,6 +6,8 @@ from dataclasses import dataclass
 MANAGEMENT_ROLE = "management"
 SOFTWARE_TEAM_ROLE = "software_team"
 IT_ROLE = "it"
+FINANCE_ROLE = "finance"
+HR_ROLE = "hr"
 ADMIN_ROLE = "admin"
 
 
@@ -50,6 +52,23 @@ IT_ACCOUNTS: tuple[PrivilegedAccountSpec, ...] = (
     ),
 )
 
+FINANCE_ACCOUNTS: tuple[PrivilegedAccountSpec, ...] = (
+    PrivilegedAccountSpec(
+        role=FINANCE_ROLE,
+        display_name="Finance Team",
+        full_name="Finance Department",
+        email="finance@nakshatech.com",
+    ),
+)
+HR_ACCOUNTS: tuple[PrivilegedAccountSpec, ...] = (
+    PrivilegedAccountSpec(
+        role=HR_ROLE,
+        display_name="HR Team",
+        full_name="HR Department",
+        email="hr@nakshatech.com",
+    ),
+)
+
 ADMIN_ACCOUNT = PrivilegedAccountSpec(
     role=ADMIN_ROLE,
     display_name="Administrator",
@@ -61,6 +80,8 @@ FIRST_LOGIN_ACCOUNTS_BY_ROLE: dict[str, tuple[PrivilegedAccountSpec, ...]] = {
     MANAGEMENT_ROLE: MANAGEMENT_ACCOUNTS,
     SOFTWARE_TEAM_ROLE: SOFTWARE_TEAM_ACCOUNTS,
     IT_ROLE: IT_ACCOUNTS,
+    FINANCE_ROLE: FINANCE_ACCOUNTS,
+    HR_ROLE: HR_ACCOUNTS,
 }
 FIRST_LOGIN_PRIVILEGED_ROLES = frozenset(FIRST_LOGIN_ACCOUNTS_BY_ROLE)
 AUTHORIZED_EMAILS_BY_ROLE = {
@@ -71,6 +92,8 @@ AUTHORIZED_EMAILS_BY_ROLE = {
 MANAGEMENT_EMAILS = AUTHORIZED_EMAILS_BY_ROLE[MANAGEMENT_ROLE]
 SOFTWARE_TEAM_EMAILS = AUTHORIZED_EMAILS_BY_ROLE[SOFTWARE_TEAM_ROLE]
 IT_EMAILS = AUTHORIZED_EMAILS_BY_ROLE[IT_ROLE]
+FINANCE_EMAILS = AUTHORIZED_EMAILS_BY_ROLE[FINANCE_ROLE]
+HR_EMAILS = AUTHORIZED_EMAILS_BY_ROLE[HR_ROLE]
 
 
 def normalize_privileged_email(value: str) -> str:
