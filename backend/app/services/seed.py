@@ -190,7 +190,8 @@ def ensure_management_accounts(db: Session) -> None:
 
 
 _OBSOLETE_OPERATIONS_TEST_EMPLOYEE_IDS = {
-    "TEST-BD-EMP",
+    "TEST-BD-EMP",  # Migrated to TEST-EMPLOYEE-001
+    # V7.0.5 obsolete IDs (not used in V7.0.13+):
     "TEST-ORTHO-TL",
     "TEST-ORTHO-PROD",
     "TEST-ORTHO-QC",
@@ -204,12 +205,27 @@ def _operations_test_account_specs() -> list[tuple[str, str, str, str, str, str,
     BD and Ortho each use one manager login. The normal employee fixture stays
     an ordinary employee account for tickets/expenses and never receives an
     Ortho or BD role.
+    
+    V7.0.13+ Addition: Four Ortho team member employees for testing work package
+    assignments (Team Leader, Production, QC, QA). These are ordinary employee
+    accounts that the Ortho PM can assign to project responsibilities.
     """
-    return [
+    accounts = [
         (settings.seed_bd_manager_email, "BD Manager Test", settings.seed_bd_manager_password, BD_ROLE, "Business Development", "Manager", "TEST-BD-MGR"),
         (settings.seed_ortho_pm_email, "Ortho Project Manager Test", settings.seed_ortho_pm_password, ORTHO_ROLE, "Ortho", "Project Manager", "TEST-ORTHO-PM"),
         (settings.seed_employee_test_email, "Employee Test", settings.seed_employee_test_password, "employee", "Employee", "Employee", "TEST-EMPLOYEE-001"),
     ]
+    
+    # Add 4 Ortho team member employees if test accounts are enabled
+    if settings.seed_operations_test_users_enabled:
+        accounts.extend([
+            ("ortho.teamleader@nakshatech.com", "Ortho Team Leader", "TestTeamLeader@2026", "employee", "Ortho", "Team Leader", "ORTHO-TL-001"),
+            ("ortho.production@nakshatech.com", "Ortho Production Staff", "TestProduction@2026", "employee", "Ortho", "Production Specialist", "ORTHO-PROD-001"),
+            ("ortho.qc@nakshatech.com", "Ortho QC Reviewer", "TestQC@2026", "employee", "Ortho", "QC Specialist", "ORTHO-QC-001"),
+            ("ortho.qa@nakshatech.com", "Ortho QA Reviewer", "TestQA@2026", "employee", "Ortho", "QA Specialist", "ORTHO-QA-001"),
+        ])
+    
+    return accounts
 
 
 def ensure_operations_test_accounts(db: Session) -> None:
