@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Iterable
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -1086,6 +1086,130 @@ def ortho_dashboard_payload(db: Session, *, actor: User, effective_role: str) ->
             }
             for user in db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.full_name.asc())).all()
         ] if can_manage_any_project else [],
+    }
+
+
+def employee_ortho_tasks_payload(db: Session, *, actor: User) -> dict:
+    """Return the work packages where the actor is assigned at the project or package level.
+
+    A package is included when the employee is recorded as team_leader, production,
+    qc, or qa on the package itself, or holds one of those roles on the parent
+    project via OrthoProjectMember. Already-delivered packages are included so the
+    employee can see their history; active counts are surfaced separately.
+    """
+    participant_filters = [
+        OrthoWorkPackage.team_leader_user_id == actor.id,
+        OrthoWorkPackage.production_user_id == actor.id,
+        OrthoWorkPackage.qc_user_id == actor.id,
+        OrthoWorkPackage.qa_user_id == actor.id,
+    ]
+    assigned_via_package = db.scalars(
+        select(OrthoWorkPackage)
+        .options(
+            selectinload(OrthoWorkPackage.sessions),
+            selectinload(OrthoWorkPackage.reviews),
+            selectinload(OrthoWorkPackage.daily_updates),
+        )
+        .where(or_(*participant_filters))
+        .order_by(OrthoWorkPackage.updated_at.desc(), OrthoWorkPackage.id.desc())
+    ).unique().all()
+
+    member_project_ids = db.scalars(
+        select(OrthoProjectMember.project_id)
+        .where(
+            OrthoProjectMember.user_id == actor.id,
+            OrthoProjectMember.is_active.is_(True),
+            OrthoProjectMember.member_role.in_(PARTICIPANT_MEMBER_ROLES),
+        )
+    ).all()
+    if member_project_ids:
+        assigned_via_project = db.scalars(
+            select(OrthoWorkPackage)
+            .options(
+                selectinload(OrthoWorkPackage.sessions),
+                selectinload(OrthoWorkPackage.reviews),
+                selectinload(OrthoWorkPackage.daily_updates),
+            )
+            .where(OrthoWorkPackage.project_id.in_(member_project_ids))
+            .order_by(OrthoWorkPackage.updated_at.desc(), OrthoWorkPackage.id.desc())
+        ).unique().all()
+    else:
+        assigned_via_project = []
+
+    merged: dict[int, OrthoWorkPackage] = {}
+    for package in [*assigned_via_package, *assigned_via_project]:
+        merged[package.id] = package
+
+    tasks: list[dict] = []
+    for package in merged.values():
+        profile = db.get(OrthoProjectProfile, package.project_id)
+        if profile is None:
+            continue
+        finance_project: FinanceProject | None = db.get(FinanceProject, profile.project_id)
+        roles: list[str] = []
+        if package.team_leader_user_id == actor.id:
+            roles.append("team_leader")
+        if package.production_user_id == actor.id:
+            roles.append("production")
+        if package.qc_user_id == actor.id:
+            roles.append("qc")
+        if package.qa_user_id == actor.id:
+            roles.append("qa")
+        project_member_roles = set(
+            db.scalars(
+                select(OrthoProjectMember.member_role).where(
+                    OrthoProjectMember.project_id == package.project_id,
+                    OrthoProjectMember.user_id == actor.id,
+                    OrthoProjectMember.is_active.is_(True),
+                )
+            )
+        )
+        for role in project_member_roles & PARTICIPANT_MEMBER_ROLES:
+            if role not in roles:
+                roles.append(role)
+        permissions = {
+            "team_leader": package.team_leader_user_id == actor.id,
+            "production": package.production_user_id == actor.id,
+            "qc": package.qc_user_id == actor.id,
+            "qa": package.qa_user_id == actor.id,
+        }
+        tasks.append({
+            "id": package.id,
+            "project_id": package.project_id,
+            "project_name": finance_project.project_name if finance_project else None,
+            "project_code": finance_project.project_code if finance_project else None,
+            "package_code": package.package_code,
+            "package_name": package.package_name,
+            "current_stage": package.current_stage,
+            "production_state": package.production_state,
+            "qc_state": package.qc_state,
+            "qa_state": package.qa_state,
+            "rework_source": package.rework_source,
+            "area": float(package.area) if package.area is not None else None,
+            "area_unit": package.area_unit,
+            "target_hours": float(package.target_hours) if package.target_hours is not None else None,
+            "actual_hours": package_hours(package),
+            "assigned_roles": roles,
+            "permissions": permissions,
+            "production_completed_at": package.production_completed_at.isoformat() if package.production_completed_at else None,
+            "delivery_ready_at": package.delivery_ready_at.isoformat() if package.delivery_ready_at else None,
+            "delivered_at": package.delivered_at.isoformat() if package.delivered_at else None,
+            "daily_updates_count": len(package.daily_updates),
+        })
+    active_stages = {"not_started", "production", "production_rework", "qc", "qa"}
+    active_count = sum(1 for task in tasks if task["current_stage"] in active_stages)
+    return {
+        "employee": {
+            "id": actor.id,
+            "full_name": actor.full_name,
+            "email": actor.email,
+            "employee_id": actor.employee_id,
+            "department": actor.department,
+            "designation": actor.designation,
+        },
+        "total_assigned": len(tasks),
+        "active_count": active_count,
+        "tasks": tasks,
     }
 
 

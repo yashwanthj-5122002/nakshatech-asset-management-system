@@ -6275,3 +6275,19 @@ td strong { color: #173960; }
   .app-shell .page-header p { font-size: 0.84rem; }
   .app-shell .panel { padding: 15px; }
 }
+
+.app-shell .sidebar-nav-badge {
+  margin-left: auto;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #e24b4a;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+}

@@ -32,10 +32,11 @@ from app.modules.operations.service import (
     active_project_team_members,
     bd_dashboard_payload,
     bd_opportunity_payload,
+    configure_project_team,
     corporate_summary_payload,
     create_bd_opportunity,
-    configure_project_team,
     create_work_package,
+    employee_ortho_tasks_payload,
     finalize_delivery,
     get_visible_work_package,
     is_effective_pm,
@@ -519,3 +520,12 @@ def corporate_summary(
 ):
     _exact_roles(auth, MANAGEMENT_ROLE, ADMIN_ROLE)
     return corporate_summary_payload(db)
+
+
+@router.get("/employee/ortho-tasks")
+def employee_ortho_tasks(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _exact_roles(auth, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE, ORTHO_ROLE)
+    return employee_ortho_tasks_payload(db, actor=auth.user)

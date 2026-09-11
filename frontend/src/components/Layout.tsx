@@ -12,6 +12,7 @@ import {
   FolderKanban,
   HardDrive,
   History,
+  Inbox,
   LayoutDashboard,
   LifeBuoy,
   MapPinned,
@@ -79,6 +80,7 @@ const navItems: NavItem[] = [
   { to: '/expenses', label: 'My Expense Claims', icon: ShoppingCart, roles: ['employee'], group: 'support' },
   { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee'], group: 'support' },
   { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee'], group: 'support' },
+  { to: '/support/ortho-tasks', label: 'My Ortho Tasks', icon: Inbox, roles: ['employee', 'ortho', 'admin', 'management'], group: 'support' },
   { to: '/admin/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['admin'], group: 'management' },
   { to: '/hr/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['hr'], group: 'hr' },
   { to: '/finance/travel-km', label: 'Travel KM Payments', icon: MapPinned, roles: ['finance'], group: 'finance' },
@@ -197,6 +199,14 @@ export function Layout({ children }: { children: ReactNode }) {
     }).catch(() => undefined)
   }, [location.pathname, user])
 
+  const [orthoTaskCount, setOrthoTaskCount] = useState(0)
+  useEffect(() => {
+    if (!user || !['employee', 'ortho', 'admin', 'management'].includes(user.role)) return
+    void apiFetch<{ active_count: number }>('/operations/employee/ortho-tasks')
+      .then(payload => setOrthoTaskCount(payload.active_count))
+      .catch(() => undefined)
+  }, [user])
+
   if (!user) return null
   const currentUser = user
 
@@ -213,6 +223,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   function renderNavItem(item: NavItem) {
     const Icon = item.icon
+    const showOrthoBadge = item.to === '/support/ortho-tasks' && orthoTaskCount > 0
     return (
       <NavLink
         key={item.to}
@@ -222,6 +233,7 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         <Icon size={18} />
         <span>{navigationLabelForItem(currentUser.role, item)}</span>
+        {showOrthoBadge && <span className="sidebar-nav-badge" aria-label={`${orthoTaskCount} active assignments`}>{orthoTaskCount}</span>}
       </NavLink>
     )
   }

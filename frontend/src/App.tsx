@@ -42,6 +42,7 @@ import { ForgotPasswordPage } from './features/employee_portal/pages/ForgotPassw
 import { AuthenticatorPage } from './features/employee_portal/pages/AuthenticatorPage'
 import { BranchSelectionPage } from './features/employee_portal/pages/BranchSelectionPage'
 import { EmployeeSupportDashboard } from './features/employee_portal/pages/EmployeeSupportDashboard'
+import { EmployeeOrthoTasksPage } from './features/employee_portal/pages/EmployeeOrthoTasksPage'
 import { TicketCreatePage } from './features/employee_portal/pages/TicketCreatePage'
 import { TicketListPage } from './features/employee_portal/pages/TicketListPage'
 import { TicketDetailPage } from './features/employee_portal/pages/TicketDetailPage'
@@ -90,6 +91,7 @@ export default function App() {
       <Route path="/finance/travel-km" element={<ProtectedRoute roles={['finance']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/travel-km" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/support" element={<ProtectedRoute roles={['employee']}><WithLayout><EmployeeSupportDashboard /></WithLayout></ProtectedRoute>} />
+      <Route path="/support/ortho-tasks" element={<ProtectedRoute roles={['employee', 'ortho', 'admin', 'management']}><WithLayout><EmployeeOrthoTasksPage /></WithLayout></ProtectedRoute>} />
       <Route path="/support/new" element={<ProtectedRoute roles={['employee']}><WithLayout><TicketCreatePage /></WithLayout></ProtectedRoute>} />
       <Route path="/expenses" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/expenses/new" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimCreatePage /></WithLayout></ProtectedRoute>} />
