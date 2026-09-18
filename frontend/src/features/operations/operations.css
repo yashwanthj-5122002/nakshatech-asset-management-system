@@ -248,3 +248,21 @@
   .operations-daily-form { grid-template-columns: 1fr; }
   .operations-span-2 { grid-column: auto; }
 }
+
+/* V8 authoritative workflow */
+.operations-team-columns { display:grid; grid-template-columns:repeat(3,minmax(220px,1fr)); gap:12px; margin:14px 0; }
+.operations-team-box { display:grid; gap:8px; align-content:start; max-height:330px; overflow:auto; padding:13px; border:1px solid #dfe8f1; border-radius:12px; background:#fbfdff; }
+.operations-team-box > strong { color:#102a43; position:sticky; top:-13px; background:#fbfdff; padding:4px 0 8px; z-index:1; }
+.operations-check { display:flex; gap:8px; align-items:flex-start; font-size:13px; color:#34495e; }
+.operations-check input { margin-top:3px; }
+@media (max-width:900px){ .operations-team-columns{grid-template-columns:1fr} }
+.operations-quick-links,.operations-client-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.operations-quick-links>a,.operations-client-card{border:1px solid var(--border-color,#d9e2ec);border-radius:16px;background:var(--surface,#fff);padding:18px;text-decoration:none;color:inherit;box-shadow:0 10px 28px rgba(15,23,42,.06)}
+.operations-quick-links>a{display:flex;gap:12px;align-items:flex-start}.operations-quick-links strong,.operations-quick-links span{display:block}.operations-quick-links span{margin-top:5px;color:var(--text-muted,#64748b);font-size:.88rem}
+.operations-summary-columns{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:18px}.operations-activity-list{display:grid;gap:10px}.operations-activity-list>div{display:flex;gap:10px;padding:11px 0;border-bottom:1px solid var(--border-color,#e2e8f0)}.operations-activity-list strong,.operations-activity-list span,.operations-activity-list small{display:block}.operations-activity-list span,.operations-activity-list small{color:var(--text-muted,#64748b);font-size:.82rem;margin-top:3px}
+.operations-client-card>div:first-child{display:flex;justify-content:space-between;align-items:center}.operations-client-card h3{margin:14px 0 8px}.operations-client-card p{display:flex;align-items:center;gap:7px;color:var(--text-muted,#64748b)}.operations-client-card .operations-actions{margin-top:16px}
+.operations-search{display:flex;align-items:center;gap:8px;min-width:min(100%,340px);border:1px solid var(--border-color,#cbd5e1);border-radius:10px;padding:0 12px;background:var(--surface,#fff)}.operations-search input{width:100%;border:0;background:transparent;padding:11px 0;outline:0;color:inherit}.operations-filter-grid{display:grid;grid-template-columns:minmax(260px,2fr) repeat(2,minmax(180px,1fr));gap:14px;align-items:end;margin-bottom:18px}
+.operations-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.operations-detail-grid>div{padding:14px;border-radius:12px;background:rgba(148,163,184,.09)}.operations-detail-grid span,.operations-detail-grid strong{display:block}.operations-detail-grid span{font-size:.76rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted,#64748b);margin-bottom:5px}
+.operations-row-link{border:0;background:transparent;color:inherit;text-align:left;padding:0;cursor:pointer}.operations-row-link strong,.operations-row-link small{display:block}.operations-notification-list{display:grid;gap:10px}.operations-notification-list>button{display:flex;width:100%;gap:12px;text-align:left;border:1px solid var(--border-color,#d9e2ec);border-radius:12px;padding:14px;background:rgba(37,99,235,.05);color:inherit;cursor:pointer}.operations-notification-list>button.read{background:var(--surface,#fff)}.operations-notification-list>button div{flex:1}.operations-notification-list p{margin:5px 0}.operations-notification-list small{color:var(--text-muted,#64748b)}.operations-notification-list>button>span{width:8px;height:8px;border-radius:50%;background:#2563eb}
+.operations-instructions{margin:8px 0;padding:10px 12px;border-radius:10px;background:rgba(37,99,235,.06);font-size:.85rem;color:var(--text-color,#1a2b3c)}
+@media(max-width:900px){.operations-summary-columns{grid-template-columns:1fr}.operations-filter-grid{grid-template-columns:1fr}}

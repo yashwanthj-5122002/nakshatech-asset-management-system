@@ -60,7 +60,18 @@ import { TravelKmCreatePage } from './features/travel_km/pages/TravelKmCreatePag
 import { TravelKmDetailPage } from './features/travel_km/pages/TravelKmDetailPage'
 import { TravelKmStaffDashboardPage } from './features/travel_km/pages/TravelKmStaffDashboardPage'
 import { BDDashboardPage } from './features/operations/pages/BDDashboardPage'
+import { BDClientManagementPage } from './features/operations/pages/BDClientManagementPage'
+import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
+import { NotificationsPage } from './features/operations/pages/NotificationsPage'
 import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPage'
+import { ProjectWorkstreamsPage } from './features/operations/pages/ProjectWorkstreamsPage'
+import { SampleRequestsPage } from './features/operations/pages/SampleRequestsPage'
+import { ProjectHandoversPage } from './features/operations/pages/ProjectHandoversPage'
+import { ProjectMonitoringPage } from './features/operations/pages/ProjectMonitoringPage'
+import { ProjectCompletionPage } from './features/operations/pages/ProjectCompletionPage'
+import { TechnicalTeamDirectoryPage } from './features/operations/pages/TechnicalTeamDirectoryPage'
+import { ReportingDashboardPage } from './features/operations/pages/ReportingDashboardPage'
+import { ProductionReadinessPage } from './features/operations/pages/ProductionReadinessPage'
 
 function WithLayout({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
@@ -124,11 +135,22 @@ export default function App() {
       <Route path="/drone/kits" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneKitsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/import" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneImportPage /></WithLayout></ProtectedRoute>} />
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin', 'software_team']}><WithLayout><NotificationsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/ortho" element={<StrictProtectedRoute roles={['ortho', 'employee', 'management', 'admin']}><WithLayout><OrthoDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/project-workstreams" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectWorkstreamsPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/sample-requests" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><SampleRequestsPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/project-handovers" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectHandoversPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/project-monitoring" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectMonitoringPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/project-completion" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectCompletionPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/technical-team-directory" element={<StrictProtectedRoute roles={['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><TechnicalTeamDirectoryPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/reporting" element={<StrictProtectedRoute roles={['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><ReportingDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/production-readiness" element={<StrictProtectedRoute roles={['admin', 'management', 'software_team']}><WithLayout><ProductionReadinessPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/finance" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/reports" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceReportsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/clients" element={<ProtectedRoute roles={['admin', 'management']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims/:id" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/management/approvals" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />

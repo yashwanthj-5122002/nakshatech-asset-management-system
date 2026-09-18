@@ -1,6 +1,7 @@
 import {
   ArrowRightLeft,
   BarChart3,
+  Bell,
   Building2,
   Boxes,
   ChevronDown,
@@ -64,7 +65,7 @@ const navGroups: NavGroupDefinition[] = [
   { id: 'support', label: 'Employee Support' },
   { id: 'management', label: 'Management' },
   { id: 'business', label: 'Business Development' },
-  { id: 'ortho', label: 'Ortho / LiDAR' },
+  { id: 'ortho', label: 'Ortho' },
   { id: 'finance', label: 'Finance Department' },
   { id: 'hr', label: 'HR Department' },
   { id: 'it', label: 'IT Department' },
@@ -91,10 +92,21 @@ const navItems: NavItem[] = [
   { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
-  { to: '/ortho', label: 'Ortho / LiDAR Dashboard', icon: FolderKanban, roles: ['ortho', 'admin', 'management'], group: 'ortho' },
+  { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/ortho', label: 'Ortho Work Dashboard', icon: FolderKanban, roles: ['ortho', 'employee', 'admin', 'management'], group: 'ortho' },
+  { to: '/project-workstreams', label: 'Project Workstreams', icon: FolderKanban, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
+  { to: '/sample-requests', label: 'Sample Requests', icon: FolderKanban, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
+  { to: '/project-handovers', label: 'Data Handovers', icon: ArrowRightLeft, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
+  { to: '/project-monitoring', label: 'Project Monitoring', icon: BarChart3, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
+  { to: '/project-completion', label: 'Final Delivery & Closure', icon: FileCheck2, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
+  { to: '/technical-team-directory', label: 'Technical Team Directory', icon: Users, roles: ['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'overview' },
+  { to: '/reporting', label: 'Executive & Manager Reporting', icon: Users, roles: ['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'overview' },
+  { to: '/production-readiness', label: 'Production Readiness', icon: Users, roles: ['admin', 'management', 'software_team'], group: 'overview' },
   { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
-  { to: '/finance/clients', label: 'Client & Project Master', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/finance/clients', label: 'Legacy Client Master (Admin)', icon: Building2, roles: ['admin', 'management'], group: 'finance' },
   { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
@@ -129,7 +141,12 @@ const roleLabels: Record<Role, { name: string; subtitle: string }> = {
   finance: { name: 'Finance Department', subtitle: 'Project expenses & approvals' },
   hr: { name: 'HR Department', subtitle: 'Employee travel verification' },
   bd: { name: 'Business Development', subtitle: 'Client opportunities & delivery bridge' },
-  ortho: { name: 'Ortho / LiDAR', subtitle: 'Production, QC, QA & delivery' },
+  ortho: { name: 'Ortho', subtitle: 'Production, QC, QA & delivery' },
+  lidar: { name: 'LiDAR', subtitle: 'Project workstreams' },
+  civil: { name: 'Civil Department', subtitle: 'Project workstreams' },
+  laser_scanning: { name: 'Laser Scanning', subtitle: 'Project workstreams' },
+  bim: { name: 'BIM Department', subtitle: 'Project workstreams' },
+  mobile_mapping: { name: 'Mobile Mapping', subtitle: 'Project workstreams' },
   employee: { name: 'Employee Support', subtitle: 'Organization ticket access' },
 }
 
@@ -150,7 +167,7 @@ function canViewItem(role: Role, item: NavItem): boolean {
   if (item.to === '/software-team') return role === 'software_team'
   if (item.to === '/admin') return role === 'admin'
   // New department modules use exact-role access. Do not inherit the legacy Software Team -> Admin elevation.
-  if (item.to === '/bd' || item.to === '/ortho') return item.roles.includes(role)
+  if (item.to.startsWith('/bd') || item.to === '/notifications' || item.to === '/ortho' || item.to === '/project-workstreams' || item.to === '/sample-requests' || item.to === '/project-handovers' || item.to === '/project-monitoring' || item.to === '/project-completion' || item.to === '/technical-team-directory' || item.to === '/reporting' || item.to === '/production-readiness') return item.roles.includes(role)
   return canAccessRole(role, item.roles)
 }
 

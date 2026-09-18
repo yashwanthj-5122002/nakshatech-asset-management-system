@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date, datetime
 from decimal import Decimal
+import logging
 from typing import Iterable
 
 from sqlalchemy import func, select
@@ -12,6 +13,7 @@ from app.core.config import settings
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
+from app.modules.notifications.service import create_global_notification, resolve_recipient_users
 from app.modules.operations.models import (
     BDOpportunity,
     BDOpportunityEvent,
@@ -22,10 +24,12 @@ from app.modules.operations.models import (
     OrthoReview,
     OrthoWorkPackage,
     OrthoWorkSession,
+    ProjectWorkstream,
 )
 from app.modules.operations.schemas import (
     BDOpportunityCreate,
     BDProjectLink,
+    BDProjectManagerUpdate,
     BDStageUpdate,
     OrthoDailyUpdateRequest,
     OrthoDeliveryRequest,
@@ -35,6 +39,8 @@ from app.modules.operations.schemas import (
     OrthoTeamSetup,
     OrthoWorkPackageAssignments,
     OrthoWorkPackageCreate,
+    ProjectWorkstreamConfig,
+    ProjectWorkstreamStatusUpdate,
 )
 
 BD_ROLE = "bd"
@@ -44,10 +50,195 @@ MANAGEMENT_ROLE = "management"
 FINANCE_ROLE = "finance"
 SOFTWARE_TEAM_ROLE = "software_team"
 EMPLOYEE_ROLE = "employee"
+LIDAR_ROLE = "lidar"
+CIVIL_ROLE = "civil"
+LASER_SCANNING_ROLE = "laser_scanning"
+BIM_ROLE = "bim"
+MOBILE_MAPPING_ROLE = "mobile_mapping"
+
+TECHNICAL_DEPARTMENT_ROLE_MAP = {
+    "ortho": ORTHO_ROLE,
+    "lidar": LIDAR_ROLE,
+    "civil": CIVIL_ROLE,
+    "laser_scanning": LASER_SCANNING_ROLE,
+    "bim": BIM_ROLE,
+    "mobile_mapping": MOBILE_MAPPING_ROLE,
+}
+TECHNICAL_DEPARTMENT_LABELS = {
+    "ortho": "Ortho",
+    "lidar": "LiDAR",
+    "civil": "Civil",
+    "laser_scanning": "Laser Scanning",
+    "bim": "BIM",
+    "mobile_mapping": "Mobile Mapping",
+}
+TECHNICAL_ROLE_DEPARTMENT_MAP = {role: code for code, role in TECHNICAL_DEPARTMENT_ROLE_MAP.items()}
+PROJECT_WORKSTREAM_STATUSES = {"planned", "ready", "in_progress", "blocked", "completed"}
 
 BD_WRITE_ROLES = {BD_ROLE}
 ORTHO_GLOBAL_ROLES = {ORTHO_ROLE}
 OVERSIGHT_ROLES = {ADMIN_ROLE, MANAGEMENT_ROLE}
+
+logger = logging.getLogger(__name__)
+
+
+def bd_project_manager_options(db: Session) -> list[dict]:
+    """BD-owned Project Manager directory for the current Ortho/LiDAR workflow."""
+    users = list(db.scalars(
+        select(User).where(
+            User.role == ORTHO_ROLE,
+            User.is_active.is_(True),
+            User.account_status.in_(["active", "pending_mfa"]),
+        ).order_by(User.full_name.asc(), User.email.asc())
+    ).all())
+    return [
+        {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "employee_id": user.employee_id,
+            "department": user.department,
+            "designation": user.designation,
+        }
+        for user in users
+    ]
+
+
+def _finance_recipients(db: Session) -> list[User]:
+    return resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE])
+
+
+def _bd_finance_message(opportunity: BDOpportunity, owner: User | None) -> str:
+    lines = [
+        f"Opportunity: {opportunity.opportunity_code} - {opportunity.title}",
+        f"Prospect / Client: {opportunity.client_name_snapshot or 'Not specified'}",
+        f"Requirement / Scope: {opportunity.requirement}",
+        f"Priority: {opportunity.priority.upper()}",
+        f"BD Owner: {(owner.full_name if owner else 'Not available')}",
+    ]
+    if opportunity.expected_value is not None:
+        lines.append(f"Expected Value: {opportunity.expected_value}")
+    if opportunity.expected_start_date:
+        lines.append(f"Expected Start: {opportunity.expected_start_date.isoformat()}")
+    if opportunity.expected_delivery_date:
+        lines.append(f"Expected Delivery: {opportunity.expected_delivery_date.isoformat()}")
+    lines.append("Finance action: review the BD handoff details and create/maintain the official Client ID and Project ID when the opportunity reaches the appropriate handoff stage. Project Manager assignment remains owned by BD.")
+    return "\n".join(lines)
+
+
+def create_finance_bd_opportunity_notifications(db: Session, *, opportunity_id: int) -> list:
+    opportunity = db.get(BDOpportunity, opportunity_id)
+    if opportunity is None:
+        return []
+    owner = db.get(User, opportunity.owner_user_id)
+    return create_global_notification(
+        db,
+        event_type="finance.bd_opportunity.created",
+        title=f"New BD client/opportunity: {opportunity.opportunity_code}",
+        message=_bd_finance_message(opportunity, owner),
+        category="system",
+        target_url="/finance",
+        recipient_roles=[FINANCE_ROLE],
+        dedupe_key=f"finance.bd_opportunity.{opportunity.id}",
+    )
+
+
+def deliver_finance_bd_opportunity_emails(db: Session, *, opportunity_id: int) -> tuple[int, int]:
+    opportunity = db.get(BDOpportunity, opportunity_id)
+    if opportunity is None:
+        return 0, 0
+    owner = db.get(User, opportunity.owner_user_id)
+    body = (
+        "Hello Finance Team,\n\n"
+        "Business Development has recorded a new client/opportunity in NakshaTech ERP.\n\n"
+        + _bd_finance_message(opportunity, owner)
+        + f"\n\nERP Finance Dashboard: {settings.app_public_url.rstrip('/')}/finance\n\nNakshaTech ERP"
+    )
+    sent = 0
+    failed = 0
+    for recipient in _finance_recipients(db):
+        try:
+            send_email(
+                recipient=recipient.email,
+                subject=f"[{opportunity.opportunity_code}] New BD client/opportunity",
+                body=body,
+                from_name="NakshaTech BD -> Finance",
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+            logger.exception("Could not send BD opportunity notification email to Finance user %s", recipient.id)
+    return sent, failed
+
+
+def _finance_completion_message(db: Session, *, project_id: int, package_count: int, delivered_by_id: int | None, remarks: str | None) -> tuple[str, FinanceProject | None]:
+    project = db.get(FinanceProject, project_id)
+    if project is None:
+        return "Project completion recorded.", None
+    delivered_by = db.get(User, delivered_by_id) if delivered_by_id else None
+    client_name = project.client.client_name if project.client else project.client_name
+    profile = db.get(FinanceProjectMasterProfile, project_id)
+    pm = db.get(User, profile.project_manager_id) if profile and profile.project_manager_id else None
+    lines = [
+        f"Project: {project.project_code} - {project.project_name}",
+        f"Client: {client_name or 'Not specified'}",
+        f"Project Manager: {(pm.full_name if pm else 'Not assigned')}",
+        f"Final Delivery By: {(delivered_by.full_name if delivered_by else 'Not available')}",
+        f"Delivered Packages: {package_count}",
+        f"Completion Date: {utc_now().date().isoformat()}",
+    ]
+    if remarks:
+        lines.append(f"Delivery Remarks: {remarks}")
+    lines.append("Finance action: proceed with billing, payment follow-up, settlement, and financial closure as applicable.")
+    return "\n".join(lines), project
+
+
+def create_finance_project_completion_notifications(db: Session, *, project_id: int, package_count: int, delivered_by_id: int | None, remarks: str | None = None) -> list:
+    message, project = _finance_completion_message(
+        db, project_id=project_id, package_count=package_count, delivered_by_id=delivered_by_id, remarks=remarks
+    )
+    if project is None:
+        return []
+    return create_global_notification(
+        db,
+        event_type="finance.project_completed",
+        title=f"Project delivered - Finance action required: {project.project_code}",
+        message=message,
+        category="system",
+        target_url="/finance",
+        recipient_roles=[FINANCE_ROLE],
+        dedupe_key=f"finance.project_completed.{project.id}",
+    )
+
+
+def deliver_finance_project_completion_emails(db: Session, *, project_id: int, package_count: int, delivered_by_id: int | None, remarks: str | None = None) -> tuple[int, int]:
+    message, project = _finance_completion_message(
+        db, project_id=project_id, package_count=package_count, delivered_by_id=delivered_by_id, remarks=remarks
+    )
+    if project is None:
+        return 0, 0
+    body = (
+        "Hello Finance Team,\n\n"
+        "The operational team has recorded Final Delivery for the following project.\n\n"
+        + message
+        + f"\n\nERP Finance Dashboard: {settings.app_public_url.rstrip('/')}/finance\n\nNakshaTech ERP"
+    )
+    sent = 0
+    failed = 0
+    for recipient in _finance_recipients(db):
+        try:
+            send_email(
+                recipient=recipient.email,
+                subject=f"[{project.project_code}] Project completed - Finance action required",
+                body=body,
+                from_name="NakshaTech Operations -> Finance",
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+            logger.exception("Could not send project completion email to Finance user %s", recipient.id)
+    return sent, failed
+
 
 BD_STAGE_ORDER = [
     "opportunity",
@@ -273,7 +464,67 @@ def update_bd_stage(db: Session, *, opportunity: BDOpportunity, actor: User, pay
     return opportunity
 
 
-def link_bd_project(db: Session, *, opportunity: BDOpportunity, actor: User, payload: BDProjectLink) -> tuple[BDOpportunity, OrthoProjectProfile]:
+def _validate_bd_project_manager(db: Session, project_manager_id: int) -> User:
+    user = db.get(User, project_manager_id)
+    if (
+        user is None
+        or not user.is_active
+        or user.account_status not in {"active", "pending_mfa"}
+        or normalize_role(user.role) != ORTHO_ROLE
+    ):
+        raise ValueError("BD must select an active Ortho/LiDAR Project Manager")
+    return user
+
+
+def _apply_bd_project_manager(db: Session, *, project: FinanceProject, actor: User, project_manager_id: int) -> tuple[User, OrthoProjectProfile | None]:
+    pm = _validate_bd_project_manager(db, project_manager_id)
+    master = db.get(FinanceProjectMasterProfile, project.id)
+    if master is None:
+        master = FinanceProjectMasterProfile(
+            project_id=project.id,
+            project_status=project_lifecycle_status(project),
+            project_manager_id=pm.id,
+            created_by_id=actor.id,
+            updated_by_id=actor.id,
+        )
+        db.add(master)
+    else:
+        master.project_manager_id = pm.id
+        master.updated_by_id = actor.id
+        master.updated_at = utc_now()
+
+    profile = db.get(OrthoProjectProfile, project.id)
+    if profile is not None:
+        profile.project_manager_user_id = pm.id
+        profile.updated_at = utc_now()
+        members = list(db.scalars(select(OrthoProjectMember).where(
+            OrthoProjectMember.project_id == project.id,
+            OrthoProjectMember.member_role == "project_manager",
+        )).all())
+        selected = None
+        for member in members:
+            if member.user_id == pm.id:
+                member.is_active = True
+                member.assigned_by_id = actor.id
+                member.updated_at = utc_now()
+                selected = member
+            else:
+                member.is_active = False
+                member.assigned_by_id = actor.id
+                member.updated_at = utc_now()
+        if selected is None:
+            db.add(OrthoProjectMember(
+                project_id=project.id,
+                user_id=pm.id,
+                member_role="project_manager",
+                is_active=True,
+                assigned_by_id=actor.id,
+            ))
+    db.flush()
+    return pm, profile
+
+
+def link_bd_project(db: Session, *, opportunity: BDOpportunity, actor: User, payload: BDProjectLink) -> tuple[BDOpportunity, OrthoProjectProfile | None]:
     if opportunity.stage not in {"accepted", "finance_handoff", "project_linked", "production", "delivery_ready"}:
         raise ValueError("Client acceptance must be recorded before linking an official Project ID")
     project = resolve_finance_project(db, project_id=payload.project_id, project_code=payload.project_code)
@@ -282,42 +533,68 @@ def link_bd_project(db: Session, *, opportunity: BDOpportunity, actor: User, pay
     existing_link = db.scalar(select(BDOpportunity).where(BDOpportunity.linked_project_id == project.id, BDOpportunity.id != opportunity.id))
     if existing_link is not None:
         raise ValueError(f"Project {project.project_code} is already linked to {existing_link.opportunity_code}")
+
+    # Multi-department Phase 1: linking the official Finance Project ID does not
+    # require an Ortho PM. BD configures one or more department workstreams next.
+    # For legacy Ortho projects, an existing/supplied Ortho PM is still mirrored.
+    legacy_pm_id = project.master_profile.project_manager_id if project.master_profile else None
+    selected_pm_id = payload.project_manager_id or legacy_pm_id
+
     old = opportunity.stage
     opportunity.linked_project_id = project.id
     opportunity.linked_at = opportunity.linked_at or utc_now()
     opportunity.stage = "project_linked"
+
+    profile = db.get(OrthoProjectProfile, project.id)
+    pm = None
+    if selected_pm_id is not None:
+        if profile is None:
+            profile = OrthoProjectProfile(
+                project_id=project.id,
+                opportunity_id=opportunity.id,
+                project_manager_user_id=None,
+                status="active",
+                created_by_id=actor.id,
+            )
+            db.add(profile)
+            db.flush()
+        elif profile.opportunity_id is None:
+            profile.opportunity_id = opportunity.id
+        pm, _ = _apply_bd_project_manager(db, project=project, actor=actor, project_manager_id=selected_pm_id)
+
     db.add(BDOpportunityEvent(
         opportunity_id=opportunity.id,
-        action="finance_project_linked",
+        action="finance_project_linked_bd_pm_assigned" if pm else "finance_project_linked_for_workstream_setup",
         from_stage=old,
         to_stage="project_linked",
-        comments=(payload.comments or "").strip() or None,
+        comments=(payload.comments or "").strip() or (
+            f"BD linked Project ID and retained Ortho PM: {pm.full_name}"
+            if pm else "BD linked the official Project ID; technical workstreams and department PMs are configured separately."
+        ),
         actor_user_id=actor.id,
     ))
-    profile = db.get(OrthoProjectProfile, project.id)
-    if profile is None:
-        finance_pm = project.master_profile.project_manager_id if project.master_profile else None
-        profile = OrthoProjectProfile(
-            project_id=project.id,
-            opportunity_id=opportunity.id,
-            project_manager_user_id=finance_pm,
-            status="active",
-            created_by_id=actor.id,
-        )
-        db.add(profile)
-        db.flush()
-        if finance_pm:
-            db.add(OrthoProjectMember(
-                project_id=project.id,
-                user_id=finance_pm,
-                member_role="project_manager",
-                is_active=True,
-                assigned_by_id=actor.id,
-            ))
-    elif profile.opportunity_id is None:
-        profile.opportunity_id = opportunity.id
     db.flush()
     return opportunity, profile
+
+
+def assign_bd_project_manager(db: Session, *, opportunity: BDOpportunity, actor: User, payload: BDProjectManagerUpdate) -> User:
+    if opportunity.linked_project_id is None:
+        raise ValueError("Link the official Finance Project ID before assigning the Project Manager")
+    if opportunity.stage in {"delivered", "closed"}:
+        raise ValueError("Project Manager cannot be changed after Final Delivery / closure")
+    project = resolve_finance_project(db, project_id=opportunity.linked_project_id)
+    old_pm_id = project.master_profile.project_manager_id if project.master_profile else None
+    pm, _ = _apply_bd_project_manager(db, project=project, actor=actor, project_manager_id=payload.project_manager_id)
+    db.add(BDOpportunityEvent(
+        opportunity_id=opportunity.id,
+        action="project_manager_changed_by_bd",
+        from_stage=opportunity.stage,
+        to_stage=opportunity.stage,
+        comments=(payload.comments or "").strip() or f"BD changed Project Manager from user {old_pm_id or 'unassigned'} to {pm.full_name}",
+        actor_user_id=actor.id,
+    ))
+    db.flush()
+    return pm
 
 
 def bd_dashboard_payload(db: Session, *, actor: User, effective_role: str) -> dict:
@@ -340,6 +617,7 @@ def bd_dashboard_payload(db: Session, *, actor: User, effective_role: str) -> di
         "opportunities": [bd_opportunity_payload(db, item) for item in opportunities],
         "clients": client_options(db),
         "project_master": finance_project_options(db),
+        "project_managers": bd_project_manager_options(db),
     }
 
 
@@ -369,7 +647,7 @@ def member_roles(db: Session, project_id: int, user_id: int) -> set[str]:
 
 
 def is_effective_pm(db: Session, *, project_id: int, user_id: int) -> bool:
-    # Finance Project Master is authoritative whenever it has a PM assignment.
+    # Project Master PM is authoritative; V7.0.14 allows only BD to write this assignment.
     finance_profile = db.get(FinanceProjectMasterProfile, project_id)
     if finance_profile and finance_profile.project_manager_id is not None:
         return finance_profile.project_manager_id == user_id
@@ -400,9 +678,9 @@ def activate_ortho_project(db: Session, *, actor: User, payload: OrthoProjectAct
         return existing
     finance_pm = project.master_profile.project_manager_id if project.master_profile else None
     if finance_pm is None:
-        raise ValueError("Finance Project Master must assign the Ortho Project Manager before Ortho activation")
+        raise ValueError("Business Development must assign the Project Manager before Ortho activation")
     if finance_pm != actor.id:
-        raise PermissionError("Only the Project Manager assigned in Finance Project Master can activate this Ortho project")
+        raise PermissionError("Only the Project Manager assigned by Business Development can activate this Ortho project")
     profile = OrthoProjectProfile(
         project_id=project.id,
         opportunity_id=payload.opportunity_id,
@@ -965,8 +1243,25 @@ def project_payload(db: Session, profile: OrthoProjectProfile, *, viewer: User |
         "qc": is_pm or "qc" in roles,
         "qa": is_pm or "qa" in roles,
     }
+    viewer_role = normalize_role(viewer.role) if viewer else None
+    oversight = bool(viewer_role in OVERSIGHT_ROLES)
+    is_team_lead_viewer = bool("team_leader" in roles)
+    if viewer_id and not (is_pm or is_team_lead_viewer or oversight):
+        visible_packages = [
+            package for package in profile.work_packages
+            if viewer_id in {package.team_leader_user_id, package.production_user_id, package.qc_user_id, package.qa_user_id}
+        ]
+        visible_members = [member for member in profile.members if member.user_id == viewer_id]
+    else:
+        visible_packages = list(profile.work_packages)
+        visible_members = list(profile.members)
+    project_view = finance_project_payload(project)
+    # Operations works by Client ID + Project ID only. Client identity/commercial
+    # context remains with BD and Finance.
+    project_view["client_code"] = project.client.client_code if project.client else None
+    project_view["client_name"] = None
     return {
-        "project": finance_project_payload(project),
+        "project": project_view,
         "profile": {
             "project_id": profile.project_id,
             "opportunity_id": profile.opportunity_id,
@@ -994,9 +1289,9 @@ def project_payload(db: Session, profile: OrthoProjectProfile, *, viewer: User |
                 "member_role": member.member_role,
                 "is_active": bool(member.is_active),
             }
-            for member in profile.members
+            for member in visible_members
         ],
-        "work_packages": [package_payload(db, package, viewer=viewer) for package in profile.work_packages],
+        "work_packages": [package_payload(db, package, viewer=viewer) for package in visible_packages],
     }
 
 
@@ -1032,7 +1327,8 @@ def ortho_dashboard_payload(db: Session, *, actor: User, effective_role: str) ->
     projects = [project_payload(db, profile, viewer=actor) for profile in profiles]
     all_packages = [package for project in projects for package in project["work_packages"]]
 
-    # Finance Project Master is authoritative for Ortho PM assignment. A freshly
+    # The Project Master PM field remains authoritative for Ortho visibility, but
+    # V7.0.14 makes BD the only workflow allowed to write that PM assignment. A freshly
     # assigned Ortho PM must be able to see and activate Finance projects even
     # before any OrthoProjectProfile exists. V7.0.9 incorrectly gated the
     # project-master list on an already-visible Ortho PM project, creating a
@@ -1110,8 +1406,9 @@ def get_visible_work_package(db: Session, *, work_package_id: int, actor: User, 
         return row
     if actor.id in {row.team_leader_user_id, row.production_user_id, row.qc_user_id, row.qa_user_id}:
         return row
-    if member_roles(db, row.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES:
-        return row
+    # V8 least privilege: project membership alone never grants access to every
+    # work package. Normal operations users must be the exact TL/Production/QC/QA
+    # assignee for the package (or the authoritative Project Manager).
     return None
 
 
@@ -1196,3 +1493,411 @@ def corporate_summary_payload(db: Session) -> dict:
             "delivered_area": round(sum(summary["delivered_area"] for summary in project_summaries), 3),
         },
     }
+
+
+def technical_department_specs() -> list[dict]:
+    return [
+        {"code": code, "label": TECHNICAL_DEPARTMENT_LABELS[code], "role": role}
+        for code, role in TECHNICAL_DEPARTMENT_ROLE_MAP.items()
+    ]
+
+
+def technical_project_manager_options(db: Session) -> list[dict]:
+    from app.modules.operations.technical_routing_service import live_routing_enabled, real_department_users
+
+    if live_routing_enabled(db):
+        users: list[User] = []
+        for department_code in TECHNICAL_DEPARTMENT_ROLE_MAP:
+            users.extend(real_department_users(db, department_code=department_code, purpose="pm"))
+    else:
+        roles = tuple(TECHNICAL_ROLE_DEPARTMENT_MAP)
+        users = list(db.scalars(
+            select(User).where(
+                User.role.in_(roles),
+                User.is_active.is_(True),
+                User.account_status.in_(["active", "pending_mfa"]),
+            ).order_by(User.role.asc(), User.full_name.asc(), User.email.asc())
+        ).all())
+        # Before Phase 7 production activation, preserve the reserved UAT PM selector.
+        demo_users = [user for user in users if (user.employee_id or "").startswith("DEMO-V715-")]
+        demo_roles = {normalize_role(user.role) for user in demo_users}
+        if demo_roles:
+            users = [user for user in users if normalize_role(user.role) not in demo_roles or user in demo_users]
+    return [
+        {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "employee_id": user.employee_id,
+            "department": user.department,
+            "designation": user.designation,
+            "role": normalize_role(user.role),
+            "department_code": TECHNICAL_ROLE_DEPARTMENT_MAP.get(normalize_role(user.role)),
+        }
+        for user in users
+    ]
+
+
+def _workstream_manager(db: Session, *, department_code: str, user_id: int) -> User:
+    expected_role = TECHNICAL_DEPARTMENT_ROLE_MAP.get(department_code)
+    if expected_role is None:
+        raise ValueError("Unsupported technical department")
+    from app.modules.operations.technical_routing_service import live_routing_enabled, validate_live_project_manager
+    if live_routing_enabled(db):
+        return validate_live_project_manager(db, department_code=department_code, user_id=user_id)
+    user = db.get(User, user_id)
+    if (
+        user is None
+        or not user.is_active
+        or user.account_status not in {"active", "pending_mfa"}
+        or normalize_role(user.role) != expected_role
+    ):
+        raise ValueError(
+            f"Select an active {TECHNICAL_DEPARTMENT_LABELS[department_code]} Project Manager account"
+        )
+    return user
+
+
+def _ensure_ortho_profile_for_workstream(db: Session, *, opportunity: BDOpportunity, actor: User) -> OrthoProjectProfile:
+    if opportunity.linked_project_id is None:
+        raise ValueError("Link the official Project ID first")
+    profile = db.get(OrthoProjectProfile, opportunity.linked_project_id)
+    if profile is None:
+        profile = OrthoProjectProfile(
+            project_id=opportunity.linked_project_id,
+            opportunity_id=opportunity.id,
+            project_manager_user_id=None,
+            status="active",
+            created_by_id=actor.id,
+        )
+        db.add(profile)
+        db.flush()
+    elif profile.opportunity_id is None:
+        profile.opportunity_id = opportunity.id
+    return profile
+
+
+def _clear_ortho_primary_pm(db: Session, *, project_id: int, actor: User) -> None:
+    master = db.get(FinanceProjectMasterProfile, project_id)
+    if master is not None:
+        master.project_manager_id = None
+        master.updated_by_id = actor.id
+        master.updated_at = utc_now()
+    profile = db.get(OrthoProjectProfile, project_id)
+    if profile is not None:
+        profile.project_manager_user_id = None
+        profile.updated_at = utc_now()
+        members = list(db.scalars(select(OrthoProjectMember).where(
+            OrthoProjectMember.project_id == project_id,
+            OrthoProjectMember.member_role == "project_manager",
+            OrthoProjectMember.is_active.is_(True),
+        )).all())
+        for member in members:
+            member.is_active = False
+            member.assigned_by_id = actor.id
+            member.updated_at = utc_now()
+
+
+def project_workstream_payload(db: Session, row: ProjectWorkstream) -> dict:
+    project = db.get(FinanceProject, row.project_id)
+    manager = db.get(User, row.project_manager_user_id)
+    client_name = None
+    if project is not None:
+        client_name = project.client.client_name if project.client else project.client_name
+    return {
+        "id": row.id,
+        "project_id": row.project_id,
+        "project_code": project.project_code if project else None,
+        "project_name": project.project_name if project else None,
+        "client_name": client_name,
+        "department_code": row.department_code,
+        "department_label": TECHNICAL_DEPARTMENT_LABELS.get(row.department_code, row.department_code),
+        "department_role": TECHNICAL_DEPARTMENT_ROLE_MAP.get(row.department_code),
+        "project_manager_user_id": row.project_manager_user_id,
+        "project_manager_name": manager.full_name if manager else None,
+        "project_manager_email": manager.email if manager else None,
+        "sequence_order": row.sequence_order,
+        "status": row.status,
+        "notes": row.notes,
+        "is_active": bool(row.is_active),
+        "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def configure_project_workstreams(
+    db: Session,
+    *,
+    opportunity: BDOpportunity,
+    actor: User,
+    payload: ProjectWorkstreamConfig,
+) -> list[ProjectWorkstream]:
+    if opportunity.owner_user_id != actor.id:
+        raise PermissionError("Only the BD owner can configure this project's technical workstreams")
+    if opportunity.linked_project_id is None:
+        raise ValueError("Link the official Finance Project ID before configuring technical workstreams")
+    if opportunity.stage in {"delivered", "closed"}:
+        raise ValueError("Technical workstreams cannot be changed after Final Delivery / closure")
+
+    project = resolve_finance_project(db, project_id=opportunity.linked_project_id)
+    desired = {item.department_code: item for item in payload.workstreams}
+    existing_rows = list(db.scalars(select(ProjectWorkstream).where(ProjectWorkstream.project_id == project.id)).all())
+    existing = {row.department_code: row for row in existing_rows}
+
+    ortho_removed = "ortho" in existing and existing["ortho"].is_active and "ortho" not in desired
+    for row in existing_rows:
+        if row.department_code not in desired:
+            row.is_active = False
+            row.updated_by_id = actor.id
+            row.updated_at = utc_now()
+
+    configured: list[ProjectWorkstream] = []
+    for item in payload.workstreams:
+        manager = _workstream_manager(db, department_code=item.department_code, user_id=item.project_manager_user_id)
+        row = existing.get(item.department_code)
+        manager_changed = row is None or row.project_manager_user_id != manager.id or not row.is_active
+        if row is None:
+            row = ProjectWorkstream(
+                project_id=project.id,
+                department_code=item.department_code,
+                project_manager_user_id=manager.id,
+                sequence_order=item.sequence_order,
+                status="planned",
+                notes=(item.notes or "").strip() or None,
+                is_active=True,
+                created_by_id=actor.id,
+                updated_by_id=actor.id,
+            )
+            db.add(row)
+            db.flush()
+            existing[item.department_code] = row
+        else:
+            row.project_manager_user_id = manager.id
+            row.sequence_order = item.sequence_order
+            row.notes = (item.notes or "").strip() or None
+            row.is_active = True
+            row.updated_by_id = actor.id
+            row.updated_at = utc_now()
+            db.flush()
+
+        if item.department_code == "ortho":
+            _ensure_ortho_profile_for_workstream(db, opportunity=opportunity, actor=actor)
+            _apply_bd_project_manager(db, project=project, actor=actor, project_manager_id=manager.id)
+
+        setattr(row, "_phase7_manager_changed", bool(manager_changed))
+        if manager_changed:
+            try:
+                create_global_notification(
+                    db,
+                    event_type="project.workstream.assigned",
+                    title=f"Project workstream assigned: {project.project_code}",
+                    message=(
+                        f"Project: {project.project_code} - {project.project_name}\n"
+                        f"Department: {TECHNICAL_DEPARTMENT_LABELS[item.department_code]}\n"
+                        f"Role: Department Project Manager\n"
+                        f"Sequence: {item.sequence_order}\n"
+                        "Open Project Workstreams to review the assignment."
+                    ),
+                    category="system",
+                    target_url="/project-workstreams",
+                    recipient_user_ids=[manager.id],
+                    dedupe_key=f"project.workstream.assignment.{project.id}.{item.department_code}.{manager.id}",
+                )
+            except Exception:
+                logger.exception("Could not create workstream assignment notification for user %s", manager.id)
+        configured.append(row)
+
+    if ortho_removed:
+        _clear_ortho_primary_pm(db, project_id=project.id, actor=actor)
+
+    db.add(BDOpportunityEvent(
+        opportunity_id=opportunity.id,
+        action="technical_workstreams_configured",
+        from_stage=opportunity.stage,
+        to_stage=opportunity.stage,
+        comments="; ".join(
+            f"{TECHNICAL_DEPARTMENT_LABELS[item.department_code]} -> user {item.project_manager_user_id} (sequence {item.sequence_order})"
+            for item in payload.workstreams
+        ),
+        actor_user_id=actor.id,
+    ))
+    db.flush()
+    return sorted(configured, key=lambda row: (row.sequence_order, row.id))
+
+
+def deliver_project_workstream_assignment_email(db: Session, *, workstream_id: int) -> tuple[int, int]:
+    from app.modules.operations.technical_routing_service import live_routing_enabled, is_real_department_member
+
+    if not live_routing_enabled(db):
+        return 0, 0
+    row = db.get(ProjectWorkstream, workstream_id)
+    if row is None or not row.is_active:
+        return 0, 0
+    manager = db.get(User, row.project_manager_user_id)
+    project = db.get(FinanceProject, row.project_id)
+    if manager is None or project is None:
+        return 0, 0
+    if not is_real_department_member(
+        db, department_code=row.department_code, user_id=manager.id, purpose="pm"
+    ):
+        return 0, 0
+    try:
+        send_email(
+            recipient=manager.email,
+            subject=f"[{project.project_code}] {TECHNICAL_DEPARTMENT_LABELS[row.department_code]} Project Manager assignment",
+            body=(
+                f"Hello {manager.full_name},\n\n"
+                f"You have been assigned as the {TECHNICAL_DEPARTMENT_LABELS[row.department_code]} Project Manager in NakshaTech ERP.\n\n"
+                f"Project: {project.project_code} - {project.project_name}\n"
+                f"Department: {TECHNICAL_DEPARTMENT_LABELS[row.department_code]}\n"
+                f"Workflow order: {row.sequence_order}\n"
+                f"Notes: {row.notes or 'None'}\n\n"
+                f"ERP Project Workstreams: {settings.app_public_url.rstrip('/')}/project-workstreams\n\nNakshaTech ERP"
+            ),
+            from_name="NakshaTech Project Coordination",
+        )
+        return 1, 0
+    except Exception:
+        logger.exception("Could not send Phase 7 workstream assignment email to user %s", manager.id)
+        return 0, 1
+
+
+def update_project_workstream_status(
+    db: Session,
+    *,
+    row: ProjectWorkstream,
+    actor: User,
+    effective_role: str,
+    payload: ProjectWorkstreamStatusUpdate,
+) -> ProjectWorkstream:
+    role = normalize_role(effective_role)
+    expected_role = TECHNICAL_DEPARTMENT_ROLE_MAP.get(row.department_code)
+    if expected_role is None or role != expected_role or row.project_manager_user_id != actor.id:
+        raise PermissionError("Only the assigned department Project Manager can update this workstream")
+    from app.modules.operations.technical_routing_service import is_real_department_member, live_routing_enabled
+    if live_routing_enabled(db) and not is_real_department_member(
+        db, department_code=row.department_code, user_id=actor.id, purpose="pm"
+    ):
+        raise PermissionError("Phase 7 production workstream updates require the assigned live-ready Project Manager")
+    if not row.is_active:
+        raise ValueError("This project workstream is inactive")
+    if payload.status not in PROJECT_WORKSTREAM_STATUSES:
+        raise ValueError("Unsupported workstream status")
+    # V7.0.17 Phase 3 dependency gate: a receiving technical department
+    # cannot start or complete while any active upstream data handover is unresolved.
+    if payload.status in {"in_progress", "completed"}:
+        from app.modules.operations.handover_models import ProjectDataHandover
+        blocking_handover = db.scalar(select(ProjectDataHandover.id).where(
+            ProjectDataHandover.to_workstream_id == row.id,
+            ProjectDataHandover.is_active.is_(True),
+            ProjectDataHandover.status != "accepted",
+        ).limit(1))
+        if blocking_handover is not None:
+            raise ValueError("All upstream data handover(s) must be accepted before this department can start or complete work")
+    # V7.0.19 Phase 5 completion gate: a sending department cannot declare
+    # itself complete until every active downstream receiver accepts its data handover.
+    if payload.status == "completed":
+        from app.modules.operations.handover_models import ProjectDataHandover
+        unresolved_outgoing = db.scalar(select(ProjectDataHandover.id).where(
+            ProjectDataHandover.from_workstream_id == row.id,
+            ProjectDataHandover.is_active.is_(True),
+            ProjectDataHandover.status != "accepted",
+        ).limit(1))
+        if unresolved_outgoing is not None:
+            raise ValueError("All outgoing data handover(s) must be accepted before this department can complete work")
+    row.status = payload.status
+    if payload.notes is not None:
+        row.notes = payload.notes.strip() or None
+    row.completed_at = utc_now() if payload.status == "completed" else None
+    row.updated_by_id = actor.id
+    row.updated_at = utc_now()
+    db.flush()
+    return row
+
+
+def project_workstreams_dashboard_payload(db: Session, *, actor: User, effective_role: str) -> dict:
+    role = normalize_role(effective_role)
+    oversight = role in {ADMIN_ROLE, MANAGEMENT_ROLE}
+    if role == BD_ROLE:
+        opportunities = list(db.scalars(
+            select(BDOpportunity).where(
+                BDOpportunity.owner_user_id == actor.id,
+                BDOpportunity.linked_project_id.is_not(None),
+            ).order_by(BDOpportunity.updated_at.desc(), BDOpportunity.id.desc())
+        ).all())
+        project_ids = {int(row.linked_project_id) for row in opportunities if row.linked_project_id}
+        viewer_mode = "bd_editor"
+    elif role in TECHNICAL_ROLE_DEPARTMENT_MAP:
+        department_code = TECHNICAL_ROLE_DEPARTMENT_MAP[role]
+        rows = list(db.scalars(select(ProjectWorkstream).where(
+            ProjectWorkstream.department_code == department_code,
+            ProjectWorkstream.project_manager_user_id == actor.id,
+            ProjectWorkstream.is_active.is_(True),
+        )).all())
+        project_ids = {row.project_id for row in rows}
+        opportunities = list(db.scalars(select(BDOpportunity).where(BDOpportunity.linked_project_id.in_(project_ids))).all()) if project_ids else []
+        viewer_mode = "department"
+    elif oversight:
+        rows = list(db.scalars(select(ProjectWorkstream).where(ProjectWorkstream.is_active.is_(True))).all())
+        project_ids = {row.project_id for row in rows}
+        opportunities = list(db.scalars(select(BDOpportunity).where(BDOpportunity.linked_project_id.in_(project_ids))).all()) if project_ids else []
+        viewer_mode = "read_only"
+    else:
+        raise PermissionError("Project Workstreams dashboard is not available for this role")
+
+    opportunity_by_project = {int(item.linked_project_id): item for item in opportunities if item.linked_project_id}
+    projects = list(db.scalars(select(FinanceProject).where(FinanceProject.id.in_(project_ids)).order_by(FinanceProject.project_code.asc())).all()) if project_ids else []
+    if project_ids:
+        workstream_query = select(ProjectWorkstream).where(
+            ProjectWorkstream.project_id.in_(project_ids),
+            ProjectWorkstream.is_active.is_(True),
+        )
+        if role in TECHNICAL_ROLE_DEPARTMENT_MAP:
+            workstream_query = workstream_query.where(
+                ProjectWorkstream.department_code == TECHNICAL_ROLE_DEPARTMENT_MAP[role],
+                ProjectWorkstream.project_manager_user_id == actor.id,
+            )
+        workstreams = list(db.scalars(
+            workstream_query.order_by(
+                ProjectWorkstream.project_id.asc(),
+                ProjectWorkstream.sequence_order.asc(),
+                ProjectWorkstream.id.asc(),
+            )
+        ).all())
+    else:
+        workstreams = []
+    workstreams_by_project: dict[int, list[ProjectWorkstream]] = defaultdict(list)
+    for row in workstreams:
+        workstreams_by_project[row.project_id].append(row)
+
+    project_rows = []
+    for project in projects:
+        opportunity = opportunity_by_project.get(project.id)
+        if role == BD_ROLE and opportunity is None:
+            continue
+        client_name = project.client.client_name if project.client else project.client_name
+        project_rows.append({
+            "opportunity_id": opportunity.id if opportunity else None,
+            "opportunity_code": opportunity.opportunity_code if opportunity else None,
+            "opportunity_title": opportunity.title if opportunity else None,
+            "project_id": project.id,
+            "project_code": project.project_code,
+            "project_name": project.project_name,
+            "client_name": client_name,
+            "project_status": project_lifecycle_status(project),
+            "workstreams": [project_workstream_payload(db, row) for row in workstreams_by_project.get(project.id, [])],
+        })
+
+    from app.modules.operations.technical_routing_service import current_routing_mode, live_routing_enabled
+    live = live_routing_enabled(db)
+    return {
+        "viewer_mode": viewer_mode,
+        "current_role": role,
+        "technical_departments": technical_department_specs(),
+        "project_manager_directory": technical_project_manager_options(db) if role == BD_ROLE else [],
+        "routing_mode": current_routing_mode(db),
+        "live_technical_routing_enabled": live,
+        "demo_mode": not live,
+        "projects": project_rows,
+    }
+

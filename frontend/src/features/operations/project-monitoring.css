@@ -1,0 +1,51 @@
+.project-monitoring-page{max-width:100%;}
+.monitoring-demo-banner{display:flex;gap:8px;align-items:center;border:1px solid #e7c96c;background:#fff8dc;border-radius:12px;padding:11px 14px;margin-bottom:14px;color:#6d5300;}
+.monitoring-stats{margin-bottom:18px;}
+.monitoring-method{overflow:hidden;}
+.monitoring-estimate-strip{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px;}
+.monitoring-estimate-strip span{display:flex;gap:7px;align-items:center;border:1px solid var(--border,#d8dee8);border-radius:999px;padding:7px 11px;font-size:12px;background:var(--surface,#fff);}
+.monitoring-project-list{display:grid;gap:18px;}
+.monitoring-project{border-top:3px solid transparent;}
+.monitoring-project.health-delayed,.monitoring-project.health-blocked{border-top-color:#d97706;}
+.monitoring-project.health-completed,.monitoring-project.health-on_track{border-top-color:#16a34a;}
+.monitoring-project-head{align-items:flex-start;}
+.monitoring-health-box{display:grid;text-align:right;justify-items:end;gap:3px;min-width:150px;}
+.monitoring-health-box strong{font-size:30px;line-height:1;}
+.monitoring-health-box small{font-size:11px;opacity:.7;}
+.monitoring-progress{height:9px;border-radius:999px;background:rgba(100,116,139,.16);overflow:hidden;margin:12px 0;}
+.monitoring-progress span{display:block;height:100%;background:currentColor;opacity:.65;border-radius:inherit;transition:width .25s ease;}
+.monitoring-progress.compact{height:7px;margin:7px 0 9px;}
+.monitoring-kpi-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px;}
+.monitoring-kpi-strip span{border:1px solid var(--border,#d8dee8);border-radius:11px;padding:10px 12px;font-size:12px;display:grid;gap:2px;}
+.monitoring-kpi-strip strong{font-size:17px;}
+.monitoring-bottleneck,.monitoring-overdue{display:flex;gap:7px;align-items:center;border:1px solid #f1b77b;background:#fff5e8;border-radius:10px;padding:9px 11px;color:#8a4b08;margin:10px 0;}
+.monitoring-section-title{margin:18px 0 10px;}
+.monitoring-section-title h3{margin:3px 0 0;}
+.monitoring-workstream-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(265px,1fr));gap:12px;}
+.monitoring-workstream{border:1px solid var(--border,#d8dee8);border-radius:14px;padding:13px;background:var(--surface,#fff);display:grid;gap:8px;}
+.monitoring-workstream.blocked{box-shadow:inset 3px 0 0 #d97706;}
+.monitoring-workstream-head{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;}
+.monitoring-workstream-head>span:first-child{font-size:11px;opacity:.65;}
+.monitoring-pm{display:flex;gap:6px;align-items:center;font-size:12px;opacity:.78;}
+.monitoring-percent{display:flex;align-items:baseline;gap:7px;}
+.monitoring-percent strong{font-size:24px;}
+.monitoring-percent small{font-size:11px;opacity:.65;}
+.monitoring-dependencies{display:flex;gap:7px;flex-wrap:wrap;font-size:11px;}
+.monitoring-dependencies span{background:rgba(100,116,139,.1);border-radius:999px;padding:4px 7px;}
+.monitoring-blocked-by{display:grid;gap:4px;font-size:11px;border-left:3px solid #d97706;padding-left:8px;}
+.monitoring-note{margin:0;font-size:12px;line-height:1.45;opacity:.78;white-space:pre-wrap;}
+.monitoring-edit-box,.monitoring-schedule-box{border-top:1px solid var(--border,#d8dee8);padding-top:10px;display:grid;gap:8px;}
+.monitoring-edit-box label,.monitoring-schedule-box label{display:grid;gap:4px;font-size:11px;font-weight:600;}
+.monitoring-edit-box input,.monitoring-edit-box textarea,.monitoring-schedule-box input{width:100%;min-width:0;}
+.monitoring-handover-list{display:grid;gap:10px;}
+.monitoring-handover{border:1px solid var(--border,#d8dee8);border-radius:13px;padding:12px;background:var(--surface,#fff);}
+.monitoring-handover.overdue{box-shadow:inset 3px 0 0 #dc2626;}
+.monitoring-handover-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+.monitoring-handover-main h4{margin:3px 0 5px;}
+.monitoring-handover-main p{margin:0;font-size:12px;}
+.monitoring-handover-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px;}
+.monitoring-handover-meta span{font-size:11px;border:1px solid var(--border,#d8dee8);border-radius:9px;padding:7px;}
+.monitoring-action-owner{font-size:12px;margin-top:8px;}
+.monitoring-schedule-box{grid-template-columns:1fr 1.5fr auto;align-items:end;margin-top:10px;}
+@media(max-width:900px){.monitoring-kpi-strip,.monitoring-handover-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.monitoring-schedule-box{grid-template-columns:1fr}}
+@media(max-width:620px){.monitoring-kpi-strip,.monitoring-handover-meta{grid-template-columns:1fr}.monitoring-project-head,.monitoring-handover-main{display:grid}.monitoring-health-box{justify-items:start;text-align:left}}

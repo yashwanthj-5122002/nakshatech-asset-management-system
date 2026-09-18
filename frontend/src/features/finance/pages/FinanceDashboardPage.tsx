@@ -1,139 +1,89 @@
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, FileCheck2, FileSpreadsheet, IndianRupee, ReceiptIndianRupee } from 'lucide-react'
+import { CheckCircle2, CircleDollarSign, Clock3, FileCheck2, FileSpreadsheet, IndianRupee, ReceiptIndianRupee, RefreshCcw, RotateCcw, WalletCards } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
-import type { FinanceBreakdownItem, FinanceDashboard, FinanceProject } from '../../../types'
+import type { FinanceBreakdownItem, FinanceDashboard } from '../../../types'
 import { financeClaimTypeLabels, financeStatusLabels, financeStatusTone, formatInr } from '../finance-utils'
 import '../finance-expenses.css'
 
-function BreakdownPanel({ title, subtitle, items }: { title: string; subtitle: string; items: FinanceBreakdownItem[] }) {
-  const max = useMemo(() => Math.max(1, ...items.map(item => item.amount)), [items])
-  return (
-    <article className="finance-panel">
-      <div className="finance-panel-header"><div><span className="finance-panel-kicker">ANALYTICS</span><h2>{title}</h2><p>{subtitle}</p></div></div>
-      {items.length === 0 ? <div className="finance-empty-state">No financial activity yet.</div> : (
-        <div className="finance-breakdown-list">
-          {items.slice(0, 8).map(item => (
-            <div className="finance-breakdown-row" key={item.key}>
-              <div><span>{item.label}</span><span>{formatInr(item.amount)} · {item.count}</span></div>
-              <div className="finance-breakdown-track"><i style={{ width: `${Math.max(4, (item.amount / max) * 100)}%` }} /></div>
-            </div>
-          ))}
-        </div>
-      )}
-    </article>
-  )
+type EventRow={id:number;event_type:string;from_status?:string|null;to_status:string;comments?:string|null;actor_name?:string|null;actor_role?:string|null;created_at:string}
+type WorkflowClient={organization_name?:string|null;client_code?:string|null;client_email?:string|null;organization_email?:string|null;location?:string|null;gst_number?:string|null;contact_person_name?:string|null;contact_person_email?:string|null;contact_person_phone?:string|null;bd_person?:string|null}
+type WorkflowProject={
+  id:number;project_code:string;project_name:string;client_code?:string|null;client_name?:string|null;start_date?:string|null;end_date?:string|null;
+  scope_text?:string|null;quantity?:number|null;quantity_unit?:string|null;priority?:string|null;commercial_value?:number|null;currency?:string|null;
+  po_wo_number?:string|null;attachment_references?:string[];workflow_status:string;finance_feedback?:string|null;project_manager_name?:string|null;completion_date?:string|null;final_delivery_reference?:string|null;
+  submission_count?:number;finance_reviewer_name?:string|null;finance_reviewed_at?:string|null;created_at?:string;created_by_name?:string|null;
+  submitted_by_name?:string|null;submitted_by_email?:string|null;client?:WorkflowClient;events?:EventRow[];
+  expense_summary?:{claim_count:number;requested_amount:number;approved_amount:number;paid_amount:number;outstanding_amount:number;unresolved_claim_count:number}
+}
+type WorkflowDashboard={summary:{pending_approval:number;returned:number;approved:number;closure_pending:number;closed:number};projects:WorkflowProject[]}
+function label(v:string){return v.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}
+
+function BreakdownPanel({title,subtitle,items}:{title:string;subtitle:string;items:FinanceBreakdownItem[]}){
+  const max=useMemo(()=>Math.max(1,...items.map(i=>i.amount)),[items])
+  return <article className="finance-panel"><div className="finance-panel-header"><div><span className="finance-panel-kicker">ANALYTICS</span><h2>{title}</h2><p>{subtitle}</p></div></div>{items.length===0?<div className="finance-empty-state">No financial activity yet.</div>:<div className="finance-breakdown-list">{items.slice(0,8).map(item=><div className="finance-breakdown-row" key={item.key}><div><span>{item.label}</span><span>{formatInr(item.amount)} · {item.count}</span></div><div className="finance-breakdown-track"><i style={{width:`${Math.max(4,(item.amount/max)*100)}%`}}/></div></div>)}</div>}</article>
 }
 
-export function FinanceDashboardPage() {
-  const { user } = useAuth()
-  const [data, setData] = useState<FinanceDashboard | null>(null)
-  const [projects, setProjects] = useState<FinanceProject[]>([])
-  const [projectSaving, setProjectSaving] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+export function FinanceDashboardPage(){
+  const {user}=useAuth();const [data,setData]=useState<FinanceDashboard|null>(null);const [workflow,setWorkflow]=useState<WorkflowDashboard|null>(null)
+  const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false)
+  const [reviewId,setReviewId]=useState<number|null>(null);const [returnFeedback,setReturnFeedback]=useState('');const [approveNote,setApproveNote]=useState('')
+  function load(){setLoading(true);setError('');void Promise.all([apiFetch<FinanceDashboard>('/finance/dashboard'),apiFetch<WorkflowDashboard>('/operations/workflow/finance/dashboard')]).then(([a,b])=>{setData(a);setWorkflow(b)}).catch(e=>setError(e instanceof Error?e.message:'Could not load Finance dashboard')).finally(()=>setLoading(false))}
+  useEffect(load,[])
+  const reviewProject=workflow?.projects.find(row=>row.id===reviewId)??null
+  function openReview(row:WorkflowProject){setReviewId(row.id);setReturnFeedback('');setApproveNote('');setError('')}
 
-  function load() {
-    setLoading(true)
-    setError('')
-    void Promise.all([apiFetch<FinanceDashboard>('/finance/dashboard'), apiFetch<FinanceProject[]>('/finance/report-projects')])
-      .then(([dashboard, projectRows]) => { setData(dashboard); setProjects(projectRows) })
-      .catch(err => setError(err instanceof Error ? err.message : 'Could not load Finance dashboard'))
-      .finally(() => setLoading(false))
+  async function review(row:WorkflowProject,decision:'approve'|'return'){
+    const feedback=decision==='return'?returnFeedback.trim():approveNote.trim()
+    if(decision==='return'&&!feedback){setError('Finance feedback is mandatory when returning a project.');return}
+    setBusy(true);setError('');setNotice('')
+    try{await apiFetch(`/operations/workflow/finance/projects/${row.id}/review`,{method:'POST',body:JSON.stringify({decision,feedback:feedback||null})});setNotice(decision==='approve'?`${row.project_code} approved. BD has been notified to assign the Ortho Project Manager.`:`${row.project_code} returned to BD with feedback.`);setReviewId(null);load()}
+    catch(e){setError(e instanceof Error?e.message:'Unable to review project')}finally{setBusy(false)}
   }
+  async function closeProject(row:WorkflowProject){if(row.expense_summary&&(row.expense_summary.unresolved_claim_count>0||row.expense_summary.outstanding_amount>0)){const proceed=window.confirm(`${row.project_code} still shows ${row.expense_summary.unresolved_claim_count} unresolved expense claim(s) and ${formatInr(row.expense_summary.outstanding_amount)} outstanding. Continue to the Finance Closure confirmation?`);if(!proceed)return}const remarks=window.prompt(`Finance Closure remarks for ${row.project_code} (required):`,'');if(remarks===null)return;if(!remarks.trim()){setError('Finance Closure remarks are required.');return}setBusy(true);setError('');setNotice('');try{await apiFetch(`/operations/workflow/finance/projects/${row.id}/close`,{method:'POST',body:JSON.stringify({remarks})});setNotice(`${row.project_code} financially closed.`);load()}catch(e){setError(e instanceof Error?e.message:'Unable to close project')}finally{setBusy(false)}}
 
-  function updateProjectLocal(id: number, patch: Partial<FinanceProject>) {
-    setProjects(current => current.map(project => project.id === id ? { ...project, ...patch } : project))
-  }
+  return <div className="finance-page">
+    <DashboardHeader eyebrow="FINANCE · PROJECT APPROVAL + EXPENSES" title={user?.role==='management'?'Finance & Project Oversight':'Finance Dashboard'} description={user?.role==='finance'?'Approve or return BD-created projects, retain the existing Expense approval workflow, and perform Finance Closure after Operational Completion.':'Read-only project workflow visibility plus the existing project-expense controls for your role.'} actions={<div className="finance-header-actions"><button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button><Link className="finance-secondary-button" to="/finance/reports"><FileSpreadsheet size={16}/> Reports & Excel</Link><Link className="finance-primary-button" to="/finance/claims"><FileCheck2 size={16}/> Expense Claims & Approvals</Link></div>}/>
+    {notice&&<div className="finance-success-message">{notice}</div>}{error&&<div className="finance-error">{error} <button type="button" className="finance-inline-link" onClick={load}>Retry</button></div>}{loading&&<div className="finance-panel finance-empty-state">Loading Finance dashboard...</div>}
 
-  async function saveProjectSchedule(project: FinanceProject) {
-    if (user?.role === 'management') return
-    if (!project.start_date || !project.end_date) { setError('Set both project start and end dates.'); return }
-    setProjectSaving(project.id); setError('')
-    try {
-      const updated = await apiFetch<FinanceProject>(`/finance/projects/${project.id}/schedule`, { method: 'PUT', body: JSON.stringify({ start_date: project.start_date, end_date: project.end_date, is_active: project.is_active }) })
-      updateProjectLocal(project.id, updated)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not update project timeline') } finally { setProjectSaving(null) }
-  }
+    {workflow&&<>
+      <section className="finance-kpi-grid finance-kpi-grid-4"><article className="finance-kpi-card"><span><Clock3 size={15}/> Pending Project Approval</span><strong>{workflow.summary.pending_approval}</strong><small>BD submissions requiring Finance action</small></article><article className="finance-kpi-card"><span><RotateCcw size={15}/> Returned to BD</span><strong>{workflow.summary.returned}</strong><small>Awaiting correction and resubmission</small></article><article className="finance-kpi-card"><span><CheckCircle2 size={15}/> Approved / Operational</span><strong>{workflow.summary.approved}</strong><small>Finance-approved project workflow</small></article><article className="finance-kpi-card"><span><WalletCards size={15}/> Closure Pending</span><strong>{workflow.summary.closure_pending}</strong><small>Operationally completed; Finance Closure required</small></article></section>
 
-  useEffect(load, [])
+      <section className="finance-panel"><div className="finance-panel-header"><div><span className="finance-panel-kicker">AUTHORITATIVE BD → FINANCE WORKFLOW</span><h2>Project Approval & Closure Queue</h2><p>BD creates Client ID / Project ID, dates, scope and commercial details. Finance approves or returns with mandatory feedback. Project Manager assignment remains BD-owned.</p></div></div>
+        {workflow.projects.length===0?<div className="finance-empty-state">No projects in the new workflow yet.</div>:<div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Project / Client</th><th>Dates & Scope</th><th>Commercial</th><th>Status</th><th>Operations</th><th>Finance Action</th></tr></thead><tbody>{workflow.projects.map(row=><tr key={row.id}><td><strong>{row.project_code}</strong><br/><small>{row.project_name}</small><br/><small>{row.client_code} — {row.client_name}</small></td><td>{row.start_date||'—'} → {row.end_date||'—'}<br/><small>{row.scope_text||'No scope recorded'}</small><br/><small>{row.quantity??'—'} {row.quantity_unit||''}</small></td><td><strong>{row.currency||'INR'} {row.commercial_value==null?'—':row.commercial_value.toLocaleString('en-IN')}</strong><br/><small>PO/WO: {row.po_wo_number||'—'}</small>{row.expense_summary&&<><br/><small>Expenses: {formatInr(row.expense_summary.requested_amount)} requested · {formatInr(row.expense_summary.paid_amount)} paid</small><br/><small>Outstanding: {formatInr(row.expense_summary.outstanding_amount)} · {row.expense_summary.unresolved_claim_count} unresolved</small></>}</td><td><span className={`finance-status ${row.workflow_status==='closed'?'tone-success':row.workflow_status==='finance_returned'?'tone-danger':'tone-draft'}`}>{label(row.workflow_status)}</span>{row.finance_feedback&&<><br/><small><b>Feedback:</b> {row.finance_feedback}</small></>}</td><td>{row.project_manager_name?<><strong>{row.project_manager_name}</strong><br/><small>Ortho Project Manager</small></>:'PM not assigned'}{row.completion_date&&<><br/><small>Completed: {row.completion_date}</small></>}</td><td>{user?.role==='finance'&&row.workflow_status==='pending_finance_approval'?<button className="finance-primary-button" disabled={busy} onClick={()=>openReview(row)}>Review Project</button>:user?.role==='finance'&&row.workflow_status==='finance_closure_pending'?<button className="finance-primary-button" disabled={busy} onClick={()=>closeProject(row)}>Finance Closure</button>:<button className="finance-secondary-button" onClick={()=>openReview(row)}>{row.workflow_status==='closed'?'View':'Details'}</button>}</td></tr>)}</tbody></table></div>}
+      </section>
+    </>}
 
-  return (
-    <div className="finance-page">
-      <DashboardHeader
-        eyebrow="FINANCE CRM"
-        title={user?.role === 'management' ? 'Project Expense Intelligence' : 'Finance & Project Expense Dashboard'}
-        description={user?.role === 'management'
-          ? 'Read-only management visibility across project expenses, advances, reimbursements, approvals, and settlement status.'
-          : user?.role === 'admin'
-            ? 'Verify employee project-expense requests before Finance performs the financial approval and payment stage.'
-            : 'Review Admin-verified project expenses, approve legitimate requests, record payments, and monitor project spend.'}
-        actions={<div className="finance-header-actions"><Link className="finance-secondary-button" to="/finance/clients"><Building2 size={16} /> Client Management</Link><Link className="finance-secondary-button" to="/finance/reports"><FileSpreadsheet size={16} /> Reports & Excel</Link><Link className="finance-primary-button" to="/finance/claims"><FileCheck2 size={16} /> Expense Claims & Approvals</Link></div>}
-      />
+    {reviewProject&&<section className="finance-panel"><div className="finance-panel-header"><div><span className="finance-panel-kicker">PROJECT REVIEW · {reviewProject.workflow_status==='pending_finance_approval'?'PENDING FINANCE APPROVAL':label(reviewProject.workflow_status)}</span><h2>{reviewProject.project_code} — {reviewProject.project_name}</h2><p>Full Client, Project, Commercial and Submission detail before Finance decides.</p></div><button className="finance-secondary-button" type="button" onClick={()=>setReviewId(null)}>Close</button></div>
 
-      {error && <div className="finance-error">{error} <button type="button" className="finance-inline-link" onClick={load}>Retry</button></div>}
-      {loading && <div className="finance-panel finance-empty-state">Loading Finance dashboard...</div>}
+      <h3 className="finance-panel-subheading">Client Information</h3>
+      <div className="finance-detail-facts"><div className="finance-fact"><span>Organization Name</span><strong>{reviewProject.client?.organization_name||reviewProject.client_name||'—'}</strong></div><div className="finance-fact"><span>Client ID</span><strong>{reviewProject.client?.client_code||reviewProject.client_code||'—'}</strong></div><div className="finance-fact"><span>Location</span><strong>{reviewProject.client?.location||'—'}</strong></div><div className="finance-fact"><span>GST Number</span><strong>{reviewProject.client?.gst_number||'—'}</strong></div><div className="finance-fact"><span>Client Email</span><strong>{reviewProject.client?.client_email||'—'}</strong></div><div className="finance-fact"><span>Organization Email</span><strong>{reviewProject.client?.organization_email||'—'}</strong></div><div className="finance-fact"><span>Contact Person</span><strong>{reviewProject.client?.contact_person_name||'—'}</strong></div><div className="finance-fact"><span>Contact Email</span><strong>{reviewProject.client?.contact_person_email||'—'}</strong></div><div className="finance-fact"><span>Contact Phone</span><strong>{reviewProject.client?.contact_person_phone||'—'}</strong></div><div className="finance-fact"><span>BD Person</span><strong>{reviewProject.client?.bd_person||'—'}</strong></div></div>
 
-      {data && (
-        <>
-          <section className="finance-kpi-grid finance-kpi-grid-4">
-            <article className="finance-kpi-card"><span><ReceiptIndianRupee size={15} /> Total Requested</span><strong>{formatInr(data.total_requested_amount)}</strong><small>{data.total_claims} project-linked claim(s)</small></article>
-            <article className="finance-kpi-card"><span><Clock3 size={15} /> Pending Admin</span><strong>{data.pending_admin_count}</strong><small>{formatInr(data.pending_admin_amount)} awaiting legitimacy check</small></article>
-            <article className="finance-kpi-card"><span><CheckCircle2 size={15} /> Pending Finance</span><strong>{data.pending_finance_count}</strong><small>{formatInr(data.pending_finance_amount)} Admin-verified</small></article>
-            <article className="finance-kpi-card"><span><IndianRupee size={15} /> Paid / Released</span><strong>{formatInr(data.paid_amount)}</strong><small>{data.paid_count} claim payment(s) recorded</small></article>
-          </section>
+      <h3 className="finance-panel-subheading">Project Information</h3>
+      <div className="finance-detail-facts"><div className="finance-fact"><span>Project ID</span><strong>{reviewProject.project_code}</strong></div><div className="finance-fact"><span>Start Date</span><strong>{reviewProject.start_date||'—'}</strong></div><div className="finance-fact"><span>End Date</span><strong>{reviewProject.end_date||'—'}</strong></div><div className="finance-fact" style={{gridColumn:'1 / -1'}}><span>Project Scope</span><strong>{reviewProject.scope_text||'—'}</strong></div></div>
 
-          <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary">
-            <article className="finance-kpi-card"><span><ReceiptIndianRupee size={15} /> Finance Approved</span><strong>{formatInr(data.approved_amount)}</strong><small>{data.approved_count} approved / payment-stage claim(s)</small></article>
-            <article className="finance-kpi-card"><span><CircleDollarSign size={15} /> Outstanding</span><strong>{formatInr(data.outstanding_amount)}</strong><small>{data.partially_paid_count} partially paid claim(s)</small></article>
-            <article className="finance-kpi-card"><span><FileCheck2 size={15} /> Sent Back / Rejected</span><strong>{data.sent_back_count + data.rejected_count}</strong><small>{data.sent_back_count} sent back · {data.rejected_count} rejected</small></article>
-            <article className="finance-kpi-card"><span>Control</span><strong>{user?.role === 'management' ? 'Read Only' : user?.role === 'admin' ? 'Admin Verify' : 'Finance Approve'}</strong><small>Role-scoped financial authority</small></article>
-          </section>
+      <h3 className="finance-panel-subheading">Commercial</h3>
+      <div className="finance-detail-facts"><div className="finance-fact"><span>Project Value</span><strong>{reviewProject.currency||'INR'} {reviewProject.commercial_value==null?'—':reviewProject.commercial_value.toLocaleString('en-IN')}</strong></div><div className="finance-fact"><span>PO / WO</span><strong>{reviewProject.po_wo_number||'—'}</strong></div><div className="finance-fact" style={{gridColumn:'1 / -1'}}><span>Attachments</span><strong>{reviewProject.attachment_references?.length?reviewProject.attachment_references.join(', '):'None recorded'}</strong></div></div>
 
-          <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary">
-            <article className="finance-kpi-card"><span><Clock3 size={15} /> Pending Settlement</span><strong>{data.pending_settlement_count}</strong><small>Released advances not yet finally settled</small></article>
-            <article className="finance-kpi-card"><span><Clock3 size={15} /> Overdue Settlement</span><strong>{data.overdue_settlement_count}</strong><small>Past the Finance-approved settlement due date</small></article>
-            <article className="finance-kpi-card"><span><FileCheck2 size={15} /> Settlement Review</span><strong>{data.settlement_under_review_count}</strong><small>Submitted / Admin-approved settlement(s)</small></article>
-            <article className="finance-kpi-card"><span><CheckCircle2 size={15} /> Finalized Settlement</span><strong>{data.settled_count}</strong><small>Tallied, balance or shortage finalized by Finance</small></article>
-          </section>
+      <h3 className="finance-panel-subheading">Submission / Audit</h3>
+      <div className="finance-detail-facts"><div className="finance-fact"><span>Created By</span><strong>{reviewProject.created_by_name||'—'}</strong></div><div className="finance-fact"><span>Submitted By</span><strong>{reviewProject.submitted_by_name||'—'}</strong></div><div className="finance-fact"><span>Finance Status</span><strong>{label(reviewProject.workflow_status)}</strong></div><div className="finance-fact"><span>Submission Count</span><strong>{reviewProject.submission_count??0}</strong></div><div className="finance-fact"><span>Finance Reviewer</span><strong>{reviewProject.finance_reviewer_name||'Not reviewed yet'}</strong></div><div className="finance-fact"><span>Finance Reviewed At</span><strong>{reviewProject.finance_reviewed_at?new Date(reviewProject.finance_reviewed_at).toLocaleString('en-IN'):'—'}</strong></div></div>
+      {reviewProject.finance_feedback&&<div className="finance-error" style={{marginTop:10}}><b>Previous Finance Feedback:</b> {reviewProject.finance_feedback}</div>}
+      {!!reviewProject.events?.length&&<div className="finance-detail-facts" style={{gridTemplateColumns:'1fr',marginTop:10}}><div className="finance-fact"><span>Review / Resubmission History</span>{reviewProject.events.slice().reverse().map(ev=><div key={ev.id} style={{marginTop:6}}><strong>{label(ev.event_type)}</strong> · {ev.actor_name||'System'} · {new Date(ev.created_at).toLocaleString('en-IN')}{ev.comments?<> — {ev.comments}</>:null}</div>)}</div></div>}
 
-          <section className="finance-panel">
-            <div className="finance-panel-header"><div><span className="finance-panel-kicker">CLIENT PROJECT MASTER</span><h2>Project Timeline Control</h2><p>Client Management is now the master source for Client IDs, Project IDs, project dates and project status. These quick controls update the same project records used by Employee Project Expense selection.</p></div><div className="finance-header-actions"><CalendarDays size={20} /><Link className="finance-secondary-button" to="/finance/clients"><Building2 size={16} /> Manage Clients & Projects</Link></div></div>
-            <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Project</th><th>Client</th><th>Start Date</th><th>End Date</th><th>Enabled</th><th>Status</th><th>Action</th></tr></thead><tbody>{projects.map(project => <tr key={project.id}><td><strong>{project.project_code}</strong><br/><small>{project.project_name}</small></td><td><strong>{project.client_code || 'Legacy'}</strong><br/><small>{project.client_name || 'Client not linked'}</small></td><td><input className="finance-inline-date" type="date" disabled={user?.role === 'management'} value={project.start_date || ''} onChange={event => updateProjectLocal(project.id,{start_date:event.target.value})}/></td><td><input className="finance-inline-date" type="date" disabled={user?.role === 'management'} value={project.end_date || ''} onChange={event => updateProjectLocal(project.id,{end_date:event.target.value})}/></td><td><input type="checkbox" disabled={user?.role === 'management'} checked={project.is_active} onChange={event => updateProjectLocal(project.id,{is_active:event.target.checked})}/></td><td>{project.lifecycle_status.replaceAll('_',' ')}</td><td>{user?.role === 'management' ? 'Read only' : <button className="finance-secondary-button" type="button" disabled={projectSaving === project.id} onClick={() => void saveProjectSchedule(project)}>{projectSaving === project.id ? 'Saving...' : 'Save Dates'}</button>}</td></tr>)}</tbody></table></div>
-          </section>
+      {user?.role==='finance'&&reviewProject.workflow_status==='pending_finance_approval'&&<div className="finance-form-grid" style={{marginTop:16}}>
+        <label className="finance-field" style={{gridColumn:'1 / -1'}}><span>Reason for Return (mandatory if returning)</span><textarea value={returnFeedback} onChange={e=>setReturnFeedback(e.target.value)} placeholder="Explain what BD must correct before resubmission"/></label>
+        <label className="finance-field" style={{gridColumn:'1 / -1'}}><span>Approval Comment (optional)</span><textarea value={approveNote} onChange={e=>setApproveNote(e.target.value)}/></label>
+        <div className="finance-header-actions" style={{gridColumn:'1 / -1'}}><button className="finance-secondary-button" disabled={busy} onClick={()=>review(reviewProject,'return')}>Return to BD</button><button className="finance-primary-button" disabled={busy} onClick={()=>review(reviewProject,'approve')}>Approve Project</button></div>
+      </div>}
+    </section>}
 
-          <section className="finance-breakdown-grid">
-            <BreakdownPanel title="Project-wise Spend" subtitle="Requested amount grouped by Project ID." items={data.by_project} />
-            <BreakdownPanel title="Request Type Mix" subtitle="Advance, reimbursement, and additional-advance exposure." items={data.by_type.map(item => ({ ...item, label: financeClaimTypeLabels[item.key as keyof typeof financeClaimTypeLabels] || item.label }))} />
-            <BreakdownPanel title="Category-wise Spend" subtitle="Where project money is being requested or reimbursed." items={data.by_category} />
-          </section>
-
-          <section className="finance-panel">
-            <div className="finance-panel-header">
-              <div><span className="finance-panel-kicker">LIVE WORKFLOW</span><h2>Recent Expense Claims</h2><p>Latest employee submissions and their current Admin → Finance → Payment → Settlement state.</p></div>
-              <Link className="finance-secondary-button" to="/finance/claims">View All</Link>
-            </div>
-            {data.recent_claims.length === 0 ? <div className="finance-empty-state">No project expense claims have been raised yet.</div> : (
-              <div className="finance-table-wrap"><table className="finance-table">
-                <thead><tr><th>Claim</th><th>Employee</th><th>Project</th><th>Type</th><th>Amount</th><th>Status</th><th>Submitted</th></tr></thead>
-                <tbody>{data.recent_claims.map(claim => (
-                  <tr key={claim.id}>
-                    <td><Link to={`/finance/claims/${claim.id}`}>{claim.claim_code}</Link></td>
-                    <td><strong>{claim.requester_name}</strong><br /><small>{claim.requester_email}</small></td>
-                    <td>{claim.project.project_code}<br /><small>{claim.project.project_name}</small></td>
-                    <td>{financeClaimTypeLabels[claim.claim_type]}</td>
-                    <td><strong>{formatInr(claim.total_amount)}</strong></td>
-                    <td><span className={`finance-status tone-${financeStatusTone(claim.status)}`}>{financeStatusLabels[claim.status]}</span></td>
-                    <td>{claim.submitted_at ? new Date(claim.submitted_at).toLocaleDateString('en-IN') : 'Draft'}</td>
-                  </tr>
-                ))}</tbody>
-              </table></div>
-            )}
-          </section>
-        </>
-      )}
-    </div>
-  )
+    {data&&<>
+      <section className="finance-kpi-grid finance-kpi-grid-4"><article className="finance-kpi-card"><span><ReceiptIndianRupee size={15}/> Total Requested</span><strong>{formatInr(data.total_requested_amount)}</strong><small>{data.total_claims} project-linked claim(s)</small></article><article className="finance-kpi-card"><span><Clock3 size={15}/> Pending Admin</span><strong>{data.pending_admin_count}</strong><small>{formatInr(data.pending_admin_amount)} awaiting verification</small></article><article className="finance-kpi-card"><span><CheckCircle2 size={15}/> Pending Finance</span><strong>{data.pending_finance_count}</strong><small>{formatInr(data.pending_finance_amount)} Admin-verified</small></article><article className="finance-kpi-card"><span><IndianRupee size={15}/> Paid / Released</span><strong>{formatInr(data.paid_amount)}</strong><small>{data.paid_count} payment(s) recorded</small></article></section>
+      <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary"><article className="finance-kpi-card"><span><ReceiptIndianRupee size={15}/> Finance Approved</span><strong>{formatInr(data.approved_amount)}</strong><small>{data.approved_count} approved / payment-stage claim(s)</small></article><article className="finance-kpi-card"><span><CircleDollarSign size={15}/> Outstanding</span><strong>{formatInr(data.outstanding_amount)}</strong><small>{data.partially_paid_count} partially paid claim(s)</small></article><article className="finance-kpi-card"><span><FileCheck2 size={15}/> Sent Back / Rejected</span><strong>{data.sent_back_count+data.rejected_count}</strong><small>{data.sent_back_count} sent back · {data.rejected_count} rejected</small></article><article className="finance-kpi-card"><span>Expense Workflow</span><strong>UNCHANGED</strong><small>Admin → Finance → Payment → Settlement</small></article></section>
+      <section className="finance-breakdown-grid"><BreakdownPanel title="Project-wise Spend" subtitle="Requested amount grouped by assigned Project ID." items={data.by_project}/><BreakdownPanel title="Request Type Mix" subtitle="Advance, reimbursement, and additional-advance exposure." items={data.by_type.map(item=>({...item,label:financeClaimTypeLabels[item.key as keyof typeof financeClaimTypeLabels]||item.label}))}/><BreakdownPanel title="Category-wise Spend" subtitle="Where project money is being requested or reimbursed." items={data.by_category}/></section>
+      <section className="finance-panel"><div className="finance-panel-header"><div><span className="finance-panel-kicker">EXISTING EXPENSE WORKFLOW · RETAINED</span><h2>Recent Expense Claims</h2><p>Existing expense approvals remain intact. Employee project selection is now limited to Project IDs assigned to that employee.</p></div><Link className="finance-secondary-button" to="/finance/claims">View All</Link></div>{data.recent_claims.length===0?<div className="finance-empty-state">No project expense claims have been raised yet.</div>:<div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Claim</th><th>Employee</th><th>Project</th><th>Type</th><th>Amount</th><th>Status</th><th>Submitted</th></tr></thead><tbody>{data.recent_claims.map(claim=><tr key={claim.id}><td><Link to={`/finance/claims/${claim.id}`}>{claim.claim_code}</Link></td><td><strong>{claim.requester_name}</strong><br/><small>{claim.requester_email}</small></td><td>{claim.project.project_code}<br/><small>{claim.project.project_name}</small></td><td>{financeClaimTypeLabels[claim.claim_type]}</td><td><strong>{formatInr(claim.total_amount)}</strong></td><td><span className={`finance-status tone-${financeStatusTone(claim.status)}`}>{financeStatusLabels[claim.status]}</span></td><td>{claim.submitted_at?new Date(claim.submitted_at).toLocaleDateString('en-IN'):'Draft'}</td></tr>)}</tbody></table></div>}</section>
+    </>}
+  </div>
 }

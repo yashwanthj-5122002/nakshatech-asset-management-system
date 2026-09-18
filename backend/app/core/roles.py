@@ -9,6 +9,11 @@ FINANCE_ROLE = "finance"
 HR_ROLE = "hr"
 BD_ROLE = "bd"
 ORTHO_ROLE = "ortho"
+LIDAR_ROLE = "lidar"
+CIVIL_ROLE = "civil"
+LASER_SCANNING_ROLE = "laser_scanning"
+BIM_ROLE = "bim"
+MOBILE_MAPPING_ROLE = "mobile_mapping"
 EMPLOYEE_ROLE = "employee"
 
 VALID_ROLES = {
@@ -21,6 +26,11 @@ VALID_ROLES = {
     HR_ROLE,
     BD_ROLE,
     ORTHO_ROLE,
+    LIDAR_ROLE,
+    CIVIL_ROLE,
+    LASER_SCANNING_ROLE,
+    BIM_ROLE,
+    MOBILE_MAPPING_ROLE,
     EMPLOYEE_ROLE,
 }
 
@@ -50,7 +60,12 @@ def role_display_name(role: str) -> str:
         FINANCE_ROLE: "Finance Department",
         HR_ROLE: "HR Department",
         BD_ROLE: "Business Development",
-        ORTHO_ROLE: "Ortho / LiDAR",
+        ORTHO_ROLE: "Ortho",
+        LIDAR_ROLE: "LiDAR",
+        CIVIL_ROLE: "Civil Department",
+        LASER_SCANNING_ROLE: "Laser Scanning",
+        BIM_ROLE: "BIM Department",
+        MOBILE_MAPPING_ROLE: "Mobile Mapping",
         EMPLOYEE_ROLE: "Employee Support",
     }
     return labels.get(normalized, normalized.replace("_", " ").title())

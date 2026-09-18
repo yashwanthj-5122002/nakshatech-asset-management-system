@@ -78,6 +78,7 @@ class FinanceClientBaseRequest(BaseModel):
     client_name: str = Field(min_length=2, max_length=255)
     primary_phone: str | None = Field(default=None, max_length=40)
     client_email: str | None = Field(default=None, max_length=255)
+    organization_email: str | None = Field(default=None, max_length=255)
     contact_person_name: str = Field(min_length=2, max_length=255)
     contact_person_phone: str | None = Field(default=None, max_length=40)
     contact_person_email: str | None = Field(default=None, max_length=255)
@@ -91,7 +92,7 @@ class FinanceClientBaseRequest(BaseModel):
     source_person_name: str | None = Field(default=None, max_length=255)
     is_active: bool = True
 
-    @field_validator("vendor_code", "client_name", "primary_phone", "client_email", "contact_person_name", "contact_person_phone", "contact_person_email", "task", "bd_name", "address", "description", "country", "gst_number", "source_person_name", mode="before")
+    @field_validator("vendor_code", "client_name", "primary_phone", "client_email", "organization_email", "contact_person_name", "contact_person_phone", "contact_person_email", "task", "bd_name", "address", "description", "country", "gst_number", "source_person_name", mode="before")
     @classmethod
     def strip_client_text(cls, value):
         if isinstance(value, str):
@@ -104,7 +105,7 @@ class FinanceClientBaseRequest(BaseModel):
     def normalize_gst(cls, value):
         return value.upper().replace(" ", "") if value else value
 
-    @field_validator("client_email", "contact_person_email")
+    @field_validator("client_email", "organization_email", "contact_person_email")
     @classmethod
     def normalize_client_email(cls, value):
         if not value:
@@ -145,12 +146,14 @@ class FinanceClientResponse(BaseModel):
     client_name: str
     primary_phone: str | None = None
     client_email: str | None = None
+    organization_email: str | None = None
     contact_person_name: str
     contact_person_phone: str | None = None
     contact_person_email: str | None = None
     task: str | None = None
     bd_name: str | None = None
     address: str | None = None
+    location: str | None = None
     description: str | None = None
     country: str
     gst_number: str | None = None
@@ -161,6 +164,10 @@ class FinanceClientResponse(BaseModel):
     active_project_count: int = 0
     created_at: datetime
     updated_at: datetime
+    created_by_name: str | None = None
+    created_by_email: str | None = None
+    updated_by_name: str | None = None
+    updated_by_email: str | None = None
 
 
 class FinanceClientProjectBaseRequest(BaseModel):

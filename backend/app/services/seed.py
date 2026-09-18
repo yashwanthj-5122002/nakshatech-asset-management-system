@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from app.core.management_access import (
     SOFTWARE_TEAM_ROLE,
 )
 from app.core.roles import BD_ROLE, ORTHO_ROLE
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.models.entities import Asset, Drone, DroneLocation, ReplacementRecord, User, WorkRecord
 from app.modules.employee_portal.models import AuthenticatorCredential
 from app.services.excel_import_service import import_nakshatech_workbook
@@ -300,6 +300,66 @@ def ensure_operations_test_accounts(db: Session) -> None:
     db.commit()
 
 
+def ensure_v81_test_employee_accounts(db: Session) -> None:
+    """Idempotently provision the 15 explicitly requested V8.1 local fixtures."""
+    if not settings.enable_test_employee_seed:
+        return
+    if settings.is_production:
+        raise RuntimeError("V8.1 test Employee seed is forbidden in production")
+
+    password = settings.test_employee_seed_password
+    if len(password) < 10:
+        raise RuntimeError("TEST_EMPLOYEE_SEED_PASSWORD must contain at least 10 characters")
+
+    for number in range(1, 16):
+        email = f"employee{number}.test@nakshatech.com"
+        employee_id = f"NT-TEST-EMP-{number:03d}"
+        full_name = f"Employee {number}"
+        by_email = db.scalar(select(User).where(func.lower(User.email) == email))
+        by_employee_id = db.scalar(select(User).where(User.employee_id == employee_id))
+        if by_email is not None and by_email.employee_id not in {None, employee_id}:
+            raise RuntimeError(f"Refusing to repurpose existing user {email}")
+        if by_employee_id is not None and by_employee_id.email.strip().lower() != email:
+            raise RuntimeError(f"Refusing to repurpose existing Employee ID {employee_id}")
+        user = by_email or by_employee_id
+        if user is None:
+            user = User(
+                email=email,
+                full_name=full_name,
+                password_hash=hash_password(password),
+                role="employee",
+                branch="Head Office",
+                employee_id=employee_id,
+                department="Employee",
+                designation="Employee",
+                email_verified=True,
+                account_status="active",
+                mfa_required=False,
+                must_change_password=False,
+                is_active=True,
+            )
+            db.add(user)
+            continue
+
+        user.email = email
+        user.full_name = full_name
+        if not verify_password(password, user.password_hash):
+            user.password_hash = hash_password(password)
+            user.token_version = (user.token_version or 0) + 1
+        user.role = "employee"
+        user.employee_id = employee_id
+        user.branch = user.branch or "Head Office"
+        user.department = "Employee"
+        user.designation = "Employee"
+        user.email_verified = True
+        user.account_status = "active"
+        user.mfa_required = False
+        user.must_change_password = False
+        user.is_active = True
+
+    db.commit()
+
+
 def seed_database(db: Session) -> None:
     if not db.scalar(select(User.id).limit(1)):
         db.add_all(
@@ -384,3 +444,4 @@ def seed_database(db: Session) -> None:
         )
 
     db.commit()
+

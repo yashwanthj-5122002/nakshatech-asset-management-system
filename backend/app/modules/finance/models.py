@@ -87,6 +87,7 @@ class FinanceClientMasterProfile(Base):
     client_type: Mapped[str] = mapped_column(String(32), default="client", index=True)
     task: Mapped[str | None] = mapped_column(Text, nullable=True)
     bd_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    organization_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     contact_person_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     import_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)

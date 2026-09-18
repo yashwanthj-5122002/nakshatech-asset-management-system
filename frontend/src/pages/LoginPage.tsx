@@ -232,7 +232,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
               <span>
                 {employeeMode
                   ? 'This compatibility login keeps the existing Employee Support access mode available for old bookmarks and workflows.'
-                  : 'One secure login for Management, Admin, IT, Software Team, Drone, Finance, HR, Business Development, Ortho / LiDAR and Employees. Access permissions are read from your authenticated account — no manual department selection.'}
+                  : 'One secure login for Management, Admin, IT, Software Team, Drone, Finance, HR, Business Development, Ortho, LiDAR, Civil, Laser Scanning, BIM, Mobile Mapping and Employees. Access permissions are read from your authenticated account — no manual department selection.'}
               </span>
             </div>
 

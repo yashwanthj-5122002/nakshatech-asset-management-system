@@ -54,6 +54,7 @@ from app.modules.finance.service import (
     VISIBLE_STAFF_ROLES,
     active_projects,
     all_projects,
+    assigned_projects_for_user,
     client_payload,
     client_projects,
     create_client_project,
@@ -137,7 +138,7 @@ async def import_client_master_excel(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     filename = (file.filename or "client-master.xlsx").strip()
     if not filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=422, detail="Upload an .xlsx Client Master workbook")
@@ -205,7 +206,7 @@ def create_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     try:
         client = create_finance_client(db, actor=auth.user, payload=payload)
     except ValueError as exc:
@@ -227,7 +228,7 @@ def update_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     client = db.get(FinanceClient, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Finance client not found")
@@ -293,7 +294,7 @@ def create_project_for_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     client = db.get(FinanceClient, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Finance client not found")
@@ -304,7 +305,7 @@ def create_project_for_client(
     record_audit(
         db, event_type="FINANCE_CLIENT_PROJECT_CREATED", request=request, user=auth.user, module="finance",
         target_type="finance_project", target_id=project.id,
-        details={"client_code": client.client_code, "project_code": project.project_code, "project_name": project.project_name, "task": payload.task, "project_status": payload.project_status or ("active" if payload.is_active else "inactive"), "project_manager_id": payload.project_manager_id, "reporting_manager_id": payload.reporting_manager_id, "assigned_employee_ids": payload.assigned_employee_ids, "project_source_team": project.project_source_team, "project_source_person_name": project.project_source_person_name},
+        details={"client_code": client.client_code, "project_code": project.project_code, "project_name": project.project_name, "task": payload.task, "project_status": payload.project_status or ("active" if payload.is_active else "inactive"), "project_manager_id": project.master_profile.project_manager_id if project.master_profile else None, "project_manager_control": "bd_owned_read_only", "reporting_manager_id": payload.reporting_manager_id, "assigned_employee_ids": payload.assigned_employee_ids, "project_source_team": project.project_source_team, "project_source_person_name": project.project_source_person_name},
     )
     db.commit(); db.refresh(project)
     return project_payload(project)
@@ -319,7 +320,7 @@ def update_project_for_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None or project.client_id != client_id:
         raise HTTPException(status_code=404, detail="Finance project not found for this client")
@@ -327,7 +328,7 @@ def update_project_for_client(
     record_audit(
         db, event_type="FINANCE_CLIENT_PROJECT_UPDATED", request=request, user=auth.user, module="finance",
         target_type="finance_project", target_id=project.id,
-        details={"project_code": project.project_code, "task": payload.task, "project_status": payload.project_status or ("active" if payload.is_active else "inactive"), "project_manager_id": payload.project_manager_id, "reporting_manager_id": payload.reporting_manager_id, "assigned_employee_ids": payload.assigned_employee_ids, "is_active": project.is_active},
+        details={"project_code": project.project_code, "task": payload.task, "project_status": payload.project_status or ("active" if payload.is_active else "inactive"), "project_manager_id": project.master_profile.project_manager_id if project.master_profile else None, "project_manager_control": "bd_owned_read_only", "reporting_manager_id": payload.reporting_manager_id, "assigned_employee_ids": payload.assigned_employee_ids, "is_active": project.is_active},
     )
     db.commit(); db.refresh(project)
     return project_payload(project)
@@ -362,10 +363,9 @@ def list_projects(
     if role not in {EMPLOYEE_ROLE, *VISIBLE_STAFF_ROLES}:
         raise HTTPException(status_code=403, detail="Finance project access is not available for this role")
     if role == EMPLOYEE_ROLE:
-        # Employees may raise claims against any currently open project.
-        # Completed/on-hold/inactive/upcoming projects are also returned so the
-        # UI can show their status, but backend claim validation still blocks them.
-        return [employee_project_payload(project) for project in all_projects(db)]
+        # Least-privilege project selection: an employee can raise a project
+        # expense only against projects to which the PM has assigned them.
+        return [employee_project_payload(project) for project in assigned_projects_for_user(db, user_id=auth.user.id)]
     return [project_payload(project) for project in active_projects(db)]
 
 
@@ -388,7 +388,7 @@ def update_project_status(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Finance project not found")
@@ -397,6 +397,8 @@ def update_project_status(
         project = set_project_status(
             db, project=project, actor=auth.user, project_status=payload.project_status
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     record_audit(
@@ -459,7 +461,7 @@ def update_project_schedule(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Finance project not found")
@@ -497,11 +499,12 @@ def create_expense_claim(
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
     _require_role(auth, EMPLOYEE_ROLE)
-    # Do not gate claims by staffing assignment. Finance/Admin controls project
-    # availability through project lifecycle/status and dates. create_claim()
-    # performs the authoritative active/completed validation.
+    # V8: employees may raise expenses only against Project IDs assigned to them.
+    # The existing Admin -> Finance -> Payment -> Settlement workflow remains unchanged.
     try:
         claim = create_claim(db, requester=auth.user, payload=payload)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     record_audit(

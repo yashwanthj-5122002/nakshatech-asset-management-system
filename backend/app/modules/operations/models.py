@@ -116,6 +116,8 @@ class OrthoWorkPackage(Base):
     area: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     area_unit: Mapped[str] = mapped_column(String(30), default="ha")
     target_hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_stage: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
     production_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
     qc_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
@@ -168,8 +170,10 @@ class OrthoDailyUpdate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
     update_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    work_type: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     achieved_area: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     progress_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    files_completed: Mapped[int] = mapped_column(Integer, default=0)
     hours_spent: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="on_track", index=True)
     blockers: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -209,3 +213,80 @@ class OrthoDelivery(Base):
     delivered_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
     profile: Mapped[OrthoProjectProfile] = relationship(back_populates="deliveries")
+
+
+class ProjectWorkflow(Base):
+    """Authoritative BD -> Finance -> Ortho -> Finance closure workflow state.
+
+    This table is additive so legacy opportunity/workstream history can remain in
+    the database while the new operational workflow becomes authoritative.
+    """
+
+    __tablename__ = "ops_v800_project_workflows"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), primary_key=True)
+    bd_owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    scope_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    quantity_unit: Mapped[str] = mapped_column(String(30), default="unit")
+    priority: Mapped[str] = mapped_column(String(30), default="medium", index=True)
+    commercial_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(12), default="INR")
+    po_wo_number: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    attachment_references: Mapped[str | None] = mapped_column(Text, nullable=True)
+    finance_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submission_count: Mapped[int] = mapped_column(Integer, default=0)
+    finance_reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    finance_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    pm_assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    team_assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    operational_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    completion_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    final_delivery_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    completion_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    finance_closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    finance_closure_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+
+class ProjectWorkflowEvent(Base):
+    __tablename__ = "ops_v800_project_workflow_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(40), index=True)
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class ProjectWorkstream(Base):
+    """Technical department workstream under one authoritative Finance Project ID."""
+
+    __tablename__ = "ops_v715_project_workstreams"
+    __table_args__ = (
+        UniqueConstraint("project_id", "department_code", name="uq_ops_v715_project_department"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    department_code: Mapped[str] = mapped_column(String(60), index=True)
+    project_manager_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    sequence_order: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="planned", index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)

@@ -42,7 +42,7 @@ from app.modules.employee_portal.models import UserBranchAccess
 from app.models.entities import User
 from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
-from app.services.seed import ensure_management_accounts, ensure_operations_test_accounts, seed_database
+from app.services.seed import ensure_management_accounts, ensure_operations_test_accounts, ensure_v81_test_employee_accounts, seed_database
 
 logger = logging.getLogger(__name__)
 _initialization_lock = threading.Lock()
@@ -262,6 +262,54 @@ def ensure_schema_compatibility() -> None:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE drones ADD COLUMN survey_asset_id INTEGER"))
 
+    # V8 project-workflow additive compatibility. Existing installations already
+    # have the Ortho work-package/daily-update tables, so create_all cannot add
+    # these mapped columns automatically. Keep the upgrade non-destructive.
+    inspector = inspect(engine)
+    if "finance_client_master_profiles" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("finance_client_master_profiles")}
+        with engine.begin() as connection:
+            if "organization_email" not in existing:
+                connection.execute(text("ALTER TABLE finance_client_master_profiles ADD COLUMN organization_email VARCHAR(255)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_finance_client_master_profiles_organization_email ON finance_client_master_profiles (organization_email)"))
+
+    inspector = inspect(engine)
+    if "ops_v701_ortho_work_packages" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("ops_v701_ortho_work_packages")}
+        with engine.begin() as connection:
+            if "target_date" not in existing:
+                connection.execute(text("ALTER TABLE ops_v701_ortho_work_packages ADD COLUMN target_date DATE"))
+            if "instructions" not in existing:
+                connection.execute(text("ALTER TABLE ops_v701_ortho_work_packages ADD COLUMN instructions TEXT"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v701_ortho_work_packages_target_date ON ops_v701_ortho_work_packages (target_date)"))
+
+    inspector = inspect(engine)
+    if "ops_v709_ortho_daily_updates" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("ops_v709_ortho_daily_updates")}
+        with engine.begin() as connection:
+            if "files_completed" not in existing:
+                connection.execute(text("ALTER TABLE ops_v709_ortho_daily_updates ADD COLUMN files_completed INTEGER DEFAULT 0"))
+            if "work_type" not in existing:
+                connection.execute(text("ALTER TABLE ops_v709_ortho_daily_updates ADD COLUMN work_type VARCHAR(255)"))
+            connection.execute(text("UPDATE ops_v709_ortho_daily_updates SET files_completed = 0 WHERE files_completed IS NULL"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v709_ortho_daily_updates_work_type ON ops_v709_ortho_daily_updates (work_type)"))
+
+    inspector = inspect(engine)
+    if "ops_v800_project_workflows" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("ops_v800_project_workflows")}
+        with engine.begin() as connection:
+            if "attachment_references" not in existing:
+                connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN attachment_references TEXT"))
+            if "submission_count" not in existing:
+                connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN submission_count INTEGER DEFAULT 0"))
+            if "finance_reviewer_id" not in existing:
+                connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN finance_reviewer_id INTEGER"))
+            if "finance_reviewed_at" not in existing:
+                connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN finance_reviewed_at TIMESTAMP"))
+            connection.execute(text("UPDATE ops_v800_project_workflows SET submission_count = 0 WHERE submission_count IS NULL"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewer_id ON ops_v800_project_workflows (finance_reviewer_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewed_at ON ops_v800_project_workflows (finance_reviewed_at)"))
+
 
 def initialize_application() -> None:
     """Initialize the database safely for Uvicorn and cPanel Passenger workers.
@@ -293,6 +341,7 @@ def initialize_application() -> None:
                 seed_database(db)
             ensure_management_accounts(db)
             ensure_operations_test_accounts(db)
+            ensure_v81_test_employee_accounts(db)
             default_branch = ensure_default_branch(db)
             ensure_finance_seed_data(db)
             for user in db.scalars(select(User)).all():

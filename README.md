@@ -1,4 +1,4 @@
-# NakshaTech Asset Management — Local Master
+# Nakshatech Asset Management — Local Master
 
 This is the clean local development source assembled from the current secure frontend and verified backend. Use this folder as the single source for future local development.
 
@@ -48,3 +48,28 @@ The login page starts with blank fields. It does not reveal credentials or autom
 ## Local vs cPanel
 
 This package is for local Docker development. It does not modify or automatically synchronize the live cPanel database at `crm.nakshatech.com`. Deploy future changes only after local testing and a controlled cPanel backup.
+
+## Authoritative BD → Finance → Ortho workflow (V8)
+
+This source package now uses the V8 project-operations workflow as the authoritative path for BD, Finance, Ortho Project Managers, Team Leads, Production, QC and QA.
+
+Core flow:
+
+`BD client/project setup → Finance approval/return → BD PM assignment → PM team setup → Team Lead work allocation → Production → QC → QA → Delivery → PM operational completion → Finance closure → CLOSED`
+
+Key controls:
+
+- Client ID and Project ID are manually entered and uniqueness-validated.
+- Finance must approve a project before BD can assign an Ortho Project Manager.
+- Each project has exactly one Team Lead and may have multiple Production, QC and QA employees.
+- Team Leads can allocate work only to employees selected by the Project Manager for the matching role.
+- Operational users see Client ID + Project ID, never Client Name or commercial information.
+- Normal employees see only work packages directly assigned to them.
+- Daily cumulative progress is system-calculated from activity records.
+- QC and QA rejections return the work to Production with review history preserved.
+- PM operational completion requires every work package to be delivered.
+- Finance performs the final closure after operational completion.
+- Existing Expense approval, IT, Asset, Drone, Travel/KM and Support/Ticket workflows are not replaced by this integration.
+- Employee expense-project choices are restricted to projects to which the employee is assigned.
+
+Implementation notes and endpoint details are in `docs/PROJECT_WORKFLOW_V8_INTEGRATION.md`.

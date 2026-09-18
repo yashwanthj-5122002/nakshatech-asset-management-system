@@ -154,7 +154,7 @@ def test_ortho_activation_requires_finance_project_manager_assignment():
         ))
         db.flush()
 
-        with pytest.raises(ValueError, match="Finance Project Master must assign the Ortho Project Manager"):
+        with pytest.raises(ValueError, match="Business Development must assign the Project Manager"):
             activate_ortho_project(db, actor=pm, payload=OrthoProjectActivate(project_id=project.id))
 
         master = db.get(FinanceProjectMasterProfile, project.id)

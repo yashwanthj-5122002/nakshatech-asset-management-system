@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_name: str = "NakshaTech Asset Management System"
     app_version: str = "1.0.0"
     environment: str = "development"
+    app_env: str = ""
 
     # Local Docker serves the API under /api. For cPanel Passenger, the app is
     # mounted externally at /api, so API_PREFIX is intentionally set to an
@@ -54,6 +55,11 @@ class Settings(BaseSettings):
     seed_ortho_pm_password: str = ""
     seed_employee_test_email: str = ""
     seed_employee_test_password: str = ""
+
+    # V8.1 local/test-only normal Employee fixtures. The seed function also
+    # refuses to run whenever APP_ENV or ENVIRONMENT identifies production.
+    enable_test_employee_seed: bool = False
+    test_employee_seed_password: str = "Naksha@Test2026"
 
     database_url: str = "postgresql+psycopg://asset_user:asset_password@db:5432/asset_management"
     database_pool_size: int = 5
@@ -145,7 +151,7 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.environment.strip().lower() == "production"
+        return "production" in {self.environment.strip().lower(), self.app_env.strip().lower()}
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -180,6 +186,8 @@ class Settings(BaseSettings):
         # remains deterministic even when multiple unsafe settings are present.
         if self.seed_operations_test_users_enabled:
             raise RuntimeError("SEED_OPERATIONS_TEST_USERS_ENABLED must be false in production")
+        if self.enable_test_employee_seed:
+            raise RuntimeError("ENABLE_TEST_EMPLOYEE_SEED must be false in production")
         weak_secrets = {
             "change-this-secret-before-production",
             "change-this-secret-before-production-with-at-least-32-characters",

@@ -23,6 +23,11 @@ export function roleHomePath(role: Role): string {
     hr: '/hr/travel-km',
     bd: '/bd',
     ortho: '/ortho',
+    lidar: '/project-workstreams',
+    civil: '/project-workstreams',
+    laser_scanning: '/project-workstreams',
+    bim: '/project-workstreams',
+    mobile_mapping: '/project-workstreams',
     employee: '/support',
   }
   return paths[role]
@@ -38,7 +43,12 @@ export function roleDisplayName(role: Role): string {
     finance: 'Finance Department',
     hr: 'HR Department',
     bd: 'Business Development',
-    ortho: 'Ortho / LiDAR',
+    ortho: 'Ortho',
+    lidar: 'LiDAR',
+    civil: 'Civil Department',
+    laser_scanning: 'Laser Scanning',
+    bim: 'BIM Department',
+    mobile_mapping: 'Mobile Mapping',
     employee: 'Employee Support',
   }
   return labels[role]

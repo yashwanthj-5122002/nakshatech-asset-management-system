@@ -261,6 +261,9 @@ def list_finance_clients(db: Session) -> list[FinanceClient]:
 def client_payload(client: FinanceClient) -> dict:
     projects = list(client.projects or [])
     profile = client.master_profile
+    db = object_session(client)
+    created_by = db.get(User, client.created_by_id) if db is not None and client.created_by_id else None
+    updated_by = db.get(User, client.updated_by_id) if db is not None and client.updated_by_id else None
     return {
         "id": client.id,
         "vendor_code": profile.vendor_code if profile else None,
@@ -271,12 +274,14 @@ def client_payload(client: FinanceClient) -> dict:
         "client_name": client.client_name,
         "primary_phone": client.primary_phone,
         "client_email": client.client_email,
+        "organization_email": profile.organization_email if profile else None,
         "contact_person_name": client.contact_person_name,
         "contact_person_phone": None if client.contact_person_phone == "Not provided" else client.contact_person_phone,
         "contact_person_email": profile.contact_person_email if profile else None,
         "task": profile.task if profile else None,
         "bd_name": profile.bd_name if profile else None,
         "address": client.address,
+        "location": client.address or client.country,
         "description": client.description,
         "country": client.country,
         "gst_number": client.gst_number,
@@ -287,6 +292,10 @@ def client_payload(client: FinanceClient) -> dict:
         "active_project_count": sum(1 for project in projects if project.is_active),
         "created_at": client.created_at,
         "updated_at": client.updated_at,
+        "created_by_name": created_by.full_name if created_by else None,
+        "created_by_email": created_by.email if created_by else None,
+        "updated_by_name": updated_by.full_name if updated_by else None,
+        "updated_by_email": updated_by.email if updated_by else None,
     }
 
 
@@ -320,6 +329,7 @@ def create_finance_client(db: Session, *, actor: User, payload: FinanceClientCre
             client_type=payload.client_type,
             task=payload.task,
             bd_name=payload.bd_name,
+            organization_email=payload.organization_email,
             contact_person_email=payload.contact_person_email,
             created_by_id=actor.id,
             updated_by_id=actor.id,
@@ -352,6 +362,7 @@ def update_finance_client(db: Session, *, client: FinanceClient, actor: User, pa
     profile.client_type = payload.client_type
     profile.task = payload.task
     profile.bd_name = payload.bd_name
+    profile.organization_email = payload.organization_email
     profile.contact_person_email = payload.contact_person_email
     profile.updated_by_id = actor.id
     profile.updated_at = utc_now()
@@ -402,13 +413,14 @@ def create_client_project(db: Session, *, client: FinanceClient, actor: User, pa
         db.rollback()
         raise ValueError(f"Project Number {payload.project_code} already exists") from exc
     status = payload.project_status or ("active" if payload.is_active else "inactive")
-    manager = _validate_active_user(db, payload.project_manager_id, "Project Manager")
+    # V7.0.14: Project Manager is BD-owned. Finance creates the official Project ID
+    # but cannot assign the operational Project Manager.
     reporting = _validate_active_user(db, payload.reporting_manager_id, "Reporting Manager")
     profile = FinanceProjectMasterProfile(
         project_id=project.id,
         task=payload.task,
         project_status=status,
-        project_manager_id=manager.id if manager else None,
+        project_manager_id=None,
         reporting_manager_id=reporting.id if reporting else None,
         created_by_id=actor.id,
         updated_by_id=actor.id,
@@ -435,11 +447,11 @@ def update_client_project(db: Session, *, project: FinanceProject, actor: User, 
     if project.client:
         project.client_name = project.client.client_name
     profile = project.master_profile or FinanceProjectMasterProfile(project_id=project.id, created_by_id=actor.id)
-    manager = _validate_active_user(db, payload.project_manager_id, "Project Manager")
+    # Preserve the existing BD-owned Project Manager. Finance/API edits cannot
+    # overwrite or clear it, even if an older client still submits project_manager_id.
     reporting = _validate_active_user(db, payload.reporting_manager_id, "Reporting Manager")
     profile.task = payload.task
     profile.project_status = status
-    profile.project_manager_id = manager.id if manager else None
     profile.reporting_manager_id = reporting.id if reporting else None
     profile.updated_by_id = actor.id
     profile.updated_at = utc_now()
@@ -632,8 +644,12 @@ def employee_project_payload(project: FinanceProject) -> dict:
     data = project_payload(project)
     return {
         **data,
+        # Employees need the operational Client ID and Project ID only. Keep the
+        # manual Client Code, but never expose Client Name or commercial/owner data.
+        "client_name": None,
+        "project_name": project.project_code,
         "client_id": None,
-        "client_code": None,
+        "client_code": project.client.client_code if project.client else None,
         "project_source_team": None,
         "project_source_person_name": None,
         "client_awarded_by_name": None,
@@ -917,6 +933,8 @@ def create_claim(db: Session, *, requester: User, payload: ExpenseClaimCreateReq
     project = db.get(FinanceProject, payload.project_id)
     if not project:
         raise ValueError("Select a valid Project ID")
+    if not project_is_assigned_to_user(db, project_id=project.id, user_id=requester.id):
+        raise PermissionError("You can raise an expense only for a project assigned to you")
     claim = ExpenseClaim(
         claim_code=f"DRAFT-{secrets.token_hex(10)}",
         requester_id=requester.id,
@@ -943,6 +961,8 @@ def update_claim(db: Session, *, claim: ExpenseClaim, requester: User, payload: 
     project = db.get(FinanceProject, payload.project_id)
     if not project:
         raise ValueError("Select a valid Project ID")
+    if not project_is_assigned_to_user(db, project_id=project.id, user_id=requester.id):
+        raise PermissionError("You can use only Project IDs currently assigned to you")
     _apply_claim_fields(db, claim, requester, payload, project)
     add_event(
         db,
