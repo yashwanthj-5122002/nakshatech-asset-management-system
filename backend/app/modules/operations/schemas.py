@@ -230,6 +230,22 @@ class WorkflowTeamSetup(BaseModel):
         return list(dict.fromkeys(value or []))
 
 
+class WorkflowReworkTeamConfirm(BaseModel):
+    """Project Manager confirms the team for an open rework cycle: reuse the current team or adjust it."""
+
+    mode: Literal["reuse", "adjust"]
+    team_leader_user_id: int | None = Field(default=None, gt=0)
+    production_user_ids: list[int] = Field(default_factory=list, max_length=500)
+    qc_user_ids: list[int] = Field(default_factory=list, max_length=500)
+    qa_user_ids: list[int] = Field(default_factory=list, max_length=500)
+    remarks: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("production_user_ids", "qc_user_ids", "qa_user_ids")
+    @classmethod
+    def unique_rework_team_ids(cls, value):
+        return list(dict.fromkeys(value))
+
+
 class WorkflowWorkAllocation(BaseModel):
     package_code: str = Field(min_length=1, max_length=120)
     area_name: str = Field(min_length=1, max_length=255)
@@ -245,6 +261,35 @@ class WorkflowWorkAllocation(BaseModel):
     @classmethod
     def strip_work_allocation_text(cls, value):
         return value.strip() if isinstance(value, str) else value
+
+
+class WorkflowReworkAllocation(BaseModel):
+    """Team Lead allocation for a rework cycle: a NEW package linked to its source (original) package.
+
+    Code, Area, unit and the Production / QC / QA assignees are optional. When a source package is selected (or is the
+    only original package of a reused team) and a field is omitted, it is carried forward from that package, so a reused
+    team never re-types the original work context. Quantity, Target Date and Instructions describe the new work.
+    """
+
+    rework_of_package_id: int | None = Field(default=None, gt=0)
+    package_code: str | None = Field(default=None, max_length=120)
+    area_name: str | None = Field(default=None, max_length=255)
+    quantity: Decimal = Field(gt=0)
+    quantity_unit: str | None = Field(default=None, max_length=30)
+    target_date: date
+    instructions: str = Field(min_length=1, max_length=5000)
+    production_user_id: int | None = Field(default=None, gt=0)
+    qc_user_id: int | None = Field(default=None, gt=0)
+    qa_user_id: int | None = Field(default=None, gt=0)
+    correction_reason: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("package_code", "area_name", "quantity_unit", "instructions", "correction_reason", mode="before")
+    @classmethod
+    def strip_rework_allocation_text(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
 
 
 class WorkflowDailyActivity(BaseModel):

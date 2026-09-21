@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # V8.1 local/test-only normal Employee fixtures. The seed function also
     # refuses to run whenever APP_ENV or ENVIRONMENT identifies production.
     enable_test_employee_seed: bool = False
-    test_employee_seed_password: str = "Naksha@Test2026"
+    test_employee_seed_password: str = ""
 
     database_url: str = "postgresql+psycopg://asset_user:asset_password@db:5432/asset_management"
     database_pool_size: int = 5

@@ -121,7 +121,7 @@ function projectStatus(project: FinanceProject): string {
 
 export function ClientManagementPage() {
   const { user } = useAuth()
-  const readOnly = user?.role === 'management'
+  const readOnly = user?.role === 'management' || user?.role === 'finance'
   const [clients, setClients] = useState<FinanceClient[]>([])
   const [projects, setProjects] = useState<FinanceProject[]>([])
   const [allProjects, setAllProjects] = useState<FinanceProject[]>([])

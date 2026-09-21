@@ -196,7 +196,17 @@ def list_clients(
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
     _require_role(auth, FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
-    return [client_payload(client) for client in list_finance_clients(db)]
+    rows = [client_payload(client) for client in list_finance_clients(db)]
+
+    # Imported Client Master records may legitimately contain blank optional
+    # values. Keep the database unchanged while honoring the existing API
+    # string response contract used by the frontend.
+    for row in rows:
+        row["client_name"] = row.get("client_name") or ""
+        row["contact_person_name"] = row.get("contact_person_name") or ""
+        row["country"] = row.get("country") or ""
+
+    return rows
 
 
 @router.post("/clients", response_model=FinanceClientResponse, status_code=status.HTTP_201_CREATED)

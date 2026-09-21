@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -106,7 +106,12 @@ class OrthoProjectMember(Base):
 class OrthoWorkPackage(Base):
     __tablename__ = "ops_v701_ortho_work_packages"
     __table_args__ = (
-        UniqueConstraint("project_id", "package_code", name="uq_ops_v701_project_package_code"),
+        # Original work packages: one Code per project (unchanged rule). A rework package is a NEW record that carries its
+        # source package's Code forward, so a Code only has to be unique within its own rework cycle.
+        Index("uq_ops_v701_project_package_code_orig", "project_id", "package_code", unique=True,
+              postgresql_where=text("rework_cycle_id IS NULL"), sqlite_where=text("rework_cycle_id IS NULL")),
+        Index("uq_ops_v701_project_package_code_rework", "project_id", "package_code", "rework_cycle_id", unique=True,
+              postgresql_where=text("rework_cycle_id IS NOT NULL"), sqlite_where=text("rework_cycle_id IS NOT NULL")),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -123,6 +128,11 @@ class OrthoWorkPackage(Base):
     qc_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
     qa_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
     rework_source: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # Client / change-request rework linkage (V8.1 lifecycle). NULL for original work packages, which a
+    # rework cycle never modifies: rework work is always a distinct package linked back to its cycle and,
+    # optionally, to the original package it relates to.
+    rework_cycle_id: Mapped[int | None] = mapped_column(ForeignKey("project_rework_cycles.id", ondelete="SET NULL"), nullable=True, index=True)
+    rework_of_package_id: Mapped[int | None] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="SET NULL"), nullable=True, index=True)
     team_leader_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     production_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     qc_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

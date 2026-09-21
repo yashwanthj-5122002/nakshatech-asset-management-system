@@ -116,12 +116,14 @@ export interface FinanceClient {
   client_name: string
   primary_phone?: string | null
   client_email?: string | null
+  organization_email?: string | null
   contact_person_name: string
   contact_person_phone?: string | null
   contact_person_email?: string | null
   task?: string | null
   bd_name?: string | null
   address?: string | null
+  location?: string | null
   description?: string | null
   country: string
   gst_number?: string | null
@@ -132,6 +134,8 @@ export interface FinanceClient {
   active_project_count: number
   created_at: string
   updated_at: string
+  created_by_name?: string | null
+  updated_by_name?: string | null
 }
 
 export interface ExpenseClaimItem {

@@ -21,3 +21,15 @@ patch_backups/
 _*_last_backup.txt
 LATEST_*_BACKUP.txt
 *.backup_*
+# --- Secrets, local backups and temporary files: never commit (V8.1 publish hardening) ---
+.env.*
+!.env.example
+*.bak
+*.backup
+pre_upgrade_backups/
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+*.tsbuildinfo

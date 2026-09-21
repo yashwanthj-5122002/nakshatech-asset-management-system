@@ -31,6 +31,18 @@ from app.modules.finance.service import (
     set_project_status,
 )
 from app.modules.notifications.service import create_global_notification, resolve_recipient_users
+from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectReworkCycle
+from app.modules.operations.lifecycle_service import (
+    CLOSED as LIFECYCLE_CLOSED,
+    REWORK_OPEN,
+    REWORK_PRODUCTION,
+    REWORK_RESUBMITTED,
+    _transition as lifecycle_transition,
+    assert_finance_closable,
+    enter_feedback_lifecycle,
+    record_project_closed_timeline,
+    sync_rework_cycle_with_packages,
+)
 from app.modules.operations.models import (
     OrthoDailyUpdate,
     OrthoProjectMember,
@@ -49,6 +61,8 @@ from app.modules.operations.schemas import (
     WorkflowPMAssignment,
     WorkflowProjectCreate,
     WorkflowReviewRequest,
+    WorkflowReworkAllocation,
+    WorkflowReworkTeamConfirm,
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
 )
@@ -71,6 +85,34 @@ WORKFLOW_TEAM_ASSIGNED = "team_assigned"
 WORKFLOW_IN_PROGRESS = "in_progress"
 WORKFLOW_FINANCE_CLOSURE_PENDING = "finance_closure_pending"
 WORKFLOW_CLOSED = "closed"
+
+
+def normalized_workflow_status(status: str | None) -> str:
+    """The one canonical form of ``ProjectWorkflow.status`` for dashboards, counts and UI decisions.
+
+    The stored column holds two spellings of the same states: the legacy workflow writes lower-case
+    (``finance_closure_pending``, ``closed``) while the V8.1 client-feedback/billing lifecycle writes
+    upper-case (``FINANCE_CLOSURE_PENDING``, ``CLOSED``). Compare this value, never the raw column.
+    """
+    return (status or "").strip().lower()
+
+
+# Statuses (normalized) in which the ORIGINAL team selection / work allocation may run. Both forms force the
+# workflow status to team_assigned / in_progress, so they must never run against a lifecycle / rework state.
+TEAM_SELECTION_STATUSES = {WORKFLOW_PM_ASSIGNED, WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}
+WORK_ALLOCATION_STATUSES = {WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}
+REWORK_STATUS_KEYS = {"rework_open", "rework_production", "rework_qc", "rework_qa", "rework_delivered", "rework_resubmitted"}
+
+
+def _stage_unavailable_message(action: str, raw_status: str | None) -> str:
+    status_key = normalized_workflow_status(raw_status)
+    if status_key in REWORK_STATUS_KEYS:
+        return (
+            f"{action} is not repeated during a rework cycle. The assigned Project Manager confirms the rework team "
+            "and the Team Lead allocates rework work from the Rework Cycle panel."
+        )
+    return f"{action} is not available while the project is {(raw_status or 'in this state').replace('_', ' ')}."
+
 
 TEAM_ROLES = ("team_leader", "production", "qc", "qa")
 
@@ -198,6 +240,7 @@ def _full_project_payload(db: Session, project: FinanceProject, workflow: Projec
         "po_wo_number": workflow.po_wo_number,
         "attachment_references": _attachment_references(workflow),
         "workflow_status": workflow.status,
+        "normalized_status": normalized_workflow_status(workflow.status),
         "finance_feedback": workflow.finance_feedback,
         "submission_count": workflow.submission_count or sum(1 for event in events if event["event_type"] == "submitted_to_finance"),
         "finance_reviewer_id": workflow.finance_reviewer_id,
@@ -287,12 +330,12 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
     return {
         "summary": {
             "total": len(payloads),
-            "draft": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_DRAFT),
-            "pending_finance": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_PENDING_FINANCE),
-            "returned": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_FINANCE_RETURNED),
-            "approved": sum(1 for p in payloads if p["workflow_status"] in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED, WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}),
-            "completion_pending": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_FINANCE_CLOSURE_PENDING),
-            "closed": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_CLOSED),
+            "draft": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_DRAFT),
+            "pending_finance": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_PENDING_FINANCE),
+            "returned": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_FINANCE_RETURNED),
+            "approved": sum(1 for p in payloads if p["normalized_status"] in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED, WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}),
+            "completion_pending": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_FINANCE_CLOSURE_PENDING),
+            "closed": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_CLOSED),
         },
         "clients": [client_payload(client) for client in list_finance_clients(db)],
         "project_managers": project_manager_options(db),
@@ -507,6 +550,21 @@ def _project_expense_summary(db: Session, project_id: int) -> dict:
     }
 
 
+def _finance_closure_readiness(db: Session, workflow: ProjectWorkflow, normalized_status: str) -> tuple[bool, str | None]:
+    """Ask the authoritative closure guard whether Finance Closure would be accepted right now.
+
+    This only *reads* through ``assert_finance_closable`` (the same guard ``finance_close_project``
+    enforces on submit); it never reimplements or bypasses it.
+    """
+    if normalized_status != WORKFLOW_FINANCE_CLOSURE_PENDING:
+        return False, None
+    try:
+        assert_finance_closable(db, workflow=workflow)
+    except ValueError as exc:
+        return False, str(exc)
+    return True, None
+
+
 def finance_dashboard(db: Session) -> dict:
     projects = list(db.scalars(
         _project_query()
@@ -520,14 +578,17 @@ def finance_dashboard(db: Session) -> dict:
             continue
         payload = _full_project_payload(db, project, workflows[project.id])
         payload["expense_summary"] = _project_expense_summary(db, project.id)
+        payload["finance_closable"], payload["finance_closure_blocker"] = _finance_closure_readiness(
+            db, workflows[project.id], payload["normalized_status"]
+        )
         payloads.append(payload)
     return {
         "summary": {
-            "pending_approval": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_PENDING_FINANCE),
-            "returned": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_FINANCE_RETURNED),
-            "approved": sum(1 for p in payloads if p["workflow_status"] in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED, WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}),
-            "closure_pending": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_FINANCE_CLOSURE_PENDING),
-            "closed": sum(1 for p in payloads if p["workflow_status"] == WORKFLOW_CLOSED),
+            "pending_approval": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_PENDING_FINANCE),
+            "returned": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_FINANCE_RETURNED),
+            "approved": sum(1 for p in payloads if p["normalized_status"] in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED, WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}),
+            "closure_pending": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_FINANCE_CLOSURE_PENDING),
+            "closed": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_CLOSED),
         },
         "projects": payloads,
     }
@@ -782,10 +843,12 @@ def _sync_finance_assignments(db: Session, *, project_id: int, actor: User, sele
 def configure_team(db: Session, *, actor: User, project_id: int, payload: WorkflowTeamSetup) -> tuple[ProjectWorkflow, dict[int, list[str]]]:
     project = _project(db, project_id)
     workflow = _workflow(db, project_id)
+    if project.master_profile is None or project.master_profile.project_manager_id is None:
+        raise ValueError("BD must assign the Project Manager before team selection")
     if not _is_pm(project, actor.id):
         raise PermissionError("Only the BD-assigned Ortho Project Manager can select the project team")
-    if workflow.status not in {WORKFLOW_PM_ASSIGNED, WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}:
-        raise ValueError("BD must assign the Project Manager before team selection")
+    if normalized_workflow_status(workflow.status) not in TEAM_SELECTION_STATUSES:
+        raise ValueError(_stage_unavailable_message("Project team selection", workflow.status))
 
     selected = {
         "team_leader": {payload.team_leader_user_id},
@@ -826,6 +889,327 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
         )
     db.flush()
     return workflow, dict(roles_by_user)
+
+
+# The team-confirmation history note starts with one of these; cycles confirmed before ``team_mode`` was stored are
+# recognised by it, so their mode is derived (read-only) instead of the data being rewritten.
+REWORK_NOTE_REUSE = "Existing team reused"
+REWORK_NOTE_ADJUST = "Rework team adjusted"
+
+
+def _rework_team_mode(db: Session, cycle: ProjectReworkCycle) -> str | None:
+    """'reuse' | 'adjust' | None (not confirmed yet)."""
+    if cycle.team_mode in {"reuse", "adjust"}:
+        return cycle.team_mode
+    if cycle.status == REWORK_OPEN:
+        return None
+    note = db.scalar(select(ProjectWorkflowEvent.comments).where(
+        ProjectWorkflowEvent.project_id == cycle.project_id,
+        ProjectWorkflowEvent.event_type == "rework_team_confirmed",
+    ).order_by(ProjectWorkflowEvent.id.desc()).limit(1)) or ""
+    if note.startswith(REWORK_NOTE_REUSE):
+        return "reuse"
+    if note.startswith(REWORK_NOTE_ADJUST):
+        return "adjust"
+    return None
+
+
+def _rework_cycle_label(cycle_type: str) -> str:
+    return "Approved Change Request Rework" if cycle_type == "APPROVED_CHANGE_REQUEST" else "Client Correction Rework"
+
+
+def _active_rework_cycle(db: Session, project_id: int) -> ProjectReworkCycle | None:
+    """The latest rework cycle that has not yet been resubmitted to / closed with the client."""
+    return db.scalar(select(ProjectReworkCycle).where(
+        ProjectReworkCycle.project_id == project_id,
+        ProjectReworkCycle.status != REWORK_RESUBMITTED,
+        ProjectReworkCycle.closed_at.is_(None),
+    ).order_by(ProjectReworkCycle.cycle_number.desc()).limit(1))
+
+
+def confirm_rework_team(
+    db: Session, *, actor: User, cycle_id: int, payload: WorkflowReworkTeamConfirm
+) -> tuple[ProjectReworkCycle, dict[int, list[str]]]:
+    """Project Manager confirms the rework team: REWORK_OPEN -> REWORK_PRODUCTION.
+
+    The original Project Manager, Project ID, original work packages and delivery history are never touched;
+    ``reuse`` keeps the current team and ``adjust`` replaces the team members through the same guarded helper
+    the original team selection uses.
+    """
+    cycle = db.get(ProjectReworkCycle, cycle_id)
+    if cycle is None:
+        raise ValueError("Rework cycle not found")
+    project = _project(db, cycle.project_id)
+    workflow = _workflow(db, cycle.project_id)
+    if not _is_pm(project, actor.id):
+        raise PermissionError("Only the Project Manager assigned to this project can confirm the rework team")
+    if cycle.status != REWORK_OPEN or normalized_workflow_status(workflow.status) != "rework_open":
+        raise ValueError("The rework team can only be confirmed while the rework cycle is Rework Open")
+
+    current = {role: _active_member_ids(db, project_id=project.id, role=role) for role in TEAM_ROLES}
+    if payload.mode == "reuse":
+        selected = current
+    else:
+        selected = {
+            "team_leader": {payload.team_leader_user_id} if payload.team_leader_user_id else set(),
+            "production": set(payload.production_user_ids),
+            "qc": set(payload.qc_user_ids),
+            "qa": set(payload.qa_user_ids),
+        }
+    for role, ids in selected.items():
+        label = role.replace("_", " ")
+        if not ids:
+            raise ValueError(
+                f"There is no existing {label} to reuse; choose Adjust Rework Team and select one"
+                if payload.mode == "reuse" else f"Select at least one {label} employee"
+            )
+        for user_id in ids:
+            _validate_employee(db, user_id, label)
+    if len(selected["team_leader"]) != 1:
+        raise ValueError("Exactly one Team Lead is required")
+
+    if payload.mode == "adjust":
+        for role, ids in selected.items():
+            _set_role_members(db, project_id=project.id, actor=actor, role=role, selected_ids=ids)
+        _sync_finance_assignments(db, project_id=project.id, actor=actor, selected_ids=set().union(*selected.values()))
+
+    team_lead = db.get(User, next(iter(selected["team_leader"])))
+    cycle.team_leader_user_id = team_lead.id
+    cycle.team_mode = payload.mode
+    if cycle.project_manager_user_id is None:
+        cycle.project_manager_user_id = actor.id  # never replaced once set: the original PM stays the PM
+    cycle.status = REWORK_PRODUCTION
+    cycle.updated_at = utc_now()
+    summary = (
+        f"{REWORK_NOTE_REUSE if payload.mode == 'reuse' else REWORK_NOTE_ADJUST} · "
+        f"Team Lead {team_lead.employee_id or team_lead.full_name} · Production {len(selected['production'])} · "
+        f"QC {len(selected['qc'])} · QA {len(selected['qa'])}"
+    )
+    if (payload.remarks or "").strip():
+        summary += f" · {payload.remarks.strip()}"
+    lifecycle_transition(
+        db,
+        workflow=workflow,
+        actor=actor,
+        status=REWORK_PRODUCTION,
+        event_type="rework_team_confirmed",
+        title=f"Rework Cycle {cycle.cycle_number}: team confirmed",
+        comments=summary,
+    )
+
+    roles_by_user: dict[int, list[str]] = defaultdict(list)
+    for role, ids in selected.items():
+        for user_id in ids:
+            roles_by_user[user_id].append(role)
+    for user_id, roles in roles_by_user.items():
+        next_step = "Allocate the rework Area / Code / Quantity / Target Date." if user_id == team_lead.id else "Your rework task will appear after the Team Lead allocates it."
+        create_global_notification(
+            db,
+            event_type="workflow.rework.team_confirmed",
+            title=f"Rework team confirmed: {project.project_code}",
+            message=(
+                f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · "
+                f"Rework Cycle {cycle.cycle_number} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
+            ),
+            category="system",
+            target_url="/ortho",
+            recipient_user_ids=[user_id],
+        )
+    db.flush()
+    return cycle, dict(roles_by_user)
+
+
+def _rework_original_packages(db: Session, project_id: int) -> list[OrthoWorkPackage]:
+    """Original (non-rework) work packages of a project: the possible sources a rework can carry work context from."""
+    return list(db.scalars(select(OrthoWorkPackage).where(
+        OrthoWorkPackage.project_id == project_id,
+        OrthoWorkPackage.rework_cycle_id.is_(None),
+    ).order_by(OrthoWorkPackage.id.asc())).all())
+
+
+def allocate_rework_work(
+    db: Session, *, actor: User, cycle_id: int, payload: WorkflowReworkAllocation
+) -> OrthoWorkPackage:
+    """Team Lead allocates rework work as a NEW package linked to its source (original) package.
+
+    * ``reuse`` team (PM chose "Reuse existing team"): the source package's Code, Area, unit and Production / QC / QA
+      assignees are carried forward automatically, so nothing is re-typed. The Code / Area can only be changed with a
+      written correction reason. With several original packages the source must be chosen first.
+    * ``adjust`` team: nothing is forced; the Team Lead enters Code / Area / assignees. A source link is optional (if
+      one is given and a field is omitted it is still carried forward as a convenience).
+
+    The source package is never modified or reopened, and the workflow status stays REWORK_PRODUCTION.
+    """
+    cycle = db.get(ProjectReworkCycle, cycle_id)
+    if cycle is None:
+        raise ValueError("Rework cycle not found")
+    project = _project(db, cycle.project_id)
+    workflow = _workflow(db, cycle.project_id)
+    if cycle.team_leader_user_id != actor.id or not _is_team_lead(db, project_id=project.id, user_id=actor.id):
+        raise PermissionError("Only the Team Lead confirmed for this rework cycle can allocate rework work")
+    if cycle.status != REWORK_PRODUCTION or normalized_workflow_status(workflow.status) != "rework_production":
+        raise ValueError("The Project Manager must confirm the rework team before rework work can be allocated")
+
+    reuse = _rework_team_mode(db, cycle) == "reuse"
+    originals = _rework_original_packages(db, project.id)
+    source: OrthoWorkPackage | None = None
+    if payload.rework_of_package_id is not None:
+        source = next((pkg for pkg in originals if pkg.id == payload.rework_of_package_id), None)
+        if source is None:
+            raise ValueError("Select an original work package of this project to link the rework to")
+    elif reuse and len(originals) > 1:
+        raise ValueError("This project has more than one original work package. Select the original work package this rework is for")
+    elif reuse and len(originals) == 1:
+        source = originals[0]
+
+    code = payload.package_code or (source.package_code if source else None)
+    area = payload.area_name or (source.package_name if source else None)
+    if not code or not area:
+        raise ValueError("Code and Area are required" + (" - select the original work package to carry them forward" if originals else ""))
+    unit = payload.quantity_unit or (source.area_unit if source else None) or "unit"
+    if reuse and source is not None:
+        changed = code.strip().lower() != source.package_code.strip().lower() or area.strip().lower() != source.package_name.strip().lower()
+        if changed and not payload.correction_reason:
+            raise ValueError("Code and Area are carried forward from the original work package. Enter a correction reason to change them")
+
+    carried = {"production": source.production_user_id if source else None, "qc": source.qc_user_id if source else None, "qa": source.qa_user_id if source else None}
+    assignees: dict[str, int] = {}
+    for role, explicit in (("production", payload.production_user_id), ("qc", payload.qc_user_id), ("qa", payload.qa_user_id)):
+        user_id = explicit
+        if user_id is None:
+            if carried[role] is not None and carried[role] in _active_member_ids(db, project_id=project.id, role=role):
+                user_id = carried[role]
+            else:
+                raise ValueError(f"Select a {role} employee" + (" - the original assignee is no longer on the team" if carried[role] is not None else ""))
+        _ensure_role_member(db, project_id=project.id, role=role, user_id=user_id)
+        assignees[role] = user_id
+
+    duplicate = db.scalar(select(OrthoWorkPackage.id).where(
+        OrthoWorkPackage.project_id == project.id,
+        OrthoWorkPackage.rework_cycle_id == cycle.id,
+        func.lower(OrthoWorkPackage.package_code) == code.lower(),
+    ).limit(1))
+    if duplicate is not None:
+        raise ValueError(f"Code {code} is already allocated in this rework cycle")
+    package = OrthoWorkPackage(
+        project_id=project.id,
+        package_code=code,
+        package_name=area,
+        area=payload.quantity,
+        area_unit=unit,
+        target_hours=None,
+        target_date=payload.target_date,
+        instructions=payload.instructions,
+        current_stage="not_started",
+        production_state="not_started",
+        qc_state="not_started",
+        qa_state="not_started",
+        team_leader_user_id=actor.id,
+        production_user_id=assignees["production"],
+        qc_user_id=assignees["qc"],
+        qa_user_id=assignees["qa"],
+        rework_cycle_id=cycle.id,
+        rework_of_package_id=source.id if source else None,
+        created_by_id=actor.id,
+    )
+    db.add(package)
+    db.flush()
+    note = f"{area} · {payload.quantity} {unit} · Target {payload.target_date.isoformat()}"
+    if source is not None:
+        note += f" · linked to original package {source.package_code}"
+        if payload.correction_reason:
+            note += f" · Code/Area correction: {payload.correction_reason}"
+        elif code.strip().lower() == source.package_code.strip().lower():
+            note += " · Code/Area carried forward"
+    lifecycle_transition(
+        db,
+        workflow=workflow,
+        actor=actor,
+        status=REWORK_PRODUCTION,
+        event_type="rework_work_allocated",
+        title=f"Rework Cycle {cycle.cycle_number}: work allocated ({code})",
+        comments=note,
+    )
+    for role, user_id in assignees.items():
+        create_global_notification(
+            db,
+            event_type="workflow.rework.work_assigned",
+            title=f"New REWORK {role.upper()} work: {code}",
+            message=(
+                f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · Rework Cycle {cycle.cycle_number} · "
+                f"Area {area} · Code {code} · {payload.quantity} {unit} · Target {payload.target_date.isoformat()}."
+            ),
+            category="system",
+            target_url="/ortho",
+            recipient_user_ids=[user_id],
+        )
+    db.flush()
+    return package
+
+
+def _rework_context(db: Session, *, project: FinanceProject, actor: User, status_key: str, viewer_is_pm: bool, all_packages: list[OrthoWorkPackage]) -> dict | None:
+    cycle = _active_rework_cycle(db, project.id)
+    if cycle is None:
+        return None
+    response = db.get(ProjectFeedbackResponse, cycle.source_feedback_response_id)
+    change_request = db.get(ProjectChangeRequest, cycle.source_change_request_id) if cycle.source_change_request_id else None
+    pm = _pm(project)
+    team_lead = db.get(User, cycle.team_leader_user_id) if cycle.team_leader_user_id else None
+    originals = [pkg for pkg in all_packages if pkg.rework_cycle_id is None]
+    user_ids = {uid for pkg in originals for uid in (pkg.team_leader_user_id, pkg.production_user_id, pkg.qc_user_id, pkg.qa_user_id) if uid}
+    names = {u.id: u.full_name for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
+    on_team = {role: _active_member_ids(db, project_id=project.id, role=role) for role in ("production", "qc", "qa")}
+    return {
+        "cycle_id": cycle.id,
+        "cycle_number": cycle.cycle_number,
+        "cycle_type": cycle.cycle_type,
+        "cycle_label": _rework_cycle_label(cycle.cycle_type),
+        "status": cycle.status,
+        "team_mode": _rework_team_mode(db, cycle),
+        "reason": cycle.correction_scope,
+        "client_feedback": ((response.correction_description or response.comments) if response else None),
+        "change_request_code": change_request.request_code if change_request else None,
+        "project_manager_name": pm.full_name if pm else None,
+        "team_leader_id": cycle.team_leader_user_id,
+        "team_leader_name": team_lead.full_name if team_lead else None,
+        "can_confirm_team": bool(viewer_is_pm and cycle.status == REWORK_OPEN and status_key == "rework_open"),
+        "can_allocate": bool(cycle.team_leader_user_id == actor.id and cycle.status == REWORK_PRODUCTION and status_key == "rework_production"),
+        # Possible source packages, with the work context a reused team carries forward.
+        "original_packages": [
+            {
+                "id": pkg.id,
+                "package_code": pkg.package_code,
+                "area_name": pkg.package_name,
+                "quantity": float(pkg.area) if pkg.area is not None else None,
+                "quantity_unit": pkg.area_unit,
+                "current_stage": pkg.current_stage,
+                "team_leader_user_id": pkg.team_leader_user_id,
+                "team_leader_name": names.get(pkg.team_leader_user_id),
+                "production_user_id": pkg.production_user_id,
+                "production_name": names.get(pkg.production_user_id),
+                "qc_user_id": pkg.qc_user_id,
+                "qc_name": names.get(pkg.qc_user_id),
+                "qa_user_id": pkg.qa_user_id,
+                "qa_name": names.get(pkg.qa_user_id),
+                # False when the original assignee is no longer on the (current) team: the Team Lead must pick one.
+                "carry_forward": {
+                    "production": pkg.production_user_id in on_team["production"],
+                    "qc": pkg.qc_user_id in on_team["qc"],
+                    "qa": pkg.qa_user_id in on_team["qa"],
+                },
+            }
+            for pkg in originals
+        ],
+    }
+
+
+def _annotate_rework_packages(db: Session, project_id: int, payloads: list[dict], packages: list[OrthoWorkPackage], all_packages: list[OrthoWorkPackage]) -> None:
+    numbers = {int(row.id): int(row.cycle_number) for row in db.scalars(select(ProjectReworkCycle).where(ProjectReworkCycle.project_id == project_id)).all()}
+    codes = {pkg.id: pkg.package_code for pkg in all_packages}
+    for payload, pkg in zip(payloads, packages):
+        payload["rework_cycle_id"] = pkg.rework_cycle_id
+        payload["rework_cycle_number"] = numbers.get(pkg.rework_cycle_id) if pkg.rework_cycle_id else None
+        payload["rework_of_package_code"] = codes.get(pkg.rework_of_package_id) if pkg.rework_of_package_id else None
 
 
 def email_team_assignments(db: Session, *, project_id: int, roles_by_user: dict[int, list[str]]) -> None:
@@ -883,8 +1267,10 @@ def allocate_work(db: Session, *, actor: User, project_id: int, payload: Workflo
     workflow = _workflow(db, project_id)
     if not _is_team_lead(db, project_id=project_id, user_id=actor.id):
         raise PermissionError("Only the Project Manager-selected Team Lead can distribute Area / Code / Quantity work")
-    if workflow.status not in {WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}:
-        raise ValueError("The Project Manager must select the project team before work allocation")
+    if normalized_workflow_status(workflow.status) not in WORK_ALLOCATION_STATUSES:
+        if normalized_workflow_status(workflow.status) in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
+            raise ValueError("The Project Manager must select the project team before work allocation")
+        raise ValueError(_stage_unavailable_message("Work allocation", workflow.status))
     _ensure_role_member(db, project_id=project_id, role="production", user_id=payload.production_user_id)
     _ensure_role_member(db, project_id=project_id, role="qc", user_id=payload.qc_user_id)
     _ensure_role_member(db, project_id=project_id, role="qa", user_id=payload.qa_user_id)
@@ -1023,6 +1409,14 @@ def record_daily_activity(db: Session, *, actor: User, work_package_id: int, pay
     return row
 
 
+def _sync_rework_cycle(db: Session, *, actor: User, package: OrthoWorkPackage, note: str, delivery_reference: str | None = None) -> None:
+    """A rework package's Production / QC / QA / Delivery events move its rework cycle (and the project lifecycle status)
+    through the authoritative rework lifecycle. No-op for ordinary (original) work packages."""
+    if package.rework_cycle_id is not None:
+        db.flush()
+        sync_rework_cycle_with_packages(db, actor=actor, cycle_id=package.rework_cycle_id, note=note, delivery_reference=delivery_reference)
+
+
 def complete_production(db: Session, *, actor: User, work_package_id: int) -> OrthoWorkPackage:
     package = package_by_id(db, work_package_id)
     if package.production_user_id != actor.id:
@@ -1051,6 +1445,7 @@ def complete_production(db: Session, *, actor: User, work_package_id: int) -> Or
         recipient_user_ids=recipients,
     )
     db.flush()
+    _sync_rework_cycle(db, actor=actor, package=package, note=f"Production completed: {package.package_code}")
     return package
 
 
@@ -1227,6 +1622,8 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipient_user_ids=[uid for uid in recipients if uid],
     )
     db.flush()
+    verdict = "approved" if payload.decision == "approve" else f"rejected - {(payload.comments or '').strip()}"
+    _sync_rework_cycle(db, actor=actor, package=package, note=f"{kind.upper()} {verdict}: {package.package_code}")
     return package
 
 
@@ -1250,6 +1647,7 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
         recipient_user_ids=[uid for uid in {package.team_leader_user_id, pm.id if pm else None} if uid],
     )
     db.flush()
+    _sync_rework_cycle(db, actor=actor, package=package, note=f"Delivered: {package.package_code}", delivery_reference=(payload.remarks or "").strip() or None)
     return package
 
 
@@ -1258,6 +1656,10 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     workflow = _workflow(db, project_id)
     if not _is_pm(project, actor.id):
         raise PermissionError("Only the BD-assigned Project Manager can confirm Operational Completion")
+    if normalized_workflow_status(workflow.status) not in {WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}:
+        # enter_feedback_lifecycle() unconditionally resets the lifecycle to FEEDBACK_NOT_SENT; running it over an
+        # open rework / feedback / billing state would discard that state.
+        raise ValueError("Operational Completion is only available while the project is In Progress")
     packages = list(db.scalars(select(OrthoWorkPackage).where(OrthoWorkPackage.project_id == project_id)).all())
     if not packages:
         raise ValueError("Create and complete at least one work allocation before Project Completion")
@@ -1268,36 +1670,20 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     workflow.completion_date = payload.completion_date
     workflow.final_delivery_reference = (payload.final_delivery_reference or "").strip() or None
     workflow.completion_remarks = (payload.remarks or "").strip() or None
-    _event(db, workflow=workflow, actor=actor, event_type="pm_operational_completion", to_status=WORKFLOW_FINANCE_CLOSURE_PENDING, comments=payload.remarks)
+    enter_feedback_lifecycle(db, actor=actor, project=project, workflow=workflow)
     if project.master_profile:
-        project.master_profile.project_status = "completed"
+        # Operational completion is no longer financial/project closure. Keep the
+        # authoritative project visible until feedback, billing and payment finish.
+        project.master_profile.project_status = "active"
         project.master_profile.updated_by_id = actor.id
         project.master_profile.updated_at = utc_now()
-    project.is_active = False
+    project.is_active = True
     profile = db.get(OrthoProjectProfile, project_id)
     if profile:
-        profile.status = "completed"
+        profile.status = "awaiting_client_feedback"
         profile.final_delivery_at = workflow.operational_completed_at
         profile.final_delivery_by_id = actor.id
         profile.final_delivery_remarks = workflow.completion_remarks
-    create_global_notification(
-        db,
-        event_type="workflow.project.operational_completed",
-        title=f"Operational completion: {project.project_code}",
-        message=f"Project ID {project.project_code} has completed operational delivery and is ready for Finance Closure.",
-        category="approval",
-        target_url="/finance",
-        recipient_roles=[FINANCE_ROLE],
-    )
-    create_global_notification(
-        db,
-        event_type="workflow.project.operational_completed_bd",
-        title=f"Project completed: {project.project_code}",
-        message=f"Project ID {project.project_code} has completed operational delivery. Finance Closure is pending.",
-        category="system",
-        target_url="/bd",
-        recipient_user_ids=[workflow.bd_owner_user_id],
-    )
     db.flush()
     return workflow
 
@@ -1323,8 +1709,9 @@ def email_operational_completion(db: Session, *, project_id: int) -> None:
                 f"Client ID: {_client_code(project) or 'Not recorded'}\n"
                 f"Completion Date: {workflow.completion_date.isoformat() if workflow.completion_date else 'Not recorded'}\n"
                 f"Delivery Reference: {workflow.final_delivery_reference or 'Not recorded'}\n\n"
-                "Finance Closure is now pending.\n"
-                f"ERP: {settings.app_public_url.rstrip('/')}/finance\n\n"
+                "The project is now waiting for a secure Client Feedback Request. "
+                "Finance Closure is unavailable until acceptance, invoicing and payment are complete.\n"
+                f"ERP: {settings.app_public_url.rstrip('/')}/bd/feedback\n\n"
                 "Nakshatech ERP"
             ),
             from_name="Nakshatech Operations",
@@ -1333,12 +1720,21 @@ def email_operational_completion(db: Session, *, project_id: int) -> None:
 
 def finance_close_project(db: Session, *, actor: User, project_id: int, payload: WorkflowFinanceClosure) -> ProjectWorkflow:
     workflow = _workflow(db, project_id)
-    if workflow.status != WORKFLOW_FINANCE_CLOSURE_PENDING:
-        raise ValueError("Operational Completion is required before Finance Closure")
+    legacy_closure = workflow.status == WORKFLOW_FINANCE_CLOSURE_PENDING
+    assert_finance_closable(db, workflow=workflow)
     project = _project(db, project_id)
     workflow.finance_closed_at = utc_now()
     workflow.finance_closure_remarks = payload.remarks.strip()
-    _event(db, workflow=workflow, actor=actor, event_type="finance_closed_project", to_status=WORKFLOW_CLOSED, comments=payload.remarks)
+    _event(
+        db,
+        workflow=workflow,
+        actor=actor,
+        event_type="finance_closed_project",
+        to_status=WORKFLOW_CLOSED if legacy_closure else LIFECYCLE_CLOSED,
+        comments=payload.remarks,
+    )
+    if not legacy_closure:
+        record_project_closed_timeline(db, actor=actor, project_id=project_id, remarks=payload.remarks)
     if project.master_profile:
         project.master_profile.project_status = "completed"
         project.master_profile.updated_by_id = actor.id
@@ -1525,10 +1921,13 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
         viewer_is_pm = _is_pm(project, actor.id)
         roles = _member_roles(db, project_id=project.id, user_id=actor.id)
         viewer_is_tl = "team_leader" in roles
+        status_key = normalized_workflow_status(workflow.status)
         packages = list(db.scalars(_package_query().where(OrthoWorkPackage.project_id == project.id).order_by(OrthoWorkPackage.id.asc())).unique().all())
+        all_packages = packages
         if not (viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE}):
             packages = [pkg for pkg in packages if actor.id in {pkg.team_leader_user_id, pkg.production_user_id, pkg.qc_user_id, pkg.qa_user_id}]
         package_payloads = [_package_payload(db, pkg, viewer=actor, viewer_is_pm=viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE}, viewer_is_tl=viewer_is_tl) for pkg in packages]
+        _annotate_rework_packages(db, project.id, package_payloads, packages, all_packages)
         summary = {
             "packages": len(package_payloads),
             "production": sum(1 for p in package_payloads if p["current_stage"] in {"not_started", "production", "production_rework"}),
@@ -1545,9 +1944,12 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             "my_roles": ["project_manager"] if viewer_is_pm else sorted(roles),
             "summary": summary,
             "packages": package_payloads,
-            "can_manage_team": viewer_is_pm,
-            "can_allocate_work": viewer_is_tl,
-            "can_complete_project": viewer_is_pm and bool(package_payloads) and all(p["current_stage"] == "delivered" for p in package_payloads),
+            # Original team selection / allocation / completion only exist in the legacy workflow window; during a
+            # rework (or any later lifecycle stage) they would be rejected, so they are not offered.
+            "can_manage_team": viewer_is_pm and status_key in TEAM_SELECTION_STATUSES,
+            "can_allocate_work": viewer_is_tl and status_key in WORK_ALLOCATION_STATUSES,
+            "can_complete_project": viewer_is_pm and status_key in WORK_ALLOCATION_STATUSES and bool(package_payloads) and all(p["current_stage"] == "delivered" for p in package_payloads),
+            "rework": None,
         }
         if viewer_is_pm or viewer_is_tl or role in {ADMIN_ROLE, MANAGEMENT_ROLE}:
             base.update({
@@ -1558,10 +1960,11 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
                 "quantity_unit": workflow.quantity_unit,
                 "priority": workflow.priority,
                 "members": _member_map(db, project.id),
+                "rework": _rework_context(db, project=project, actor=actor, status_key=status_key, viewer_is_pm=viewer_is_pm, all_packages=all_packages),
             })
         result.append(base)
     return {
         "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if role == ORTHO_ROLE else "participant"),
         "projects": result,
-        "employees": employee_options(db) if role == ORTHO_ROLE and any(p["can_manage_team"] for p in result) else [],
+        "employees": employee_options(db) if role == ORTHO_ROLE and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result) else [],
     }

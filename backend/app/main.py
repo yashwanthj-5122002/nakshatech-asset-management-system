@@ -310,6 +310,32 @@ def ensure_schema_compatibility() -> None:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewer_id ON ops_v800_project_workflows (finance_reviewer_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewed_at ON ops_v800_project_workflows (finance_reviewed_at)"))
 
+    # V8.1 rework: distinct rework work packages link back to their rework cycle / original package.
+    inspector = inspect(engine)
+    if "ops_v701_ortho_work_packages" in inspector.get_table_names() and "project_rework_cycles" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("ops_v701_ortho_work_packages")}
+        with engine.begin() as connection:
+            if "rework_cycle_id" not in existing:
+                connection.execute(text("ALTER TABLE ops_v701_ortho_work_packages ADD COLUMN rework_cycle_id INTEGER REFERENCES project_rework_cycles(id) ON DELETE SET NULL"))
+            if "rework_of_package_id" not in existing:
+                connection.execute(text("ALTER TABLE ops_v701_ortho_work_packages ADD COLUMN rework_of_package_id INTEGER REFERENCES ops_v701_ortho_work_packages(id) ON DELETE SET NULL"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v701_ortho_work_packages_rework_cycle_id ON ops_v701_ortho_work_packages (rework_cycle_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v701_ortho_work_packages_rework_of_package_id ON ops_v701_ortho_work_packages (rework_of_package_id)"))
+
+    # V8.1 rework: remember reuse/adjust per cycle, and let a rework package carry its source Code forward as a NEW record.
+    inspector = inspect(engine)
+    if "project_rework_cycles" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("project_rework_cycles")}
+        if "team_mode" not in existing:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE project_rework_cycles ADD COLUMN team_mode VARCHAR(20)"))
+    if engine.dialect.name == "postgresql" and "ops_v701_ortho_work_packages" in inspector.get_table_names():
+        with engine.begin() as connection:
+            # Create the replacement indexes first so uniqueness is never unprotected, then drop the old blanket constraint.
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ops_v701_project_package_code_orig ON ops_v701_ortho_work_packages (project_id, package_code) WHERE rework_cycle_id IS NULL"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ops_v701_project_package_code_rework ON ops_v701_ortho_work_packages (project_id, package_code, rework_cycle_id) WHERE rework_cycle_id IS NOT NULL"))
+            connection.execute(text("ALTER TABLE ops_v701_ortho_work_packages DROP CONSTRAINT IF EXISTS uq_ops_v701_project_package_code"))
+
 
 def initialize_application() -> None:
     """Initialize the database safely for Uvicorn and cPanel Passenger workers.
