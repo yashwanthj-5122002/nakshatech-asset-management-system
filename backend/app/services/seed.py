@@ -141,7 +141,7 @@ def ensure_privileged_accounts(db: Session) -> None:
                 continue
 
             user.email = email
-            user.full_name = account.full_name
+            user.full_name = user.full_name or account.full_name
             user.role = role
             user.branch = user.branch or "Head Office"
             user.email_verified = True
@@ -284,7 +284,7 @@ def ensure_operations_test_accounts(db: Session) -> None:
             db.add(user)
             continue
 
-        user.full_name = full_name
+        user.full_name = user.full_name or full_name
         user.password_hash = hash_password(password)
         user.role = role
         user.employee_id = employee_id
@@ -342,7 +342,7 @@ def ensure_v81_test_employee_accounts(db: Session) -> None:
             continue
 
         user.email = email
-        user.full_name = full_name
+        user.full_name = user.full_name or full_name
         if not verify_password(password, user.password_hash):
             user.password_hash = hash_password(password)
             user.token_version = (user.token_version or 0) + 1

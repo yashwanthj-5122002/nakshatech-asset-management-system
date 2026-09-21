@@ -24,6 +24,25 @@ export function formatStandardDateTime(value: string | null | undefined): string
   return `${byType.month} ${byType.day}, ${byType.year} · ${byType.hour}:${byType.minute}:${byType.second} ${byType.dayPeriod}`
 }
 
+/**
+ * Short, scannable timestamp for notification lists: "Today, 12:05 PM",
+ * "Yesterday, 3:12 PM" or "19 Sep, 12:05 PM". Seconds are deliberately omitted.
+ */
+export function formatNotificationTimestamp(value: string | null | undefined, nowMs = Date.now()): string {
+  const date = parseServerDateTime(value)
+  if (!date) return '—'
+
+  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).format(date)
+  const startOfDay = (input: Date) => new Date(input.getFullYear(), input.getMonth(), input.getDate()).getTime()
+  const dayDelta = Math.round((startOfDay(new Date(nowMs)) - startOfDay(date)) / 86_400_000)
+  if (dayDelta === 0) return `Today, ${time}`
+  if (dayDelta === 1) return `Yesterday, ${time}`
+
+  const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(date)
+  if (date.getFullYear() === new Date(nowMs).getFullYear()) return `${day}, ${time}`
+  return `${day} ${date.getFullYear()}, ${time}`
+}
+
 export function formatDuration(startValue: string | null | undefined, endValue?: string | null, nowMs = Date.now()): string {
   const start = parseServerDateTime(startValue)
   const end = endValue ? parseServerDateTime(endValue) : null

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
-import { formatStandardDateTime } from '../lib/dateTime'
+import { formatNotificationTimestamp } from '../lib/dateTime'
 
 type NotificationCategory = 'approval' | 'ticket' | 'system'
 type NotificationFilter = 'all' | 'unread' | 'approval' | 'ticket'
@@ -287,15 +287,18 @@ export function GlobalNotificationBell() {
                 </span>
                 <span className="notification-item-copy">
                   <span className="notification-item-meta">
-                    <span>{categoryLabel(notification.category)}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{formatStandardDateTime(notification.created_at)}</span>
+                    <span className={`notification-category-chip ${notification.category}`}>{categoryLabel(notification.category)}</span>
+                    <span className="notification-item-time">{formatNotificationTimestamp(notification.created_at)}</span>
                   </span>
                   <strong>{notification.title}</strong>
                   <span className="notification-message">{notification.message}</span>
                 </span>
-                <span className="notification-item-status" aria-label={notification.is_read ? 'Read' : 'Unread'}>
-                  {notification.is_read ? <Check size={13} aria-hidden="true" /> : <span className="notification-unread-dot" />}
+                <span
+                  className={`notification-item-status ${notification.is_read ? 'read' : 'unread'}`}
+                  aria-label={notification.is_read ? 'Read' : 'Unread'}
+                >
+                  {notification.is_read ? <Check size={12} aria-hidden="true" /> : <span className="notification-unread-dot" aria-hidden="true" />}
+                  <span>{notification.is_read ? 'Read' : 'New'}</span>
                 </span>
               </button>
             ))}

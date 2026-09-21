@@ -1,8 +1,9 @@
-import { Activity, BriefcaseBusiness, Building2, CheckCircle2, Clock3, FileText, FolderKanban, RefreshCw, RefreshCcw, RotateCcw, Shield, WalletCards } from 'lucide-react'
+import { Activity, BriefcaseBusiness, Building2, CheckCircle2, Clock3, FileText, RefreshCw, RefreshCcw, RotateCcw, Shield, WalletCards } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { StatCard } from '../../../components/StatCard'
+import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
 import '../operations.css'
 
@@ -11,14 +12,25 @@ type ProjectRow = {
   id:number; project_code:string; project_name:string; client_code?:string|null; client_name?:string|null;
   workflow_status:string; normalized_status:string; updated_at?:string; finance_feedback?:string|null; events?:EventRow[]
 }
+type ClientRow = {
+  id:number; client_code:string; client_name:string; location?:string|null; country?:string|null;
+  contact_person_name?:string|null; project_count?:number
+}
 type Dashboard = {
   summary:{total:number;draft:number;pending_finance:number;returned:number;approved:number;completion_pending:number;closed:number};
-  clients:Array<{id:number}>; projects:ProjectRow[]
+  clients:ClientRow[]; projects:ProjectRow[]
 }
 
 function label(value:string){return value.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}
 
+function greetingFor(name:string){
+  const hour = new Date().getHours()
+  const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  return `${part}, ${name}`
+}
+
 export function BDDashboardPage(){
+  const { user } = useAuth()
   const [data,setData]=useState<Dashboard|null>(null)
   const [error,setError]=useState('')
   const [loading,setLoading]=useState(true)
@@ -38,8 +50,11 @@ export function BDDashboardPage(){
       .sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,10)
   },[data])
 
+  const firstName = (user?.full_name || '').trim().split(/\s+/)[0] || 'there'
+
   return <div className="operations-page">
-    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · PROJECT OPERATIONS V8.1" title="BD Dashboard" description="Portfolio summary for Client intake, Finance review, operational progress and closure." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
+    <DashboardHeader eyebrow="PROJECT OPERATIONS · V8.1" title={greetingFor(firstName)} description="Here is your portfolio at a glance." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
+
     {error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
     {loading&&<section className="operations-panel"><div className="operations-empty"><span className="spinner"/> Loading BD summary…</div></section>}
     {data&&<>
@@ -52,12 +67,6 @@ export function BDDashboardPage(){
         <StatCard icon={FileText} label="Draft" value={data.summary.draft} tone="blue"/>
         <StatCard icon={WalletCards} label="Closure Pending" value={data.summary.completion_pending} tone="orange"/>
         <StatCard icon={Shield} label="Closed" value={data.summary.closed} tone="teal"/>
-      </section>
-
-      <section className="operations-quick-links">
-        <Link to="/bd/clients"><Building2 size={20}/><div><strong>Client Management</strong><span>Search clients, view details, add clients and create projects in client context.</span></div></Link>
-        <Link to="/bd/projects"><FolderKanban size={20}/><div><strong>Project Management</strong><span>Search, filter, correct, submit and assign approved projects.</span></div></Link>
-        <Link to="/notifications"><Activity size={20}/><div><strong>Notifications</strong><span>Review Finance decisions and operational updates.</span></div></Link>
       </section>
 
       <div className="operations-summary-columns">

@@ -1,5 +1,6 @@
 import { Plus, RefreshCcw, RefreshCw } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import { BackToClientsButton, ClientDetailPanel, ClientProjectsPanel, ClientRegisterPanel } from '../components/ClientRegister'
@@ -28,6 +29,12 @@ export function BDClientManagementPage(){
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
   function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
+
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const requested = Number(searchParams.get('client'))
+    if (Number.isInteger(requested) && requested > 0) { setSelectedId(requested); setShowProjectForm(false) }
+  }, [searchParams])
 
   useEffect(() => {
    if (!notice) return
@@ -66,7 +73,10 @@ export function BDClientManagementPage(){
   }
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT" title="Client Management" description="Find an existing client before creating a new one. Project creation always starts from the selected Client ID." actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>}/>
+    <DashboardHeader eyebrow="CLIENT MASTER" title="Client Management" description="Find an existing client before creating a new one. Project creation always starts from the selected Client ID." details={<>
+      <div><span>Clients on record</span><strong>{data?.clients.length ?? 0}</strong></div>
+      <div><span>Projects linked</span><strong>{data?.projects.length ?? 0}</strong></div>
+    </>} actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>}/>
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
 
     {showClientForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW CLIENT</span><h2>Client Details</h2><p>Client ID is manually entered and duplicate IDs are rejected by the backend.</p></div></header><form className="operations-form-grid" onSubmit={createClient}>

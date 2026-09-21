@@ -457,7 +457,29 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Invalid access mode")
     if requested_role and requested_role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role selected")
-    email = ensure_allowed_email(str(payload.email))
+
+    # Sign-in accepts either the official email address or the Employee ID. An identifier without
+    # "@" is treated as an Employee ID and resolved to the account's email before the normal checks.
+    raw_identifier = str(payload.email or "").strip()
+    if not raw_identifier:
+        raise HTTPException(status_code=400, detail="Enter your official email or Employee ID")
+    if "@" not in raw_identifier:
+        matched = db.scalar(select(User).where(func.lower(User.employee_id) == raw_identifier.lower()))
+        if matched is None:
+            record_audit(
+                db,
+                event_type="LOGIN_FAILED",
+                request=request,
+                actor_email=raw_identifier,
+                result="failed",
+                module="authentication",
+                details={"reason": "unknown_employee_id"},
+            )
+            db.commit()
+            raise HTTPException(status_code=401, detail="Invalid email/Employee ID or password")
+        email = ensure_allowed_email(str(matched.email))
+    else:
+        email = ensure_allowed_email(raw_identifier)
 
     if requested_role in FIRST_LOGIN_PRIVILEGED_ROLES and not is_authorized_privileged_email(requested_role, email):
         record_audit(

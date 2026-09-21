@@ -4,7 +4,8 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # Accepts either the official email address or the Employee ID.
+    email: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=6)
     role: str | None = None
     access_mode: str | None = None

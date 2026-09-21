@@ -144,7 +144,7 @@ export function BDClientFeedbackPage() {
 
   return <div className="operations-page">
     <DashboardHeader
-      eyebrow="BUSINESS DEVELOPMENT · CLIENT FEEDBACK LIFECYCLE"
+      eyebrow="CLIENT FEEDBACK LIFECYCLE"
       title="Client Feedback"
       description="Send secure post-delivery feedback requests, confirm client classification and drive Ready For Billing hand-off to Finance."
       actions={<button className="operations-button secondary" onClick={loadDashboard}><RefreshCcw size={16}/> Refresh</button>}
