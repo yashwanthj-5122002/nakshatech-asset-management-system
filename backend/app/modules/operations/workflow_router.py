@@ -21,6 +21,8 @@ from app.modules.operations.schemas import (
     WorkflowPMAssignment,
     WorkflowProjectCreate,
     WorkflowReviewRequest,
+    WorkflowReworkAllocation,
+    WorkflowReworkTeamConfirm,
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
 )
@@ -31,11 +33,13 @@ from app.modules.operations.workflow_service import (
     FINANCE_ROLE,
     MANAGEMENT_ROLE,
     ORTHO_ROLE,
+    allocate_rework_work,
     allocate_work,
     assign_project_manager,
     bd_dashboard,
     complete_production,
     configure_team,
+    confirm_rework_team,
     create_bd_client,
     create_bd_project,
     update_bd_project,
@@ -94,6 +98,23 @@ def _audit(request: Request, db: Session, auth: CurrentAuth, event: str, target:
 
 @router.get("/bd/dashboard")
 def workflow_bd_dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
+    _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    return bd_dashboard(db, actor=auth.user, role=_role(auth))
+
+@router.get("/bd/project-register")
+def workflow_bd_project_register(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    return bd_dashboard(db, actor=auth.user, role=_role(auth))
+
+
+@router.get("/bd/client-register")
+def workflow_bd_client_register(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
     _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return bd_dashboard(db, actor=auth.user, role=_role(auth))
 
@@ -294,6 +315,44 @@ def workflow_team_setup(
         raise _error(exc) from exc
     email_team_assignments(db, project_id=project_id, roles_by_user=roles_by_user)
     return {"project_id": project_id, "workflow_status": workflow.status, "roles_by_user": roles_by_user}
+
+
+@router.post("/ortho/rework-cycles/{cycle_id}/team")
+def workflow_rework_team(
+    cycle_id: int,
+    payload: WorkflowReworkTeamConfirm,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, ORTHO_ROLE)
+    try:
+        cycle, roles_by_user = confirm_rework_team(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
+        _audit(request, db, auth, "WORKFLOW_PM_REWORK_TEAM_CONFIRMED", "finance_project", cycle.project_id, {"rework_cycle_id": cycle.id, "cycle_number": cycle.cycle_number, "mode": payload.mode, "team_leader_user_id": cycle.team_leader_user_id, "workflow_status": cycle.status})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"rework_cycle_id": cycle_id, "status": cycle.status, "project_id": cycle.project_id, "roles_by_user": roles_by_user}
+
+
+@router.post("/ortho/rework-cycles/{cycle_id}/work-packages", status_code=status.HTTP_201_CREATED)
+def workflow_allocate_rework(
+    cycle_id: int,
+    payload: WorkflowReworkAllocation,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, EMPLOYEE_ROLE)
+    try:
+        package = allocate_rework_work(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
+        _audit(request, db, auth, "WORKFLOW_TL_REWORK_WORK_ALLOCATED", "finance_project", package.project_id, {"rework_cycle_id": cycle_id, "package_code": package.package_code, "rework_of_package_id": package.rework_of_package_id})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"id": package.id, "package_code": package.package_code, "rework_cycle_id": package.rework_cycle_id, "rework_of_package_id": package.rework_of_package_id}
 
 
 @router.post("/ortho/projects/{project_id}/work-packages", status_code=status.HTTP_201_CREATED)

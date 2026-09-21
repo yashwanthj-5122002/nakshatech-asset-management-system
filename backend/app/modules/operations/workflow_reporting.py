@@ -11,6 +11,11 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.entities import User
 from app.modules.finance.models import FinanceClient, FinanceProject
 from app.modules.operations.models import ProjectWorkflow, ProjectWorkflowEvent
+from app.modules.operations.workflow_service import (
+    WORKFLOW_CLOSED,
+    WORKFLOW_FINANCE_CLOSURE_PENDING,
+    normalized_workflow_status,
+)
 
 
 REPORT_TYPES = {"clients", "projects", "clients_projects", "finance_approval_history", "project_closure"}
@@ -153,7 +158,7 @@ def build_project_operations_workbook(
                 workflow.submission_count if workflow else 0,
                 users[pm_id].full_name if pm_id in users else None,
                 workflow.status if workflow else (project.master_profile.project_status if project.master_profile else None),
-                "closed" if workflow and workflow.status == "closed" else ("closure_pending" if workflow and workflow.status == "finance_closure_pending" else "open"),
+                "closed" if workflow and normalized_workflow_status(workflow.status) == WORKFLOW_CLOSED else ("closure_pending" if workflow and normalized_workflow_status(workflow.status) == WORKFLOW_FINANCE_CLOSURE_PENDING else "open"),
                 workflow.finance_closed_at if workflow else None,
             ])
 

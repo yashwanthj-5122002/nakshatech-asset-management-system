@@ -9,7 +9,7 @@ import '../operations.css'
 type EventRow = { id:number; event_type:string; actor_name?:string|null; created_at:string; comments?:string|null }
 type ProjectRow = {
   id:number; project_code:string; project_name:string; client_code?:string|null; client_name?:string|null;
-  workflow_status:string; updated_at?:string; finance_feedback?:string|null; events?:EventRow[]
+  workflow_status:string; normalized_status:string; updated_at?:string; finance_feedback?:string|null; events?:EventRow[]
 }
 type Dashboard = {
   summary:{total:number;draft:number;pending_finance:number;returned:number;approved:number;completion_pending:number;closed:number};
@@ -60,7 +60,7 @@ export function BDDashboardPage(){
 
       <div className="operations-summary-columns">
         <section className="operations-panel"><header><div><span className="operations-kicker">RECENT PROJECTS</span><h2>Latest Portfolio Activity</h2></div><Link className="operations-button secondary" to="/bd/projects">View All</Link></header>
-          {!recentProjects.length?<div className="operations-empty">No V8.1 projects yet.</div>:<div className="operations-daily-list">{recentProjects.map(row=><article className="operations-daily-card" key={row.id}><div className="operations-daily-heading"><div><span className="operations-kicker">{row.client_code||'CLIENT ID NOT RECORDED'}</span><h3>{row.project_code}</h3><p>{row.project_name}</p></div><span className={`operations-status ${row.workflow_status==='finance_returned'?'danger':row.workflow_status==='closed'?'success':'warning'}`}>{label(row.workflow_status)}</span></div>{row.finance_feedback&&<small><b>Finance feedback:</b> {row.finance_feedback}</small>}</article>)}</div>}
+          {!recentProjects.length?<div className="operations-empty">No V8.1 projects yet.</div>:<div className="operations-daily-list">{recentProjects.map(row=><article className="operations-daily-card" key={row.id}><div className="operations-daily-heading"><div><span className="operations-kicker">{row.client_code||'CLIENT ID NOT RECORDED'}</span><h3>{row.project_code}</h3><p>{row.project_name}</p></div><span className={`operations-status ${row.normalized_status==='finance_returned'?'danger':row.normalized_status==='closed'?'success':'warning'}`}>{label(row.workflow_status)}</span></div>{row.finance_feedback&&<small><b>Finance feedback:</b> {row.finance_feedback}</small>}</article>)}</div>}
         </section>
         <section className="operations-panel"><header><div><span className="operations-kicker">RECENT ACTIVITY</span><h2>Project History</h2></div></header>
           {!recentActivity.length?<div className="operations-empty">No workflow activity yet.</div>:<div className="operations-activity-list">{recentActivity.map(row=><div key={`${row.project_code}-${row.id}`}><Activity size={15}/><div><strong>{row.project_code} · {label(row.event_type)}</strong><span>{row.actor_name||'System'} · {new Date(row.created_at).toLocaleString('en-IN')}</span>{row.comments&&<small>{row.comments}</small>}</div></div>)}</div>}

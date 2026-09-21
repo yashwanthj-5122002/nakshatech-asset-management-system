@@ -1,7 +1,9 @@
-import { ArrowLeft, Building2, FolderPlus, MapPin, Plus, RefreshCcw, Search, UserRound } from 'lucide-react'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { Plus, RefreshCcw } from 'lucide-react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
+import { BackToClientsButton, ClientDetailPanel, ClientProjectsPanel, ClientRegisterPanel } from '../components/ClientRegister'
+import { useClientRegister } from '../components/useClientRegister'
 import '../operations.css'
 
 type Client = {
@@ -13,22 +15,21 @@ type Client = {
 type Project = {id:number;client_id:number;project_code:string;project_name:string;scope_text?:string|null;workflow_status:string;start_date?:string|null;end_date?:string|null}
 type Dashboard = {clients:Client[];projects:Project[]}
 type ClientForm = {client_code:string;client_name:string;client_email:string;organization_email:string;address:string;gst_number:string;contact_person_name:string;contact_person_email:string;contact_person_phone:string;bd_name:string}
-type ProjectForm = {project_code:string;project_name:string;scope_text:string;start_date:string;end_date:string;commercial_value:string;currency:string;po_wo_number:string;description:string;attachment_references:string}
+type ProjectForm = {project_code:string;project_name:string;scope_text:string;start_date:string;end_date:string;description:string}
 
 const emptyClient:ClientForm={client_code:'',client_name:'',client_email:'',organization_email:'',address:'',gst_number:'',contact_person_name:'',contact_person_email:'',contact_person_phone:'',bd_name:''}
-const emptyProject:ProjectForm={project_code:'',project_name:'',scope_text:'',start_date:'',end_date:'',commercial_value:'',currency:'INR',po_wo_number:'',description:'',attachment_references:''}
-function label(value:string){return value.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}
+const emptyProject:ProjectForm={project_code:'',project_name:'',scope_text:'',start_date:'',end_date:'',description:''}
 
 export function BDClientManagementPage(){
-  const [data,setData]=useState<Dashboard|null>(null);const [query,setQuery]=useState('');const [selectedId,setSelectedId]=useState<number|null>(null)
+  const [data,setData]=useState<Dashboard|null>(null);const [selectedId,setSelectedId]=useState<number|null>(null)
+  const register=useClientRegister(data?.clients??[])
   const [showClientForm,setShowClientForm]=useState(false);const [showProjectForm,setShowProjectForm]=useState(false)
   const [clientForm,setClientForm]=useState<ClientForm>(emptyClient);const [projectForm,setProjectForm]=useState<ProjectForm>(emptyProject)
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
   function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
-  const clients=useMemo(()=>{const needle=query.trim().toLowerCase();return (data?.clients??[]).filter(row=>!needle||row.client_code.toLowerCase().includes(needle)||row.client_name.toLowerCase().includes(needle))},[data,query])
   const selected=data?.clients.find(row=>row.id===selectedId)??null
-  const projects=(data?.projects??[]).filter(row=>row.client_id===selectedId)
+  const projects=(data?.projects??[]).filter(row=>row.client_id===selectedId).map(row=>({...row,status:row.workflow_status}))
 
   async function createClient(event:FormEvent){
     event.preventDefault();setBusy(true);setError('');setNotice('')
@@ -49,9 +50,9 @@ export function BDClientManagementPage(){
     try{
       const result=await apiFetch<{project_id:number;project_code:string}>('/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,start_date:projectForm.start_date,end_date:projectForm.end_date,
-        scope_text:projectForm.scope_text,quantity:null,quantity_unit:'unit',priority:'medium',commercial_value:projectForm.commercial_value===''?null:Number(projectForm.commercial_value),
-        currency:projectForm.currency,po_wo_number:projectForm.po_wo_number||null,description:projectForm.description||null,
-        attachment_references:projectForm.attachment_references.split('\n').map(value=>value.trim()).filter(Boolean),
+        scope_text:projectForm.scope_text,quantity:null,quantity_unit:'unit',priority:'medium',
+        // Project Value / Currency / PO-WO / Attachments are not collected on this form; send the backend's own defaults.
+        commercial_value:null,currency:'INR',po_wo_number:null,attachment_references:[],description:projectForm.description||null,
       })})
       if(submit)await apiFetch(`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
       setProjectForm(emptyProject);setShowProjectForm(false);setNotice(`${result.project_code} ${submit?'submitted to Finance':'saved as Draft'}.`);load()
@@ -76,16 +77,11 @@ export function BDClientManagementPage(){
       <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy}>Create Client</button><button type="button" className="operations-button secondary" onClick={()=>setShowClientForm(false)}>Cancel</button></div>
     </form></section>}
 
-    {!selected&&<section className="operations-panel"><header><div><span className="operations-kicker">CLIENT REGISTER</span><h2>Existing Clients</h2></div><label className="operations-search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search Client ID / Client Name"/></label></header>
-      <div className="operations-client-grid">{clients.map(row=><article key={row.id} className="operations-client-card"><div><Building2 size={22}/><span className="operations-status">{row.client_code}</span></div><h3>{row.client_name}</h3><p><MapPin size={14}/>{row.location||row.country||'Location not recorded'}</p><p><UserRound size={14}/>{row.contact_person_name||'Contact not recorded'}</p><strong>{row.project_count} Project{row.project_count===1?'':'s'}</strong><div className="operations-actions"><button className="operations-button secondary" onClick={()=>setSelectedId(row.id)}>View Client</button><button className="operations-button" onClick={()=>{setSelectedId(row.id);setShowProjectForm(true)}}><FolderPlus size={15}/> Create Project</button></div></article>)}</div>
-      {!clients.length&&<div className="operations-empty">No client matches that Client ID or Organization Name.</div>}
-    </section>}
+    {!selected&&<ClientRegisterPanel register={register} loading={!data&&!error} onView={setSelectedId} onCreateProject={id=>{setSelectedId(id);setShowProjectForm(true)}}/>}
 
     {selected&&<>
-      <button className="operations-button secondary" onClick={()=>{setSelectedId(null);setShowProjectForm(false)}}><ArrowLeft size={15}/> Back to Clients</button>
-      <section className="operations-panel"><header><div><span className="operations-kicker">{selected.client_code}</span><h2>{selected.client_name}</h2><p>{selected.location||selected.country||'Location not recorded'}</p></div><button className="operations-button" onClick={()=>setShowProjectForm(true)}><FolderPlus size={15}/> Create Project</button></header>
-        <div className="operations-detail-grid"><div><span>GST</span><strong>{selected.gst_number||'—'}</strong></div><div><span>Client Email</span><strong>{selected.client_email||'—'}</strong></div><div><span>Organization Email</span><strong>{selected.organization_email||'—'}</strong></div><div><span>Contact Person</span><strong>{selected.contact_person_name||'—'}</strong></div><div><span>Contact Email</span><strong>{selected.contact_person_email||'—'}</strong></div><div><span>Contact Phone</span><strong>{selected.contact_person_phone||'—'}</strong></div><div><span>BD Person</span><strong>{selected.bd_name||selected.source_person_name||'—'}</strong></div><div><span>Audit</span><strong>Created by {selected.created_by_name||'System'} · Updated by {selected.updated_by_name||'System'}</strong></div></div>
-      </section>
+      <BackToClientsButton onClick={()=>{setSelectedId(null);setShowProjectForm(false)}}/>
+      <ClientDetailPanel client={selected} onCreateProject={()=>setShowProjectForm(true)}/>
 
       {showProjectForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW PROJECT · {selected.client_code}</span><h2>{selected.client_name}</h2><p>Client context is fixed for this Project draft.</p></div></header><form className="operations-form-grid" onSubmit={event=>{event.preventDefault();void createProject(false)}}>
         <label className="operations-field"><span>Project ID * (manual)</span><input required value={projectForm.project_code} onChange={e=>setProjectForm({...projectForm,project_code:e.target.value.toUpperCase()})}/></label>
@@ -93,15 +89,11 @@ export function BDClientManagementPage(){
         <label className="operations-field"><span>Start Date *</span><input required type="date" value={projectForm.start_date} onChange={e=>setProjectForm({...projectForm,start_date:e.target.value})}/></label>
         <label className="operations-field"><span>End Date *</span><input required type="date" min={projectForm.start_date||undefined} value={projectForm.end_date} onChange={e=>setProjectForm({...projectForm,end_date:e.target.value})}/></label>
         <label className="operations-field operations-span-2"><span>Project Scope *</span><textarea required value={projectForm.scope_text} onChange={e=>setProjectForm({...projectForm,scope_text:e.target.value})}/></label>
-        <label className="operations-field"><span>Project Value</span><input type="number" min="0" step="0.01" value={projectForm.commercial_value} onChange={e=>setProjectForm({...projectForm,commercial_value:e.target.value})}/></label>
-        <label className="operations-field"><span>Currency</span><input value={projectForm.currency} onChange={e=>setProjectForm({...projectForm,currency:e.target.value.toUpperCase()})}/></label>
-        <label className="operations-field"><span>PO / WO</span><input value={projectForm.po_wo_number} onChange={e=>setProjectForm({...projectForm,po_wo_number:e.target.value})}/></label>
-        <label className="operations-field"><span>Attachments / References</span><textarea value={projectForm.attachment_references} onChange={e=>setProjectForm({...projectForm,attachment_references:e.target.value})} placeholder="One file or document reference per line"/></label>
         <label className="operations-field operations-span-2"><span>Remarks</span><textarea value={projectForm.description} onChange={e=>setProjectForm({...projectForm,description:e.target.value})}/></label>
         <div className="operations-actions operations-span-2"><button className="operations-button secondary" disabled={busy}>Save Draft</button><button type="button" className="operations-button" disabled={busy} onClick={()=>void createProject(true)}>Submit to Finance</button><button type="button" className="operations-button secondary" onClick={()=>setShowProjectForm(false)}>Cancel</button></div>
       </form></section>}
 
-      <section className="operations-panel"><header><div><span className="operations-kicker">CLIENT PROJECTS</span><h2>Projects for {selected.client_code}</h2></div></header>{!projects.length?<div className="operations-empty">No projects exist for this client.</div>:<div className="operations-table-wrap"><table className="operations-table"><thead><tr><th>Project ID</th><th>Name / Scope</th><th>Dates</th><th>Status</th></tr></thead><tbody>{projects.map(row=><tr key={row.id}><td><strong>{row.project_code}</strong></td><td>{row.project_name}<small>{row.scope_text}</small></td><td>{row.start_date||'—'} → {row.end_date||'—'}</td><td><span className="operations-status">{label(row.workflow_status)}</span></td></tr>)}</tbody></table></div>}</section>
+      <ClientProjectsPanel clientCode={selected.client_code} projects={projects}/>
     </>}
   </div>
 }

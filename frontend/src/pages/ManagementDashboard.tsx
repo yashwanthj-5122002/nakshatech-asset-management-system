@@ -2,14 +2,18 @@ import {
   AlertTriangle,
   ArrowRight,
   Boxes,
+  CheckCircle2,
   ClipboardCheck,
+  Clock3,
   FileBarChart,
   HardDrive,
   History,
   IndianRupee,
   KeyRound,
+  RotateCcw,
   Repeat2,
   ShieldCheck,
+  Wallet,
   Wrench,
   X,
 } from 'lucide-react'
@@ -22,6 +26,7 @@ import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
 import { monthLabel } from '../lib/itMonth'
+import type { LifecycleDashboardSummary } from '../features/operations/lifecycle-types'
 import '../management-auth.css'
 import '../management-control.css'
 
@@ -50,6 +55,7 @@ export function ManagementDashboard() {
   const { selectedMonth } = useITMonthUrl()
   const [summary, setSummary] = useState<ManagementControlSummary | null>(null)
   const [summaryError, setSummaryError] = useState('')
+  const [lifecycle, setLifecycle] = useState<LifecycleDashboardSummary | null>(null)
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -63,6 +69,12 @@ export function ManagementDashboard() {
       .then(setSummary)
       .catch(err => setSummaryError(err instanceof Error ? err.message : 'Unable to load executive control summary'))
   }, [selectedMonth])
+
+  useEffect(() => {
+    void apiFetch<{ summary: LifecycleDashboardSummary }>('/operations/lifecycle/dashboard')
+      .then(data => setLifecycle(data.summary))
+      .catch(() => setLifecycle(null))
+  }, [])
 
   function closePasswordDialog() {
     if (changingPassword) return
@@ -126,8 +138,17 @@ export function ManagementDashboard() {
         <StatCard icon={IndianRupee} label="Approved Purchase Value" value={executive ? `₹${executive.approved_purchase_value.toLocaleString('en-IN')}` : '—'} tone="green" />
       </section>
 
+      {lifecycle && <section className="stats-grid management-control-kpis">
+        <StatCard icon={Clock3} label="Awaiting Client Feedback" value={lifecycle.awaiting_feedback} tone="orange" />
+        <StatCard icon={RotateCcw} label="Rework / BD Classification" value={lifecycle.rework} tone="purple" />
+        <StatCard icon={CheckCircle2} label="Ready For Billing" value={lifecycle.ready_for_billing} tone="green" />
+        <StatCard icon={Wallet} label="Payment Pending" value={lifecycle.payment_pending} tone="blue" />
+        <StatCard icon={AlertTriangle} label="Overdue Invoices" value={lifecycle.overdue} tone="red" />
+      </section>}
+
       <section className="management-cards">
         {user?.role === 'management' && <Link to="/management/approvals"><ClipboardCheck /><div><span className="section-kicker">ONLY PERMISSION QUEUE</span><h2>Purchase Approval Centre</h2><p>{executive?.pending_purchase_requests ?? 0} Purchase Request(s) waiting for Management permission.</p></div><ArrowRight /></Link>}
+        <Link to="/management/project-360"><ClipboardCheck /><div><span className="section-kicker">V8.1 LIFECYCLE COMMAND CENTER</span><h2>Client Feedback, Rework &amp; Billing</h2><p>{lifecycle ? `${lifecycle.awaiting_feedback} awaiting feedback · ${lifecycle.rework} in rework · ${lifecycle.overdue} overdue.` : 'Full Project 360, deemed acceptance authorization, change request decisions and PM chat.'}</p></div><ArrowRight /></Link>
         <Link to="/assets"><HardDrive /><div><span className="section-kicker">READ-ONLY ASSET REGISTER</span><h2>View Every IT Asset</h2><p>Inspect asset tag, employee, workstation, department, device details, lifecycle, work history and replacement history.</p></div><ArrowRight /></Link>
         <Link to="/it"><Boxes /><div><span className="section-kicker">IT EXECUTIVE VIEW</span><h2>Open IT Dashboard</h2><p>{executive?.repair_assets ?? 0} under repair · {executive?.replacement_pending_assets ?? 0} replacement pending · {executive?.available_assets ?? 0} available.</p></div><ArrowRight /></Link>
         <Link to="/work"><Wrench /><div><span className="section-kicker">READ-ONLY OPERATIONS</span><h2>IT Work & Component History</h2><p>{executive?.active_it_work ?? 0} active IT work item(s). Management monitors progress without approving operational completion.</p></div><ArrowRight /></Link>

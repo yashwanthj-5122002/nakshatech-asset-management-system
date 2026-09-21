@@ -1,0 +1,54 @@
+/* Client Register: toolbar, Cards/Excel switch, Excel table and pagination. Loaded after operations.css. */
+.client-register-toolbar { display: grid; gap: 8px; margin-bottom: 14px; }
+.client-register-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 14px; }
+.client-register .client-register-search { flex: 1 1 320px; min-width: min(100%, 280px); align-self: flex-end; position: relative; }
+.client-register-clear { display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: #637083; cursor: pointer; padding: 4px; border-radius: 6px; }
+.client-register-clear:hover { background: #eef4fa; color: #102a43; }
+.client-register-control { display: grid; gap: 4px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #637083; }
+.client-register-control select { border: 1px solid var(--border-color, #cbd5e1); border-radius: 10px; padding: 9px 10px; background: var(--surface, #fff); color: inherit; font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0; min-width: 130px; }
+.client-register-viewswitch { display: inline-flex; border: 1px solid var(--border-color, #cbd5e1); border-radius: 10px; overflow: hidden; background: var(--surface, #fff); }
+.client-register-viewswitch button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #19324d; padding: 9px 13px; font-size: 13px; font-weight: 800; cursor: pointer; text-transform: none; letter-spacing: 0; }
+.client-register-viewswitch button + button { border-left: 1px solid var(--border-color, #cbd5e1); }
+.client-register-viewswitch button.active { background: #0f6fff; color: #fff; }
+.client-register-count { margin: 0; font-size: 13px; font-weight: 700; color: #4a5b6e; }
+.client-register-link { border: 0; background: transparent; padding: 0; color: #0b5cc6; font-weight: 800; cursor: pointer; text-decoration: underline; }
+
+/* Excel view: compact, one line per client, header and Client ID stay visible while scrolling. */
+.client-register .client-excel-wrap { max-height: 70vh; overflow: auto; }
+.client-register .client-excel-table { min-width: 1180px; border-collapse: separate; border-spacing: 0; }
+.client-register .client-excel-table th,
+.client-register .client-excel-table td { padding: 7px 10px; white-space: nowrap; vertical-align: middle; border-right: 1px solid #edf1f5; font-size: .8rem; }
+.client-register .client-excel-table th { position: sticky; top: 0; z-index: 2; background: #f1f5f9; }
+.client-register .client-excel-table tbody tr:nth-child(even) td { background: #fafcfe; }
+.client-register .client-excel-table tbody tr:nth-child(odd) td { background: #fff; }
+.client-register .client-excel-table tbody tr:hover td { background: #eef5ff; }
+.client-register .client-excel-table th:first-child,
+.client-register .client-excel-table td:first-child { position: sticky; left: 0; z-index: 1; }
+.client-register .client-excel-table th:first-child { z-index: 3; }
+.client-register .client-excel-table td span { display: block; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.client-register .client-excel-table td.client-excel-wide span { max-width: 230px; }
+.client-register .client-excel-table td.client-excel-id { font-weight: 800; color: #102a43; }
+.client-register .client-excel-table td.client-excel-name span { font-weight: 700; color: #102a43; max-width: 240px; }
+@media (min-width: 900px) {
+  .client-register .client-excel-table th:last-child,
+  .client-register .client-excel-table td:last-child { position: sticky; right: 0; z-index: 1; box-shadow: -6px 0 8px -6px rgba(15, 23, 42, .2); border-right: 0; }
+  .client-register .client-excel-table th:last-child { z-index: 3; }
+}
+.client-register .client-excel-table .client-excel-num { text-align: right; font-variant-numeric: tabular-nums; }
+.client-register .client-excel-table .client-excel-empty { color: #9aa8b8; }
+.client-register .client-excel-actions .operations-button { min-height: 28px; padding: 4px 10px; font-size: .75rem; margin-right: 6px; }
+.client-register .client-excel-actions .operations-button:last-child { margin-right: 0; }
+
+.client-register-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 16px; }
+.client-register-pagination button { min-width: 36px; padding: 7px 11px; border: 1px solid #d9e5f0; border-radius: 8px; background: #fff; color: #19324d; font-weight: 800; font-size: 13px; cursor: pointer; }
+.client-register-pagination button:hover:not(:disabled):not(.active) { background: #eef4fa; }
+.client-register-pagination button.active { background: #0f6fff; border-color: #0f6fff; color: #fff; }
+.client-register-pagination button:disabled { opacity: .45; cursor: not-allowed; }
+.client-register-gap { padding: 0 4px; color: #637083; font-weight: 800; }
+
+@media (max-width: 720px) {
+  .client-register-controls { gap: 10px; }
+  .client-register .client-register-search { flex-basis: 100%; }
+  .client-register-control { flex: 1 1 130px; }
+  .client-register-control select { width: 100%; }
+}

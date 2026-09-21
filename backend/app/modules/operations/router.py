@@ -741,3 +741,7 @@ router.include_router(phase9_hardening_router)
 # registered for historical compatibility, but the frontend now uses this router.
 from app.modules.operations.workflow_router import router as workflow_router
 router.include_router(workflow_router)
+
+# V8.1 post-operational client feedback, rework, billing, payment and closure lifecycle.
+from app.modules.operations.lifecycle_router import router as lifecycle_router
+router.include_router(lifecycle_router)
