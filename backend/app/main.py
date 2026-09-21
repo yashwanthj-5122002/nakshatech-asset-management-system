@@ -16,6 +16,9 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.modules.backup import models as backup_models  # noqa: F401
 from app.modules.backup.router import router as backup_router
+from app.modules.business import models as business_models  # noqa: F401
+from app.modules.business.router import router as business_router
+from app.modules.business.schema_compat import ensure_business_schema_compatibility
 from app.modules.drone import models as drone_models  # noqa: F401
 from app.modules.drone.router import router as drone_router
 from app.modules.local_backup.router import router as local_backup_router
@@ -362,6 +365,7 @@ def initialize_application() -> None:
         Base.metadata.create_all(bind=engine)
         ensure_schema_compatibility()
         ensure_finance_v2_schema_compatibility()
+        ensure_business_schema_compatibility()
         with SessionLocal() as db:
             if settings.seed_default_users:
                 seed_database(db)
@@ -499,6 +503,7 @@ app.include_router(data_quality_router, prefix=settings.api_prefix)
 app.include_router(naksha_copilot_router, prefix=settings.api_prefix)
 app.include_router(agent_monitor_router, prefix=settings.api_prefix)
 app.include_router(notification_router, prefix=settings.api_prefix)
+app.include_router(business_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
 app.include_router(operations_router, prefix=settings.api_prefix)

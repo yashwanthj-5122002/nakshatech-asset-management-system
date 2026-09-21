@@ -79,6 +79,7 @@ import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
 import { ManagementProject360Page } from './features/operations/pages/ManagementProject360Page'
 import { FinanceClientRegisterPage } from './features/finance/pages/FinanceClientRegisterPage'
 import { FinanceProjectRegisterPage } from './features/finance/pages/FinanceProjectRegisterPage'
+import { BusinessDashboardPage } from './features/business/BusinessDashboardPage'
 
 function WithLayout({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
@@ -164,6 +165,7 @@ export default function App() {
       <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClientRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/projects" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceProjectRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/admin/client-master" element={<ProtectedRoute roles={['admin']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims/:id" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementDashboard /></WithLayout></ProtectedRoute>} />
