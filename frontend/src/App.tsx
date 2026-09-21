@@ -30,6 +30,7 @@ import { RentalAssetReturnsPage } from './pages/RentalAssetReturnsPage'
 import { NakshaCopilotPage } from './features/naksha_copilot/NakshaCopilotPage'
 import { DataQualityCentrePage } from './features/data_quality/DataQualityCentrePage'
 import { WelcomePage } from './pages/WelcomePage'
+import { ProfilePage } from './pages/ProfilePage'
 import { WorkFormPage } from './pages/WorkFormPage'
 import { RecentChangesPage } from './pages/RecentChangesPage'
 import { HandoverReturnPage } from './pages/HandoverReturnPage'
@@ -99,6 +100,7 @@ export default function App() {
       <Route path="/forgot-password" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <ForgotPasswordPage />} />
       <Route path="/verify-authenticator" element={<AuthenticatorPage />} />
       <Route path="/select-branch" element={<BranchSelectionPage />} />
+      <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
       <Route path="/travel-km" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmCreatePage /></WithLayout></ProtectedRoute>} />

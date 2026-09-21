@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, Search } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Search, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { FINANCE_STATUS_OPTIONS, OPERATIONAL_STATUS_OPTIONS, financeLabel, label, operationalLabel, statusKey, type ProjectFilterFields, type StatusOption } from './register-utils'
 import '../operations.css'
@@ -32,7 +32,7 @@ export function ProjectRegisterFilters({ query, onQueryChange, financeFilter, on
   onOperationalFilterChange: (value: string) => void
   financeOptions?: StatusOption[]
 }) {
-  return <div className="operations-filter-grid"><label className="operations-search"><Search size={16} /><input value={query} onChange={e => onQueryChange(e.target.value)} placeholder="Search Project ID / Client ID" /></label><label className="operations-field"><span>Finance Status</span><select value={financeFilter} onChange={e => onFinanceFilterChange(e.target.value)}><option value="all">All</option>{financeOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="operations-field"><span>Operational Status</span><select value={operationalFilter} onChange={e => onOperationalFilterChange(e.target.value)}><option value="all">All</option>{OPERATIONAL_STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>
+  return <div className="operations-filter-grid"><label className="operations-search"><Search size={16} /><input value={query} onChange={e => onQueryChange(e.target.value)} placeholder="Search Project ID / Client ID" aria-label="Search projects" />{query !== '' && <button type="button" className="operations-search-clear" aria-label="Clear search" onClick={() => onQueryChange('')}><X size={15} /></button>}</label><label className="operations-field"><span>Finance Status</span><select value={financeFilter} onChange={e => onFinanceFilterChange(e.target.value)}><option value="all">All</option>{financeOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="operations-field"><span>Operational Status</span><select value={operationalFilter} onChange={e => onOperationalFilterChange(e.target.value)}><option value="all">All</option>{OPERATIONAL_STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>
 }
 
 export function ProjectRegisterTable<T extends RegisterProject>({ rows, readOnly = false, onDetails, renderProjectManager, renderActions }: {

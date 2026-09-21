@@ -1,4 +1,4 @@
-import { Plus, RefreshCcw } from 'lucide-react'
+import { Plus, RefreshCcw, RefreshCw } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
@@ -28,6 +28,12 @@ export function BDClientManagementPage(){
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
   function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
+
+  useEffect(() => {
+   if (!notice) return
+   const handle = window.setTimeout(() => setNotice(''), 6000)
+   return () => window.clearTimeout(handle)
+  }, [notice])
   const selected=data?.clients.find(row=>row.id===selectedId)??null
   const projects=(data?.projects??[]).filter(row=>row.client_id===selectedId).map(row=>({...row,status:row.workflow_status}))
 
@@ -61,7 +67,7 @@ export function BDClientManagementPage(){
 
   return <div className="operations-page">
     <DashboardHeader eyebrow="BUSINESS DEVELOPMENT" title="Client Management" description="Find an existing client before creating a new one. Project creation always starts from the selected Client ID." actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>}/>
-    {notice&&<div className="operations-alert success">{notice}</div>}{error&&<div className="operations-alert error">{error}</div>}
+    {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
 
     {showClientForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW CLIENT</span><h2>Client Details</h2><p>Client ID is manually entered and duplicate IDs are rejected by the backend.</p></div></header><form className="operations-form-grid" onSubmit={createClient}>
       <label className="operations-field"><span>Client Organization Name *</span><input required value={clientForm.client_name} onChange={e=>setClientForm({...clientForm,client_name:e.target.value})}/></label>
@@ -74,7 +80,7 @@ export function BDClientManagementPage(){
       <label className="operations-field"><span>Contact Person Email ID</span><input type="email" value={clientForm.contact_person_email} onChange={e=>setClientForm({...clientForm,contact_person_email:e.target.value})}/></label>
       <label className="operations-field"><span>Contact Person Phone Number</span><input value={clientForm.contact_person_phone} onChange={e=>setClientForm({...clientForm,contact_person_phone:e.target.value})}/></label>
       <label className="operations-field"><span>BD Person Name</span><input value={clientForm.bd_name} onChange={e=>setClientForm({...clientForm,bd_name:e.target.value})}/></label>
-      <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy}>Create Client</button><button type="button" className="operations-button secondary" onClick={()=>setShowClientForm(false)}>Cancel</button></div>
+      <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy}>{busy?'Creating…':'Create Client'}</button><button type="button" className="operations-button secondary" onClick={()=>setShowClientForm(false)}>Cancel</button></div>
     </form></section>}
 
     {!selected&&<ClientRegisterPanel register={register} loading={!data&&!error} onView={setSelectedId} onCreateProject={id=>{setSelectedId(id);setShowProjectForm(true)}}/>}
@@ -90,7 +96,7 @@ export function BDClientManagementPage(){
         <label className="operations-field"><span>End Date *</span><input required type="date" min={projectForm.start_date||undefined} value={projectForm.end_date} onChange={e=>setProjectForm({...projectForm,end_date:e.target.value})}/></label>
         <label className="operations-field operations-span-2"><span>Project Scope *</span><textarea required value={projectForm.scope_text} onChange={e=>setProjectForm({...projectForm,scope_text:e.target.value})}/></label>
         <label className="operations-field operations-span-2"><span>Remarks</span><textarea value={projectForm.description} onChange={e=>setProjectForm({...projectForm,description:e.target.value})}/></label>
-        <div className="operations-actions operations-span-2"><button className="operations-button secondary" disabled={busy}>Save Draft</button><button type="button" className="operations-button" disabled={busy} onClick={()=>void createProject(true)}>Submit to Finance</button><button type="button" className="operations-button secondary" onClick={()=>setShowProjectForm(false)}>Cancel</button></div>
+        <div className="operations-actions operations-span-2"><button className="operations-button secondary" disabled={busy}>{busy?'Saving…':'Save Draft'}</button><button type="button" className="operations-button" disabled={busy} onClick={()=>void createProject(true)}>{busy?'Submitting…':'Submit to Finance'}</button><button type="button" className="operations-button secondary" onClick={()=>setShowProjectForm(false)}>Cancel</button></div>
       </form></section>}
 
       <ClientProjectsPanel clientCode={selected.client_code} projects={projects}/>

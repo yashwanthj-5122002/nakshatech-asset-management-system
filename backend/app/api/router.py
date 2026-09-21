@@ -23,7 +23,7 @@ from app.core.management_access import (
     privileged_account_payload,
 )
 from app.core.database import get_db
-from app.core.security import create_temporary_token, verify_password
+from app.core.security import create_temporary_token, hash_password, verify_password
 from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import (
     Asset, AssetHistory, ComponentReplacement, Drone, DroneLocation, MonthlySnapshotRun,
@@ -32,7 +32,7 @@ from app.models.entities import (
 from app.schemas.asset import (
     AssetAssignment, AssetCreate, AssetResponse, AssetReturn, AssetStatusUpdate, AssetUpdate,
 )
-from app.schemas.auth import LoginRequest, LoginResponse, UserResponse
+from app.schemas.auth import LoginRequest, LoginResponse, PasswordChangeRequest, ProfileUpdateRequest, UserResponse
 from app.schemas.drone import DroneLocationCreate, DroneLocationResponse
 from app.schemas.component_replacement import ComponentChangeBatchCreate, ComponentChangeBatchResponse, ComponentReplacementCreate, ComponentReplacementResponse
 from app.schemas.replacement import ReplacementApproval, ReplacementCreate, ReplacementResubmit, ReplacementResponse
@@ -620,8 +620,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     )
 
 
-@router.get("/auth/me", response_model=UserResponse)
-def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_db)) -> UserResponse:
+def _user_response(auth: CurrentAuth, db: Session) -> UserResponse:
     branch_id = auth.claims.get("branch_id")
     branch = db.get(Branch, int(branch_id)) if branch_id is not None else None
     user = auth.user
@@ -629,11 +628,102 @@ def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_
         id=user.id, email=user.email, full_name=user.full_name, role=auth.effective_role,
         branch=branch.name if branch else user.branch, employee_id=user.employee_id,
         department=user.department, designation=user.designation,
+        phone_number=user.phone_number,
+        joining_date=user.joining_date,
+        date_of_birth=user.date_of_birth,
+        created_at=user.created_at,
         selected_branch_id=branch.id if branch else None,
         selected_branch_name=branch.name if branch else None,
         email_verified=user.email_verified,
         mfa_enabled=get_confirmed_authenticator(db, user.id) is not None,
     )
+
+
+@router.get("/auth/me", response_model=UserResponse)
+def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_db)) -> UserResponse:
+    return _user_response(auth, db)
+
+
+@router.get("/auth/profile", response_model=UserResponse)
+def get_profile(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_db)) -> UserResponse:
+    return _user_response(auth, db)
+
+
+@router.patch("/auth/profile", response_model=UserResponse)
+def update_profile(
+    payload: ProfileUpdateRequest,
+    request: Request,
+    auth: CurrentAuth = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    user = auth.user
+    changed: list[str] = []
+    if payload.full_name is not None and payload.full_name.strip() != user.full_name:
+        user.full_name = payload.full_name.strip()
+        changed.append("full_name")
+    if payload.phone_number is not None and (payload.phone_number.strip() or None) != user.phone_number:
+        user.phone_number = payload.phone_number.strip() or None
+        changed.append("phone_number")
+    if payload.date_of_birth is not None and payload.date_of_birth != user.date_of_birth:
+        user.date_of_birth = payload.date_of_birth
+        changed.append("date_of_birth")
+    if not changed:
+        return _user_response(auth, db)
+    db.add(user)
+    record_audit(
+        db,
+        event_type="USER_PROFILE_UPDATED",
+        request=request,
+        user=user,
+        module="authentication",
+        target_type="user",
+        target_id=str(user.id),
+        details={"fields": changed},
+    )
+    db.commit()
+    db.refresh(user)
+    return _user_response(auth, db)
+
+
+@router.post("/auth/change-password")
+def change_own_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    auth: CurrentAuth = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    user = auth.user
+    if not verify_password(payload.current_password, user.password_hash):
+        record_audit(
+            db,
+            event_type="USER_PASSWORD_CHANGE_FAILED",
+            request=request,
+            user=user,
+            result="failed",
+            module="authentication",
+            details={"reason": "invalid_current_password"},
+        )
+        db.commit()
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="New password and confirmation do not match")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Use at least 8 characters for the new password")
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="New password must be different from the current password")
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    user.token_version = int(user.token_version or 0) + 1
+    record_audit(
+        db,
+        event_type="USER_PASSWORD_CHANGED",
+        request=request,
+        user=user,
+        module="authentication",
+        details={"sessions_revoked": True},
+    )
+    db.commit()
+    return {"message": "Password changed successfully. Sign in again using the new password."}
 
 
 @router.get("/dashboard/summary")

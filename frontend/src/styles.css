@@ -1823,7 +1823,9 @@ td strong { color: #173960; }
   display: grid;
   gap: 4px;
   padding: 7px 0 15px;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(8, 184, 217, 0.28) transparent;
 }
@@ -1856,7 +1858,7 @@ td strong { color: #173960; }
   box-shadow: inset 3px 0 0 var(--primary-cyan), 0 8px 18px rgba(1, 19, 39, 0.14);
 }
 .app-shell .sidebar nav a.active svg { color: #45ddf1; }
-.app-shell .sidebar-footer { margin-top: auto; display: grid; gap: 10px; }
+.app-shell .sidebar-footer { margin-top: auto; display: grid; gap: 10px; flex: 0 0 auto; }
 .app-shell .sidebar-department-card {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr);
@@ -1866,7 +1868,11 @@ td strong { color: #173960; }
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 180ms ease, background 180ms ease;
 }
+.app-shell .sidebar-department-card:hover { border-color: rgba(126, 230, 244, 0.42); background: rgba(255, 255, 255, 0.08); }
 .app-shell .sidebar-department-card > div:last-child { min-width: 0; }
 .app-shell .sidebar-department-card small,
 .app-shell .sidebar-department-card strong,
@@ -6061,7 +6067,9 @@ td strong { color: #173960; }
 .app-shell .sidebar {
   width: var(--layout-sidebar-width);
   min-width: 0;
-  padding: 20px 14px 18px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 20px 14px max(18px, env(safe-area-inset-bottom));
 }
 
 .app-shell .sidebar nav a {

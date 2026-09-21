@@ -26,6 +26,8 @@ class User(Base):
     department: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     designation: Mapped[str | None] = mapped_column(String(160), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    joining_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     account_status: Mapped[str] = mapped_column(String(40), default="active", index=True)
     mfa_required: Mapped[bool] = mapped_column(Boolean, default=False)

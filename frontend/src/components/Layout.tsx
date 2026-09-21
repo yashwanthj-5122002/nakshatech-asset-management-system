@@ -35,13 +35,13 @@ import {
 } from 'lucide-react'
 import { DroneIcon as Drone, type AppIcon } from './DroneIcon'
 import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useITMonth } from '../context/ITMonthContext'
 import type { Role } from '../types'
 import { Logo } from './Logo'
 import { GlobalNotificationBell } from './GlobalNotificationBell'
-import { canAccessRole, isFullAccessRole, roleDisplayName } from '../lib/roles'
+import { canAccessRole, isFullAccessRole } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import { apiFetch } from '../lib/api'
 
@@ -283,14 +283,14 @@ export function Layout({ children }: { children: ReactNode }) {
             : available.map(renderNavItem)}
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-department-card">
+          <NavLink className="sidebar-department-card" to="/profile" onClick={() => setMobileOpen(false)} aria-label="Open your profile">
             <div className="user-avatar">{currentUser.full_name.charAt(0)}</div>
             <div>
               <small>{roleMeta.name}</small>
               <strong>{currentUser.full_name}</strong>
               <span>{roleMeta.subtitle} · {currentUser.branch}</span>
             </div>
-          </div>
+          </NavLink>
           <button className="ghost-button" onClick={logout}><LogOut size={17} /> Logout</button>
         </div>
       </aside>
@@ -302,7 +302,6 @@ export function Layout({ children }: { children: ReactNode }) {
             <GlobalNotificationBell />
             <div className="topbar-actions">
               <span className="topbar-context"><PackageCheck size={17} />{currentUser.role === 'drone' ? 'Drone operations workspace' : currentUser.role === 'bd' || location.pathname.startsWith('/bd') ? 'Business Development workspace' : currentUser.role === 'ortho' || location.pathname.startsWith('/ortho') ? 'Ortho / LiDAR production workspace' : currentUser.role === 'employee' ? `Branch: ${currentUser.selected_branch_name || currentUser.branch}` : currentUser.role === 'finance' || location.pathname.startsWith('/finance') ? 'Finance & project expense workspace' : currentUser.role === 'hr' ? 'HR travel verification workspace' : location.pathname.includes('/travel-km') ? 'Employee travel & KM workflow' : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
-              <span className="topbar-user"><Users size={17} /><b>{roleDisplayName(currentUser.role).toUpperCase()}</b><small>{roleMeta.name}</small></span>
             </div>
           </div>
         </div>

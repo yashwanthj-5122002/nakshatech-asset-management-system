@@ -1,4 +1,4 @@
-import { Activity, BriefcaseBusiness, Building2, CheckCircle2, Clock3, FolderKanban, RefreshCcw, RotateCcw, WalletCards } from 'lucide-react'
+import { Activity, BriefcaseBusiness, Building2, CheckCircle2, Clock3, FileText, FolderKanban, RefreshCw, RefreshCcw, RotateCcw, Shield, WalletCards } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -40,16 +40,18 @@ export function BDDashboardPage(){
 
   return <div className="operations-page">
     <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · PROJECT OPERATIONS V8.1" title="BD Dashboard" description="Portfolio summary for Client intake, Finance review, operational progress and closure." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
-    {error&&<div className="operations-alert error">{error}</div>}
-    {loading&&<section className="operations-panel"><div className="operations-empty">Loading BD summary…</div></section>}
+    {error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
+    {loading&&<section className="operations-panel"><div className="operations-empty"><span className="spinner"/> Loading BD summary…</div></section>}
     {data&&<>
-      <section className="stats-grid">
+      <section className="operations-stats-grid">
         <StatCard icon={Building2} label="Total Clients" value={data.clients.length}/>
         <StatCard icon={BriefcaseBusiness} label="Total Projects" value={data.summary.total}/>
         <StatCard icon={Clock3} label="Pending Finance Approval" value={data.summary.pending_finance} tone="orange"/>
         <StatCard icon={RotateCcw} label="Returned for Correction" value={data.summary.returned} tone="purple"/>
         <StatCard icon={CheckCircle2} label="Finance Approved / Active" value={data.summary.approved} tone="green"/>
+        <StatCard icon={FileText} label="Draft" value={data.summary.draft} tone="blue"/>
         <StatCard icon={WalletCards} label="Closure Pending" value={data.summary.completion_pending} tone="orange"/>
+        <StatCard icon={Shield} label="Closed" value={data.summary.closed} tone="teal"/>
       </section>
 
       <section className="operations-quick-links">

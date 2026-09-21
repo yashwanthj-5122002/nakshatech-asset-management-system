@@ -15,6 +15,10 @@ export interface AuthUser {
   employee_id?: string
   department?: string
   designation?: string
+  phone_number?: string | null
+  joining_date?: string | null
+  date_of_birth?: string | null
+  created_at?: string | null
   selected_branch_id?: number
   selected_branch_name?: string
   email_verified?: boolean
