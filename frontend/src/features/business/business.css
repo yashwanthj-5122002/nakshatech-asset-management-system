@@ -100,6 +100,23 @@
   font-size: 0.85rem;
 }
 
+.business-source-tag {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid #c6dcf2;
+  border-radius: 999px;
+  background: #edf6ff;
+  color: #185fa8;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.business-drift {
+  color: #8a5b0f;
+}
+
 @media (max-width: 900px) {
   .business-month-bar {
     gap: 0.5rem;

@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock3, History, IndianRupee, RefreshCcw, Save, TrendingUp, WalletCards } from 'lucide-react'
+import { CheckCircle2, History, IndianRupee, RefreshCcw, Save, TrendingUp, Wand2, WalletCards } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../components/DashboardHeader'
 import { useAuth } from '../../context/AuthContext'
@@ -20,7 +20,6 @@ import {
 interface Draft {
   amount_total: string
   amount_released: string
-  amount_decided: string
   amount_pending: string
   department_code: string
   notes: string
@@ -32,6 +31,23 @@ function toNumber(value: string): number | null {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed < 0) return null
   return parsed
+}
+
+function draftFromBilling(row: BusinessRecordRow): Draft {
+  return {
+    amount_total: String(row.billing.total ?? 0),
+    amount_released: String(row.billing.released ?? 0),
+    amount_pending: String(row.billing.pending ?? 0),
+    department_code: row.department_code,
+    notes: '',
+  }
+}
+
+function billingDiffers(row: BusinessRecordRow): boolean {
+  if (row.record_id == null) return false
+  return Math.abs(row.amount_total - row.billing.total) > 0.004
+    || Math.abs(row.amount_released - row.billing.released) > 0.004
+    || Math.abs(row.amount_pending - row.billing.pending) > 0.004
 }
 
 function DraftInput({
@@ -91,18 +107,21 @@ export function BusinessDashboardPage() {
 
   useEffect(load, [load])
 
+  // Not-yet-saved rows start from the Billing & Invoices figures so Finance only has to verify and save.
   useEffect(() => {
     if (!data) return
     const next: Record<number, Draft> = {}
     for (const row of data.rows) {
-      next[row.project_id] = {
-        amount_total: String(row.amount_total ?? 0),
-        amount_released: String(row.amount_released ?? 0),
-        amount_decided: String(row.amount_decided ?? 0),
-        amount_pending: String(row.amount_pending ?? 0),
-        department_code: row.department_code,
-        notes: row.notes ?? '',
-      }
+      const saved = row.record_id != null
+      next[row.project_id] = saved
+        ? {
+            amount_total: String(row.amount_total ?? 0),
+            amount_released: String(row.amount_released ?? 0),
+            amount_pending: String(row.amount_pending ?? 0),
+            department_code: row.department_code,
+            notes: row.notes ?? '',
+          }
+        : draftFromBilling(row)
     }
     setDrafts(next)
   }, [data])
@@ -120,9 +139,25 @@ export function BusinessDashboardPage() {
 
   const enteredRows = (data?.rows ?? []).filter((row) => row.record_id != null)
   const verifiedCount = enteredRows.filter((row) => row.status === 'verified').length
+  const pendingBillingRows = (data?.rows ?? []).filter(
+    (row) => row.record_id == null && (row.billing.invoice_count > 0 || row.billing.payment_count > 0),
+  )
 
   function updateDraft(projectId: number, patch: Partial<Draft>) {
     setDrafts((current) => ({ ...current, [projectId]: { ...current[projectId], ...patch } }))
+  }
+
+  function fillFromBilling(row: BusinessRecordRow) {
+    setDrafts((current) => ({ ...current, [row.project_id]: { ...current[row.project_id], ...draftFromBilling(row) } }))
+  }
+
+  function fillAllFromBilling() {
+    setDrafts((current) => {
+      const next = { ...current }
+      for (const row of pendingBillingRows) next[row.project_id] = { ...next[row.project_id], ...draftFromBilling(row) }
+      return next
+    })
+    setNotice(`Filled ${pendingBillingRows.length} project(s) from Billing & Invoices. Review, then save.`)
   }
 
   async function saveRow(row: BusinessRecordRow) {
@@ -131,7 +166,6 @@ export function BusinessDashboardPage() {
     const amounts = {
       amount_total: toNumber(draft.amount_total),
       amount_released: toNumber(draft.amount_released),
-      amount_decided: toNumber(draft.amount_decided),
       amount_pending: toNumber(draft.amount_pending),
     }
     if (Object.values(amounts).some((value) => value === null)) {
@@ -194,6 +228,11 @@ export function BusinessDashboardPage() {
 
   const headerActions = (
     <div className="finance-header-actions">
+      {isFinance && pendingBillingRows.length > 0 && (
+        <button className="finance-secondary-button" type="button" onClick={fillAllFromBilling}>
+          <Wand2 size={16} /> Fill {pendingBillingRows.length} from Billing
+        </button>
+      )}
       <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16} /> Refresh</button>
       {canVerify && enteredRows.length > 0 && (verifiedCount < enteredRows.length
         ? <button className="finance-primary-button" type="button" disabled={busy} onClick={() => verifyMonth(true)}><CheckCircle2 size={16} /> Verify Month</button>
@@ -207,8 +246,8 @@ export function BusinessDashboardPage() {
         eyebrow="BUSINESS · TOTAL SELL"
         title={data ? businessViewerLabel(data.viewer) : 'Business & Total Sell'}
         description={isPrivileged
-          ? 'Finance records the monthly business done per client/project. Totals roll up by department, Project Manager and client, and every change is kept in history.'
-          : 'Track how much business your projects have done each month and how the funds have moved. Only BD and Finance see company-wide totals.'}
+          ? 'Figures come from Billing & Invoices for the month. Verify them, save, and every change is kept in history.'
+          : 'Track how much business your projects have done and how much the client has paid.'}
         actions={headerActions}
       />
 
@@ -243,39 +282,27 @@ export function BusinessDashboardPage() {
         </div>
       )}
 
-      {!loading && data && data.viewer !== 'unavailable' && (
+      {!loading && data?.viewer === 'project_manager' && (
         <>
-          <section className="finance-kpi-grid finance-kpi-grid-4">
-            <article className="finance-kpi-card"><span><TrendingUp size={15} /> Total business</span><strong>{formatInr(data.totals.total)}</strong><small>{monthLabel(data.month)}</small></article>
-            <article className="finance-kpi-card"><span><IndianRupee size={15} /> Released</span><strong>{formatInr(data.totals.released)}</strong><small>Funds released by clients</small></article>
-            <article className="finance-kpi-card"><span><WalletCards size={15} /> Decided</span><strong>{formatInr(data.totals.decided)}</strong><small>Approved / decided value</small></article>
-            <article className="finance-kpi-card"><span><Clock3 size={15} /> Pending</span><strong>{formatInr(data.totals.pending)}</strong><small>Still pending</small></article>
+          <section className="finance-kpi-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+            <article className="finance-kpi-card"><span><TrendingUp size={15} /> Business done</span><strong>{formatInr(data.totals.total)}</strong><small>{monthLabel(data.month)}</small></article>
+            <article className="finance-kpi-card"><span><IndianRupee size={15} /> Client paid</span><strong>{formatInr(data.totals.released)}</strong><small>Amount received from the client</small></article>
           </section>
 
-          {isPrivileged && (
-            <section className="finance-breakdown-grid">
-              {([['By Department', data.by_department], ['By Project Manager', data.by_project_manager], ['By Client', data.by_client]] as const).map(([title, items]) => (
-                <BreakdownPanel key={title} title={title} items={items} />
-              ))}
-            </section>
-          )}
-
-          {data.viewer === 'project_manager' && data.my_monthly_history.length > 0 && (
+          {data.my_monthly_history.length > 0 && (
             <section className="finance-panel">
               <div className="finance-panel-header">
-                <div><span className="finance-panel-kicker">MONTH-BY-MONTH</span><h2>My Business History</h2><p>Total business you have done each month across your projects.</p></div>
+                <div><span className="finance-panel-kicker">MONTH-BY-MONTH</span><h2>My Business History</h2><p>Business done and client payments each month across your projects.</p></div>
               </div>
               <div className="finance-table-wrap">
                 <table className="finance-table business-trend-table">
-                  <thead><tr><th>Month</th><th>Total</th><th>Released</th><th>Decided</th><th>Pending</th></tr></thead>
+                  <thead><tr><th>Month</th><th>Business done</th><th>Client paid</th></tr></thead>
                   <tbody>
                     {data.my_monthly_history.map((point) => (
                       <tr key={point.month}>
                         <td><strong>{point.label}</strong></td>
                         <td>{formatInr(point.total)}</td>
                         <td>{formatInr(point.released)}</td>
-                        <td>{formatInr(point.decided)}</td>
-                        <td>{formatInr(point.pending)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -286,11 +313,50 @@ export function BusinessDashboardPage() {
 
           <section className="finance-panel">
             <div className="finance-panel-header">
+              <div><span className="finance-panel-kicker">MY PROJECTS</span><h2>{monthLabel(data.month)} Business</h2><p>Business done and the amount the client has paid for each of your projects.</p></div>
+            </div>
+            {data.rows.length === 0
+              ? <div className="finance-empty-state">No business recorded for your projects this month.</div>
+              : <div className="finance-table-wrap">
+                  <table className="finance-table">
+                    <thead><tr><th>Project</th><th>Client</th><th>Business done</th><th>Client paid</th></tr></thead>
+                    <tbody>
+                      {data.rows.map((row) => (
+                        <tr key={row.project_id}>
+                          <td><strong>{row.project_code}</strong><br /><small>{row.project_name}</small></td>
+                          <td>{row.client_name || '—'}</td>
+                          <td><strong>{formatInr(row.amount_total)}</strong></td>
+                          <td>{formatInr(row.amount_released)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>}
+          </section>
+        </>
+      )}
+
+      {!loading && data && isPrivileged && (
+        <>
+          <section className="finance-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+            <article className="finance-kpi-card"><span><TrendingUp size={15} /> Total business</span><strong>{formatInr(data.totals.total)}</strong><small>{monthLabel(data.month)} · invoiced</small></article>
+            <article className="finance-kpi-card"><span><IndianRupee size={15} /> Released</span><strong>{formatInr(data.totals.released)}</strong><small>Received from clients this month</small></article>
+            <article className="finance-kpi-card"><span><WalletCards size={15} /> Pending</span><strong>{formatInr(data.totals.pending)}</strong><small>Still outstanding</small></article>
+          </section>
+
+          <section className="finance-breakdown-grid">
+            {([['By Department', data.by_department], ['By Project Manager', data.by_project_manager], ['By Client', data.by_client]] as const).map(([title, items]) => (
+              <BreakdownPanel key={title} title={title} items={items} />
+            ))}
+          </section>
+
+          <section className="finance-panel">
+            <div className="finance-panel-header">
               <div>
-                <span className="finance-panel-kicker">{isFinance ? 'FINANCE ENTRY · PER CLIENT / PROJECT' : 'MONTHLY BUSINESS BY PROJECT'}</span>
+                <span className="finance-panel-kicker">{isFinance ? 'FINANCE ENTRY · FROM BILLING & INVOICES' : 'MONTHLY BUSINESS BY PROJECT'}</span>
                 <h2>{isFinance ? 'Monthly Business Entry' : `${monthLabel(data.month)} Business`}</h2>
                 <p>{isFinance
-                  ? 'Record how much business each project did this month. Amounts roll up automatically; changes are kept in history.'
+                  ? 'Values are pre-filled from Billing & Invoices. Check them against the billing record, adjust if needed, then Save. Every change is kept in history.'
                   : 'Project-wise business recorded by Finance for the selected month.'}</p>
               </div>
               {isPrivileged && <small>{verifiedCount} of {enteredRows.length} record(s) verified</small>}
@@ -310,7 +376,6 @@ export function BusinessDashboardPage() {
                         <th>Department</th>
                         <th>Total</th>
                         <th>Released</th>
-                        <th>Decided</th>
                         <th>Pending</th>
                         <th>Status</th>
                         <th>{isFinance ? 'Action' : 'History'}</th>
@@ -320,9 +385,14 @@ export function BusinessDashboardPage() {
                       {rows.map((row) => {
                         const draft = drafts[row.project_id]
                         const editable = isFinance
+                        const hasBilling = row.billing.invoice_count > 0 || row.billing.payment_count > 0
                         return (
                           <tr key={row.project_id} className={savedRow === row.project_id ? 'business-row-saved' : undefined}>
-                            <td><strong>{row.project_code}</strong><br /><small>{row.project_name}</small></td>
+                            <td>
+                              <strong>{row.project_code}</strong><br /><small>{row.project_name}</small>
+                              {!row.record_id && hasBilling && <><br /><span className="business-source-tag">From Billing</span></>}
+                              {billingDiffers(row) && <><br /><small className="business-drift">Billing now: {formatInr(row.billing.total)} / {formatInr(row.billing.released)}</small></>}
+                            </td>
                             <td>{row.project_manager_name || 'PM not assigned'}</td>
                             <td>
                               {editable ? (
@@ -341,14 +411,12 @@ export function BusinessDashboardPage() {
                               <>
                                 <td><DraftInput label="total" value={draft.amount_total} disabled={busy} onChange={(value) => updateDraft(row.project_id, { amount_total: value })} /></td>
                                 <td><DraftInput label="released" value={draft.amount_released} disabled={busy} onChange={(value) => updateDraft(row.project_id, { amount_released: value })} /></td>
-                                <td><DraftInput label="decided" value={draft.amount_decided} disabled={busy} onChange={(value) => updateDraft(row.project_id, { amount_decided: value })} /></td>
                                 <td><DraftInput label="pending" value={draft.amount_pending} disabled={busy} onChange={(value) => updateDraft(row.project_id, { amount_pending: value })} /></td>
                               </>
                             ) : (
                               <>
-                                <td>{formatInr(row.amount_total)}</td>
+                                <td><strong>{formatInr(row.amount_total)}</strong></td>
                                 <td>{formatInr(row.amount_released)}</td>
-                                <td>{formatInr(row.amount_decided)}</td>
                                 <td>{formatInr(row.amount_pending)}</td>
                               </>
                             )}
@@ -359,6 +427,7 @@ export function BusinessDashboardPage() {
                             </td>
                             <td>
                               <div className="finance-header-actions">
+                                {editable && hasBilling && <button className="finance-secondary-button" type="button" disabled={busy} onClick={() => fillFromBilling(row)}><Wand2 size={15} /> Use Billing</button>}
                                 {editable && <button className="finance-primary-button" type="button" disabled={busy} onClick={() => saveRow(row)}><Save size={15} /> Save</button>}
                                 {row.record_id != null && <button className="finance-secondary-button" type="button" onClick={() => openHistory(row)}><History size={15} /> History</button>}
                               </div>

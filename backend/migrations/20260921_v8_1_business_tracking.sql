@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS business_records (
     department_code           VARCHAR(40) NOT NULL DEFAULT 'ortho',
     amount_total              NUMERIC(16, 2) NOT NULL DEFAULT 0.00,
     amount_released           NUMERIC(16, 2) NOT NULL DEFAULT 0.00,
-    amount_decided            NUMERIC(16, 2) NOT NULL DEFAULT 0.00,
     amount_pending            NUMERIC(16, 2) NOT NULL DEFAULT 0.00,
     currency                  VARCHAR(12) NOT NULL DEFAULT 'INR',
     notes                     TEXT,
@@ -32,6 +31,9 @@ CREATE INDEX IF NOT EXISTS ix_business_records_client_id ON business_records (cl
 CREATE INDEX IF NOT EXISTS ix_business_records_project_manager_user_id ON business_records (project_manager_user_id);
 CREATE INDEX IF NOT EXISTS ix_business_records_department_code ON business_records (department_code);
 CREATE INDEX IF NOT EXISTS ix_business_records_status ON business_records (status);
+
+-- The figures are now derived from Billing & Invoices; Decided had no source.
+ALTER TABLE business_records DROP COLUMN IF EXISTS amount_decided;
 
 CREATE TABLE IF NOT EXISTS business_record_history (
     id                      SERIAL PRIMARY KEY,

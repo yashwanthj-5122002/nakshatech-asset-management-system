@@ -1544,7 +1544,6 @@ export type BusinessRecordStatus = 'submitted' | 'verified'
 export interface BusinessTotals {
   total: number
   released: number
-  decided: number
   pending: number
   currency: string
 }
@@ -1554,9 +1553,17 @@ export interface BusinessBreakdownRow {
   label: string
   total: number
   released: number
-  decided: number
   pending: number
   project_count: number
+}
+
+export interface BusinessBillingSuggestion {
+  total: number
+  released: number
+  pending: number
+  currency: string
+  invoice_count: number
+  payment_count: number
 }
 
 export interface BusinessRecordRow {
@@ -1573,13 +1580,13 @@ export interface BusinessRecordRow {
   department_label: string
   amount_total: number
   amount_released: number
-  amount_decided: number
   amount_pending: number
   currency: string
   notes?: string | null
   status: BusinessRecordStatus
   verified_at?: string | null
   updated_at?: string | null
+  billing: BusinessBillingSuggestion
 }
 
 export interface BusinessMonthPoint {
@@ -1587,7 +1594,6 @@ export interface BusinessMonthPoint {
   label: string
   total: number
   released: number
-  decided: number
   pending: number
 }
 

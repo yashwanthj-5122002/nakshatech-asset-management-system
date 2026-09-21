@@ -12,7 +12,6 @@ BusinessRecordStatus = Literal["submitted", "verified"]
 class BusinessTotals(BaseModel):
     total: float = 0.0
     released: float = 0.0
-    decided: float = 0.0
     pending: float = 0.0
     currency: str = "INR"
 
@@ -22,9 +21,19 @@ class BusinessBreakdownRow(BaseModel):
     label: str
     total: float = 0.0
     released: float = 0.0
-    decided: float = 0.0
     pending: float = 0.0
     project_count: int = 0
+
+
+class BusinessBillingSuggestion(BaseModel):
+    """Finance figures derived from Billing & Invoices for the selected month."""
+
+    total: float = 0.0
+    released: float = 0.0
+    pending: float = 0.0
+    currency: str = "INR"
+    invoice_count: int = 0
+    payment_count: int = 0
 
 
 class BusinessRecordRow(BaseModel):
@@ -41,13 +50,13 @@ class BusinessRecordRow(BaseModel):
     department_label: str
     amount_total: float = 0.0
     amount_released: float = 0.0
-    amount_decided: float = 0.0
     amount_pending: float = 0.0
     currency: str = "INR"
     notes: str | None = None
     status: BusinessRecordStatus = "submitted"
     verified_at: datetime | None = None
     updated_at: datetime | None = None
+    billing: BusinessBillingSuggestion = Field(default_factory=BusinessBillingSuggestion)
 
 
 class BusinessMonthPoint(BaseModel):
@@ -55,7 +64,6 @@ class BusinessMonthPoint(BaseModel):
     label: str
     total: float = 0.0
     released: float = 0.0
-    decided: float = 0.0
     pending: float = 0.0
 
 
@@ -87,7 +95,6 @@ class BusinessRecordUpsertRequest(BaseModel):
     reporting_month: str
     amount_total: float = Field(default=0, ge=0, le=1_000_000_000_000)
     amount_released: float = Field(default=0, ge=0, le=1_000_000_000_000)
-    amount_decided: float = Field(default=0, ge=0, le=1_000_000_000_000)
     amount_pending: float = Field(default=0, ge=0, le=1_000_000_000_000)
     currency: str = Field(default="INR", min_length=1, max_length=12)
     department_code: str | None = Field(default=None, max_length=40)

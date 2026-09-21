@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import calendar
 import json
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.roles import (
@@ -19,6 +20,7 @@ from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import User, utc_now
 from app.modules.business.models import BusinessRecord, BusinessRecordHistory
 from app.modules.business.schemas import (
+    BusinessBillingSuggestion,
     BusinessBreakdownRow,
     BusinessHistoryEntry,
     BusinessMonthPoint,
@@ -27,14 +29,15 @@ from app.modules.business.schemas import (
     BusinessRecordUpsertRequest,
     BusinessTotals,
 )
+from app.modules.finance.models import FinanceProject, FinanceProjectMasterProfile
+from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import ProjectWorkstream
 from app.modules.operations.service import TECHNICAL_DEPARTMENT_LABELS, TECHNICAL_ROLE_DEPARTMENT_MAP
-from app.modules.finance.models import FinanceProject, FinanceProjectMasterProfile
 
 ENTER_ROLES = {FINANCE_ROLE, ADMIN_ROLE}
 TOTALS_ROLES = {FINANCE_ROLE, BD_ROLE, MANAGEMENT_ROLE, ADMIN_ROLE}
 DEFAULT_DEPARTMENT = "ortho"
-TRACKED_AMOUNT_FIELDS = ("amount_total", "amount_released", "amount_decided", "amount_pending")
+TRACKED_AMOUNT_FIELDS = ("amount_total", "amount_released", "amount_pending")
 HISTORY_MONTHS = 12
 
 
@@ -43,6 +46,12 @@ def _month_label(month: str) -> str:
         return datetime.strptime(month, "%Y-%m").strftime("%b %Y")
     except ValueError:
         return month
+
+
+def _month_bounds(month: str) -> tuple[date, date]:
+    year, month_number = (int(part) for part in month.split("-"))
+    last_day = calendar.monthrange(year, month_number)[1]
+    return date(year, month_number, 1), date(year, month_number, last_day)
 
 
 def _department_label(code: str | None) -> str:
@@ -69,8 +78,65 @@ def _is_project_manager(db: Session, user_id: int) -> bool:
 
 
 def _available_months(db: Session) -> list[str]:
-    months = list(db.scalars(select(BusinessRecord.reporting_month).distinct().order_by(BusinessRecord.reporting_month.desc())))
-    return months
+    return list(db.scalars(select(BusinessRecord.reporting_month).distinct().order_by(BusinessRecord.reporting_month.desc())))
+
+
+def _billing_suggestions(db: Session, *, project_ids: list[int], month: str) -> dict[int, BusinessBillingSuggestion]:
+    """Month-dated figures straight from Billing & Invoices.
+
+    Total    = invoices dated inside the month (amount + tax)
+    Released = payments dated inside the month
+    Pending  = total - released (never negative)
+    """
+    if not project_ids:
+        return {}
+    start, end = _month_bounds(month)
+
+    invoice_rows = db.execute(
+        select(
+            ProjectInvoice.project_id,
+            func.coalesce(func.sum(ProjectInvoice.amount + func.coalesce(ProjectInvoice.tax_amount, 0)), 0),
+            func.count(ProjectInvoice.id),
+            func.min(ProjectInvoice.currency),
+        ).where(
+            ProjectInvoice.project_id.in_(project_ids),
+            ProjectInvoice.invoice_date >= start,
+            ProjectInvoice.invoice_date <= end,
+        ).group_by(ProjectInvoice.project_id)
+    ).all()
+    payment_rows = db.execute(
+        select(
+            ProjectInvoicePayment.project_id,
+            func.coalesce(func.sum(ProjectInvoicePayment.amount), 0),
+            func.count(ProjectInvoicePayment.id),
+        ).where(
+            ProjectInvoicePayment.project_id.in_(project_ids),
+            ProjectInvoicePayment.payment_date >= start,
+            ProjectInvoicePayment.payment_date <= end,
+        ).group_by(ProjectInvoicePayment.project_id)
+    ).all()
+
+    payments = {int(project_id): (int(count), Decimal(amount)) for project_id, amount, count in payment_rows}
+    suggestions: dict[int, BusinessBillingSuggestion] = {}
+    for project_id, invoiced, invoice_count, currency in invoice_rows:
+        payment_count, paid = payments.get(int(project_id), (0, Decimal("0.00")))
+        total = Decimal(invoiced)
+        currency = currency or "INR"
+        suggestions[int(project_id)] = BusinessBillingSuggestion(
+            total=float(total),
+            released=float(paid),
+            pending=float(max(Decimal("0.00"), total - paid)),
+            currency=currency,
+            invoice_count=int(invoice_count),
+            payment_count=payment_count,
+        )
+    # Projects that only received a payment in the month (no invoice dated that month).
+    for project_id, (payment_count, paid) in payments.items():
+        if project_id not in suggestions:
+            suggestions[project_id] = BusinessBillingSuggestion(
+                total=0.0, released=float(paid), pending=0.0, currency="INR", invoice_count=0, payment_count=payment_count
+            )
+    return suggestions
 
 
 def _project_attribution(db: Session, projects: list[FinanceProject]) -> dict[int, dict]:
@@ -150,7 +216,9 @@ def _project_rows(
     else:
         statement = statement.where(FinanceProject.is_active.is_(True))
     projects = list(db.scalars(statement).all())
+
     attribution = _project_attribution(db, projects)
+    suggestions = _billing_suggestions(db, project_ids=[project.id for project in projects], month=month)
 
     rows: list[BusinessRecordRow] = []
     for project in projects:
@@ -160,11 +228,21 @@ def _project_rows(
         if only_pm_user_id is not None:
             if pm_id != only_pm_user_id and (record is None or record.project_manager_user_id != only_pm_user_id):
                 continue
-        rows.append(_row_payload(project, info, record))
+        rows.append(_row_payload(
+            project,
+            info,
+            record,
+            suggestions.get(project.id, BusinessBillingSuggestion()),
+        ))
     return rows
 
 
-def _row_payload(project: FinanceProject, info: dict, record: BusinessRecord | None) -> BusinessRecordRow:
+def _row_payload(
+    project: FinanceProject,
+    info: dict,
+    record: BusinessRecord | None,
+    billing: BusinessBillingSuggestion,
+) -> BusinessRecordRow:
     client = project.client
     department_code = record.department_code if record is not None else info.get("department_code", DEFAULT_DEPARTMENT)
     return BusinessRecordRow(
@@ -181,13 +259,13 @@ def _row_payload(project: FinanceProject, info: dict, record: BusinessRecord | N
         department_label=_department_label(department_code),
         amount_total=float(record.amount_total) if record is not None else 0.0,
         amount_released=float(record.amount_released) if record is not None else 0.0,
-        amount_decided=float(record.amount_decided) if record is not None else 0.0,
         amount_pending=float(record.amount_pending) if record is not None else 0.0,
-        currency=record.currency if record is not None else "INR",
+        currency=record.currency if record is not None else billing.currency,
         notes=record.notes if record is not None else None,
         status=record.status if record is not None else "submitted",
         verified_at=record.verified_at if record is not None else None,
         updated_at=record.updated_at if record is not None else None,
+        billing=billing,
     )
 
 
@@ -196,7 +274,6 @@ def _totals(rows: list[BusinessRecordRow]) -> BusinessTotals:
     return BusinessTotals(
         total=sum(row.amount_total for row in rows),
         released=sum(row.amount_released for row in rows),
-        decided=sum(row.amount_decided for row in rows),
         pending=sum(row.amount_pending for row in rows),
         currency=currency,
     )
@@ -220,7 +297,6 @@ def _breakdown(rows: list[BusinessRecordRow], dimension: str) -> list[BusinessBr
             buckets[key] = bucket
         bucket.total += row.amount_total
         bucket.released += row.amount_released
-        bucket.decided += row.amount_decided
         bucket.pending += row.amount_pending
         bucket.project_count += 1
     return sorted(buckets.values(), key=lambda item: (item.total, item.label), reverse=True)
@@ -238,7 +314,6 @@ def _my_monthly_history(db: Session, user_id: int) -> list[BusinessMonthPoint]:
             buckets[record.reporting_month] = point
         point.total += float(record.amount_total)
         point.released += float(record.amount_released)
-        point.decided += float(record.amount_decided)
         point.pending += float(record.amount_pending)
     ordered = sorted(buckets.values(), key=lambda item: item.month)
     return ordered[-HISTORY_MONTHS:]
@@ -438,7 +513,10 @@ def record_row(db: Session, record: BusinessRecord) -> BusinessRecordRow:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     attribution = _project_attribution(db, [project]).get(project.id, {})
-    return _row_payload(project, attribution, record)
+    billing = _billing_suggestions(db, project_ids=[project.id], month=record.reporting_month).get(
+        project.id, BusinessBillingSuggestion()
+    )
+    return _row_payload(project, attribution, record, billing)
 
 
 def record_history(db: Session, *, record_id: int) -> list[BusinessHistoryEntry]:

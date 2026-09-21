@@ -58,7 +58,6 @@ def save_record(
             "reporting_month": record.reporting_month,
             "amount_total": float(record.amount_total),
             "amount_released": float(record.amount_released),
-            "amount_decided": float(record.amount_decided),
             "amount_pending": float(record.amount_pending),
             "department_code": record.department_code,
         },

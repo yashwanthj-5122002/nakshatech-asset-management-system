@@ -33,7 +33,6 @@ class BusinessRecord(Base):
 
     amount_total: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=Decimal("0.00"))
     amount_released: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=Decimal("0.00"))
-    amount_decided: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=Decimal("0.00"))
     amount_pending: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=Decimal("0.00"))
     currency: Mapped[str] = mapped_column(String(12), default="INR")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
