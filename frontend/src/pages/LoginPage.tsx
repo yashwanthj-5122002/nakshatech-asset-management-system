@@ -162,7 +162,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!email.trim()) {
-      setError('Enter your official email.')
+      setError('Enter your official email or Employee ID.')
       return
     }
     setLoading(true)
@@ -237,15 +237,15 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
             </div>
 
             <label className="final-login-field" htmlFor="login-email">
-              <span>Official Email</span>
+              <span>Official Email or Employee ID</span>
               <div className="final-login-input-shell">
                 <User size={19} aria-hidden="true" />
                 <input
                   id="login-email"
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(event: ChangeEvent<HTMLInputElement>) => setEmail(event.target.value)}
-                  placeholder="Enter your official email"
+                  placeholder="Email address or Employee ID"
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}

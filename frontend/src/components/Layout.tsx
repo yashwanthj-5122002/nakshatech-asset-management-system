@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ArrowRightLeft,
   BarChart3,
   Bell,
@@ -29,19 +30,21 @@ import {
   ShoppingCart,
   Sparkles,
   ShieldCheck,
+  TrendingUp,
   UploadCloud,
   Users,
   X,
 } from 'lucide-react'
 import { DroneIcon as Drone, type AppIcon } from './DroneIcon'
 import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useITMonth } from '../context/ITMonthContext'
 import type { Role } from '../types'
 import { Logo } from './Logo'
 import { GlobalNotificationBell } from './GlobalNotificationBell'
-import { canAccessRole, isFullAccessRole, roleDisplayName } from '../lib/roles'
+import { GlobalSearch } from './GlobalSearch'
+import { canAccessRole, isFullAccessRole, roleHomePath } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import { apiFetch } from '../lib/api'
 
@@ -78,6 +81,7 @@ const navItems: NavItem[] = [
   { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
   { to: '/expenses/new', label: 'New Project Expense', icon: FileCheck2, roles: ['employee'], group: 'support' },
   { to: '/expenses', label: 'My Expense Claims', icon: ShoppingCart, roles: ['employee'], group: 'support' },
+  { to: '/project-costs', label: 'Project Cost Entries', icon: FileCheck2, roles: ['employee'], group: 'support' },
   { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee'], group: 'support' },
   { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee'], group: 'support' },
   { to: '/admin/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['admin'], group: 'management' },
@@ -93,9 +97,11 @@ const navItems: NavItem[] = [
   { to: '/admin/client-master', label: 'Client Master (Admin Edit)', icon: Building2, roles: ['admin'], group: 'overview' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
   { to: '/management/project-360', label: 'Project 360 (Feedback, Rework, Billing)', icon: FolderKanban, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
+  { to: '/management/commercial', label: 'Commercial Analytics', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin'], group: 'business' },
   { to: '/bd/feedback', label: 'Client Feedback', icon: FileCheck2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/ortho', label: 'Ortho Work Dashboard', icon: FolderKanban, roles: ['ortho', 'employee', 'admin', 'management'], group: 'ortho' },
@@ -112,7 +118,9 @@ const navItems: NavItem[] = [
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/billing', label: 'Billing & Invoices', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin'], group: 'finance' },
   { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'business', managementGroup: 'overview' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
@@ -136,24 +144,6 @@ const navItems: NavItem[] = [
   { to: '/backups', label: 'Backups & History', icon: Database, roles: ['admin', 'management', 'it', 'drone'], group: 'system' },
   { to: '/future', label: 'Future Modules', icon: Settings, roles: ['admin'], group: 'system' },
 ]
-
-const roleLabels: Record<Role, { name: string; subtitle: string }> = {
-  software_team: { name: 'Software Team', subtitle: 'Full technical access' },
-  admin: { name: 'Admin Workspace', subtitle: 'Organization administration' },
-  management: { name: 'Management', subtitle: 'Oversight & approvals' },
-  it: { name: 'IT Department', subtitle: 'Head Office' },
-  drone: { name: 'Drone Department', subtitle: 'Survey operations' },
-  finance: { name: 'Finance Department', subtitle: 'Project expenses & approvals' },
-  hr: { name: 'HR Department', subtitle: 'Employee travel verification' },
-  bd: { name: 'Business Development', subtitle: 'Client opportunities & delivery bridge' },
-  ortho: { name: 'Ortho', subtitle: 'Production, QC, QA & delivery' },
-  lidar: { name: 'LiDAR', subtitle: 'Project workstreams' },
-  civil: { name: 'Civil Department', subtitle: 'Project workstreams' },
-  laser_scanning: { name: 'Laser Scanning', subtitle: 'Project workstreams' },
-  bim: { name: 'BIM Department', subtitle: 'Project workstreams' },
-  mobile_mapping: { name: 'Mobile Mapping', subtitle: 'Project workstreams' },
-  employee: { name: 'Employee Support', subtitle: 'Organization ticket access' },
-}
 
 function isPathInItem(pathname: string, item: NavItem): boolean {
   if (item.to === '/drone') return pathname === '/drone'
@@ -187,8 +177,22 @@ function navigationLabelForItem(role: Role, item: NavItem): string {
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const { selectedMonth } = useITMonth()
+  const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  // The account card in the sidebar footer can be collapsed by the user; the choice is remembered
+  // per browser so people who only want the nav are not forced to look at it.
+  const [footerOpen, setFooterOpen] = useState(() => {
+    try { return window.localStorage.getItem('naksha.sidebarAccount') !== 'collapsed' } catch { return true }
+  })
+
+  function toggleFooterOpen() {
+    setFooterOpen(current => {
+      const next = !current
+      try { window.localStorage.setItem('naksha.sidebarAccount', next ? 'open' : 'collapsed') } catch { /* storage blocked: preference simply is not remembered */ }
+      return next
+    })
+  }
   const [openGroups, setOpenGroups] = useState<Record<NavItem['group'], boolean>>({
     overview: true,
     management: false,
@@ -230,8 +234,15 @@ export function Layout({ children }: { children: ReactNode }) {
         ...visibleItems.filter(item => item.to === '/tickets'),
       ]
     : visibleItems
-  const roleMeta = roleLabels[currentUser.role]
   const groupedNavigation = isFullAccessRole(currentUser.role) || currentUser.role === 'management'
+
+  // Only surface topbar context that is not already stated elsewhere on screen. The department
+  // workspace labels were a third repeat of the sidebar footer role, so they are not shown here.
+  const workspaceContext =
+    currentUser.role === 'employee' ? `Branch: ${currentUser.selected_branch_name || currentUser.branch}`
+      : currentUser.role === 'it' ? `IT reporting month: ${monthLabel(selectedMonth)}`
+        : location.pathname.includes('/travel-km') ? 'Employee travel & KM workflow'
+          : null
 
   function renderNavItem(item: NavItem) {
     const Icon = item.icon
@@ -283,27 +294,48 @@ export function Layout({ children }: { children: ReactNode }) {
             : available.map(renderNavItem)}
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-department-card">
+          <button
+            type="button"
+            className="sidebar-footer-toggle"
+            onClick={toggleFooterOpen}
+            aria-expanded={footerOpen}
+            aria-controls="sidebar-account-card"
+          >
+            <span>My account</span>
+            <ChevronDown size={15} aria-hidden="true" className={footerOpen ? 'open' : ''} />
+          </button>
+          {footerOpen && <NavLink id="sidebar-account-card" className="sidebar-department-card" to="/profile" onClick={() => setMobileOpen(false)} title="Open your profile">
             <div className="user-avatar">{currentUser.full_name.charAt(0)}</div>
             <div>
-              <small>{roleMeta.name}</small>
               <strong>{currentUser.full_name}</strong>
-              <span>{roleMeta.subtitle} · {currentUser.branch}</span>
+              <span>{currentUser.designation || currentUser.branch || 'Head Office'}</span>
             </div>
-          </div>
+          </NavLink>}
           <button className="ghost-button" onClick={logout}><LogOut size={17} /> Logout</button>
         </div>
       </aside>
       {mobileOpen && <button className="sidebar-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close menu" />}
       <main className="main-content" key={location.pathname}>
         <div className="topbar">
-          <div className="topbar-status"><span className="system-indicator" /><span>System online</span></div>
+          <div className="topbar-left">
+            <button
+              type="button"
+              className="topbar-back"
+              onClick={() => { if (window.history.length > 1) navigate(-1); else navigate(roleHomePath(currentUser.role)) }}
+              aria-label="Go back to the previous page"
+              title="Back"
+            >
+              <ArrowLeft size={17} aria-hidden="true" />
+              <span>Back</span>
+            </button>
+            <div className="topbar-status"><span className="system-indicator" /><span>System online</span></div>
+          </div>
           <div className="topbar-right">
+            {['bd', 'management', 'admin'].includes(currentUser.role) && <GlobalSearch />}
             <GlobalNotificationBell />
-            <div className="topbar-actions">
-              <span className="topbar-context"><PackageCheck size={17} />{currentUser.role === 'drone' ? 'Drone operations workspace' : currentUser.role === 'bd' || location.pathname.startsWith('/bd') ? 'Business Development workspace' : currentUser.role === 'ortho' || location.pathname.startsWith('/ortho') ? 'Ortho / LiDAR production workspace' : currentUser.role === 'employee' ? `Branch: ${currentUser.selected_branch_name || currentUser.branch}` : currentUser.role === 'finance' || location.pathname.startsWith('/finance') ? 'Finance & project expense workspace' : currentUser.role === 'hr' ? 'HR travel verification workspace' : location.pathname.includes('/travel-km') ? 'Employee travel & KM workflow' : `IT reporting month: ${monthLabel(selectedMonth)}`}</span>
-              <span className="topbar-user"><Users size={17} /><b>{roleDisplayName(currentUser.role).toUpperCase()}</b><small>{roleMeta.name}</small></span>
-            </div>
+            {workspaceContext && <div className="topbar-actions">
+              <span className="topbar-context"><PackageCheck size={17} />{workspaceContext}</span>
+            </div>}
           </div>
         </div>
         <div className="internal-page-content">{children}</div>

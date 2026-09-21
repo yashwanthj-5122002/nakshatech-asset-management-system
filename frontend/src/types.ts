@@ -15,6 +15,10 @@ export interface AuthUser {
   employee_id?: string
   department?: string
   designation?: string
+  phone_number?: string | null
+  joining_date?: string | null
+  date_of_birth?: string | null
+  created_at?: string | null
   selected_branch_id?: number
   selected_branch_name?: string
   email_verified?: boolean
@@ -1530,5 +1534,93 @@ export interface ITAssetDrilldownData {
     brands: string[]
     capacities: string[]
   }
-  assets: Asset[]
+    assets: Asset[]
+}
+
+export type BusinessViewer = 'finance' | 'management' | 'bd' | 'project_manager' | 'unavailable'
+
+export type BusinessRecordStatus = 'submitted' | 'verified'
+
+export interface BusinessTotals {
+  total: number
+  released: number
+  pending: number
+  currency: string
+}
+
+export interface BusinessBreakdownRow {
+  key: string
+  label: string
+  total: number
+  released: number
+  pending: number
+  project_count: number
+}
+
+export interface BusinessBillingSuggestion {
+  total: number
+  released: number
+  pending: number
+  currency: string
+  invoice_count: number
+  payment_count: number
+}
+
+export interface BusinessRecordRow {
+  record_id?: number | null
+  project_id: number
+  project_code: string
+  project_name: string
+  client_id?: number | null
+  client_code?: string | null
+  client_name?: string | null
+  project_manager_user_id?: number | null
+  project_manager_name?: string | null
+  department_code: string
+  department_label: string
+  amount_total: number
+  amount_released: number
+  amount_pending: number
+  currency: string
+  notes?: string | null
+  status: BusinessRecordStatus
+  verified_at?: string | null
+  updated_at?: string | null
+  billing: BusinessBillingSuggestion
+}
+
+export interface BusinessMonthPoint {
+  month: string
+  label: string
+  total: number
+  released: number
+  pending: number
+}
+
+export interface BusinessHistoryChange {
+  from: string | number | null
+  to: string | number | null
+}
+
+export interface BusinessHistoryEntry {
+  id: number
+  action: string
+  actor_name?: string | null
+  actor_role?: string | null
+  reporting_month: string
+  changes?: Record<string, BusinessHistoryChange> | null
+  created_at: string
+}
+
+export interface BusinessOverview {
+  month: string
+  viewer: BusinessViewer
+  can_enter: boolean
+  totals: BusinessTotals
+  by_department: BusinessBreakdownRow[]
+  by_project_manager: BusinessBreakdownRow[]
+  by_client: BusinessBreakdownRow[]
+  rows: BusinessRecordRow[]
+  months: string[]
+  my_monthly_history: BusinessMonthPoint[]
 }

@@ -275,7 +275,15 @@ def _full_project_payload(db: Session, project: FinanceProject, workflow: Projec
             "bd_person": client_profile.bd_name if client_profile and client_profile.bd_name else (client.source_person_name if client else None),
         },
         "events": events,
+        # BD / Finance / Management payload only (the Ortho PM dashboard builds its own restricted payload).
+        "commercial_summary": _commercial_summary(db, project.id),
     }
+
+
+def _commercial_summary(db: Session, project_id: int) -> dict:
+    from app.modules.commercial.service import commercial_summary
+
+    return commercial_summary(db, project_id=project_id)
 
 
 def project_manager_options(db: Session) -> list[dict]:
@@ -402,6 +410,12 @@ def create_bd_project(db: Session, *, actor: User, payload: WorkflowProjectCreat
         actor_user_id=actor.id,
     ))
     db.flush()
+    if payload.commercial is not None:
+        # Same session/transaction as the project: any commercial failure (validation, FX unavailable) aborts the
+        # whole create, so a project is never left behind without the Revision 1 BD entered.
+        from app.modules.commercial.service import upsert_baseline_estimate
+
+        upsert_baseline_estimate(db, actor=actor, project_id=project.id, payload=payload.commercial)
     return project, workflow
 
 
@@ -469,6 +483,11 @@ def update_bd_project(
         actor_user_id=actor.id,
     ))
     db.flush()
+    if payload.commercial is not None:
+        # Corrects the SAME Revision 1 row (identity and history preserved); locked baselines are refused.
+        from app.modules.commercial.service import upsert_baseline_estimate
+
+        upsert_baseline_estimate(db, actor=actor, project_id=project_id, payload=payload.commercial)
     return project, workflow
 
 
@@ -478,6 +497,10 @@ def submit_project_to_finance(db: Session, *, actor: User, project_id: int) -> P
         raise PermissionError("Only the BD owner can submit this project to Finance")
     if workflow.status not in {WORKFLOW_DRAFT, WORKFLOW_FINANCE_RETURNED}:
         raise ValueError("Only Draft or Finance Returned projects can be submitted to Finance")
+    # Commercial Revision 1 is submitted together with the project (and is required for a never-submitted project).
+    from app.modules.commercial.service import prepare_revision1_for_finance_submission
+
+    prepare_revision1_for_finance_submission(db, actor=actor, project_id=project_id)
     workflow.finance_feedback = None
     workflow.submitted_at = utc_now()
     workflow.submission_count = int(workflow.submission_count or 0) + 1
@@ -607,10 +630,19 @@ def finance_review_project(db: Session, *, actor: User, project_id: int, payload
             raise ValueError("Finance feedback is mandatory when returning a project")
         workflow.finance_feedback = feedback
         workflow.returned_at = utc_now()
+        from app.modules.commercial.service import mark_revision1_returned
+
+        mark_revision1_returned(db, actor=actor, project_id=project_id, feedback=feedback)
         _event(db, workflow=workflow, actor=actor, event_type="finance_returned", to_status=WORKFLOW_FINANCE_RETURNED, comments=feedback)
         title = f"Finance returned {project.project_code}"
         message = f"Finance returned Project ID {project.project_code}. Feedback: {feedback}"
     else:
+        # Freeze the additive Commercial baseline in the same transaction as the
+        # authoritative Finance project approval. Legacy projects without a detailed
+        # estimate remain valid unless the feature flag explicitly requires one.
+        from app.modules.commercial.service import freeze_baseline_on_finance_approval
+
+        freeze_baseline_on_finance_approval(db, actor=actor, project_id=project_id)
         workflow.finance_feedback = None
         workflow.approved_at = utc_now()
         set_project_status(db, project=project, actor=actor, project_status="active")

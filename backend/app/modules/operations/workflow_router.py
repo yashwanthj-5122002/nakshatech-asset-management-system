@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.modules.commercial.fx_service import FxUnavailableError
+from app.modules.commercial.service import commercial_summary
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.schemas import FinanceClientCreateRequest
 from app.modules.finance.service import client_payload
@@ -80,6 +82,12 @@ def _roles(auth: CurrentAuth, *roles: str) -> None:
 def _error(exc: Exception) -> HTTPException:
     if isinstance(exc, PermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, FxUnavailableError):
+        # Same structured shape as the commercial router so the UI can offer Retry / Enter rate manually.
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": exc.code, "message": str(exc), "attempts": exc.attempts},
+        )
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 
@@ -148,9 +156,9 @@ def workflow_create_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = create_bd_project(db, actor=auth.user, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status})
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
         db.commit()
-        return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status}
+        return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
         db.rollback()
         raise _error(exc) from exc
@@ -167,9 +175,9 @@ def workflow_update_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = update_bd_project(db, actor=auth.user, project_id=project_id, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status})
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
         db.commit()
-        return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status}
+        return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
         db.rollback()
         raise _error(exc) from exc

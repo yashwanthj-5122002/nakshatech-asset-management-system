@@ -22,6 +22,7 @@ interface AuthContextValue {
   completePrivilegedPasswordSetup: (newPassword: string, confirmPassword: string) => Promise<AuthLoginResponse>
   selectBranch: (branchId: number) => Promise<AuthLoginResponse>
   loadBranches: () => Promise<Branch[]>
+  updateUser: (user: AuthUser) => void
   logout: () => void
 }
 
@@ -150,6 +151,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return apiFetch<Branch[]>(user ? '/auth/my-branches' : '/auth/branches')
   }
 
+  function updateUser(next: AuthUser) {
+    setUser(next)
+    const storage = localStorage.getItem('asset_token') ? localStorage : sessionStorage
+    storage.setItem('asset_user', JSON.stringify(next))
+  }
+
   function logout() {
     void apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined)
     clearAuthStorage()
@@ -170,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completePrivilegedPasswordSetup,
       selectBranch,
       loadBranches,
+      updateUser,
       logout,
     }),
     [user, needsBranchSelection, pendingAuthenticatorSetup],

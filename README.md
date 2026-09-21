@@ -21,6 +21,87 @@ The first setup generates a private `.env` and `LOCAL_LOGIN_CREDENTIALS.txt`. Bo
 - `CHANGE_LOCAL_USER_PASSWORD_WINDOWS.cmd` — securely change a local application password.
 - `RESET_FRESH_LOCAL_DATA_WINDOWS.cmd` — delete only this package's Docker volumes and create a fresh database.
 
+## Running manually (without the .cmd scripts)
+
+The `.cmd` wrappers are thin conveniences around standard `docker compose` commands.
+You can run everything manually from a terminal in the project root.
+
+### First-time `.env` setup
+
+The `.cmd` scripts generate a `.env` with strong random secrets. To do it manually, copy the example and edit the highlighted values:
+
+```powershell
+copy .env.example .env
+notepad .env
+```
+
+At minimum set these to strong random values (32+ characters):
+
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET`
+- `MINIO_ROOT_PASSWORD`
+- `LOCAL_BACKUP_AGENT_TOKEN`
+- `TOTP_ENCRYPTION_KEY`
+- All `SEED_*_PASSWORD` values
+
+`git pull` will **never** overwrite your local `.env` (it is gitignored), so your secrets stay intact across updates.
+
+### Start the project
+
+```powershell
+docker compose up -d --build
+```
+
+This builds the backend and frontend images (cached after the first run) and starts all 6 services: **db**, **redis**, **minio**, **backend**, **frontend**, **nginx**.
+
+### Wait for readiness
+
+```powershell
+docker compose ps          # view container status and health
+```
+
+The backend healthcheck polls `http://localhost:8100/api/health` and reports `healthy` when the database migrations and seed users are ready. The first boot can take 1–2 minutes.
+
+### Rebuild after code changes
+
+```powershell
+docker compose up -d --build
+```
+
+Because the backend and frontend mount source code live (`./backend` and `./frontend`), `uvicorn --reload` and `vite --host` auto-restart on file changes — the `--build` step is only needed when `requirements.txt` or `package.json` changes.
+
+### Stop the project (keeps data)
+
+```powershell
+docker compose down
+```
+
+### Full reset (wipes all local data)
+
+```powershell
+docker compose down -v          # removes containers AND named volumes
+docker compose up -d --build    # fresh database, re-seeds users
+```
+
+### View logs
+
+```powershell
+docker compose logs -f backend   # live follow backend logs
+docker compose logs -f frontend  # live follow frontend logs
+```
+
+### Check health
+
+```powershell
+# Backend (returns JSON)
+Invoke-WebRequest http://localhost:8100/api/health | Select-Object -Expand Content
+
+# Or just visit in a browser:
+#   Frontend:    http://localhost:3100
+#   API docs:    http://localhost:8100/docs
+#   MinIO UI:    http://localhost:9005
+```
+
 ## Services
 
 | Service | URL / Port |
