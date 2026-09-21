@@ -122,6 +122,15 @@ export type InvoicePaymentRow = {
   payment_reference: string
   payment_date: string
   amount: number
+  payment_currency: string
+  fx_snapshot_id: number | null
+  fx_rate_to_inr: number | null
+  fx_rate_date: string | null
+  fx_rate_source: string | null
+  fx_rate_mode: string | null
+  inr_equivalent: number | null
+  invoice_inr_equivalent: number | null
+  fx_gain_loss_inr: number | null
   payment_mode: string
   comments: string | null
   created_at: string
@@ -140,6 +149,18 @@ export type InvoiceRow = {
   paid_amount: number
   balance: number
   currency: string
+  tax_percent: number | null
+  payment_terms: string | null
+  po_wo_reference: string | null
+  fx_snapshot_id: number | null
+  fx_rate_to_inr: number | null
+  fx_rate_date: string | null
+  fx_rate_source: string | null
+  fx_rate_mode: string | null
+  base_inr: number | null
+  tax_inr: number | null
+  total_inr: number | null
+  fx_locked: boolean
   notes: string | null
   raised_at: string | null
   closed_at: string | null

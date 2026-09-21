@@ -147,6 +147,21 @@ class Settings(BaseSettings):
     agent_monitor_admin_key: str = ""
     agent_monitor_timeout_seconds: float = 10.0
 
+    # Project commercial / FX. Provider details are configuration, never hard-wired into
+    # the data model: every stored rate records its own source. No provider credential is
+    # ever sent to the browser. If every provider fails the API reports FX_UNAVAILABLE and
+    # the user may enter a documented manual rate; the system never invents a rate.
+    fx_provider_order: str = "frankfurter,open_er_api"
+    fx_frankfurter_base_url: str = "https://api.frankfurter.dev/v1"
+    fx_open_er_api_base_url: str = "https://open.er-api.com/v6"
+    fx_timeout_seconds: float = 8.0
+    fx_max_retries: int = 2
+    fx_cache_ttl_seconds: int = 900
+    commercial_estimate_required_on_submit: bool = False
+    # New (never-submitted) projects must carry Commercial Revision 1 when BD submits them to Finance.
+    # Legacy projects that were already submitted/returned before the commercial layer stay resubmittable.
+    commercial_revision1_required_on_submit: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     @property

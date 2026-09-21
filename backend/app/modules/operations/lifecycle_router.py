@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.attachments import (
     FINANCE_ATTACHMENT_MAX_BYTES,
@@ -70,6 +71,11 @@ def _roles(auth: CurrentAuth, *roles: str) -> None:
 def _error(exc: Exception) -> HTTPException:
     if isinstance(exc, PermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, FxUnavailableError):
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": exc.code, "message": str(exc), "attempts": exc.attempts},
+        )
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 

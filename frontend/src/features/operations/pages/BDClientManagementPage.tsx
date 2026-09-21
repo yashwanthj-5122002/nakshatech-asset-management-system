@@ -5,6 +5,11 @@ import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import { BackToClientsButton, ClientDetailPanel, ClientProjectsPanel, ClientRegisterPanel } from '../components/ClientRegister'
 import { useClientRegister } from '../components/useClientRegister'
+import { uploadRevisionDocuments, type PendingDocument } from '../../commercial/commercial-api'
+import { commercialFormProblems, commercialFormToPayload, emptyCommercialForm, type CommercialFormState } from '../../commercial/commercial-form'
+import { CommercialDetailsSection } from '../../commercial/components/CommercialDetailsSection'
+import { PendingDocumentsPicker } from '../../commercial/components/SupportingDocuments'
+import type { CurrencyPayload } from '../../commercial/types'
 import '../operations.css'
 
 type Client = {
@@ -27,6 +32,9 @@ export function BDClientManagementPage(){
   const [showClientForm,setShowClientForm]=useState(false);const [showProjectForm,setShowProjectForm]=useState(false)
   const [clientForm,setClientForm]=useState<ClientForm>(emptyClient);const [projectForm,setProjectForm]=useState<ProjectForm>(emptyProject)
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
+  const [commercial,setCommercial]=useState<CommercialFormState>(emptyCommercialForm);const [docs,setDocs]=useState<PendingDocument[]>([]);const [currencies,setCurrencies]=useState<CurrencyPayload|null>(null)
+  const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:''})
+  useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
   function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
 
@@ -59,16 +67,30 @@ export function BDClientManagementPage(){
 
   async function createProject(submit:boolean){
     if(!selected)return
-    setBusy(true);setError('');setNotice('')
+    setError('');setNotice('')
+    const problems=commercialFormProblems(commercial)
+    if(problems.length){setError(problems[0]);return}
+    setBusy(true)
     try{
-      const result=await apiFetch<{project_id:number;project_code:string}>('/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
+      // Project + Commercial Revision 1 are created in ONE request/transaction: either both exist or neither does.
+      const result=await apiFetch<{project_id:number;project_code:string;commercial?:{baseline?:{id:number}|null}}>('/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,start_date:projectForm.start_date,end_date:projectForm.end_date,
-        scope_text:projectForm.scope_text,quantity:null,quantity_unit:'unit',priority:'medium',
-        // Project Value / Currency / PO-WO / Attachments are not collected on this form; send the backend's own defaults.
-        commercial_value:null,currency:'INR',po_wo_number:null,attachment_references:[],description:projectForm.description||null,
+        scope_text:projectForm.scope_text,quantity:delivery.quantity===''?null:Number(delivery.quantity),quantity_unit:delivery.quantity_unit||'unit',priority:delivery.priority,
+        commercial_value:Number(commercial.estimated_amount),currency:commercial.currency_code,po_wo_number:commercial.po_wo_reference.trim()||null,
+        attachment_references:[],description:projectForm.description||null,
+        commercial:commercialFormToPayload(commercial),
       })})
+      const revisionId=result.commercial?.baseline?.id
+      let failed:string[]=[]
+      if(docs.length&&revisionId)failed=await uploadRevisionDocuments(result.project_id,revisionId,docs)
+      if(failed.length){
+        setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setShowProjectForm(false);load()
+        setError(`${result.project_code} was saved as a Draft with its commercial details, but ${failed.length} document(s) could not be uploaded (${failed.join(', ')}). Attach them from Project Management, then submit to Finance.`)
+        return
+      }
       if(submit)await apiFetch(`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
-      setProjectForm(emptyProject);setShowProjectForm(false);setNotice(`${result.project_code} ${submit?'submitted to Finance':'saved as Draft'}.`);load()
+      setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:''});setShowProjectForm(false)
+      setNotice(`${result.project_code} ${submit?'and its Commercial Revision 1 were submitted to Finance':'saved as Draft with Commercial Revision 1'}.`);load()
     }catch(err){setError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}
   }
 
@@ -99,13 +121,27 @@ export function BDClientManagementPage(){
       <BackToClientsButton onClick={()=>{setSelectedId(null);setShowProjectForm(false)}}/>
       <ClientDetailPanel client={selected} onCreateProject={()=>setShowProjectForm(true)}/>
 
-      {showProjectForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW PROJECT · {selected.client_code}</span><h2>{selected.client_name}</h2><p>Client context is fixed for this Project draft.</p></div></header><form className="operations-form-grid" onSubmit={event=>{event.preventDefault();void createProject(false)}}>
+      {showProjectForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW PROJECT · {selected.client_code}</span><h2>{selected.client_name}</h2><p>One process: project information, delivery details, commercial &amp; billing details and supporting documents are submitted to Finance together. Client context is fixed for this Project.</p></div></header><form className="operations-form-grid" onSubmit={event=>{event.preventDefault();void createProject(false)}}>
+        <div className="operations-span-2"><span className="operations-kicker">PROJECT INFORMATION</span></div>
         <label className="operations-field"><span>Project ID * (manual)</span><input required value={projectForm.project_code} onChange={e=>setProjectForm({...projectForm,project_code:e.target.value.toUpperCase()})}/></label>
         <label className="operations-field"><span>Project Name / Short Title *</span><input required value={projectForm.project_name} onChange={e=>setProjectForm({...projectForm,project_name:e.target.value})}/></label>
         <label className="operations-field"><span>Start Date *</span><input required type="date" value={projectForm.start_date} onChange={e=>setProjectForm({...projectForm,start_date:e.target.value})}/></label>
         <label className="operations-field"><span>End Date *</span><input required type="date" min={projectForm.start_date||undefined} value={projectForm.end_date} onChange={e=>setProjectForm({...projectForm,end_date:e.target.value})}/></label>
         <label className="operations-field operations-span-2"><span>Project Scope *</span><textarea required value={projectForm.scope_text} onChange={e=>setProjectForm({...projectForm,scope_text:e.target.value})}/></label>
         <label className="operations-field operations-span-2"><span>Remarks</span><textarea value={projectForm.description} onChange={e=>setProjectForm({...projectForm,description:e.target.value})}/></label>
+
+        <div className="operations-span-2"><span className="operations-kicker">DELIVERY / DEPARTMENT INFORMATION</span></div>
+        <label className="operations-field"><span>Priority</span><select value={delivery.priority} onChange={e=>setDelivery({...delivery,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
+        <label className="operations-field"><span>Planned quantity (optional)</span><input type="number" min="0" step="0.001" value={delivery.quantity} onChange={e=>setDelivery({...delivery,quantity:e.target.value})}/></label>
+        <label className="operations-field"><span>Quantity unit</span><input value={delivery.quantity_unit} onChange={e=>setDelivery({...delivery,quantity_unit:e.target.value})} placeholder="e.g. sq.km, sites"/></label>
+        <div className="operations-note operations-span-2">Delivery department: Ortho / technical production. Finance approves first; you then assign the Ortho Project Manager, who selects the team.</div>
+
+        <div className="operations-span-2"><CommercialDetailsSection form={commercial} onChange={setCommercial} currencies={currencies} disabled={busy}/></div>
+
+        <div className="operations-span-2"><span className="operations-kicker">SUPPORTING DOCUMENTS</span></div>
+        <div className="operations-span-2"><PendingDocumentsPicker docs={docs} onChange={setDocs} disabled={busy}/></div>
+
+        <div className="operations-span-2"><span className="operations-kicker">SUBMIT TO FINANCE</span></div>
         <div className="operations-actions operations-span-2"><button className="operations-button secondary" disabled={busy}>{busy?'Saving…':'Save Draft'}</button><button type="button" className="operations-button" disabled={busy} onClick={()=>void createProject(true)}>{busy?'Submitting…':'Submit to Finance'}</button><button type="button" className="operations-button secondary" onClick={()=>setShowProjectForm(false)}>Cancel</button></div>
       </form></section>}
 

@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.modules.commercial.schemas import ProjectCommercialInput
+
 
 BDStage = Literal[
     "opportunity",
@@ -160,6 +162,9 @@ class WorkflowProjectCreate(BaseModel):
     po_wo_number: str | None = Field(default=None, max_length=160)
     attachment_references: list[str] = Field(default_factory=list, max_length=20)
     description: str | None = Field(default=None, max_length=5000)
+    # Initial Commercial & Billing Details (Revision 1). Saved in the SAME transaction as the project, so a
+    # project can never be created while its Revision 1 silently fails. Omitted only by legacy clients.
+    commercial: ProjectCommercialInput | None = None
 
     @field_validator("project_code", mode="before")
     @classmethod
