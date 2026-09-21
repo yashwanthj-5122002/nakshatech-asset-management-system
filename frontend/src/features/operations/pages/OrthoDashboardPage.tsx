@@ -5,6 +5,7 @@ import { DashboardHeader } from '../../../components/DashboardHeader'
 import { StatCard } from '../../../components/StatCard'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
+import { PMBillingBasisPanel } from '../../commercial/components/PMBillingBasisPanel'
 import '../operations.css'
 
 type Employee = { id:number; full_name:string; email:string; employee_id?:string|null; department?:string|null; designation?:string|null }
@@ -212,6 +213,8 @@ export function OrthoDashboardPage(){
         <label className="operations-field operations-span-2"><span>Instructions *</span><textarea value={allocation.instructions} onChange={e=>setAllocation({...allocation,instructions:e.target.value})} required placeholder="Work instructions for the assigned Production/QC/QA employees"/></label>
         <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy}>Assign Work & Notify</button></div>
       </form></section>}
+
+      {selected&&selected.my_roles?.includes('project_manager')&&<PMBillingBasisPanel projectId={selected.project_id} projectCode={selected.project_code}/>}
 
       {selected&&<section className="operations-panel"><header><div><span className="operations-kicker">ASSIGNMENT TRACKER</span><h2>{selected.can_manage_team||selected.can_allocate_work?'Project Work Packages':'My Exact Assigned Work'}</h2><p>Daily progress is calculated from activity entries. Cumulative quantity and progress percentage cannot be manually overwritten.</p></div>{selected.can_complete_project&&<button className="operations-button success" disabled={busy} onClick={()=>completeProject(selected)}><CheckCircle2 size={15}/> Complete Project</button>}</header>
         {!selected.packages.length?<div className="operations-empty">No work package is visible for this assignment yet.</div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{const d=daily[pkg.id]??emptyDaily;return <article className="operations-daily-card" key={pkg.id}>

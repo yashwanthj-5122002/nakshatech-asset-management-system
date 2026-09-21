@@ -4,7 +4,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+from app.modules.commercial.currencies import is_supported_currency
+from app.modules.commercial.fx_service import OVERRIDE_MODES
 
 
 class FeedbackRequestCreate(BaseModel):
@@ -70,32 +73,92 @@ class ChangeRequestDecision(BaseModel):
     currency: str = Field(default="INR", min_length=3, max_length=12)
 
 
-class InvoiceDraftCreate(BaseModel):
+class _InvoiceFxFields(BaseModel):
+    fx_rate_to_inr: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=8)
+    fx_rate_mode: str | None = Field(default=None, max_length=30)
+    fx_override_reason: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("fx_rate_mode", mode="before")
+    @classmethod
+    def normalize_fx_mode(cls, value):
+        if value is None:
+            return None
+        return str(value).strip().upper() or None
+
+    @field_validator("fx_override_reason", mode="before")
+    @classmethod
+    def normalize_fx_reason(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class InvoiceDraftCreate(_InvoiceFxFields):
     invoice_number: str = Field(min_length=1, max_length=100)
     invoice_date: date
     due_date: date
     amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
     tax_amount: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=16, decimal_places=2)
-    currency: str = Field(default="INR", min_length=3, max_length=12)
+    tax_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    payment_terms: str | None = Field(default=None, max_length=255)
+    po_wo_reference: str | None = Field(default=None, max_length=160)
     notes: str | None = Field(default=None, max_length=10_000)
+    # Optional traceability to the approved commercial revision / PM billing basis this invoice is prepared from.
+    estimate_revision_id: int | None = Field(default=None, gt=0)
+    billing_basis_id: int | None = Field(default=None, gt=0)
+    billed_quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
+    billed_milestone_id: int | None = Field(default=None, gt=0)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def normalize_invoice_currency(cls, value):
+        code = str(value or "INR").strip().upper()
+        if not is_supported_currency(code):
+            raise ValueError(f"Unsupported ISO 4217 currency code: {code}")
+        return code
 
     @model_validator(mode="after")
-    def validate_dates(self):
+    def validate_dates_and_fx(self):
         if self.due_date < self.invoice_date:
             raise ValueError("Due date cannot be before invoice date")
+        if self.fx_rate_to_inr is not None:
+            mode = self.fx_rate_mode or "MANUAL_OVERRIDE"
+            if self.currency != "INR" and mode not in OVERRIDE_MODES:
+                raise ValueError("A manual FX rate must use an override/contract/bank-realization mode")
+            if self.currency != "INR" and not self.fx_override_reason:
+                raise ValueError("Reason is required when entering a manual FX rate")
+        elif self.fx_rate_mode in OVERRIDE_MODES:
+            raise ValueError("Manual FX mode requires fx_rate_to_inr")
         return self
 
 
-class InvoiceRaise(BaseModel):
+class InvoiceRaise(_InvoiceFxFields):
     notes: str | None = Field(default=None, max_length=10_000)
 
+    @model_validator(mode="after")
+    def validate_manual_fx(self):
+        if self.fx_rate_to_inr is not None and not self.fx_override_reason:
+            raise ValueError("Reason is required when entering a manual FX rate")
+        if self.fx_rate_to_inr is None and self.fx_rate_mode in OVERRIDE_MODES:
+            raise ValueError("Manual FX mode requires fx_rate_to_inr")
+        return self
 
-class InvoicePaymentCreate(BaseModel):
+
+class InvoicePaymentCreate(_InvoiceFxFields):
     payment_reference: str = Field(min_length=1, max_length=180)
     payment_date: date
     amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
     payment_mode: str = Field(default="bank_transfer", min_length=2, max_length=40)
     comments: str | None = Field(default=None, max_length=10_000)
+
+    @model_validator(mode="after")
+    def validate_manual_fx(self):
+        if self.fx_rate_to_inr is not None and not self.fx_override_reason:
+            raise ValueError("Reason is required when entering a manual FX rate")
+        if self.fx_rate_to_inr is None and self.fx_rate_mode in OVERRIDE_MODES:
+            raise ValueError("Manual FX mode requires fx_rate_to_inr")
+        return self
 
 
 class InvoiceClose(BaseModel):

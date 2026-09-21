@@ -186,6 +186,28 @@ class ProjectInvoice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
 
+    # Commercial / FX snapshot (additive). ``amount`` stays the revenue-before-tax value in the invoice
+    # currency; the *_inr columns are the accounting values at the invoice date's own FX rate. Legacy rows
+    # keep NULLs, which readers treat as "FX not recorded" (INR invoices resolve at rate 1).
+    tax_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    fx_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fx_rate_to_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    fx_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fx_rate_source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    fx_rate_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    base_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    tax_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    total_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    fx_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    payment_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    po_wo_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # Traceability to the approved commercial basis and PM billing basis this invoice was prepared from
+    # (additive, nullable; plain integers so lifecycle tables never depend on the commercial tables' load order).
+    estimate_revision_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    billing_basis_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    billed_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    billed_milestone_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
 
 class ProjectInvoicePayment(Base):
     __tablename__ = "project_invoice_payments"
@@ -203,6 +225,18 @@ class ProjectInvoicePayment(Base):
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
     recorded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    # Realization FX (additive). ``amount`` is applied against the invoice in the invoice currency; these
+    # columns record what that payment realised in INR at the payment's OWN rate, never the invoice rate.
+    payment_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    fx_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fx_rate_to_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    fx_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fx_rate_source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    fx_rate_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    inr_equivalent: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    invoice_inr_equivalent: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    fx_gain_loss_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
 
 class ProjectMessage(Base):

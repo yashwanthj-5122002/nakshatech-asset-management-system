@@ -33,6 +33,9 @@ from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.finance.router import router as finance_router
 from app.modules.finance.service import ensure_finance_seed_data
 from app.modules.finance.schema_compat import ensure_finance_v2_schema_compatibility
+from app.modules.commercial import models as commercial_models  # noqa: F401
+from app.modules.commercial.router import router as commercial_router
+from app.modules.commercial.schema_compat import ensure_commercial_schema_compatibility
 from app.modules.travel_km import models as travel_km_models  # noqa: F401
 from app.modules.travel_km.router import router as travel_km_router
 from app.modules.operations import models as operations_models  # noqa: F401
@@ -362,6 +365,7 @@ def initialize_application() -> None:
         Base.metadata.create_all(bind=engine)
         ensure_schema_compatibility()
         ensure_finance_v2_schema_compatibility()
+        ensure_commercial_schema_compatibility()
         with SessionLocal() as db:
             if settings.seed_default_users:
                 seed_database(db)
@@ -500,6 +504,7 @@ app.include_router(naksha_copilot_router, prefix=settings.api_prefix)
 app.include_router(agent_monitor_router, prefix=settings.api_prefix)
 app.include_router(notification_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
+app.include_router(commercial_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
 app.include_router(operations_router, prefix=settings.api_prefix)
 

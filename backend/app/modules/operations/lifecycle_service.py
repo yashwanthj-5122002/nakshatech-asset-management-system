@@ -1062,6 +1062,9 @@ def create_invoice_draft(
     invoice_number = payload.invoice_number.strip()
     if db.scalar(select(ProjectInvoice.id).where(ProjectInvoice.invoice_number == invoice_number)) is not None:
         raise ValueError("Invoice number already exists")
+    tax_percent = payload.tax_percent
+    if tax_percent is None:
+        tax_percent = ((Decimal(payload.tax_amount) / Decimal(payload.amount)) * Decimal("100")).quantize(Decimal("0.01"))
     invoice = ProjectInvoice(
         project_id=project_id,
         invoice_number=invoice_number,
@@ -1069,12 +1072,34 @@ def create_invoice_draft(
         due_date=payload.due_date,
         amount=payload.amount,
         tax_amount=payload.tax_amount,
+        tax_percent=tax_percent,
         currency=payload.currency.upper(),
+        payment_terms=(payload.payment_terms or "").strip() or None,
+        po_wo_reference=(payload.po_wo_reference or "").strip() or None,
         notes=(payload.notes or "").strip() or None,
         created_by_id=actor.id,
     )
+    from app.modules.commercial.service import apply_invoice_billing_links, prepare_client_invoice_fx
+
+    # Validate the approved-basis / PM-basis links BEFORE the row is added, so a rejected link leaves nothing behind.
+    apply_invoice_billing_links(
+        db,
+        invoice=invoice,
+        estimate_revision_id=payload.estimate_revision_id,
+        billing_basis_id=payload.billing_basis_id,
+        billed_quantity=payload.billed_quantity,
+        billed_milestone_id=payload.billed_milestone_id,
+    )
     db.add(invoice)
     db.flush()
+    prepare_client_invoice_fx(
+        db,
+        actor=actor,
+        invoice=invoice,
+        manual_rate=payload.fx_rate_to_inr,
+        manual_mode=payload.fx_rate_mode,
+        manual_reason=payload.fx_override_reason,
+    )
     _transition(
         db,
         workflow=workflow,
@@ -1095,6 +1120,16 @@ def raise_invoice(
         raise ValueError("Invoice not found")
     if invoice.status != INVOICE_DRAFT:
         raise ValueError("Only a draft invoice can be raised")
+    from app.modules.commercial.service import lock_client_invoice_fx
+
+    lock_client_invoice_fx(
+        db,
+        actor=actor,
+        invoice=invoice,
+        manual_rate=payload.fx_rate_to_inr,
+        manual_mode=payload.fx_rate_mode,
+        manual_reason=payload.fx_override_reason,
+    )
     invoice.status = INVOICE_RAISED
     invoice.raised_by_id = actor.id
     invoice.raised_at = utc_now()
@@ -1163,6 +1198,17 @@ def record_invoice_payment(
     )
     db.add(payment)
     db.flush()
+    from app.modules.commercial.service import prepare_client_payment_fx
+
+    prepare_client_payment_fx(
+        db,
+        actor=actor,
+        invoice=invoice,
+        payment=payment,
+        manual_rate=payload.fx_rate_to_inr,
+        manual_mode=payload.fx_rate_mode,
+        manual_reason=payload.fx_override_reason,
+    )
     paid_after = paid_before + payload.amount
     complete = paid_after == total_due
     invoice.status = PAYMENT_RECEIVED if complete else PARTIALLY_PAID
@@ -1271,6 +1317,13 @@ def assert_finance_closable(db: Session, *, workflow: ProjectWorkflow) -> None:
             ProjectTimelineEvent.project_id == workflow.project_id
         ).limit(1))
         if has_lifecycle is None:
+            # Preserve the legacy lifecycle grandfathering rule, but still enforce
+            # Commercial settlement when this legacy project has opted into the new
+            # commercial/cost layer. The Commercial guard itself is a no-op when no
+            # commercial records exist.
+            from app.modules.commercial.service import assert_commercial_closure_ready
+
+            assert_commercial_closure_ready(db, project_id=workflow.project_id)
             return
     if workflow.status != FINANCE_CLOSURE_PENDING:
         raise ValueError("Finance Closure Pending is required before Finance Closure")
@@ -1294,6 +1347,12 @@ def assert_finance_closable(db: Session, *, workflow: ProjectWorkflow) -> None:
             raise ValueError(f"Invoice {invoice.invoice_number} must be fully paid and closed")
         if _payment_total(db, invoice.id) < Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0):
             raise ValueError(f"Invoice {invoice.invoice_number} has an outstanding payment balance")
+
+    # Additive V8.1 Commercial guard: unresolved estimate revisions, employee
+    # expenses/declarations, or vendor payables must not be silently bypassed.
+    from app.modules.commercial.service import assert_commercial_closure_ready
+
+    assert_commercial_closure_ready(db, project_id=workflow.project_id)
 
 
 def record_project_closed_timeline(db: Session, *, actor: User, project_id: int, remarks: str) -> None:
@@ -1330,6 +1389,22 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
         "paid_amount": float(paid),
         "balance": float(max(Decimal("0"), due - paid)),
         "currency": row.currency,
+        "tax_percent": float(row.tax_percent) if row.tax_percent is not None else None,
+        "payment_terms": row.payment_terms,
+        "po_wo_reference": row.po_wo_reference,
+        "fx_snapshot_id": row.fx_snapshot_id,
+        "fx_rate_to_inr": float(row.fx_rate_to_inr) if row.fx_rate_to_inr is not None else None,
+        "fx_rate_date": row.fx_rate_date.isoformat() if row.fx_rate_date else None,
+        "fx_rate_source": row.fx_rate_source,
+        "fx_rate_mode": row.fx_rate_mode,
+        "base_inr": float(row.base_inr) if row.base_inr is not None else None,
+        "tax_inr": float(row.tax_inr) if row.tax_inr is not None else None,
+        "total_inr": float(row.total_inr) if row.total_inr is not None else None,
+        "fx_locked": bool(row.fx_locked),
+        "estimate_revision_id": row.estimate_revision_id,
+        "billing_basis_id": row.billing_basis_id,
+        "billed_quantity": float(row.billed_quantity) if row.billed_quantity is not None else None,
+        "billed_milestone_id": row.billed_milestone_id,
         "notes": row.notes,
         "raised_at": row.raised_at.isoformat() if row.raised_at else None,
         "closed_at": row.closed_at.isoformat() if row.closed_at else None,
@@ -1339,6 +1414,15 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
                 "payment_reference": payment.payment_reference,
                 "payment_date": payment.payment_date.isoformat(),
                 "amount": float(payment.amount),
+                "payment_currency": payment.payment_currency or row.currency,
+                "fx_snapshot_id": payment.fx_snapshot_id,
+                "fx_rate_to_inr": float(payment.fx_rate_to_inr) if payment.fx_rate_to_inr is not None else None,
+                "fx_rate_date": payment.fx_rate_date.isoformat() if payment.fx_rate_date else None,
+                "fx_rate_source": payment.fx_rate_source,
+                "fx_rate_mode": payment.fx_rate_mode,
+                "inr_equivalent": float(payment.inr_equivalent) if payment.inr_equivalent is not None else None,
+                "invoice_inr_equivalent": float(payment.invoice_inr_equivalent) if payment.invoice_inr_equivalent is not None else None,
+                "fx_gain_loss_inr": float(payment.fx_gain_loss_inr) if payment.fx_gain_loss_inr is not None else None,
                 "payment_mode": payment.payment_mode,
                 "comments": payment.comments,
                 "created_at": payment.created_at.isoformat(),

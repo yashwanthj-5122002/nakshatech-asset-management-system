@@ -1,0 +1,39 @@
+/* Commercial workflow alignment: shared form section, documents, PM billing basis and Finance commercial summary. */
+.cw-section { border: 1px solid #d9e5f0; border-radius: 14px; padding: 16px 16px 14px; margin: 16px 0 0; background: #fbfdff; min-width: 0; }
+.cw-section > legend { padding: 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .13em; color: #0b5cc6; display: flex; align-items: center; gap: 6px; }
+.cw-hint { margin: 0 0 12px; font-size: 13px; color: #55697d; }
+.cw-muted { color: #6b7c8f; font-size: 12px; }
+.cw-readout { min-height: 38px; display: flex; align-items: center; padding: 0 12px; border: 1px dashed #c9d7e6; border-radius: 10px; background: #f4f8fc; font-weight: 700; color: #19324d; font-size: 13px; }
+.cw-inline-action { justify-content: flex-end; }
+.cw-milestones { display: grid; gap: 8px; }
+.cw-milestone-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 34px; gap: 8px; align-items: center; }
+.cw-milestone-row input { width: 100%; box-sizing: border-box; border: 1px solid #d9e2ec; border-radius: 10px; padding: 9px 11px; background: #fff; }
+.cw-icon-button { border: 1px solid #d9e5f0; background: #fff; border-radius: 8px; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #637083; }
+.cw-icon-button:hover { background: #eef4fa; color: #a72a2a; }
+.cw-link { border: 0; background: transparent; padding: 0; color: #0b5cc6; font-weight: 700; cursor: pointer; text-decoration: underline; font-size: inherit; text-align: left; }
+.cw-fx { border: 1px solid #d9e5f0; border-radius: 12px; padding: 12px; display: grid; gap: 8px; background: #f8fbfe; }
+.cw-fx-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cw-fx-ok { color: #207446; font-size: 13px; }
+.cw-fx-warn { color: #8a5b08; font-size: 13px; background: #fff4df; border-radius: 8px; padding: 8px 10px; }
+.cw-docs { display: grid; gap: 10px; }
+.cw-docs-add { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 12px; }
+.cw-doc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cw-doc-list li { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #e4ecf4; border-radius: 10px; background: #fff; }
+.cw-doc-list li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cw-doc-list small { color: #6b7c8f; margin-left: 6px; }
+.cw-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.cw-fact { padding: 11px 12px; border-radius: 10px; background: rgba(148, 163, 184, .1); min-width: 0; }
+.cw-fact span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #637083; }
+.cw-fact strong { display: block; margin-top: 3px; color: #102a43; overflow-wrap: anywhere; }
+.cw-fact small { display: block; color: #6b7c8f; margin-top: 2px; }
+.cw-fact.wide { grid-column: 1 / -1; }
+.cw-locked { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #e9f8ef; color: #207446; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.cw-pending { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #fff4df; color: #8a5b08; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.cw-recommend { border: 1px solid #b6d4f7; background: #f2f8ff; border-radius: 14px; padding: 14px; display: grid; gap: 8px; }
+.cw-recommend .cw-big { font-size: 1.35rem; font-weight: 800; color: #0b4f8a; }
+.cw-warning-list { margin: 0; padding-left: 18px; color: #8a5b08; font-size: 13px; }
+@media (max-width: 720px) { .cw-docs-add { grid-template-columns: 1fr; } .cw-milestone-row { grid-template-columns: minmax(0, 1fr) 90px 34px; } }
+.cw-table-wrap { overflow-x: auto; border: 1px solid #e4ecf4; border-radius: 12px; }
+.cw-table { width: 100%; border-collapse: collapse; min-width: 420px; }
+.cw-table th, .cw-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #edf1f5; font-size: 13px; }
+.cw-table th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #637083; background: #f8fafc; }
