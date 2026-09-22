@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+import sys
+
+# Running "python scripts/<name>.py" sets sys.path[0] to /app/scripts inside Docker.
+# Add the backend project root explicitly so imports such as "app.core.database" work
+# consistently both as a direct script and from local development environments.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 import argparse
 import json
 
