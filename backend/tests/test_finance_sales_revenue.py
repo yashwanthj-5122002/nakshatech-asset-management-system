@@ -60,6 +60,8 @@ def _project(db, suffix: str):
         status="PAYMENT_PENDING",
         commercial_value=Decimal("100000.00"),
         currency="INR",
+        created_by_id=bd.id,
+        updated_by_id=bd.id,
     )
     db.add(workflow)
     db.flush()
