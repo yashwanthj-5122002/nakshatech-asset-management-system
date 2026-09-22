@@ -102,6 +102,7 @@ from app.modules.finance.client_master_io import (
     import_client_master_workbook,
     project_tracking,
 )
+from app.modules.finance.sales_revenue_service import sales_revenue_overview
 
 router = APIRouter(prefix="/finance", tags=["Finance CRM"])
 
@@ -128,6 +129,16 @@ def _xlsx_stream(data: bytes, filename: str) -> StreamingResponse:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/sales-revenue")
+def get_sales_revenue_overview(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> dict:
+    """Read-only Sales/Revenue intelligence backed by the existing commercial and billing lifecycle."""
+    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    return sales_revenue_overview(db)
 
 
 @router.post("/client-master/import.xlsx")
