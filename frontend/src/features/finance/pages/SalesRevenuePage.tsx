@@ -1,6 +1,7 @@
 import { BarChart3, CalendarDays, CircleDollarSign, Eye, EyeOff, FileText, RefreshCcw, TrendingUp, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
+import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
 import './sales-revenue.css'
 
@@ -112,6 +113,23 @@ interface RevenueEvent {
 interface Overview {
   projects: SalesProject[]
   revenue_events: RevenueEvent[]
+}
+
+interface RevenueTarget {
+  id: number
+  month_start: string
+  month: string
+  department_code: string
+  department_label: string
+  target_amount_inr: number
+  created_by_name: string | null
+  updated_by_name: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+interface RevenueTargetResponse {
+  targets: RevenueTarget[]
 }
 
 const DEPARTMENTS = [
@@ -345,7 +363,9 @@ function RankingChart({ title, subtitle, rows }: { title: string; subtitle: stri
 }
 
 export function SalesRevenuePage({ mode }: { mode: Mode }) {
+  const { user } = useAuth()
   const [data, setData] = useState<Overview | null>(null)
+  const [revenueTargets, setRevenueTargets] = useState<RevenueTarget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [period, setPeriod] = useState<Period>('monthly')
@@ -369,12 +389,24 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments'>('sales')
+  const [revenuePage, setRevenuePage] = useState(1)
+  const [targetEditorOpen, setTargetEditorOpen] = useState(false)
+  const [targetMonth, setTargetMonth] = useState(currentMonth)
+  const [targetDrafts, setTargetDrafts] = useState<Record<string, string>>({})
+  const [targetSaving, setTargetSaving] = useState(false)
+  const [targetNotice, setTargetNotice] = useState('')
 
   function load() {
     setLoading(true)
     setError('')
-    void apiFetch<Overview>('/finance/sales-revenue')
-      .then(setData)
+    void Promise.all([
+      apiFetch<Overview>('/finance/sales-revenue'),
+      apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
+    ])
+      .then(([overview, targets]) => {
+        setData(overview)
+        setRevenueTargets(targets.targets)
+      })
       .catch(err => setError(err instanceof Error ? err.message : 'Unable to load Sales and Revenue analytics'))
       .finally(() => setLoading(false))
   }
@@ -438,7 +470,24 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     && dimensionsMatch(row)
   ), [allRevenue, range, department, client, project, bd, pm, currency])
 
-  const activeRows = mode === 'sales' ? salesRows : revenueRows
+  const sortedRevenueRows = useMemo(() => [...revenueRows].sort((a, b) =>
+    b.revenue_date.localeCompare(a.revenue_date)
+      || (b.invoice_closed_at || '').localeCompare(a.invoice_closed_at || '')
+      || b.finance_invoice_number.localeCompare(a.finance_invoice_number)
+  ), [revenueRows])
+  const revenuePageSize = 10
+  const revenuePageCount = Math.max(1, Math.ceil(sortedRevenueRows.length / revenuePageSize))
+  const paginatedRevenueRows = sortedRevenueRows.slice((revenuePage - 1) * revenuePageSize, revenuePage * revenuePageSize)
+
+  useEffect(() => {
+    setRevenuePage(1)
+  }, [period, day, week, month, quarter, year, from, to, department, client, project, bd, pm, currency])
+
+  useEffect(() => {
+    if (revenuePage > revenuePageCount) setRevenuePage(revenuePageCount)
+  }, [revenuePage, revenuePageCount])
+
+  const activeRows = mode === 'sales' ? salesRows : sortedRevenueRows
   const selectedProject = selectedProjectId == null ? null : allProjects.find(row => row.project_id === selectedProjectId) ?? null
   const selectedInvoice = selectedProject?.invoices.find(row => row.invoice_number === selectedInvoiceNumber)
     ?? (mode === 'revenue' ? selectedProject?.invoices.find(row => row.status === 'INVOICE_CLOSED') : selectedProject?.invoices[0])
@@ -468,6 +517,70 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
       average: revenueRows.length ? total / revenueRows.length : 0,
     }
   }, [revenueRows])
+
+  const targetMonthRows = useMemo(() => {
+    const targetByDepartment = new Map(
+      revenueTargets.filter(row => row.month === targetMonth).map(row => [row.department_code, row])
+    )
+    return DEPARTMENTS.map(([code, label]) => {
+      const targetRow = targetByDepartment.get(code)
+      const actual = allRevenue
+        .filter(row => row.department_code === code && row.revenue_date.slice(0, 7) === targetMonth)
+        .reduce((sum, row) => sum + row.revenue_amount_inr, 0)
+      const target = targetRow?.target_amount_inr || 0
+      const remaining = Math.max(target - actual, 0)
+      const achievement = target > 0 ? (actual / target) * 100 : 0
+      return { code, label, target, actual, remaining, achievement }
+    })
+  }, [revenueTargets, allRevenue, targetMonth])
+
+  const visibleTargetRows = department === 'all'
+    ? targetMonthRows
+    : targetMonthRows.filter(row => row.code === department)
+
+  const targetSummary = useMemo(() => {
+    const target = visibleTargetRows.reduce((sum, row) => sum + row.target, 0)
+    const actual = visibleTargetRows.reduce((sum, row) => sum + row.actual, 0)
+    return {
+      target,
+      actual,
+      remaining: Math.max(target - actual, 0),
+      achievement: target > 0 ? (actual / target) * 100 : 0,
+    }
+  }, [visibleTargetRows])
+
+  function openTargetEditor() {
+    const drafts: Record<string, string> = {}
+    for (const row of targetMonthRows) drafts[row.code] = row.target ? String(row.target) : ''
+    setTargetDrafts(drafts)
+    setTargetNotice('')
+    setTargetEditorOpen(true)
+  }
+
+  async function saveRevenueTargets() {
+    setTargetSaving(true)
+    setError('')
+    setTargetNotice('')
+    try {
+      const monthStart = `${targetMonth}-01`
+      await Promise.all(DEPARTMENTS.map(([code]) => apiFetch('/finance/revenue-targets', {
+        method: 'PUT',
+        body: JSON.stringify({
+          month_start: monthStart,
+          department_code: code,
+          target_amount_inr: Number(targetDrafts[code] || 0),
+        }),
+      })))
+      const refreshed = await apiFetch<RevenueTargetResponse>('/finance/revenue-targets')
+      setRevenueTargets(refreshed.targets)
+      setTargetNotice('Monthly department revenue targets saved.')
+      setTargetEditorOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save monthly revenue targets')
+    } finally {
+      setTargetSaving(false)
+    }
+  }
 
   const monthlyChart = useMemo(() => {
     const map = new Map<string, { value: number; secondary: number }>()
@@ -642,6 +755,31 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
         <article><WalletCards/><span>Average Closed Invoice</span><strong>{inr(revenueKpis.average)}</strong><small>Realized average in selected period</small></article>
       </section>}
 
+      {mode === 'revenue' && <section className="sr-target-panel">
+        <div className="sr-target-heading">
+          <div><span>MONTHLY REVENUE TARGET</span><h3>{monthLabel(targetMonth)} Department Performance</h3><p>Finance sets the target. Actual Revenue is calculated only from fully paid + closed Finance invoices.</p></div>
+          <div className="sr-target-actions">
+            <label><span>Target Month</span><input type="month" value={targetMonth} onChange={e => setTargetMonth(e.target.value)}/></label>
+            {user?.role === 'finance' && <button className="finance-secondary-button" type="button" onClick={openTargetEditor}>Manage Monthly Revenue Targets</button>}
+          </div>
+        </div>
+        {targetNotice && <div className="finance-success-message">{targetNotice}</div>}
+        <div className="sr-target-summary">
+          <article><span>Target</span><strong>{inr(targetSummary.target)}</strong></article>
+          <article><span>Actual Revenue</span><strong>{inr(targetSummary.actual)}</strong></article>
+          <article><span>Remaining</span><strong>{inr(targetSummary.remaining)}</strong></article>
+          <article><span>Achievement</span><strong>{targetSummary.achievement.toFixed(1)}%</strong></article>
+        </div>
+        <div className="sr-target-progress"><i style={{width: `${Math.min(100, targetSummary.achievement)}%`}}/><span>{targetSummary.achievement.toFixed(1)}% achieved</span></div>
+        <div className="sr-target-departments">
+          {visibleTargetRows.map(row => <div key={row.code}>
+            <div><strong>{row.label}</strong><span>{inr(row.actual)} / {inr(row.target)}</span></div>
+            <div className="sr-target-dept-track"><i style={{width: `${Math.min(100, row.achievement)}%`}}/></div>
+            <small>{row.target > 0 ? `${row.achievement.toFixed(1)}% · ${inr(row.remaining)} remaining` : 'Target not set'}</small>
+          </div>)}
+        </div>
+      </section>}
+
       <section className="sr-viz-toolbar">
         <div><span>VISUALIZATIONS</span><strong>Choose the analysis you want to view</strong><small>Keep the page compact and open only the chart you need.</small></div>
         <label><span>Visualization</span><select value={visualizationKey} onChange={e => setVisualizationKey(e.target.value as VisualizationKey)}>{visualizationOptions.map(option => <option value={option.key} key={option.key}>{option.label}</option>)}</select></label>
@@ -668,7 +806,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
               <td><strong>{inr(row.received_against_open_sales_inr)}</strong><br/><small>Outstanding {inr(row.outstanding_inr)}</small></td>
               <td><span className="sr-status">{row.sales_status}</span></td>
               <td><button className="finance-secondary-button" onClick={() => openSales(row)}>Project details</button></td>
-            </tr>) : revenueRows.map(row => <tr key={`${row.project_id}-${row.finance_invoice_number}`}>
+            </tr>) : paginatedRevenueRows.map(row => <tr key={`${row.project_id}-${row.finance_invoice_number}`}>
               <td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_code || '—'} · {row.client_name}</small></td>
               <td><strong>{row.bd_name}</strong><br/><span>{row.department_label}</span><br/><small>PM: {row.project_manager_name}</small></td>
               <td>{row.currency}</td>
@@ -679,7 +817,25 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
               <td><button className="finance-secondary-button" onClick={() => openRevenue(row)}>Project details</button></td>
             </tr>)}
           </tbody></table></div>}
+        {mode === 'revenue' && sortedRevenueRows.length > 0 && <div className="sr-pagination">
+          <span>Showing {(revenuePage - 1) * revenuePageSize + 1}–{Math.min(revenuePage * revenuePageSize, sortedRevenueRows.length)} of {sortedRevenueRows.length} · newest first</span>
+          <div>
+            <button className="finance-secondary-button" type="button" disabled={revenuePage <= 1} onClick={() => setRevenuePage(page => Math.max(1, page - 1))}>Previous</button>
+            <strong>Page {revenuePage} of {revenuePageCount}</strong>
+            <button className="finance-secondary-button" type="button" disabled={revenuePage >= revenuePageCount} onClick={() => setRevenuePage(page => Math.min(revenuePageCount, page + 1))}>Next</button>
+          </div>
+        </div>}
       </section>
+
+      {targetEditorOpen && <div className="sr-modal-backdrop" role="presentation" onMouseDown={() => setTargetEditorOpen(false)}>
+        <section className="sr-modal sr-target-modal" role="dialog" aria-modal="true" aria-label="Manage monthly revenue targets" onMouseDown={event => event.stopPropagation()}>
+          <div className="sr-modal-header"><div><span>FINANCE TARGET PLANNING</span><h3>Monthly Revenue Targets — {monthLabel(targetMonth)}</h3><p>Enter the INR Revenue target for each performing department.</p></div><button className="sr-modal-close" type="button" onClick={() => setTargetEditorOpen(false)} aria-label="Close target editor"><X size={20}/></button></div>
+          <div className="sr-target-editor-grid">
+            {DEPARTMENTS.map(([code, label]) => <label key={code}><span>{label}</span><input type="number" min="0" step="1000" value={targetDrafts[code] || ''} onChange={e => setTargetDrafts(current => ({...current, [code]: e.target.value}))} placeholder="0"/></label>)}
+          </div>
+          <div className="sr-target-editor-footer"><span>Actual Revenue is never edited here; it comes from closed Finance invoices.</span><button className="finance-primary-button" type="button" disabled={targetSaving} onClick={saveRevenueTargets}>{targetSaving ? 'Saving...' : 'Save Targets'}</button></div>
+        </section>
+      </div>}
 
       {selectedProject && <div className="sr-modal-backdrop" role="presentation" onMouseDown={closeDetails}>
         <section className="sr-modal" role="dialog" aria-modal="true" aria-label={`Project details for ${selectedProject.project_code}`} onMouseDown={event => event.stopPropagation()}>
