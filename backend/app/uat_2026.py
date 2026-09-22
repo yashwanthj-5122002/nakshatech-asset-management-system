@@ -762,6 +762,8 @@ def seed_year_2026(
         if spec.archetype in {"feedback", "rework", "change_request"}:
             request_day = clamp_2026(spec.end_date + timedelta(days=2))
             request_code = f"{FEEDBACK_PREFIX}{spec.ordinal:04d}"
+            awaiting_feedback = spec.archetype == "feedback"
+            response_day = clamp_2026(request_day + timedelta(days=2))
             request = ProjectFeedbackRequest(
                 project_id=project.id,
                 request_code=request_code,
@@ -769,38 +771,40 @@ def seed_year_2026(
                 recipient_email=client.client_email or f"client{spec.client_ordinal:03d}@example.com",
                 token_hash=hashlib.sha256(f"{TAG}:{request_code}".encode("utf-8")).hexdigest(),
                 message_thread_id=f"uat-2026-thread-{spec.ordinal:04d}",
-                status="responded",
+                status="sent" if awaiting_feedback else "responded",
                 message=f"[{TAG}] Please review synthetic delivery.",
                 expires_at=at_noon(clamp_2026(request_day + timedelta(days=14))),
                 sent_by_id=bd.id,
                 sent_at=at_noon(request_day),
                 reminder_count=0,
-                responded_at=at_noon(clamp_2026(request_day + timedelta(days=2))),
+                responded_at=None if awaiting_feedback else at_noon(response_day),
                 created_at=at_noon(request_day),
             )
             db.add(request)
             db.flush()
             summary.feedback_requests += 1
-            response = ProjectFeedbackResponse(
-                project_id=project.id,
-                feedback_request_id=request.id,
-                response_type="correction_requested" if spec.archetype == "rework" else ("additional_scope" if spec.archetype == "change_request" else "accepted"),
-                comments=f"[{TAG}] Synthetic client response",
-                correction_description=f"[{TAG}] Correct synthetic deliverable area" if spec.archetype == "rework" else None,
-                client_name=client.contact_person_name,
-                client_email=client.client_email,
-                external_message_id=f"uat-2026-msg-{spec.ordinal:04d}",
-                classification_status="confirmed",
-                classified_as="correction_rework" if spec.archetype == "rework" else ("additional_scope" if spec.archetype == "change_request" else "accepted"),
-                classified_by_id=bd.id,
-                classified_at=at_noon(clamp_2026(request_day + timedelta(days=2))),
-                responded_at=at_noon(clamp_2026(request_day + timedelta(days=2))),
-                created_at=at_noon(clamp_2026(request_day + timedelta(days=2))),
-            )
-            db.add(response)
-            db.flush()
+            response = None
+            if not awaiting_feedback:
+                response = ProjectFeedbackResponse(
+                    project_id=project.id,
+                    feedback_request_id=request.id,
+                    response_type="correction_requested" if spec.archetype == "rework" else "additional_scope",
+                    comments=f"[{TAG}] Synthetic client response",
+                    correction_description=f"[{TAG}] Correct synthetic deliverable area" if spec.archetype == "rework" else None,
+                    client_name=client.contact_person_name,
+                    client_email=client.client_email,
+                    external_message_id=f"uat-2026-msg-{spec.ordinal:04d}",
+                    classification_status="confirmed",
+                    classified_as="correction_rework" if spec.archetype == "rework" else "additional_scope",
+                    classified_by_id=bd.id,
+                    classified_at=at_noon(response_day),
+                    responded_at=at_noon(response_day),
+                    created_at=at_noon(response_day),
+                )
+                db.add(response)
+                db.flush()
 
-            if spec.archetype == "rework":
+            if spec.archetype == "rework" and response is not None:
                 cycle = ProjectReworkCycle(
                     project_id=project.id,
                     cycle_number=1,
@@ -818,7 +822,7 @@ def seed_year_2026(
                 )
                 db.add(cycle)
                 summary.rework_cycles += 1
-            elif spec.archetype == "change_request":
+            elif spec.archetype == "change_request" and response is not None:
                 change = ProjectChangeRequest(
                     project_id=project.id,
                     request_code=f"{CHANGE_PREFIX}{spec.ordinal:04d}",
