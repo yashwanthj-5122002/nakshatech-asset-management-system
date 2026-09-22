@@ -93,7 +93,8 @@ export function CommercialDetailsSection({ form, onChange, currencies, disabled 
 
       <label className="operations-field operations-span-2"><span>Payment Terms *</span><input required value={form.payment_terms} onChange={e => set({ payment_terms: e.target.value })} placeholder="e.g. 30% advance · 40% after survey completion · 30% after final delivery" /></label>
       <label className="operations-field"><span>Expected Billing Milestone</span><input value={form.expected_billing_milestone} onChange={e => set({ expected_billing_milestone: e.target.value })} placeholder="e.g. On final delivery" /></label>
-      <label className="operations-field"><span>Quotation Reference</span><input value={form.quotation_reference} onChange={e => set({ quotation_reference: e.target.value })} /></label>
+      <label className="operations-field"><span>Projected Client Payment Date</span><input type="date" value={form.projected_payment_date} onChange={e => set({ projected_payment_date: e.target.value })} /></label>
+      <label className="operations-field"><span>BD Sales Invoice / Quotation Reference</span><input value={form.quotation_reference} onChange={e => set({ quotation_reference: e.target.value })} placeholder="BD sales / quotation reference" /></label>
       <label className="operations-field"><span>PO / WO Reference</span><input value={form.po_wo_reference} onChange={e => set({ po_wo_reference: e.target.value })} /></label>
       <label className="operations-field"><span>Estimated direct cost (INR, optional)</span><input type="number" min="0" step="0.01" value={form.estimated_direct_cost_inr} onChange={e => set({ estimated_direct_cost_inr: e.target.value })} /></label>
       <label className="operations-field operations-span-2"><span>Commercial Notes / Assumptions</span><textarea value={form.notes} onChange={e => set({ notes: e.target.value })} /></label>
