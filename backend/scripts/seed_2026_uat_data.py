@@ -68,6 +68,10 @@ def main() -> int:
                 "feedback_requests": summary.feedback_requests,
                 "rework_cycles": summary.rework_cycles,
                 "change_requests": summary.change_requests,
+                "travel_km_claims": summary.travel_km_claims,
+                "assets": summary.assets,
+                "work_records": summary.work_records,
+                "drones": summary.drones,
             },
             "validation": validation,
         }, indent=2))
