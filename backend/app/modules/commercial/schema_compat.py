@@ -33,6 +33,7 @@ ESTIMATE_COLUMNS = {
     "unit_rate": "NUMERIC(18, 4)",
     "estimated_quantity": "NUMERIC(14, 3)",
     "quantity_unit": "VARCHAR(30)",
+    "projected_payment_date": "DATE",
 }
 PAYMENT_COLUMNS = {
     "payment_currency": "VARCHAR(3)",
