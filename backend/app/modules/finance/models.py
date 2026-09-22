@@ -408,6 +408,7 @@ class FinanceRevenueTarget(Base):
     month_start: Mapped[date] = mapped_column(Date, index=True)
     department_code: Mapped[str] = mapped_column(String(30), index=True)
     target_amount_inr: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    source_tag: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
