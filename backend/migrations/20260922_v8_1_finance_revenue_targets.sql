@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS finance_revenue_targets (
     month_start DATE NOT NULL,
     department_code VARCHAR(30) NOT NULL,
     target_amount_inr NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    source_tag VARCHAR(80),
     created_by_id INTEGER NOT NULL REFERENCES users(id),
     updated_by_id INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -24,3 +25,6 @@ CREATE INDEX IF NOT EXISTS ix_finance_revenue_targets_created_by_id
 
 CREATE INDEX IF NOT EXISTS ix_finance_revenue_targets_updated_by_id
     ON finance_revenue_targets (updated_by_id);
+
+CREATE INDEX IF NOT EXISTS ix_finance_revenue_targets_source_tag
+    ON finance_revenue_targets (source_tag);
