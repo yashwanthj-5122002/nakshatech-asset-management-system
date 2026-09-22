@@ -373,6 +373,20 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
   }, [mode, salesRows, revenueRows])
 
+  const bdChart = useMemo(() => {
+    const map = new Map<string, number>()
+    if (mode === 'sales') for (const row of salesRows) map.set(row.bd_name || 'Unassigned', (map.get(row.bd_name || 'Unassigned') || 0) + row.open_sales_inr)
+    else for (const row of revenueRows) map.set(row.bd_name || 'Unassigned', (map.get(row.bd_name || 'Unassigned') || 0) + row.revenue_amount_inr)
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
+  }, [mode, salesRows, revenueRows])
+
+  const pmChart = useMemo(() => {
+    const map = new Map<string, number>()
+    if (mode === 'sales') for (const row of salesRows) map.set(row.project_manager_name || 'Unassigned', (map.get(row.project_manager_name || 'Unassigned') || 0) + row.open_sales_inr)
+    else for (const row of revenueRows) map.set(row.project_manager_name || 'Unassigned', (map.get(row.project_manager_name || 'Unassigned') || 0) + row.revenue_amount_inr)
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
+  }, [mode, salesRows, revenueRows])
+
   function resetDimensions() {
     setDepartment('all'); setClient('all'); setProject('all'); setBd('all'); setPm('all'); setCurrency('all'); setStatusFilter('all')
   }
@@ -448,6 +462,8 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
         <BarPanel title={mode === 'sales' ? 'Monthly Sales vs Received' : 'Monthly Revenue Trend'} subtitle={mode === 'sales' ? 'Open sales pipeline compared with money already received on still-open invoices.' : 'Actual realized revenue by final payment/closure period.'} rows={monthlyChart}/>
         <BarPanel title={mode === 'sales' ? 'Department-wise Sales' : 'Department-wise Revenue'} subtitle="Compare ORTHO, LiDAR, Mobile Mapping, Laser Scanning and Civil under the current filters." rows={departmentChart}/>
         <BarPanel title={mode === 'sales' ? 'Payment Status Exposure' : 'Top Clients by Revenue'} subtitle={mode === 'sales' ? 'Where open sales money currently sits in the collection lifecycle.' : 'Clients contributing the most realized revenue in this selection.'} rows={thirdChart}/>
+        <BarPanel title={mode === 'sales' ? 'BD-wise Open Sales' : 'BD-wise Realized Revenue'} subtitle="Commercial ownership view under the exact same time and department filters." rows={bdChart}/>
+        <BarPanel title={mode === 'sales' ? 'PM-wise Sales Exposure' : 'PM-wise Realized Revenue'} subtitle="Project-manager financial view for the current selection." rows={pmChart}/>
       </section>
 
       <section className="sr-panel">
