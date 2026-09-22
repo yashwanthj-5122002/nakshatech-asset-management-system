@@ -296,6 +296,7 @@ def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
         "billing_type": row.billing_type,
         "payment_terms": row.payment_terms,
         "expected_billing_milestone": row.expected_billing_milestone,
+        "projected_payment_date": row.projected_payment_date.isoformat() if row.projected_payment_date else None,
         "notes": row.notes,
         "currency_code": row.currency_code,
         "estimated_amount": float(row.estimated_amount),
@@ -445,6 +446,7 @@ def upsert_baseline_estimate(db: Session, *, actor: User, project_id: int, paylo
     row.billing_type = payload.billing_type
     row.payment_terms = payload.payment_terms
     row.expected_billing_milestone = payload.expected_billing_milestone
+    row.projected_payment_date = payload.projected_payment_date
     row.notes = payload.notes
     row.estimated_direct_cost_inr = money(payload.estimated_direct_cost_inr) if payload.estimated_direct_cost_inr is not None else None
     row.unit_rate = payload.unit_rate
@@ -597,6 +599,7 @@ def create_estimate_revision(db: Session, *, actor: User, project_id: int, paylo
         billing_type=payload.billing_type,
         payment_terms=payload.payment_terms,
         expected_billing_milestone=payload.expected_billing_milestone,
+        projected_payment_date=payload.projected_payment_date,
         notes=payload.notes,
         currency_code=payload.currency_code,
         estimated_amount=money(payload.estimated_amount),
