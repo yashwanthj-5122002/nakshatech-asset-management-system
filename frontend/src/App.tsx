@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { StrictProtectedRoute } from './components/StrictProtectedRoute'
 import { useAuth } from './context/AuthContext'
 import { AdminDashboard } from './pages/AdminDashboard'
+import { UAT2026ControlPage } from './pages/UAT2026ControlPage'
 import { AssetsPage } from './pages/AssetsPage'
 import { AssetFormPage } from './pages/AssetFormPage'
 import { DroneDashboardPage } from './features/drone/pages/DroneDashboardPage'
@@ -185,6 +186,7 @@ export default function App() {
       <Route path="/management/project-360/:projectId" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team" element={<ProtectedRoute roles={['software_team']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute roles={['admin']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
+      <Route path="/admin/uat-2026" element={<ProtectedRoute roles={['admin']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/work" element={<ProtectedRoute roles={['it', 'drone', 'management', 'admin']}><WithLayout><ITWorkRoute /></WithLayout></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ReportsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/data-quality" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><DataQualityCentrePage /></WithLayout></ProtectedRoute>} />
