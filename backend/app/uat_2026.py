@@ -16,7 +16,7 @@ from app.core.departments import (
     SUPPORTED_DEPARTMENTS,
     user_department_matches,
 )
-from app.models.entities import User
+from app.models.entities import Asset, Drone, DroneLocation, User, WorkRecord
 from app.modules.commercial.models import (
     ProjectBillingBasis,
     ProjectCommercialEstimateRevision,
@@ -41,6 +41,7 @@ from app.modules.operations.lifecycle_models import (
     ProjectInvoicePayment,
     ProjectReworkCycle,
 )
+from app.modules.travel_km.models import TravelKmClaim
 from app.modules.operations.models import (
     OrthoDailyUpdate,
     OrthoDelivery,
@@ -131,6 +132,10 @@ class SeedSummary:
     feedback_requests: int = 0
     rework_cycles: int = 0
     change_requests: int = 0
+    travel_km_claims: int = 0
+    assets: int = 0
+    work_records: int = 0
+    drones: int = 0
 
 
 def money(value: Decimal | int | float | str) -> Decimal:
@@ -250,6 +255,11 @@ def _staff_context(db: Session) -> tuple[list[User], list[User], dict[str, User]
             )
         employees[department] = pool
     return bd_users, finance_users, pms, employees
+
+
+def _optional_staff(db: Session, role: str, fallback: User) -> User:
+    rows = _active_users(db, role)
+    return rows[0] if rows else fallback
 
 
 def _ensure_not_production() -> None:
@@ -396,6 +406,109 @@ def seed_year_2026(
         target_realized_revenue_inr=target_realized_revenue_inr,
     )
     summary = SeedSummary()
+    admin_user = _optional_staff(db, "admin", finance_users[0])
+    hr_user = _optional_staff(db, "hr", finance_users[0])
+
+    # Representative non-project-master modules: Asset/IT work and Drone inventory.
+    # Codes are UAT26-prefixed so cleanup can target them without touching real inventory.
+    for asset_no in range(1, 21):
+        department = DEPARTMENT_LABELS[SUPPORTED_DEPARTMENTS[(asset_no - 1) % len(SUPPORTED_DEPARTMENTS)]]
+        asset = Asset(
+            asset_code=f"UAT26-AST-{asset_no:03d}",
+            source_sheet=TAG,
+            source_row=asset_no,
+            used_by=f"UAT Employee {asset_no:03d}",
+            workstation_no=f"UAT-WS-{asset_no:03d}",
+            department=department,
+            system_name=f"UAT-SYS-{asset_no:03d}",
+            brand="UAT Brand",
+            model="Synthetic Workstation",
+            serial_number=f"UAT26-SERIAL-{asset_no:03d}",
+            ownership="company",
+            device_type="desktop" if asset_no % 2 else "laptop",
+            processor="Synthetic CPU",
+            memory_gb="16",
+            ssd="512 GB",
+            operating_system="Windows 11",
+            antivirus="Managed",
+            network_type="LAN",
+            performed_by="UAT 2026 Generator",
+            approved_by=admin_user.full_name,
+            price=65000.0 + asset_no * 250.0,
+            remarks=f"[{TAG}] Synthetic asset inventory fixture",
+            asset_date=date(2026, ((asset_no - 1) % 12) + 1, 5),
+            original_asset_date=date(2026, ((asset_no - 1) % 12) + 1, 5),
+            location="Head Office",
+            work_mode="office",
+            status="assigned" if asset_no % 3 else "available",
+            created_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 5)),
+            updated_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 5)),
+        )
+        db.add(asset)
+        db.flush()
+        summary.assets += 1
+        db.add(WorkRecord(
+            work_code=f"UAT26-WRK-{asset_no:03d}",
+            module="it",
+            asset_id=asset.id,
+            title=f"UAT preventive maintenance {asset_no:03d}",
+            work_type="Inspection",
+            project=None,
+            assigned_to=asset.used_by,
+            technician="IT Department",
+            priority="high" if asset_no % 5 == 0 else "medium",
+            issue_description=f"[{TAG}] Synthetic IT maintenance request",
+            details="Validate asset work, approval, reporting and history.",
+            status="completed" if asset_no % 2 else "in_progress",
+            root_cause="Routine UAT validation",
+            resolution="Verified synthetic asset" if asset_no % 2 else None,
+            cost=500.0 + asset_no * 10,
+            approval_status="approved",
+            submitted_by_user_id=admin_user.id,
+            submitted_by_name=admin_user.full_name,
+            submitted_by_email=admin_user.email,
+            submitted_by_role=admin_user.role,
+            submitted_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 6)),
+            approved_by_user_id=admin_user.id,
+            approved_by_name=admin_user.full_name,
+            approved_by_email=admin_user.email,
+            approved_by_role=admin_user.role,
+            approved_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 7)),
+            approval_comments=f"[{TAG}] Synthetic approval",
+            start_date=date(2026, ((asset_no - 1) % 12) + 1, 7),
+            expected_completion_date=date(2026, ((asset_no - 1) % 12) + 1, 10),
+            completed_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 9)) if asset_no % 2 else None,
+            reporting_month=f"2026-{((asset_no - 1) % 12) + 1:02d}",
+            created_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 6)),
+            updated_at=at_noon(date(2026, ((asset_no - 1) % 12) + 1, 9)),
+        ))
+        summary.work_records += 1
+
+    for drone_no in range(1, 6):
+        drone = Drone(
+            asset_code=f"UAT26-DRN-{drone_no:03d}",
+            name=f"UAT Survey Drone {drone_no:02d}",
+            model="Synthetic UAV",
+            serial_number=f"UAT26-DRONE-SN-{drone_no:03d}",
+            pilot=f"UAT Pilot {drone_no:02d}",
+            project=f"{PROJECT_PREFIX}{drone_no:04d}",
+            status="deployed" if drone_no % 2 else "available",
+            battery_percent=float(60 + drone_no * 5),
+        )
+        db.add(drone)
+        db.flush()
+        db.add(DroneLocation(
+            drone_id=drone.id,
+            latitude=12.9716 + drone_no * 0.01,
+            longitude=77.5946 + drone_no * 0.01,
+            altitude=100.0 + drone_no * 10,
+            speed=0.0,
+            heading=float(drone_no * 30),
+            battery_percent=float(60 + drone_no * 5),
+            source="uat_2026",
+            recorded_at=at_noon(date(2026, drone_no, 15)),
+        ))
+        summary.drones += 1
 
     client_rows: dict[int, FinanceClient] = {}
     for ordinal in range(1, clients + 1):
@@ -962,6 +1075,61 @@ def seed_year_2026(
                 ))
             summary.expense_claims += 1
 
+        if spec.ordinal % 5 == 0 and progressed:
+            travel_day = clamp_2026(spec.start_date + timedelta(days=20))
+            km = Decimal(str(18 + (spec.ordinal % 22)))
+            allowance = money(km * Decimal("5.00"))
+            travel_statuses = ("submitted", "admin_approved", "hr_approved", "finance_approved")
+            travel_status = travel_statuses[(spec.ordinal // 5) % len(travel_statuses)]
+            db.add(TravelKmClaim(
+                claim_code=f"UAT26-KM-{spec.ordinal:04d}",
+                requester_id=production.id,
+                project_id=project.id,
+                project_code_snapshot=project.project_code,
+                project_name_snapshot=project.project_name,
+                client_name_snapshot=client.client_name,
+                travel_date=travel_day,
+                purpose_description=f"[{TAG}] Synthetic project travel",
+                start_km=Decimal("1000.00"),
+                end_km=money(Decimal("1000.00") + km),
+                odometer_km=money(km),
+                start_latitude=12.9716,
+                start_longitude=77.5946,
+                start_accuracy_m=8.0,
+                start_captured_at=at_noon(travel_day),
+                end_latitude=12.9716 + 0.03,
+                end_longitude=77.5946 + 0.03,
+                end_accuracy_m=9.0,
+                end_captured_at=at_noon(travel_day) + timedelta(hours=2),
+                gps_straight_line_km=Decimal("4.200"),
+                distance_variance_km=money(km - Decimal("4.2")),
+                distance_variance_percent=Decimal("10.00"),
+                rate_per_km=Decimal("5.00"),
+                calculated_allowance=allowance,
+                admin_eligible_km=money(km) if travel_status in {"admin_approved", "hr_approved", "finance_approved"} else None,
+                hr_eligible_km=money(km) if travel_status in {"hr_approved", "finance_approved"} else None,
+                final_eligible_km=money(km) if travel_status in {"hr_approved", "finance_approved"} else None,
+                final_allowance=allowance if travel_status in {"hr_approved", "finance_approved"} else None,
+                status=travel_status,
+                admin_decision_by_id=admin_user.id if travel_status in {"admin_approved", "hr_approved", "finance_approved"} else None,
+                admin_decision_at=at_noon(clamp_2026(travel_day + timedelta(days=1))) if travel_status in {"admin_approved", "hr_approved", "finance_approved"} else None,
+                admin_comments=f"[{TAG}] Synthetic Admin verification" if travel_status in {"admin_approved", "hr_approved", "finance_approved"} else None,
+                hr_decision_by_id=hr_user.id if travel_status in {"hr_approved", "finance_approved"} else None,
+                hr_decision_at=at_noon(clamp_2026(travel_day + timedelta(days=2))) if travel_status in {"hr_approved", "finance_approved"} else None,
+                hr_comments=f"[{TAG}] Synthetic HR verification" if travel_status in {"hr_approved", "finance_approved"} else None,
+                finance_decision_by_id=finance.id if travel_status == "finance_approved" else None,
+                finance_decision_at=at_noon(clamp_2026(travel_day + timedelta(days=3))) if travel_status == "finance_approved" else None,
+                finance_comments=f"[{TAG}] Approved for monthly salary" if travel_status == "finance_approved" else None,
+                payment_reference=None,
+                payment_mode=None,
+                paid_amount=None,
+                paid_at=None,
+                submitted_at=at_noon(travel_day),
+                created_at=at_noon(travel_day),
+                updated_at=at_noon(clamp_2026(travel_day + timedelta(days=3))),
+            ))
+            summary.travel_km_claims += 1
+
     # Flush before exact revenue assertion; commit only if the whole fixture is internally consistent.
     db.flush()
     expected = money(target_realized_revenue_inr)
@@ -993,9 +1161,20 @@ def cleanup_year_2026(db: Session) -> dict[str, int]:
             db.execute(delete(ExpenseClaimPayment).where(ExpenseClaimPayment.claim_id.in_(claim_ids)))
             db.execute(delete(ExpenseClaimItem).where(ExpenseClaimItem.claim_id.in_(claim_ids)))
             db.execute(delete(ExpenseClaim).where(ExpenseClaim.id.in_(claim_ids)))
+        db.execute(delete(TravelKmClaim).where(TravelKmClaim.project_id.in_(project_ids)))
         db.execute(delete(ProjectExpense).where(ProjectExpense.project_id.in_(project_ids)))
         db.execute(delete(ProjectVendorInvoice).where(ProjectVendorInvoice.project_id.in_(project_ids)))
         db.execute(delete(FinanceProject).where(FinanceProject.id.in_(project_ids)))
+
+    # Non-project inventory fixtures are also removed strictly by UAT26 prefixes.
+    uat_asset_ids = list(db.scalars(select(Asset.id).where(Asset.asset_code.like("UAT26-AST-%"))).all())
+    if uat_asset_ids:
+        db.execute(delete(WorkRecord).where(WorkRecord.asset_id.in_(uat_asset_ids)))
+        db.execute(delete(Asset).where(Asset.id.in_(uat_asset_ids)))
+    uat_drone_ids = list(db.scalars(select(Drone.id).where(Drone.asset_code.like("UAT26-DRN-%"))).all())
+    if uat_drone_ids:
+        db.execute(delete(DroneLocation).where(DroneLocation.drone_id.in_(uat_drone_ids)))
+        db.execute(delete(Drone).where(Drone.id.in_(uat_drone_ids)))
 
     if client_ids:
         db.execute(delete(FinanceClient).where(FinanceClient.id.in_(client_ids)))
@@ -1061,4 +1240,8 @@ def validate_year_2026(db: Session) -> dict:
         "work_packages": int(db.scalar(select(func.count()).select_from(OrthoWorkPackage).where(OrthoWorkPackage.project_id.in_(project_ids))) or 0),
         "rework_cycles": int(db.scalar(select(func.count()).select_from(ProjectReworkCycle).where(ProjectReworkCycle.project_id.in_(project_ids))) or 0),
         "change_requests": int(db.scalar(select(func.count()).select_from(ProjectChangeRequest).where(ProjectChangeRequest.project_id.in_(project_ids))) or 0),
+        "travel_km_claims": int(db.scalar(select(func.count()).select_from(TravelKmClaim).where(TravelKmClaim.project_id.in_(project_ids))) or 0),
+        "uat_assets": int(db.scalar(select(func.count()).select_from(Asset).where(Asset.asset_code.like("UAT26-AST-%"))) or 0),
+        "uat_work_records": int(db.scalar(select(func.count()).select_from(WorkRecord).where(WorkRecord.work_code.like("UAT26-WRK-%"))) or 0),
+        "uat_drones": int(db.scalar(select(func.count()).select_from(Drone).where(Drone.asset_code.like("UAT26-DRN-%"))) or 0),
     }
