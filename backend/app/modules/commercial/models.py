@@ -84,6 +84,9 @@ class ProjectCommercialEstimateRevision(Base):
     billing_type: Mapped[str] = mapped_column(String(30))
     payment_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
     expected_billing_milestone: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # BD's expected client collection date. This is a forecast only; Finance invoice due dates and
+    # actual payment dates remain authoritative once billing begins.
+    projected_payment_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     currency_code: Mapped[str] = mapped_column(String(3), index=True)
