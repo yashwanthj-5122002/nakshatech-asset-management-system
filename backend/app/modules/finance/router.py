@@ -162,13 +162,15 @@ def put_revenue_target(
 ) -> dict:
     _require_role(auth, FINANCE_ROLE)
     try:
-        return upsert_revenue_target(
+        result = upsert_revenue_target(
             db,
             month_start=payload.month_start,
             department_code=payload.department_code,
             target_amount_inr=Decimal(str(payload.target_amount_inr)),
             actor=auth.user,
         )
+        db.commit()
+        return result
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
