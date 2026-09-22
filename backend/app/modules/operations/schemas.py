@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.core.departments import SUPPORTED_DEPARTMENTS, normalize_department_code
 from app.modules.commercial.schemas import ProjectCommercialInput
 
 
@@ -157,6 +158,10 @@ class WorkflowProjectCreate(BaseModel):
     quantity: Decimal | None = Field(default=None, ge=0)
     quantity_unit: str = Field(default="unit", min_length=1, max_length=30)
     priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    # Which technical department performs this project. Drives PM role, project-team department
+    # matching and dashboard routing across the one shared operational workflow. Defaults to Ortho
+    # (the proven template department) for legacy callers that do not yet send it.
+    performing_department_code: str = Field(default="ortho", min_length=2, max_length=30)
     commercial_value: Decimal | None = Field(default=None, ge=0)
     currency: str = Field(default="INR", min_length=2, max_length=12)
     po_wo_number: str | None = Field(default=None, max_length=160)
@@ -184,6 +189,14 @@ class WorkflowProjectCreate(BaseModel):
             value = value.strip()
             return value or None
         return value
+
+    @field_validator("performing_department_code", mode="before")
+    @classmethod
+    def normalize_workflow_performing_department(cls, value):
+        code = normalize_department_code(value if isinstance(value, str) else None)
+        if code is None:
+            raise ValueError(f"Performing Department must be one of: {', '.join(SUPPORTED_DEPARTMENTS)}")
+        return code
 
     @model_validator(mode="after")
     def validate_dates(self):

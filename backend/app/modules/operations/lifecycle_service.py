@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import is_technical_pm_role
 from app.models.entities import Asset, User, utc_now
 from app.modules.drone.models import DroneProject
 from app.modules.employee_portal.models import SupportTicket
@@ -1516,14 +1517,14 @@ def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
     if role == "bd":
         query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
-    elif role == "ortho":
+    elif is_technical_pm_role(role):
         query = query.join(FinanceProjectMasterProfile).where(FinanceProjectMasterProfile.project_manager_id == actor.id)
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow).where(
         ProjectWorkflow.project_id.in_([project.id for project in projects])
     )).all()} if projects else {}
     rows = [_project_summary(db, project, workflows[project.id]) for project in projects if project.id in workflows]
-    if role == "ortho":
+    if is_technical_pm_role(role):
         rows = [_pm_restricted_project_view(row) for row in rows]
     statuses = [row["workflow_status"] for row in rows]
     summary = {
@@ -1617,7 +1618,7 @@ def project_360(db: Session, *, actor: User, role: str, project_id: int) -> dict
     workflow = _workflow(db, project_id)
     if role == "bd" and workflow.bd_owner_user_id != actor.id:
         raise PermissionError("Project is not assigned to this BD user")
-    if role == "ortho" and (not project.master_profile or project.master_profile.project_manager_id != actor.id):
+    if is_technical_pm_role(role) and (not project.master_profile or project.master_profile.project_manager_id != actor.id):
         raise PermissionError("Project is not assigned to this Project Manager")
     summary = _project_summary(db, project, workflow)
     member_rows = list(db.scalars(select(OrthoProjectMember).where(
@@ -1727,7 +1728,7 @@ def project_360(db: Session, *, actor: User, role: str, project_id: int) -> dict
         ],
         "invoices": [_invoice_payload(db, row) for row in invoices],
     }
-    if role == "ortho":
+    if is_technical_pm_role(role):
         return _pm_restricted_project_view(payload)
     return payload
 

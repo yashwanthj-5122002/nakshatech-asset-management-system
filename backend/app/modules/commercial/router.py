@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import TECHNICAL_PM_ROLES
 from app.core.roles import role_is_allowed
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.commercial.models import (
@@ -310,7 +311,7 @@ def pm_billing_basis(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     """Assigned Project Manager only. Returns billing type, unit and milestone NAMES: never a rate, value, FX or margin."""
-    _roles(auth, "ortho", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "admin")
     try:
         return pm_billing_basis_view(db, actor=auth.user, project_id=project_id)
     except Exception as exc:
@@ -325,7 +326,7 @@ def confirm_pm_billing_basis(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "ortho", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "admin")
     try:
         row = record_billing_basis(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "COMMERCIAL_PM_BILLING_BASIS_CONFIRMED", "project_billing_basis", row.id, {"project_id": project_id, "entry_no": row.entry_no})

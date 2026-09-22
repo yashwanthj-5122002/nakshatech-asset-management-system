@@ -30,7 +30,9 @@ def ensure_business_schema_compatibility() -> None:
             _add_column_if_missing(connection, "business_records", columns, "verified_by_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL")
             _add_column_if_missing(connection, "business_records", columns, "verified_at", "TIMESTAMP")
             # The figures now come from Billing & Invoices; Decided had no source and is gone.
-            connection.execute(text("ALTER TABLE business_records DROP COLUMN IF EXISTS amount_decided"))
+            # Existence checked in Python (not "IF EXISTS") so this also works against SQLite test databases.
+            if "amount_decided" in columns:
+                connection.execute(text("ALTER TABLE business_records DROP COLUMN amount_decided"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_business_records_reporting_month ON business_records (reporting_month)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_business_records_project_id ON business_records (project_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_business_records_department_code ON business_records (department_code)"))

@@ -32,6 +32,8 @@ type TeamDraft={team_leader_user_id:string;production_user_ids:number[];qc_user_
 type ReworkAllocationDraft={package_code:string;area_name:string;quantity:string;quantity_unit:string;target_date:string;instructions:string;production_user_id:string;qc_user_id:string;qa_user_id:string;rework_of_package_id:string;correct:boolean;correction_reason:string}
 type AllocationDraft={package_code:string;area_name:string;quantity:string;quantity_unit:string;target_date:string;instructions:string;production_user_id:string;qc_user_id:string;qa_user_id:string}
 type DailyDraft={work_type:string;quantity_completed:string;files_completed:string;hours_spent:string;status:string;blockers:string;remarks:string}
+// One shared operational dashboard for every performing department; only the label changes per PM role.
+const DEPARTMENT_ROLE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
 const emptyAllocation:AllocationDraft={package_code:'',area_name:'',quantity:'',quantity_unit:'km',target_date:'',instructions:'',production_user_id:'',qc_user_id:'',qa_user_id:''}
 const emptyDaily:DailyDraft={work_type:'Production',quantity_completed:'',files_completed:'0',hours_spent:'',status:'on_track',blockers:'',remarks:''}
 const emptyReworkAllocation:ReworkAllocationDraft={...emptyAllocation,rework_of_package_id:'',correct:false,correction_reason:''}
@@ -159,14 +161,15 @@ export function OrthoDashboardPage(){
     await action(`/operations/workflow/ortho/projects/${project.project_id}/complete`,{completion_date,final_delivery_reference:final_delivery_reference||null,remarks:remarks||null},`${project.project_code}: Operational Completion recorded. BD and Finance notified for closure.`)
   }
 
-  const title=user?.role==='employee'?'My Assigned Ortho Work':'Ortho Project Operations'
+  const departmentLabel=user?.role&&DEPARTMENT_ROLE_LABELS[user.role]||'Ortho'
+  const title=user?.role==='employee'?'My Assigned Work':`${departmentLabel} Project Operations`
   const tlProduction=selected?uniqMembers(selected.members,'production'):[];const tlQc=selected?uniqMembers(selected.members,'qc'):[];const tlQa=selected?uniqMembers(selected.members,'qa'):[]
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow="ORTHO · ASSIGNMENT-BASED OPERATIONS" title={title} description="Operations users see Client ID + Project ID only. PM selects the project team; Team Lead allocates exact work; employees see only the tasks assigned to them." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
+    <DashboardHeader eyebrow={`${departmentLabel.toUpperCase()} · ASSIGNMENT-BASED OPERATIONS`} title={title} description="Operations users see Client ID + Project ID only. PM selects the project team; Team Lead allocates exact work; employees see only the tasks assigned to them." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
     {notice&&<div className="operations-alert success">{notice}</div>}{error&&<div className="operations-alert error">{error}</div>}
 
-    {!data?.projects.length?<section className="operations-panel"><div className="operations-empty">No assigned Ortho project/work is available for this login.</div></section>:<>
+    {!data?.projects.length?<section className="operations-panel"><div className="operations-empty">No assigned project/work is available for this login.</div></section>:<>
       <section className="operations-panel operations-current-project"><div className="operations-current-project-row"><label className="operations-field"><span>Project</span><select value={selectedId??''} onChange={e=>setSelectedId(Number(e.target.value))}>{data.projects.map(p=><option key={p.project_id} value={p.project_id}>{p.project_code} · Client ID {p.client_code||'—'}</option>)}</select></label>{selected&&<div className="operations-current-project-meta"><strong>{selected.project_code}</strong><span>Client ID: {selected.client_code||'—'}</span><span>{selected.start_date||'—'} → {selected.end_date||'—'}</span><span>My Role: {selected.my_roles.map(label).join(', ')||'Read only'}</span><span>Status: {label(selected.workflow_status)}</span>{(selected.can_manage_team||user?.role==='management'||user?.role==='admin')&&<Link className="operations-button secondary" to={`/ortho/project-360/${selected.project_id}`}>Project 360 · Feedback &amp; Chat</Link>}</div>}</div></section>
 
       {selected&&<section className="stats-grid">

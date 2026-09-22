@@ -10,6 +10,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import (
+    DEFAULT_DEPARTMENT,
+    SUPPORTED_DEPARTMENTS,
+    department_for_pm_role,
+    department_label,
+    is_technical_pm_role,
+    normalize_department_code_or_default,
+    pm_role_for_department,
+    user_department_matches,
+)
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import (
@@ -235,6 +245,8 @@ def _full_project_payload(db: Session, project: FinanceProject, workflow: Projec
         "quantity": float(workflow.quantity) if workflow.quantity is not None else None,
         "quantity_unit": workflow.quantity_unit,
         "priority": workflow.priority,
+        "performing_department_code": workflow.performing_department_code,
+        "performing_department_label": department_label(workflow.performing_department_code),
         "commercial_value": float(workflow.commercial_value) if workflow.commercial_value is not None else None,
         "currency": workflow.currency,
         "po_wo_number": workflow.po_wo_number,
@@ -286,10 +298,17 @@ def _commercial_summary(db: Session, project_id: int) -> dict:
     return commercial_summary(db, project_id=project_id)
 
 
-def project_manager_options(db: Session) -> list[dict]:
+def project_manager_options(db: Session, *, department_code: str | None = None) -> list[dict]:
+    """Active technical Project Manager accounts.
+
+    ``department_code`` restricts the list to the one technical PM role that performs that
+    department (e.g. LiDAR projects only ever show LiDAR PMs). Omitted, every supported
+    department's PM role is returned (a cross-department directory view).
+    """
+    roles = [pm_role_for_department(department_code)] if department_code else [pm_role_for_department(code) for code in SUPPORTED_DEPARTMENTS]
     users = db.scalars(
         select(User).where(
-            User.role == ORTHO_ROLE,
+            User.role.in_(roles),
             User.is_active.is_(True),
             User.account_status.in_(["active", "pending_mfa"]),
         ).order_by(User.full_name.asc(), User.email.asc())
@@ -302,12 +321,20 @@ def project_manager_options(db: Session) -> list[dict]:
             "employee_id": user.employee_id,
             "department": user.department,
             "designation": user.designation,
+            "performing_department_code": department_for_pm_role(user.role),
         }
         for user in users
     ]
 
 
-def employee_options(db: Session) -> list[dict]:
+def employee_options(db: Session, *, department_code: str | None = None) -> list[dict]:
+    """Active Employee accounts, optionally restricted to the given performing department.
+
+    Employee.role is always the generic ``employee`` role; only ``User.department`` (free
+    text set at seeding/HR time) distinguishes which department an employee belongs to, so a
+    Team Lead can never allocate work to, and a PM can never add, an employee from another
+    department even through a direct API call.
+    """
     users = db.scalars(
         select(User).where(
             User.role == EMPLOYEE_ROLE,
@@ -315,6 +342,8 @@ def employee_options(db: Session) -> list[dict]:
             User.account_status.in_(["active", "pending_mfa"]),
         ).order_by(User.full_name.asc(), User.email.asc())
     ).all()
+    if department_code:
+        users = [user for user in users if user_department_matches(user.department, department_code)]
     return [
         {
             "id": user.id,
@@ -347,6 +376,8 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
         },
         "clients": [client_payload(client) for client in list_finance_clients(db)],
         "project_managers": project_manager_options(db),
+        "project_managers_by_department": {code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS},
+        "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
         "projects": payloads,
     }
 
@@ -388,6 +419,7 @@ def create_bd_project(db: Session, *, actor: User, payload: WorkflowProjectCreat
         project_id=project.id,
         bd_owner_user_id=actor.id,
         status=WORKFLOW_DRAFT,
+        performing_department_code=normalize_department_code_or_default(payload.performing_department_code),
         scope_text=payload.scope_text,
         quantity=payload.quantity,
         quantity_unit=payload.quantity_unit,
@@ -467,6 +499,7 @@ def update_bd_project(
     workflow.quantity = payload.quantity
     workflow.quantity_unit = payload.quantity_unit
     workflow.priority = payload.priority
+    workflow.performing_department_code = normalize_department_code_or_default(payload.performing_department_code)
     workflow.commercial_value = payload.commercial_value
     workflow.currency = payload.currency.upper()
     workflow.po_wo_number = payload.po_wo_number
@@ -735,12 +768,13 @@ def _ensure_profile_and_pm_member(db: Session, *, project: FinanceProject, workf
 def assign_project_manager(db: Session, *, actor: User, project_id: int, payload: WorkflowPMAssignment) -> tuple[ProjectWorkflow, User]:
     workflow = _workflow(db, project_id)
     if workflow.bd_owner_user_id != actor.id:
-        raise PermissionError("Only the BD owner can assign the Ortho Project Manager")
+        raise PermissionError("Only the BD owner can assign the Project Manager")
     if workflow.status not in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
         raise ValueError("Project Manager can be assigned only after Finance approval and before the project team starts work")
+    expected_role = pm_role_for_department(workflow.performing_department_code)
     pm = db.get(User, payload.project_manager_id)
-    if pm is None or not pm.is_active or pm.role != ORTHO_ROLE:
-        raise ValueError("Select an active Ortho Project Manager account")
+    if pm is None or not pm.is_active or pm.role != expected_role:
+        raise ValueError(f"Select an active {department_label(workflow.performing_department_code)} Project Manager account")
     project = _project(db, project_id)
     if project.master_profile is None:
         project.master_profile = FinanceProjectMasterProfile(
@@ -762,7 +796,7 @@ def assign_project_manager(db: Session, *, actor: User, project_id: int, payload
         db,
         event_type="workflow.project.pm_assigned",
         title=f"New project assigned: {project.project_code}",
-        message=f"You are the Ortho Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
+        message=f"You are the {department_label(workflow.performing_department_code)} Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
         category="system",
         target_url="/ortho",
         recipient_user_ids=[pm.id],
@@ -779,10 +813,10 @@ def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int
         return
     _safe_send_email(
         recipient=pm.email,
-        subject=f"[{project.project_code}] Ortho Project Manager assignment",
+        subject=f"[{project.project_code}] {department_label(workflow.performing_department_code)} Project Manager assignment",
         body=(
             f"Hello {pm.full_name},\n\n"
-            "Business Development assigned you as the Ortho Project Manager.\n\n"
+            f"Business Development assigned you as the {department_label(workflow.performing_department_code)} Project Manager.\n\n"
             f"Project ID: {project.project_code}\n"
             f"Client ID: {_client_code(project) or 'Not recorded'}\n"
             f"Start Date: {project.start_date.isoformat() if project.start_date else 'Not recorded'}\n"
@@ -808,10 +842,12 @@ def _active_member_ids(db: Session, *, project_id: int, role: str) -> set[int]:
     )).all()}
 
 
-def _validate_employee(db: Session, user_id: int, label: str) -> User:
+def _validate_employee(db: Session, user_id: int, label: str, *, department_code: str | None = None) -> User:
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.role != EMPLOYEE_ROLE:
         raise ValueError(f"Selected {label} must be an active Employee account")
+    if department_code and not user_department_matches(user.department, department_code):
+        raise ValueError(f"Selected {label} must belong to the {department_label(department_code)} department")
     return user
 
 
@@ -888,11 +924,12 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
         "qc": set(payload.qc_user_ids),
         "qa": set(payload.qa_user_ids),
     }
+    department_code = workflow.performing_department_code
     for role, ids in selected.items():
         if not ids:
             raise ValueError(f"Select at least one {role.replace('_', ' ')} employee")
         for user_id in ids:
-            _validate_employee(db, user_id, role.replace("_", " "))
+            _validate_employee(db, user_id, role.replace("_", " "), department_code=department_code)
     if len(selected["team_leader"]) != 1:
         raise ValueError("Exactly one Team Lead is required")
 
@@ -996,7 +1033,7 @@ def confirm_rework_team(
                 if payload.mode == "reuse" else f"Select at least one {label} employee"
             )
         for user_id in ids:
-            _validate_employee(db, user_id, label)
+            _validate_employee(db, user_id, label, department_code=workflow.performing_department_code)
     if len(selected["team_leader"]) != 1:
         raise ValueError("Exactly one Team Lead is required")
 
@@ -1927,7 +1964,9 @@ def _user_min(user: User | None) -> dict | None:
 
 def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
     project_ids: set[int] = set()
-    if role == ORTHO_ROLE:
+    if is_technical_pm_role(role):
+        # Being e.g. a LiDAR PM never grants every LiDAR project - only the ones this account
+        # is actually assigned to (FinanceProjectMasterProfile.project_manager_id == actor.id).
         project_ids.update(int(v) for v in db.scalars(select(FinanceProjectMasterProfile.project_id).where(
             FinanceProjectMasterProfile.project_manager_id == actor.id,
         )).all())
@@ -1996,7 +2035,11 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             })
         result.append(base)
     return {
-        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if role == ORTHO_ROLE else "participant"),
+        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if is_technical_pm_role(role) else "participant"),
         "projects": result,
-        "employees": employee_options(db) if role == ORTHO_ROLE and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result) else [],
+        "employees": (
+            employee_options(db, department_code=department_for_pm_role(role))
+            if is_technical_pm_role(role) and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result)
+            else []
+        ),
     }

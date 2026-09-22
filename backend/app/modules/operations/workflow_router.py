@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import TECHNICAL_PM_ROLES
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.commercial.service import commercial_summary
 from app.modules.employee_portal.service import record_audit
@@ -156,7 +157,7 @@ def workflow_create_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = create_bd_project(db, actor=auth.user, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
@@ -175,7 +176,7 @@ def workflow_update_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = update_bd_project(db, actor=auth.user, project_id=project_id, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
@@ -301,7 +302,7 @@ def workflow_finance_close(
 
 @router.get("/ortho/dashboard")
 def workflow_ortho_dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
-    _roles(auth, ORTHO_ROLE, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return ortho_dashboard(db, actor=auth.user, role=_role(auth))
 
 
@@ -313,7 +314,7 @@ def workflow_team_setup(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         workflow, roles_by_user = configure_team(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_PM_TEAM_ASSIGNED", "finance_project", project_id, {"team_leader_user_id": payload.team_leader_user_id, "production_user_ids": payload.production_user_ids, "qc_user_ids": payload.qc_user_ids, "qa_user_ids": payload.qa_user_ids, "workflow_status": workflow.status})
@@ -333,7 +334,7 @@ def workflow_rework_team(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         cycle, roles_by_user = confirm_rework_team(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_PM_REWORK_TEAM_CONFIRMED", "finance_project", cycle.project_id, {"rework_cycle_id": cycle.id, "cycle_number": cycle.cycle_number, "mode": payload.mode, "team_leader_user_id": cycle.team_leader_user_id, "workflow_status": cycle.status})
@@ -469,7 +470,7 @@ def workflow_deliver(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE, EMPLOYEE_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
     try:
         package = mark_delivered(db, actor=auth.user, work_package_id=work_package_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_DELIVERED", "ortho_work_package", work_package_id, {"remarks": payload.remarks})
@@ -489,7 +490,7 @@ def workflow_operational_complete(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         workflow = operational_complete(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_OPERATIONAL_COMPLETION", "finance_project", project_id, {"completion_date": payload.completion_date.isoformat(), "delivery_reference": payload.final_delivery_reference, "workflow_status": workflow.status})

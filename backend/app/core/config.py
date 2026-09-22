@@ -56,10 +56,25 @@ class Settings(BaseSettings):
     seed_employee_test_email: str = ""
     seed_employee_test_password: str = ""
 
+    # Multi-department generalization of the Ortho PM login above: one PM/UAT
+    # account per additional technical department, same unified authentication,
+    # same opt-in gate (seed_operations_test_users_enabled), password never logged.
+    seed_lidar_pm_email: str = ""
+    seed_lidar_pm_password: str = ""
+    seed_mobile_mapping_pm_email: str = ""
+    seed_mobile_mapping_pm_password: str = ""
+    seed_laser_scanning_pm_email: str = ""
+    seed_laser_scanning_pm_password: str = ""
+    seed_civil_pm_email: str = ""
+    seed_civil_pm_password: str = ""
+
     # V8.1 local/test-only normal Employee fixtures. The seed function also
     # refuses to run whenever APP_ENV or ENVIRONMENT identifies production.
     enable_test_employee_seed: bool = False
     test_employee_seed_password: str = ""
+    # Shared password for the 60 LiDAR/Mobile Mapping/Laser Scanning/Civil test employees
+    # (15 each), gated by the same enable_test_employee_seed flag as the Ortho 15.
+    multi_department_test_employee_seed_password: str = ""
 
     database_url: str = "postgresql+psycopg://asset_user:asset_password@db:5432/asset_management"
     database_pool_size: int = 5

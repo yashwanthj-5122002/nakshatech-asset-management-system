@@ -44,7 +44,7 @@ import type { Role } from '../types'
 import { Logo } from './Logo'
 import { GlobalNotificationBell } from './GlobalNotificationBell'
 import { GlobalSearch } from './GlobalSearch'
-import { canAccessRole, isFullAccessRole, roleHomePath } from '../lib/roles'
+import { canAccessRole, isFullAccessRole, isTechnicalProjectManager, roleHomePath, TECHNICAL_PM_ROLES } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import { apiFetch } from '../lib/api'
 
@@ -104,14 +104,17 @@ const navItems: NavItem[] = [
   { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin'], group: 'business' },
   { to: '/bd/feedback', label: 'Client Feedback', icon: FileCheck2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
-  { to: '/ortho', label: 'Ortho Work Dashboard', icon: FolderKanban, roles: ['ortho', 'employee', 'admin', 'management'], group: 'ortho' },
-  { to: '/project-workstreams', label: 'Project Workstreams', icon: FolderKanban, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/sample-requests', label: 'Sample Requests', icon: FolderKanban, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/project-handovers', label: 'Data Handovers', icon: ArrowRightLeft, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/project-monitoring', label: 'Project Monitoring', icon: BarChart3, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/project-completion', label: 'Final Delivery & Closure', icon: FileCheck2, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/technical-team-directory', label: 'Technical Team Directory', icon: Users, roles: ['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'overview' },
-  { to: '/reporting', label: 'Executive & Manager Reporting', icon: Users, roles: ['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'overview' },
+  { to: '/ortho', label: 'Project Operations', icon: FolderKanban, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho' },
+  // Pre-V8.1 technical-workflow pages. Kept in the codebase for Management/Admin/BIM and any other
+  // authorized role, but no longer shown to the five technical PM roles, which now use the single
+  // shared Project Operations dashboard above instead.
+  { to: '/project-workstreams', label: 'Project Workstreams', icon: FolderKanban, roles: ['bim', 'admin', 'management'], group: 'overview' },
+  { to: '/sample-requests', label: 'Sample Requests', icon: FolderKanban, roles: ['bim', 'admin', 'management'], group: 'overview' },
+  { to: '/project-handovers', label: 'Data Handovers', icon: ArrowRightLeft, roles: ['bim', 'admin', 'management'], group: 'overview' },
+  { to: '/project-monitoring', label: 'Project Monitoring', icon: BarChart3, roles: ['bim', 'admin', 'management'], group: 'overview' },
+  { to: '/project-completion', label: 'Final Delivery & Closure', icon: FileCheck2, roles: ['bim', 'admin', 'management'], group: 'overview' },
+  { to: '/technical-team-directory', label: 'Technical Team Directory', icon: Users, roles: ['admin', 'management', 'bim'], group: 'overview' },
+  { to: '/reporting', label: 'Executive & Manager Reporting', icon: Users, roles: ['admin', 'management', 'bim'], group: 'overview' },
   { to: '/production-readiness', label: 'Production Readiness', icon: Users, roles: ['admin', 'management', 'software_team'], group: 'overview' },
   { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
@@ -120,7 +123,7 @@ const navItems: NavItem[] = [
   { to: '/finance/billing', label: 'Billing & Invoices', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin'], group: 'finance' },
   { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
-  { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'business', managementGroup: 'overview' },
+  { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'bim', ...TECHNICAL_PM_ROLES], group: 'business', managementGroup: 'overview' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },

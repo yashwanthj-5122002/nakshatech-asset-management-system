@@ -6,6 +6,15 @@ export function isFullAccessRole(role: Role): boolean {
   return FULL_ACCESS_ROLES.includes(role)
 }
 
+// One shared operational workflow (BD -> Finance -> PM -> Team Lead -> Production/QC/QA ->
+// Delivery -> Billing) covers all five technical Project Manager roles. Use this helper instead
+// of scattering role === 'lidar' / 'civil' / ... checks across components.
+export const TECHNICAL_PM_ROLES: Role[] = ['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil']
+
+export function isTechnicalProjectManager(role: Role): boolean {
+  return TECHNICAL_PM_ROLES.includes(role)
+}
+
 export function canAccessRole(userRole: Role, allowedRoles?: Role[]): boolean {
   if (!allowedRoles || allowedRoles.length === 0) return true
   if (allowedRoles.includes(userRole)) return true
@@ -23,11 +32,12 @@ export function roleHomePath(role: Role): string {
     hr: '/hr/travel-km',
     bd: '/bd',
     ortho: '/ortho',
-    lidar: '/project-workstreams',
-    civil: '/project-workstreams',
-    laser_scanning: '/project-workstreams',
+    // Same shared operational dashboard as Ortho (one workflow, department-aware inside).
+    lidar: '/ortho',
+    civil: '/ortho',
+    laser_scanning: '/ortho',
+    mobile_mapping: '/ortho',
     bim: '/project-workstreams',
-    mobile_mapping: '/project-workstreams',
     employee: '/support',
   }
   return paths[role]

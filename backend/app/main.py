@@ -48,7 +48,14 @@ from app.modules.employee_portal.models import UserBranchAccess
 from app.models.entities import User
 from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
-from app.services.seed import ensure_management_accounts, ensure_operations_test_accounts, ensure_v81_test_employee_accounts, seed_database
+from app.services.seed import (
+    ensure_management_accounts,
+    ensure_multi_department_pm_accounts,
+    ensure_multi_department_test_employee_accounts,
+    ensure_operations_test_accounts,
+    ensure_v81_test_employee_accounts,
+    seed_database,
+)
 
 logger = logging.getLogger(__name__)
 _initialization_lock = threading.Lock()
@@ -67,6 +74,8 @@ def ensure_schema_compatibility() -> None:
             "department": "VARCHAR(120)",
             "designation": "VARCHAR(160)",
             "phone_number": "VARCHAR(40)",
+            "joining_date": "DATE",
+            "date_of_birth": "DATE",
             "email_verified": "BOOLEAN DEFAULT FALSE",
             "account_status": "VARCHAR(40) DEFAULT 'active'",
             "mfa_required": "BOOLEAN DEFAULT FALSE",
@@ -312,9 +321,15 @@ def ensure_schema_compatibility() -> None:
                 connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN finance_reviewer_id INTEGER"))
             if "finance_reviewed_at" not in existing:
                 connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN finance_reviewed_at TIMESTAMP"))
+            if "performing_department_code" not in existing:
+                connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN performing_department_code VARCHAR(30)"))
             connection.execute(text("UPDATE ops_v800_project_workflows SET submission_count = 0 WHERE submission_count IS NULL"))
+            # Historical rows created before this column existed default to Ortho, the proven template
+            # department; never overwrite a row that already carries a non-null department.
+            connection.execute(text("UPDATE ops_v800_project_workflows SET performing_department_code = 'ortho' WHERE performing_department_code IS NULL"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewer_id ON ops_v800_project_workflows (finance_reviewer_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewed_at ON ops_v800_project_workflows (finance_reviewed_at)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_performing_department_code ON ops_v800_project_workflows (performing_department_code)"))
 
     # V8.1 rework: distinct rework work packages link back to their rework cycle / original package.
     inspector = inspect(engine)
@@ -376,6 +391,8 @@ def initialize_application() -> None:
             ensure_management_accounts(db)
             ensure_operations_test_accounts(db)
             ensure_v81_test_employee_accounts(db)
+            ensure_multi_department_pm_accounts(db)
+            ensure_multi_department_test_employee_accounts(db)
             default_branch = ensure_default_branch(db)
             ensure_finance_seed_data(db)
             for user in db.scalars(select(User)).all():

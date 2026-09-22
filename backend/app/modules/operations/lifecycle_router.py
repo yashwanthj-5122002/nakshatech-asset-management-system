@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import TECHNICAL_PM_ROLES
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.attachments import (
@@ -206,7 +207,7 @@ async def public_feedback_attachments(
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
-    _roles(auth, "bd", "finance", "ortho", "management", "admin")
+    _roles(auth, "bd", "finance", *TECHNICAL_PM_ROLES, "management", "admin")
     return lifecycle_dashboard(db, actor=auth.user, role=_role(auth))
 
 
@@ -216,7 +217,7 @@ def project_detail(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "finance", "ortho", "management", "admin")
+    _roles(auth, "bd", "finance", *TECHNICAL_PM_ROLES, "management", "admin")
     try:
         return project_360(db, actor=auth.user, role=_role(auth), project_id=project_id)
     except Exception as exc:
@@ -301,7 +302,7 @@ def rework_stage_update(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "ortho", "employee", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "employee", "admin")
     try:
         row = advance_rework(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "REWORK_STAGE_UPDATED", "project_rework_cycle", row.id, {
@@ -322,7 +323,7 @@ def rework_cycle_sync(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     """Idempotent: move the rework cycle to the status its work packages already justify (no rows are duplicated)."""
-    _roles(auth, "ortho", "employee", "bd", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "employee", "bd", "admin")
     try:
         cycle, before, after = reconcile_rework_cycle(db, actor=auth.user, cycle_id=cycle_id)
         _audit(request, db, auth, "REWORK_CYCLE_RECONCILED", "project_rework_cycle", cycle.id, {
@@ -520,7 +521,7 @@ def project_messages(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "management", "admin", "ortho")
+    _roles(auth, "management", "admin", *TECHNICAL_PM_ROLES)
     try:
         rows = list_project_messages(db, actor=auth.user, role=_role(auth), project_id=project_id)
         db.commit()
@@ -538,7 +539,7 @@ def project_message_create(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "management", "admin", "ortho")
+    _roles(auth, "management", "admin", *TECHNICAL_PM_ROLES)
     try:
         row = create_project_message(db, actor=auth.user, role=_role(auth), project_id=project_id, payload=payload)
         _audit(request, db, auth, "PROJECT_CHAT_MESSAGE_SENT", "project_message", row.id, {"project_id": project_id})
