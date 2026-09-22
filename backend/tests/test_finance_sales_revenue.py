@@ -159,3 +159,29 @@ def test_only_closed_fully_paid_invoice_appears_in_revenue():
         assert revenue["finance_invoice_number"] == invoice.invoice_number
         assert revenue["department_code"] == "lidar"
         db.rollback()
+
+
+def test_closed_status_without_full_payment_is_not_revenue():
+    with SessionLocal() as db:
+        _, finance, project, workflow, invoice = _project(db, "BAD-CLOSED")
+        payment = ProjectInvoicePayment(
+            project_id=project.id,
+            invoice_id=invoice.id,
+            payment_reference="BAD-CLOSED-REF",
+            payment_date=date(2026, 9, 29),
+            amount=Decimal("25000.00"),
+            payment_mode="bank_transfer",
+            recorded_by_id=finance.id,
+        )
+        db.add(payment)
+        invoice.status = "INVOICE_CLOSED"
+        workflow.status = "INVOICE_CLOSED"
+        db.flush()
+
+        payload = sales_revenue_overview(db)
+        row = next(item for item in payload["projects"] if item["project_id"] == project.id)
+        assert row["sales_visible"] is True
+        assert row["received_against_open_sales_inr"] == 25000.0
+        assert row["outstanding_inr"] == 75000.0
+        assert not any(item["project_id"] == project.id for item in payload["revenue_events"])
+        db.rollback()
