@@ -33,6 +33,7 @@ from app.modules.finance.models import (
     FinanceProject,
     FinanceProjectAssignment,
     FinanceProjectMasterProfile,
+    FinanceRevenueTarget,
 )
 from app.modules.operations.lifecycle_models import (
     ProjectChangeRequest,
@@ -137,6 +138,7 @@ class SeedSummary:
     assets: int = 0
     work_records: int = 0
     drones: int = 0
+    revenue_targets: int = 0
 
 
 def money(value: Decimal | int | float | str) -> Decimal:
@@ -1131,6 +1133,24 @@ def seed_year_2026(
             ))
             summary.travel_km_claims += 1
 
+    # Monthly Revenue targets let Finance test target-vs-actual visualization across the full year.
+    # These rows are tagged so production cleanup can remove only synthetic planning values.
+    target_actor = finance_users[0]
+    for month_no in range(1, 13):
+        for dept_index, department_code in enumerate(SUPPORTED_DEPARTMENTS):
+            target_value = money(650000 + month_no * 35000 + dept_index * 50000)
+            db.add(FinanceRevenueTarget(
+                month_start=date(2026, month_no, 1),
+                department_code=department_code,
+                target_amount_inr=target_value,
+                source_tag=TAG,
+                created_by_id=target_actor.id,
+                updated_by_id=target_actor.id,
+                created_at=at_noon(date(2026, month_no, 1)),
+                updated_at=at_noon(date(2026, month_no, 1)),
+            ))
+            summary.revenue_targets += 1
+
     # Flush before exact revenue assertion; commit only if the whole fixture is internally consistent.
     db.flush()
     expected = money(target_realized_revenue_inr)
@@ -1177,6 +1197,7 @@ def cleanup_year_2026(db: Session) -> dict[str, int]:
         db.execute(delete(DroneLocation).where(DroneLocation.drone_id.in_(uat_drone_ids)))
         db.execute(delete(Drone).where(Drone.id.in_(uat_drone_ids)))
 
+    db.execute(delete(FinanceRevenueTarget).where(FinanceRevenueTarget.source_tag == TAG))
     if client_ids:
         db.execute(delete(FinanceClient).where(FinanceClient.id.in_(client_ids)))
     db.commit()
@@ -1197,6 +1218,7 @@ def validate_year_2026(db: Session) -> dict:
             "payments": 0,
             "closed_invoices": 0,
             "realized_revenue_inr": 0.0,
+            "revenue_targets": int(db.scalar(select(func.count()).select_from(FinanceRevenueTarget).where(FinanceRevenueTarget.source_tag == TAG)) or 0),
         }
 
     departments = {
@@ -1245,4 +1267,5 @@ def validate_year_2026(db: Session) -> dict:
         "uat_assets": int(db.scalar(select(func.count()).select_from(Asset).where(Asset.asset_code.like("UAT26-AST-%"))) or 0),
         "uat_work_records": int(db.scalar(select(func.count()).select_from(WorkRecord).where(WorkRecord.work_code.like("UAT26-WRK-%"))) or 0),
         "uat_drones": int(db.scalar(select(func.count()).select_from(Drone).where(Drone.asset_code.like("UAT26-DRN-%"))) or 0),
+        "revenue_targets": int(db.scalar(select(func.count()).select_from(FinanceRevenueTarget).where(FinanceRevenueTarget.source_tag == TAG)) or 0),
     }
