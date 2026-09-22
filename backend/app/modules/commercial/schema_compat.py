@@ -71,6 +71,10 @@ def ensure_commercial_schema_compatibility() -> None:
             connection.execute(text("UPDATE project_invoices SET fx_locked = FALSE WHERE fx_locked IS NULL"))
         if "project_commercial_estimate_revisions" in tables:
             _add_missing(connection, "project_commercial_estimate_revisions", {c["name"] for c in inspector.get_columns("project_commercial_estimate_revisions")}, ESTIMATE_COLUMNS)
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_project_commercial_estimate_revisions_projected_payment_date "
+                "ON project_commercial_estimate_revisions (projected_payment_date)"
+            ))
         if "project_invoice_payments" in tables:
             _add_missing(connection, "project_invoice_payments", {c["name"] for c in inspector.get_columns("project_invoice_payments")}, PAYMENT_COLUMNS)
             connection.execute(text(
