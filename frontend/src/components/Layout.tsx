@@ -124,6 +124,8 @@ const navItems: NavItem[] = [
   { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin'], group: 'finance' },
   { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'bim', ...TECHNICAL_PM_ROLES], group: 'business', managementGroup: 'overview' },
+  { to: '/finance/sales', label: 'Sales', icon: TrendingUp, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/finance/revenue', label: 'Revenue', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
