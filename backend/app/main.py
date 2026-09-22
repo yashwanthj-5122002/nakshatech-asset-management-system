@@ -43,6 +43,7 @@ from app.modules.travel_km import models as travel_km_models  # noqa: F401
 from app.modules.travel_km.router import router as travel_km_router
 from app.modules.operations import models as operations_models  # noqa: F401
 from app.modules.operations.router import router as operations_router
+from app.uat_2026_router import router as uat_2026_router
 from app.modules.employee_portal.service import ensure_default_branch
 from app.modules.employee_portal.models import UserBranchAccess
 from app.models.entities import User
@@ -529,6 +530,7 @@ app.include_router(finance_router, prefix=settings.api_prefix)
 app.include_router(commercial_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
 app.include_router(operations_router, prefix=settings.api_prefix)
+app.include_router(uat_2026_router, prefix=settings.api_prefix)
 
 
 @app.middleware("http")
