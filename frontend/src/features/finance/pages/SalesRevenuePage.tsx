@@ -389,6 +389,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments'>('sales')
+  const [salesPage, setSalesPage] = useState(1)
   const [revenuePage, setRevenuePage] = useState(1)
   const [targetEditorOpen, setTargetEditorOpen] = useState(false)
   const [targetMonth, setTargetMonth] = useState(currentMonth)
@@ -465,6 +466,14 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     && (statusFilter === 'all' || row.sales_status === statusFilter)
   ), [allProjects, range, department, client, project, bd, pm, currency, statusFilter, salesDateBasis])
 
+  const sortedSalesRows = useMemo(() => [...salesRows].sort((a, b) =>
+    (b.sales_date || '').localeCompare(a.sales_date || '')
+      || b.project_code.localeCompare(a.project_code)
+  ), [salesRows])
+  const salesPageSize = 10
+  const salesPageCount = Math.max(1, Math.ceil(sortedSalesRows.length / salesPageSize))
+  const paginatedSalesRows = sortedSalesRows.slice((salesPage - 1) * salesPageSize, salesPage * salesPageSize)
+
   const revenueRows = useMemo(() => allRevenue.filter(row =>
     dateInside(row.revenue_date, range)
     && dimensionsMatch(row)
@@ -480,8 +489,13 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const paginatedRevenueRows = sortedRevenueRows.slice((revenuePage - 1) * revenuePageSize, revenuePage * revenuePageSize)
 
   useEffect(() => {
+    setSalesPage(1)
     setRevenuePage(1)
-  }, [period, day, week, month, quarter, year, from, to, department, client, project, bd, pm, currency])
+  }, [period, day, week, month, quarter, year, from, to, department, client, project, bd, pm, currency, statusFilter, salesDateBasis])
+
+  useEffect(() => {
+    if (salesPage > salesPageCount) setSalesPage(salesPageCount)
+  }, [salesPage, salesPageCount])
 
   useEffect(() => {
     if (revenuePage > revenuePageCount) setRevenuePage(revenuePageCount)
@@ -491,7 +505,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     if (mode === 'revenue' && period === 'monthly') setTargetMonth(month)
   }, [mode, period, month])
 
-  const activeRows = mode === 'sales' ? salesRows : sortedRevenueRows
+  const activeRows = mode === 'sales' ? sortedSalesRows : sortedRevenueRows
   const selectedProject = selectedProjectId == null ? null : allProjects.find(row => row.project_id === selectedProjectId) ?? null
   const selectedInvoice = selectedProject?.invoices.find(row => row.invoice_number === selectedInvoiceNumber)
     ?? (mode === 'revenue' ? selectedProject?.invoices.find(row => row.status === 'INVOICE_CLOSED') : selectedProject?.invoices[0])
@@ -801,7 +815,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
             {mode === 'sales' ? <><th>Sales / Invoice</th><th>Projected Payment</th><th>Received / Outstanding</th><th>Status</th></> : <><th>Finance Invoice</th><th>Revenue Date</th><th>Payment Received</th><th>Status</th></>}
             <th>Action</th>
           </tr></thead><tbody>
-            {mode === 'sales' ? salesRows.map(row => <tr key={row.project_id}>
+            {mode === 'sales' ? paginatedSalesRows.map(row => <tr key={row.project_id}>
               <td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_code || '—'} · {row.client_name}</small></td>
               <td><strong>{row.bd_name}</strong><br/><span>{row.department_label}</span><br/><small>PM: {row.project_manager_name}</small></td>
               <td>{row.currency}</td>
@@ -821,6 +835,14 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
               <td><button className="finance-secondary-button" onClick={() => openRevenue(row)}>Project details</button></td>
             </tr>)}
           </tbody></table></div>}
+        {mode === 'sales' && sortedSalesRows.length > 0 && <div className="sr-pagination">
+          <span>Showing {(salesPage - 1) * salesPageSize + 1}–{Math.min(salesPage * salesPageSize, sortedSalesRows.length)} of {sortedSalesRows.length} · newest first</span>
+          <div>
+            <button className="finance-secondary-button" type="button" disabled={salesPage <= 1} onClick={() => setSalesPage(page => Math.max(1, page - 1))}>Previous</button>
+            <strong>Page {salesPage} of {salesPageCount}</strong>
+            <button className="finance-secondary-button" type="button" disabled={salesPage >= salesPageCount} onClick={() => setSalesPage(page => Math.min(salesPageCount, page + 1))}>Next</button>
+          </div>
+        </div>}
         {mode === 'revenue' && sortedRevenueRows.length > 0 && <div className="sr-pagination">
           <span>Showing {(revenuePage - 1) * revenuePageSize + 1}–{Math.min(revenuePage * revenuePageSize, sortedRevenueRows.length)} of {sortedRevenueRows.length} · newest first</span>
           <div>
