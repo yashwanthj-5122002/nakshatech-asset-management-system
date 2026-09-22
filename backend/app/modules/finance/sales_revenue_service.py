@@ -226,6 +226,7 @@ def sales_revenue_overview(db: Session) -> dict:
 
         invoice_payloads: list[dict] = []
         closed_revenue_inr = Decimal("0")
+        closed_sales_value_inr = Decimal("0")
         open_received_inr = Decimal("0")
         open_invoice_total_inr = Decimal("0")
         open_invoice_balance_inr = Decimal("0")
@@ -245,6 +246,10 @@ def sales_revenue_overview(db: Session) -> dict:
             qualifies_as_revenue = invoice.id in revenue_invoice_ids
 
             if qualifies_as_revenue:
+                # Remove the invoice's locked accounting value from the open Sales pipeline,
+                # but recognize Revenue using actual realized payment INR. Keeping those two
+                # measures separate avoids FX movement corrupting open-sales balances.
+                closed_sales_value_inr += total_inr
                 closed_revenue_inr += paid_inr if paid_inr > 0 else total_inr
             else:
                 open_received_inr += paid_inr
@@ -321,8 +326,12 @@ def sales_revenue_overview(db: Session) -> dict:
                     "remarks": invoice.notes,
                 })
 
-        open_sales_inr = max(sales_value_inr - closed_revenue_inr, Decimal("0"))
-        outstanding_inr = max(open_sales_inr - open_received_inr, Decimal("0"))
+        baseline_open_sales_inr = max(sales_value_inr - closed_sales_value_inr, Decimal("0"))
+        # Open invoices can legitimately exceed Revision 1 after an approved change request, so
+        # never hide a larger current receivable behind the original baseline value.
+        open_sales_inr = max(baseline_open_sales_inr, open_invoice_total_inr)
+        unbilled_open_sales_inr = max(baseline_open_sales_inr - open_invoice_total_inr, Decimal("0"))
+        outstanding_inr = unbilled_open_sales_inr + open_invoice_balance_inr
         if sales_value_inr == 0 and open_invoice_total_inr > 0:
             open_sales_inr = open_invoice_total_inr
             outstanding_inr = open_invoice_balance_inr
