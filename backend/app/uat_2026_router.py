@@ -28,7 +28,7 @@ def _assert_uat_controls_enabled() -> None:
 @router.get("/status")
 def uat_2026_status(
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles("finance", "admin")),
+    _user: User = Depends(require_roles("finance")),
 ) -> dict:
     counts = existing_counts(db)
     enabled = bool(settings.enable_uat_2026_controls and not settings.is_production)
@@ -44,7 +44,7 @@ def uat_2026_status(
 @router.post("/load")
 def load_uat_2026_data(
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles("finance", "admin")),
+    _user: User = Depends(require_roles("finance")),
 ) -> dict:
     _assert_uat_controls_enabled()
     counts = existing_counts(db)
@@ -95,7 +95,7 @@ def load_uat_2026_data(
 def remove_uat_2026_data(
     confirmation: str,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles("finance", "admin")),
+    _user: User = Depends(require_roles("finance")),
 ) -> dict:
     _assert_uat_controls_enabled()
     if confirmation != TAG:
