@@ -26,6 +26,7 @@ def revenue_target_payload(row: FinanceRevenueTarget, users: dict[int, User] | N
         "department_code": row.department_code,
         "department_label": department_label(row.department_code),
         "target_amount_inr": _money(row.target_amount_inr),
+        "source_tag": row.source_tag,
         "created_by_id": row.created_by_id,
         "created_by_name": created_by.full_name if created_by else None,
         "updated_by_id": row.updated_by_id,
@@ -81,12 +82,14 @@ def upsert_revenue_target(
             month_start=month_start,
             department_code=department,
             target_amount_inr=target_amount_inr,
+            source_tag=None,
             created_by_id=actor.id,
             updated_by_id=actor.id,
         )
         db.add(row)
     else:
         row.target_amount_inr = target_amount_inr
+        row.source_tag = None
         row.updated_by_id = actor.id
 
     db.flush()
