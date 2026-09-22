@@ -17,6 +17,7 @@ from app.core.departments import (
     user_department_matches,
 )
 from app.models.entities import Asset, Drone, DroneLocation, User, WorkRecord
+from app.modules.drone import models as drone_models  # noqa: F401 - registers drone_survey_assets metadata
 from app.modules.commercial.models import (
     ProjectBillingBasis,
     ProjectCommercialEstimateRevision,
