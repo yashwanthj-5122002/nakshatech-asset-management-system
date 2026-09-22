@@ -93,6 +93,5 @@ def upsert_revenue_target(
         row.updated_by_id = actor.id
 
     db.flush()
-    db.commit()
     users = {actor.id: actor}
     return revenue_target_payload(row, users)
