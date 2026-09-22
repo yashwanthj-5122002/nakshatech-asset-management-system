@@ -1,4 +1,4 @@
-import { Activity, BarChart3, FileCheck2, FileSpreadsheet, HardDrive, LifeBuoy, MonitorCheck, ReceiptIndianRupee, Settings, ShieldCheck, Users } from 'lucide-react'
+import { Activity, BarChart3, Database, FileCheck2, FileSpreadsheet, HardDrive, LifeBuoy, MonitorCheck, ReceiptIndianRupee, Settings, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DroneIcon as Drone } from '../components/DroneIcon'
 import { Link } from 'react-router-dom'
@@ -42,6 +42,7 @@ export function AdminDashboard() {
         <Link className="module-card" to="/management"><Users /><h3>Management View</h3><p>Combined oversight and approval workflows.</p></Link>
         {!softwareTeam && <Link className="module-card" to="/finance/claims"><FileCheck2 /><h3>Project Expense Approvals</h3><p>{pendingExpenseApprovals > 0 ? `${pendingExpenseApprovals} claim(s) are waiting for Admin verification. Review Project ID, purpose, amount and proof, then send valid claims to Finance.` : 'No expense claims are waiting right now. Employee submissions will appear here automatically for Admin verification.'}</p></Link>}
         {!softwareTeam && <Link className="module-card" to="/finance"><ReceiptIndianRupee /><h3>Finance Dashboard</h3><p>View project expenses, advances, reimbursements, approval status and Finance activity.</p></Link>}
+        {!softwareTeam && <Link className="module-card" to="/admin/uat-2026"><Database /><h3>2026 ERP Testing Data</h3><p>Load the deterministic full-year UAT dataset for visualization and end-to-end ERP testing, then remove only that tagged test data before deployment.</p></Link>}
         <Link className="module-card" to="/reports"><FileSpreadsheet /><h3>Excel Control</h3><p>Import or export NakshaTech monthly asset files.</p></Link>
         {softwareTeam && <Link className="module-card" to="/software-team/agents"><MonitorCheck /><h3>Agent Monitoring</h3><p>View live employee systems, endpoint status, users, applications and device details.</p></Link>}
         {softwareTeam && <Link className="module-card" to="/tickets"><LifeBuoy /><h3>All Ticket Monitoring</h3><p>Monitor every department ticket and directly handle Software Team issues.</p></Link>}
