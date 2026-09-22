@@ -117,6 +117,7 @@ class CommercialEstimateInput(FxInputMixin):
     billing_type: str = Field(default="fixed_price", min_length=2, max_length=30)
     payment_terms: str | None = Field(default=None, max_length=255)
     expected_billing_milestone: str | None = Field(default=None, max_length=255)
+    projected_payment_date: date | None = None
     notes: str | None = Field(default=None, max_length=10_000)
     estimated_amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     taxable_base_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
