@@ -27,6 +27,7 @@ export type CommercialEstimate = {
   milestones?: EstimateMilestone[]
   payment_terms: string | null
   expected_billing_milestone: string | null
+  projected_payment_date: string | null
   notes: string | null
   currency_code: string
   estimated_amount: number
