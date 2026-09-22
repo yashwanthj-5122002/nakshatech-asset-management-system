@@ -342,7 +342,11 @@ def sales_revenue_overview(db: Session) -> dict:
             or project.start_date
             or project.created_at.date()
         )
-        projected_payment_date = min((row.due_date for row in open_invoices), default=None) or project.end_date
+        projected_payment_date = (
+            (baseline.projected_payment_date if baseline is not None else None)
+            or min((row.due_date for row in open_invoices), default=None)
+            or project.end_date
+        )
         sales_reference = None
         if baseline is not None:
             sales_reference = baseline.quotation_reference or f"{project.project_code}-REV{baseline.revision_no}"
@@ -387,6 +391,7 @@ def sales_revenue_overview(db: Session) -> dict:
                 "po_wo_reference": baseline.po_wo_reference if baseline is not None else (workflow.po_wo_number if workflow else None),
                 "billing_type": baseline.billing_type if baseline is not None else None,
                 "expected_billing_milestone": baseline.expected_billing_milestone if baseline is not None else None,
+                "projected_payment_date": baseline.projected_payment_date.isoformat() if baseline is not None and baseline.projected_payment_date else None,
                 "notes": baseline.notes if baseline is not None else None,
             },
             "invoice_count": len(project_invoices),
