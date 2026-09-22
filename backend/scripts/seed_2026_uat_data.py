@@ -82,6 +82,7 @@ def main() -> int:
                 "assets": summary.assets,
                 "work_records": summary.work_records,
                 "drones": summary.drones,
+                "revenue_targets": summary.revenue_targets,
             },
             "validation": validation,
         }, indent=2))
