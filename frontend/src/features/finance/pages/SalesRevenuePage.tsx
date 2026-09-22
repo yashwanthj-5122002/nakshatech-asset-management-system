@@ -1,4 +1,4 @@
-import { BarChart3, CalendarDays, CircleDollarSign, FileText, RefreshCcw, TrendingUp, WalletCards } from 'lucide-react'
+import { BarChart3, CalendarDays, CircleDollarSign, Eye, EyeOff, FileText, RefreshCcw, TrendingUp, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
@@ -6,6 +6,7 @@ import './sales-revenue.css'
 
 type Mode = 'sales' | 'revenue'
 type Period = 'today' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
+type VisualizationKey = 'trend' | 'department' | 'status' | 'bd' | 'pm'
 
 interface PaymentRow {
   id: number
@@ -219,17 +220,128 @@ function titleCase(value: string) {
   return value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 }
 
-function BarPanel({ title, subtitle, rows }: { title: string; subtitle: string; rows: Array<{ label: string; value: number; secondary?: number }> }) {
-  const max = Math.max(1, ...rows.flatMap(row => [row.value, row.secondary || 0]))
-  return <article className="sr-panel sr-chart-panel">
+function ChartShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return <article className="sr-panel sr-chart-panel sr-selected-chart">
     <div className="sr-panel-heading"><div><span>VISUAL ANALYTICS</span><h3>{title}</h3><p>{subtitle}</p></div><BarChart3 size={19}/></div>
-    {rows.length === 0 ? <div className="sr-empty">No data for the selected filters.</div> :
-      <div className="sr-bars">{rows.map(row => <div className="sr-bar-row" key={row.label}>
-        <div className="sr-bar-label"><strong>{row.label}</strong><span>{inr(row.value)}{row.secondary != null ? ` · received ${inr(row.secondary)}` : ''}</span></div>
-        <div className="sr-bar-track"><i style={{ width: `${Math.max(2, (row.value / max) * 100)}%` }}/></div>
-        {row.secondary != null && <div className="sr-bar-track secondary"><i style={{ width: `${Math.max(2, (row.secondary / max) * 100)}%` }}/></div>}
-      </div>)}</div>}
+    {children}
   </article>
+}
+
+function TrendChart({ title, subtitle, rows, secondaryLabel }: {
+  title: string
+  subtitle: string
+  rows: Array<{ label: string; value: number; secondary?: number }>
+  secondaryLabel?: string
+}) {
+  if (rows.length === 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
+  const width = 760
+  const height = 270
+  const padX = 48
+  const padTop = 18
+  const padBottom = 48
+  const plotHeight = height - padTop - padBottom
+  const plotWidth = width - padX * 2
+  const max = Math.max(1, ...rows.flatMap(row => [row.value, row.secondary || 0]))
+  const points = rows.map((row, index) => {
+    const x = rows.length === 1 ? width / 2 : padX + (index / (rows.length - 1)) * plotWidth
+    const y = padTop + plotHeight - (row.value / max) * plotHeight
+    const secondaryY = row.secondary == null ? null : padTop + plotHeight - ((row.secondary || 0) / max) * plotHeight
+    return { ...row, x, y, secondaryY }
+  })
+  const line = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
+  const area = `${line} L ${points.at(-1)?.x ?? padX} ${padTop + plotHeight} L ${points[0]?.x ?? padX} ${padTop + plotHeight} Z`
+  const secondaryLine = points.every(point => point.secondaryY == null) ? '' : points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.secondaryY ?? padTop + plotHeight}`).join(' ')
+
+  return <ChartShell title={title} subtitle={subtitle}>
+    <div className="sr-svg-chart-wrap">
+      <svg className="sr-svg-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+        {[0, .25, .5, .75, 1].map(step => {
+          const y = padTop + plotHeight - step * plotHeight
+          return <line key={step} x1={padX} x2={width - padX} y1={y} y2={y} className="sr-grid-line"/>
+        })}
+        <path d={area} className="sr-area-fill"/>
+        <path d={line} className="sr-trend-line"/>
+        {secondaryLine && <path d={secondaryLine} className="sr-trend-line secondary"/>}
+        {points.map(point => <g key={point.label}>
+          <circle cx={point.x} cy={point.y} r="4" className="sr-trend-dot"/>
+          {point.secondaryY != null && <circle cx={point.x} cy={point.secondaryY} r="4" className="sr-trend-dot secondary"/>}
+          <text x={point.x} y={height - 18} textAnchor="middle" className="sr-axis-label">{point.label}</text>
+        </g>)}
+      </svg>
+    </div>
+    <div className="sr-chart-legend"><span><i className="primary"/> {title.includes('Revenue') ? 'Revenue' : 'Sales'}</span>{secondaryLabel && <span><i className="secondary"/> {secondaryLabel}</span>}</div>
+  </ChartShell>
+}
+
+function ColumnChart({ title, subtitle, rows }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }> }) {
+  if (rows.length === 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
+  const width = 760
+  const height = 300
+  const padX = 46
+  const padTop = 24
+  const padBottom = 72
+  const plotHeight = height - padTop - padBottom
+  const plotWidth = width - padX * 2
+  const max = Math.max(1, ...rows.map(row => row.value))
+  const gap = 16
+  const barWidth = Math.max(30, (plotWidth - gap * (rows.length - 1)) / rows.length)
+
+  return <ChartShell title={title} subtitle={subtitle}>
+    <div className="sr-svg-chart-wrap">
+      <svg className="sr-svg-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+        {[0, .25, .5, .75, 1].map(step => {
+          const y = padTop + plotHeight - step * plotHeight
+          return <line key={step} x1={padX} x2={width - padX} y1={y} y2={y} className="sr-grid-line"/>
+        })}
+        {rows.map((row, index) => {
+          const h = Math.max(3, (row.value / max) * plotHeight)
+          const x = padX + index * (barWidth + gap)
+          const y = padTop + plotHeight - h
+          return <g key={row.label}>
+            <rect x={x} y={y} width={barWidth} height={h} rx="8" className="sr-column"/>
+            <text x={x + barWidth / 2} y={Math.max(14, y - 8)} textAnchor="middle" className="sr-column-value">{inr(row.value)}</text>
+            <text x={x + barWidth / 2} y={height - 34} textAnchor="middle" className="sr-axis-label">{row.label}</text>
+          </g>
+        })}
+      </svg>
+    </div>
+  </ChartShell>
+}
+
+function DonutChart({ title, subtitle, rows }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }> }) {
+  const usable = rows.filter(row => row.value > 0)
+  const total = usable.reduce((sum, row) => sum + row.value, 0)
+  if (!usable.length || total <= 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
+  const palette = ['#0f172a', '#2563eb', '#0891b2', '#7c3aed', '#64748b', '#16a34a', '#ea580c', '#be123c']
+  let cursor = 0
+  const stops = usable.map((row, index) => {
+    const start = cursor
+    const end = cursor + (row.value / total) * 100
+    cursor = end
+    return `${palette[index % palette.length]} ${start}% ${end}%`
+  }).join(', ')
+
+  return <ChartShell title={title} subtitle={subtitle}>
+    <div className="sr-donut-layout">
+      <div className="sr-donut" style={{ background: `conic-gradient(${stops})` }}>
+        <div><strong>{inr(total)}</strong><span>Total</span></div>
+      </div>
+      <div className="sr-donut-legend">
+        {usable.map((row, index) => <div key={row.label}><i style={{ background: palette[index % palette.length] }}/><span>{row.label}</span><strong>{inr(row.value)}</strong><small>{((row.value / total) * 100).toFixed(1)}%</small></div>)}
+      </div>
+    </div>
+  </ChartShell>
+}
+
+function RankingChart({ title, subtitle, rows }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }> }) {
+  const max = Math.max(1, ...rows.map(row => row.value))
+  return <ChartShell title={title} subtitle={subtitle}>
+    {rows.length === 0 ? <div className="sr-empty">No data for the selected filters.</div> :
+      <div className="sr-ranking-list">{rows.map((row, index) => <div className="sr-ranking-row" key={row.label}>
+        <div className="sr-ranking-index">{index + 1}</div>
+        <div className="sr-ranking-main"><div><strong>{row.label}</strong><span>{inr(row.value)}</span></div><div className="sr-bar-track"><i style={{ width: `${Math.max(2, (row.value / max) * 100)}%` }}/></div></div>
+      </div>)}</div>}
+  </ChartShell>
 }
 
 export function SalesRevenuePage({ mode }: { mode: Mode }) {
@@ -252,6 +364,8 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const [currency, setCurrency] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [salesDateBasis, setSalesDateBasis] = useState<'projected' | 'booked'>('projected')
+  const [visualizationKey, setVisualizationKey] = useState<VisualizationKey>('trend')
+  const [visualizationVisible, setVisualizationVisible] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments'>('sales')
@@ -266,6 +380,25 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   }
 
   useEffect(load, [])
+
+  function closeDetails() {
+    setSelectedProjectId(null)
+    setSelectedInvoiceNumber(null)
+  }
+
+  useEffect(() => {
+    if (selectedProjectId == null) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDetails()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [selectedProjectId])
 
   const range = useMemo(() => dateRange(period, { day, week, month, quarter, year, from, to }), [period, day, week, month, quarter, year, from, to])
   const allProjects = data?.projects ?? []
@@ -387,6 +520,57 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
   }, [mode, salesRows, revenueRows])
 
+  const visualizationOptions: Array<{ key: VisualizationKey; label: string }> = mode === 'sales'
+    ? [
+        { key: 'trend', label: 'Monthly Sales vs Received' },
+        { key: 'department', label: 'Department-wise Sales' },
+        { key: 'status', label: 'Payment Status Distribution' },
+        { key: 'bd', label: 'BD-wise Open Sales' },
+        { key: 'pm', label: 'PM-wise Sales Exposure' },
+      ]
+    : [
+        { key: 'trend', label: 'Monthly Revenue Trend' },
+        { key: 'department', label: 'Department-wise Revenue' },
+        { key: 'status', label: 'Top Clients by Revenue' },
+        { key: 'bd', label: 'BD-wise Realized Revenue' },
+        { key: 'pm', label: 'PM-wise Realized Revenue' },
+      ]
+
+  function renderVisualization() {
+    if (visualizationKey === 'trend') {
+      return <TrendChart
+        title={mode === 'sales' ? 'Monthly Sales vs Received' : 'Monthly Revenue Trend'}
+        subtitle={mode === 'sales' ? 'Open sales pipeline compared with money already received on still-open invoices.' : 'Actual realized revenue by final payment/closure period.'}
+        rows={monthlyChart}
+        secondaryLabel={mode === 'sales' ? 'Received' : undefined}
+      />
+    }
+    if (visualizationKey === 'department') {
+      return <ColumnChart
+        title={mode === 'sales' ? 'Department-wise Sales' : 'Department-wise Revenue'}
+        subtitle="Compare ORTHO, LiDAR, Mobile Mapping, Laser Scanning and Civil under the current filters."
+        rows={departmentChart}
+      />
+    }
+    if (visualizationKey === 'status') {
+      return mode === 'sales'
+        ? <DonutChart title="Payment Status Distribution" subtitle="See how open Sales money is distributed across collection states." rows={thirdChart}/>
+        : <RankingChart title="Top Clients by Revenue" subtitle="Clients contributing the most realized revenue in this selection." rows={thirdChart}/>
+    }
+    if (visualizationKey === 'bd') {
+      return <RankingChart
+        title={mode === 'sales' ? 'BD-wise Open Sales' : 'BD-wise Realized Revenue'}
+        subtitle="Commercial ownership view under the exact same time and department filters."
+        rows={bdChart}
+      />
+    }
+    return <RankingChart
+      title={mode === 'sales' ? 'PM-wise Sales Exposure' : 'PM-wise Realized Revenue'}
+      subtitle="Project-manager financial view for the current selection."
+      rows={pmChart}
+    />
+  }
+
   function resetDimensions() {
     setDepartment('all'); setClient('all'); setProject('all'); setBd('all'); setPm('all'); setCurrency('all'); setStatusFilter('all')
   }
@@ -458,13 +642,14 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
         <article><WalletCards/><span>Average Closed Invoice</span><strong>{inr(revenueKpis.average)}</strong><small>Realized average in selected period</small></article>
       </section>}
 
-      <section className="sr-chart-grid">
-        <BarPanel title={mode === 'sales' ? 'Monthly Sales vs Received' : 'Monthly Revenue Trend'} subtitle={mode === 'sales' ? 'Open sales pipeline compared with money already received on still-open invoices.' : 'Actual realized revenue by final payment/closure period.'} rows={monthlyChart}/>
-        <BarPanel title={mode === 'sales' ? 'Department-wise Sales' : 'Department-wise Revenue'} subtitle="Compare ORTHO, LiDAR, Mobile Mapping, Laser Scanning and Civil under the current filters." rows={departmentChart}/>
-        <BarPanel title={mode === 'sales' ? 'Payment Status Exposure' : 'Top Clients by Revenue'} subtitle={mode === 'sales' ? 'Where open sales money currently sits in the collection lifecycle.' : 'Clients contributing the most realized revenue in this selection.'} rows={thirdChart}/>
-        <BarPanel title={mode === 'sales' ? 'BD-wise Open Sales' : 'BD-wise Realized Revenue'} subtitle="Commercial ownership view under the exact same time and department filters." rows={bdChart}/>
-        <BarPanel title={mode === 'sales' ? 'PM-wise Sales Exposure' : 'PM-wise Realized Revenue'} subtitle="Project-manager financial view for the current selection." rows={pmChart}/>
+      <section className="sr-viz-toolbar">
+        <div><span>VISUALIZATIONS</span><strong>Choose the analysis you want to view</strong><small>Keep the page compact and open only the chart you need.</small></div>
+        <label><span>Visualization</span><select value={visualizationKey} onChange={e => setVisualizationKey(e.target.value as VisualizationKey)}>{visualizationOptions.map(option => <option value={option.key} key={option.key}>{option.label}</option>)}</select></label>
+        <button className="finance-secondary-button" type="button" onClick={() => setVisualizationVisible(value => !value)}>
+          {visualizationVisible ? <EyeOff size={16}/> : <Eye size={16}/>} {visualizationVisible ? 'Hide visualization' : 'Show visualization'}
+        </button>
       </section>
+      {visualizationVisible && <section className="sr-visual-stage">{renderVisualization()}</section>}
 
       <section className="sr-panel">
         <div className="sr-panel-heading"><div><span>{mode === 'sales' ? 'LIVE MONEY PIPELINE' : 'CLOSED & REALIZED MONEY'}</span><h3>{mode === 'sales' ? 'Sales Projects' : 'Revenue Register'}</h3><p>{mode === 'sales' ? 'A project remains here until the relevant invoice is fully paid and Finance closes it.' : 'Every row below is backed by a closed Finance invoice and completed payment.'}</p></div><strong>{activeRows.length}</strong></div>
@@ -496,8 +681,9 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
           </tbody></table></div>}
       </section>
 
-      {selectedProject && <section className="sr-panel sr-detail">
-        <div className="sr-panel-heading"><div><span>PROJECT FINANCIAL DETAIL</span><h3>{selectedProject.project_code} — {selectedProject.project_name}</h3><p>{selectedProject.client_code || '—'} · {selectedProject.client_name} · {selectedProject.department_label} · PM {selectedProject.project_manager_name}</p></div><button className="finance-secondary-button" onClick={() => { setSelectedProjectId(null); setSelectedInvoiceNumber(null) }}>Close</button></div>
+      {selectedProject && <div className="sr-modal-backdrop" role="presentation" onMouseDown={closeDetails}>
+        <section className="sr-modal" role="dialog" aria-modal="true" aria-label={`Project details for ${selectedProject.project_code}`} onMouseDown={event => event.stopPropagation()}>
+        <div className="sr-modal-header"><div><span>PROJECT FINANCIAL DETAIL</span><h3>{selectedProject.project_code} — {selectedProject.project_name}</h3><p>{selectedProject.client_code || '—'} · {selectedProject.client_name} · {selectedProject.department_label} · PM {selectedProject.project_manager_name}</p></div><button className="sr-modal-close" type="button" onClick={closeDetails} aria-label="Close project details"><X size={20}/></button></div>
 
         <div className="sr-detail-tabs">
           <button className={detailTab === 'sales' ? 'active' : ''} onClick={() => setDetailTab('sales')}>View BD Sales Invoice</button>
@@ -536,7 +722,8 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
           <h4>{inv.invoice_number} <span>{titleCase(inv.status)}</span></h4>
           {inv.payments.length === 0 ? <div className="sr-empty compact">No payment recorded.</div> : <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Date</th><th>Reference</th><th>Amount</th><th>INR Realized</th><th>Mode</th><th>Remarks</th></tr></thead><tbody>{inv.payments.map(payment => <tr key={payment.id}><td>{payment.payment_date}</td><td>{payment.payment_reference}</td><td>{money(payment.amount, payment.currency)}</td><td>{inr(payment.amount_inr)}</td><td>{titleCase(payment.payment_mode)}</td><td>{payment.comments || '—'}</td></tr>)}</tbody></table></div>}
         </div>)}</>}
-      </section>}
+        </section>
+      </div>}
     </>}
   </div>
 }
