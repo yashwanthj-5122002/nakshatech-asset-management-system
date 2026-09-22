@@ -33,7 +33,7 @@ export function BDClientManagementPage(){
   const [clientForm,setClientForm]=useState<ClientForm>(emptyClient);const [projectForm,setProjectForm]=useState<ProjectForm>(emptyProject)
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
   const [commercial,setCommercial]=useState<CommercialFormState>(emptyCommercialForm);const [docs,setDocs]=useState<PendingDocument[]>([]);const [currencies,setCurrencies]=useState<CurrencyPayload|null>(null)
-  const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:'ortho'})
+  const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''})
   useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
   function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
@@ -68,6 +68,7 @@ export function BDClientManagementPage(){
   async function createProject(submit:boolean){
     if(!selected)return
     setError('');setNotice('')
+    if(!delivery.performing_department_code){setError('Select the Performing Department before saving or submitting this project.');return}
     const problems=commercialFormProblems(commercial)
     if(problems.length){setError(problems[0]);return}
     setBusy(true)
@@ -90,7 +91,7 @@ export function BDClientManagementPage(){
         return
       }
       if(submit)await apiFetch(`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
-      setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:'ortho'});setShowProjectForm(false)
+      setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''});setShowProjectForm(false)
       setNotice(`${result.project_code} ${submit?'and its Commercial Revision 1 were submitted to Finance':'saved as Draft with Commercial Revision 1'}.`);load()
     }catch(err){setError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}
   }
@@ -133,7 +134,7 @@ export function BDClientManagementPage(){
 
         <div className="operations-span-2"><span className="operations-kicker">DELIVERY / DEPARTMENT INFORMATION</span></div>
         <label className="operations-field"><span>Performing Department *</span><select required value={delivery.performing_department_code} onChange={e=>setDelivery({...delivery,performing_department_code:e.target.value})}>
-          <option value="ortho">ORTHO</option><option value="lidar">LiDAR</option><option value="mobile_mapping">Mobile Mapping</option><option value="laser_scanning">Laser Scanning</option><option value="civil">Civil</option>
+          <option value="" disabled>Select Performing Department</option><option value="ortho">ORTHO</option><option value="lidar">LiDAR</option><option value="mobile_mapping">Mobile Mapping</option><option value="laser_scanning">Laser Scanning</option><option value="civil">Civil</option>
         </select></label>
         <label className="operations-field"><span>Priority</span><select value={delivery.priority} onChange={e=>setDelivery({...delivery,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
         <label className="operations-field"><span>Planned quantity (optional)</span><input type="number" min="0" step="0.001" value={delivery.quantity} onChange={e=>setDelivery({...delivery,quantity:e.target.value})}/></label>
