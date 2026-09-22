@@ -106,7 +106,7 @@ export function UAT2026ControlPage() {
 
   return <div className="finance-page">
     <DashboardHeader
-      eyebrow="ADMIN · LOCAL / UAT ONLY"
+      eyebrow="FINANCE · LOCAL / UAT ONLY"
       title="2026 ERP Testing Data"
       description="Load or remove the deterministic full-year UAT dataset used to validate dashboards, workflows, Finance, operations, expenses, assets and reporting before deployment."
       actions={<button className="finance-secondary-button" type="button" onClick={() => void refresh()} disabled={loading || busy !== null}><RefreshCcw size={16}/> Refresh</button>}
@@ -114,7 +114,7 @@ export function UAT2026ControlPage() {
 
     <div className="finance-warning-message">
       <ShieldAlert size={18}/>
-      <div><strong>Testing control only.</strong> This panel is disabled in production. The remove action targets only UAT26-prefixed / UAT_YEAR_SIMULATION_2026 records and never truncates the database.</div>
+      <div><strong>Finance testing control only.</strong> This panel is disabled in production. The remove action targets only UAT26-prefixed / UAT_YEAR_SIMULATION_2026 records and never truncates the database.</div>
     </div>
 
     {notice && <div className="finance-success-message">{notice}</div>}
