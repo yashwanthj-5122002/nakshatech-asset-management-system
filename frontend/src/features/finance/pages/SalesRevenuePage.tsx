@@ -487,6 +487,10 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     if (revenuePage > revenuePageCount) setRevenuePage(revenuePageCount)
   }, [revenuePage, revenuePageCount])
 
+  useEffect(() => {
+    if (mode === 'revenue' && period === 'monthly') setTargetMonth(month)
+  }, [mode, period, month])
+
   const activeRows = mode === 'sales' ? salesRows : sortedRevenueRows
   const selectedProject = selectedProjectId == null ? null : allProjects.find(row => row.project_id === selectedProjectId) ?? null
   const selectedInvoice = selectedProject?.invoices.find(row => row.invoice_number === selectedInvoiceNumber)
