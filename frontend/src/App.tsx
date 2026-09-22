@@ -76,6 +76,7 @@ import { ProductionReadinessPage } from './features/operations/pages/ProductionR
 import { ClientFeedbackPage } from './features/operations/pages/ClientFeedbackPage'
 import { BDClientFeedbackPage } from './features/operations/pages/BDClientFeedbackPage'
 import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
+import { SalesRevenuePage } from './features/finance/pages/SalesRevenuePage'
 import { ManagementProject360Page } from './features/operations/pages/ManagementProject360Page'
 import { FinanceClientRegisterPage } from './features/finance/pages/FinanceClientRegisterPage'
 import { FinanceProjectRegisterPage } from './features/finance/pages/FinanceProjectRegisterPage'
@@ -171,6 +172,8 @@ export default function App() {
       <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClientRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/projects" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceProjectRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/sales" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="sales" /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/revenue" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="revenue" /></WithLayout></ProtectedRoute>} />
       <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/admin/client-master" element={<ProtectedRoute roles={['admin']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
