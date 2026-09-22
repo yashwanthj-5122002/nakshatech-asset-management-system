@@ -175,6 +175,7 @@ export default function App() {
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/sales" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="sales" /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/revenue" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="revenue" /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/uat-2026" element={<ProtectedRoute roles={['finance']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/admin/client-master" element={<ProtectedRoute roles={['admin']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
@@ -186,7 +187,6 @@ export default function App() {
       <Route path="/management/project-360/:projectId" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team" element={<ProtectedRoute roles={['software_team']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute roles={['admin']}><WithLayout><AdminDashboard /></WithLayout></ProtectedRoute>} />
-      <Route path="/admin/uat-2026" element={<ProtectedRoute roles={['admin']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/work" element={<ProtectedRoute roles={['it', 'drone', 'management', 'admin']}><WithLayout><ITWorkRoute /></WithLayout></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ReportsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/data-quality" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><DataQualityCentrePage /></WithLayout></ProtectedRoute>} />
