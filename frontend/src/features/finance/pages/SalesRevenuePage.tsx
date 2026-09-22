@@ -52,6 +52,7 @@ interface BDSalesInvoice {
   po_wo_reference: string | null
   billing_type: string | null
   expected_billing_milestone: string | null
+  projected_payment_date: string | null
   notes: string | null
 }
 
@@ -250,6 +251,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const [pm, setPm] = useState('all')
   const [currency, setCurrency] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [salesDateBasis, setSalesDateBasis] = useState<'projected' | 'booked'>('projected')
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments'>('sales')
@@ -293,10 +295,10 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
 
   const salesRows = useMemo(() => allProjects.filter(row =>
     row.sales_visible
-    && dateInside(row.sales_date, range)
+    && dateInside(salesDateBasis === 'projected' ? row.projected_payment_date : row.sales_date, range)
     && dimensionsMatch(row)
     && (statusFilter === 'all' || row.sales_status === statusFilter)
-  ), [allProjects, range, department, client, project, bd, pm, currency, statusFilter])
+  ), [allProjects, range, department, client, project, bd, pm, currency, statusFilter, salesDateBasis])
 
   const revenueRows = useMemo(() => allRevenue.filter(row =>
     dateInside(row.revenue_date, range)
@@ -338,7 +340,9 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     const map = new Map<string, { value: number; secondary: number }>()
     if (mode === 'sales') {
       for (const row of salesRows) {
-        const key = row.sales_date.slice(0, 7)
+        const chartDate = salesDateBasis === 'projected' ? row.projected_payment_date : row.sales_date
+        if (!chartDate) continue
+        const key = chartDate.slice(0, 7)
         const item = map.get(key) || { value: 0, secondary: 0 }
         item.value += row.open_sales_inr
         item.secondary += row.received_against_open_sales_inr
@@ -353,7 +357,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
       }
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => ({ label: monthLabel(key), value: value.value, secondary: mode === 'sales' ? value.secondary : undefined }))
-  }, [mode, salesRows, revenueRows])
+  }, [mode, salesRows, revenueRows, salesDateBasis])
 
   const departmentChart = useMemo(() => {
     const map = new Map<string, number>()
@@ -416,6 +420,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
         <label><span>BD Person</span><select value={bd} onChange={e => setBd(e.target.value)}><option value="all">All BD</option>{options.bd.map(v => <option key={v}>{v}</option>)}</select></label>
         <label><span>Project Manager</span><select value={pm} onChange={e => setPm(e.target.value)}><option value="all">All PMs</option>{options.pm.map(v => <option key={v}>{v}</option>)}</select></label>
         <label><span>Currency</span><select value={currency} onChange={e => setCurrency(e.target.value)}><option value="all">All Currencies</option>{options.currencies.map(v => <option key={v}>{v}</option>)}</select></label>
+        {mode === 'sales' && <label><span>Sales Date Basis</span><select value={salesDateBasis} onChange={e => setSalesDateBasis(e.target.value as 'projected' | 'booked')}><option value="projected">Projected Payment Date</option><option value="booked">BD Sales / Commercial Date</option></select></label>}
         {mode === 'sales' && <label><span>Payment Status</span><select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">All Statuses</option>{options.statuses.map(v => <option key={v}>{v}</option>)}</select></label>}
         <button className="sr-reset" type="button" onClick={resetDimensions}>Clear dimension filters</button>
       </div>
@@ -495,6 +500,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
           <div><span>Payment Terms</span><strong>{selectedProject.bd_sales_invoice.payment_terms || '—'}</strong></div>
           <div><span>Billing Type</span><strong>{selectedProject.bd_sales_invoice.billing_type ? titleCase(selectedProject.bd_sales_invoice.billing_type) : '—'}</strong></div>
           <div><span>Expected Milestone</span><strong>{selectedProject.bd_sales_invoice.expected_billing_milestone || '—'}</strong></div>
+          <div><span>Projected Client Payment</span><strong>{selectedProject.bd_sales_invoice.projected_payment_date || selectedProject.projected_payment_date || '—'}</strong></div>
           <div className="wide"><span>Remarks</span><strong>{selectedProject.bd_sales_invoice.notes || '—'}</strong></div>
         </div>}
 
