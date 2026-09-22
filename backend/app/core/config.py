@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # (15 each), gated by the same enable_test_employee_seed flag as the Ortho 15.
     multi_department_test_employee_seed_password: str = ""
 
+    # Local/UAT-only control panel for the deterministic 2026 ERP simulation.
+    # It is disabled by default and is explicitly forbidden in production.
+    enable_uat_2026_controls: bool = False
+
     database_url: str = "postgresql+psycopg://asset_user:asset_password@db:5432/asset_management"
     database_pool_size: int = 5
     database_max_overflow: int = 5
@@ -218,6 +222,8 @@ class Settings(BaseSettings):
             raise RuntimeError("SEED_OPERATIONS_TEST_USERS_ENABLED must be false in production")
         if self.enable_test_employee_seed:
             raise RuntimeError("ENABLE_TEST_EMPLOYEE_SEED must be false in production")
+        if self.enable_uat_2026_controls:
+            raise RuntimeError("ENABLE_UAT_2026_CONTROLS must be false in production")
         weak_secrets = {
             "change-this-secret-before-production",
             "change-this-secret-before-production-with-at-least-32-characters",
