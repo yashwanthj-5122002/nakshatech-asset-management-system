@@ -11,6 +11,7 @@ export type CommercialFormState = {
   tax_percent: string
   payment_terms: string
   expected_billing_milestone: string
+  projected_payment_date: string
   quotation_reference: string
   po_wo_reference: string
   notes: string
@@ -26,7 +27,7 @@ export type CommercialFormState = {
 
 export const emptyCommercialForm = (): CommercialFormState => ({
   scope_description: '', billing_type: 'fixed_price', currency_code: 'INR', estimated_amount: '', taxable_base_amount: '', tax_percent: '18',
-  payment_terms: '', expected_billing_milestone: '', quotation_reference: '', po_wo_reference: '', notes: '',
+  payment_terms: '', expected_billing_milestone: '', projected_payment_date: '', quotation_reference: '', po_wo_reference: '', notes: '',
   unit_rate: '', estimated_quantity: '', quantity_unit: '', milestones: [], estimated_direct_cost_inr: '',
   fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '',
 })
@@ -36,6 +37,7 @@ export function commercialFormFromRevision(rev: CommercialEstimate): CommercialF
     scope_description: rev.scope_description, billing_type: rev.billing_type, currency_code: rev.currency_code,
     estimated_amount: String(rev.estimated_amount), taxable_base_amount: String(rev.taxable_base_amount), tax_percent: String(rev.tax_percent),
     payment_terms: rev.payment_terms || '', expected_billing_milestone: rev.expected_billing_milestone || '',
+    projected_payment_date: rev.projected_payment_date || '',
     quotation_reference: rev.quotation_reference || '', po_wo_reference: rev.po_wo_reference || '', notes: rev.notes || '',
     unit_rate: rev.unit_rate == null ? '' : String(rev.unit_rate), estimated_quantity: rev.estimated_quantity == null ? '' : String(rev.estimated_quantity),
     quantity_unit: rev.quantity_unit || '',
@@ -82,6 +84,7 @@ export function commercialFormToPayload(form: CommercialFormState, estimateDate?
     tax_percent: Number(form.tax_percent || 0),
     payment_terms: form.payment_terms.trim(),
     expected_billing_milestone: form.expected_billing_milestone.trim() || null,
+    projected_payment_date: form.projected_payment_date || null,
     quotation_reference: form.quotation_reference.trim() || null,
     po_wo_reference: form.po_wo_reference.trim() || null,
     notes: form.notes.trim() || null,
