@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 from io import BytesIO
+from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -40,6 +41,7 @@ from app.modules.finance.schemas import (
     FinanceProjectUserResponse,
     FinanceProjectStatusUpdate,
     FinanceProjectScheduleUpdate,
+    FinanceRevenueTargetUpsertRequest,
     FinanceReportResponse,
     SettlementAttachmentResponse,
     SettlementDecisionRequest,
@@ -103,6 +105,7 @@ from app.modules.finance.client_master_io import (
     project_tracking,
 )
 from app.modules.finance.sales_revenue_service import sales_revenue_overview
+from app.modules.finance.revenue_target_service import list_revenue_targets, upsert_revenue_target
 
 router = APIRouter(prefix="/finance", tags=["Finance CRM"])
 
@@ -139,6 +142,36 @@ def get_sales_revenue_overview(
     """Read-only Sales/Revenue intelligence backed by the existing commercial and billing lifecycle."""
     _require_role(auth, FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return sales_revenue_overview(db)
+
+
+@router.get("/revenue-targets")
+def get_revenue_targets(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> dict:
+    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    return {"targets": list_revenue_targets(db, year=year)}
+
+
+@router.put("/revenue-targets")
+def put_revenue_target(
+    payload: FinanceRevenueTargetUpsertRequest,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> dict:
+    _require_role(auth, FINANCE_ROLE)
+    try:
+        return upsert_revenue_target(
+            db,
+            month_start=payload.month_start,
+            department_code=payload.department_code,
+            target_amount_inr=Decimal(str(payload.target_amount_inr)),
+            actor=auth.user,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/client-master/import.xlsx")
