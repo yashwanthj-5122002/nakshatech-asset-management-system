@@ -195,8 +195,17 @@ def sales_revenue_overview(db: Session) -> dict:
         workflow = workflows.get(project.id)
         baseline = _baseline_revision(revisions_by_project.get(project.id, []))
         project_invoices = invoices_by_project.get(project.id, [])
-        open_invoices = [row for row in project_invoices if (row.status or "").upper() != INVOICE_CLOSED]
-        closed_invoices = [row for row in project_invoices if (row.status or "").upper() == INVOICE_CLOSED]
+        # Revenue is deliberately stricter than a status label: the invoice must be CLOSED and
+        # its recorded payments must cover the full invoice total. This defensive check prevents
+        # inconsistent/legacy rows from being presented as realized revenue.
+        revenue_invoice_ids = {
+            row.id
+            for row in project_invoices
+            if (row.status or "").upper() == INVOICE_CLOSED
+            and sum((_decimal(payment.amount) for payment in payments_by_invoice.get(row.id, [])), Decimal("0")) >= _invoice_total(row)
+        }
+        closed_invoices = [row for row in project_invoices if row.id in revenue_invoice_ids]
+        open_invoices = [row for row in project_invoices if row.id not in revenue_invoice_ids]
 
         client = project.client
         client_profile = client.master_profile if client else None
@@ -233,8 +242,9 @@ def sales_revenue_overview(db: Session) -> dict:
                 paid_inr = total_inr
             balance_inr = max(total_inr - paid_inr, Decimal("0")) if total_inr > 0 else Decimal("0")
             is_closed = (invoice.status or "").upper() == INVOICE_CLOSED
+            qualifies_as_revenue = invoice.id in revenue_invoice_ids
 
-            if is_closed:
+            if qualifies_as_revenue:
                 closed_revenue_inr += paid_inr if paid_inr > 0 else total_inr
             else:
                 open_received_inr += paid_inr
@@ -276,7 +286,7 @@ def sales_revenue_overview(db: Session) -> dict:
             }
             invoice_payloads.append(invoice_row)
 
-            if is_closed:
+            if qualifies_as_revenue:
                 revenue_date = (
                     max((row.payment_date for row in payments), default=None)
                     or (invoice.closed_at.date() if invoice.closed_at else None)
