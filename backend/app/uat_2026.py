@@ -1172,9 +1172,6 @@ def cleanup_year_2026(db: Session) -> dict[str, int]:
     _ensure_not_production()
     project_ids = uat_project_ids(db)
     client_ids = uat_client_ids(db)
-    if not project_ids and not client_ids:
-        return {"projects": 0, "clients": 0}
-
     if project_ids:
         # Explicit non-cascading / RESTRICT children.
         claim_ids = list(db.scalars(select(ExpenseClaim.id).where(ExpenseClaim.project_id.in_(project_ids))).all())
