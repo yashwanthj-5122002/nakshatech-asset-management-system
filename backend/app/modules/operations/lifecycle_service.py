@@ -17,6 +17,7 @@ from app.modules.drone.models import DroneProject
 from app.modules.employee_portal.models import SupportTicket
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
+from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects
 from app.modules.notifications.service import create_global_notification
 from app.modules.operations.lifecycle_models import (
     ProjectChangeRequest,
@@ -1131,7 +1132,7 @@ def raise_invoice(
         manual_mode=payload.fx_rate_mode,
         manual_reason=payload.fx_override_reason,
     )
-    invoice.status = INVOICE_RAISED
+    invoice.status = PAYMENT_PENDING
     invoice.raised_by_id = actor.id
     invoice.raised_at = utc_now()
     if payload.notes:
@@ -1175,6 +1176,46 @@ def _payment_total(db: Session, invoice_id: int) -> Decimal:
     )) or 0)
 
 
+def _invoice_total_due(invoice: ProjectInvoice) -> Decimal:
+    return Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0)
+
+
+def compute_invoice_payment_status(*, invoice_total: Decimal, paid_total: Decimal) -> str:
+    """Derive invoice payment status from recorded payments.
+
+    remaining_balance = invoice_total - sum(all payments)
+    - remaining_balance <= 0 -> INVOICE_CLOSED
+    - paid_total > 0 and remaining_balance > 0 -> PARTIALLY_PAID
+    - paid_total == 0 -> PAYMENT_PENDING
+    """
+    remaining_balance = invoice_total - paid_total
+    if remaining_balance <= 0:
+        return INVOICE_CLOSED
+    if paid_total > 0:
+        return PARTIALLY_PAID
+    return PAYMENT_PENDING
+
+
+def _maybe_finance_closure_pending(
+    db: Session, *, actor: User, workflow: ProjectWorkflow, exclude_invoice_id: int
+) -> None:
+    open_count = int(db.scalar(select(func.count(ProjectInvoice.id)).where(
+        ProjectInvoice.project_id == workflow.project_id,
+        ProjectInvoice.id != exclude_invoice_id,
+        ProjectInvoice.status != INVOICE_CLOSED,
+    )) or 0)
+    if open_count == 0:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=FINANCE_CLOSURE_PENDING,
+            event_type="finance_closure_pending",
+            title="Finance Closure Pending",
+            comments="All invoices are fully paid and closed.",
+        )
+
+
 def record_invoice_payment(
     db: Session, *, actor: User, invoice_id: int, payload: InvoicePaymentCreate
 ) -> ProjectInvoicePayment:
@@ -1183,7 +1224,7 @@ def record_invoice_payment(
         raise ValueError("Invoice not found")
     if invoice.status not in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE}:
         raise ValueError("Payments can only be recorded against an open raised invoice")
-    total_due = Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0)
+    total_due = _invoice_total_due(invoice)
     paid_before = _payment_total(db, invoice.id)
     if paid_before + payload.amount > total_due:
         raise ValueError("Payment exceeds the outstanding invoice balance")
@@ -1211,19 +1252,28 @@ def record_invoice_payment(
         manual_reason=payload.fx_override_reason,
     )
     paid_after = paid_before + payload.amount
-    complete = paid_after == total_due
-    invoice.status = PAYMENT_RECEIVED if complete else PARTIALLY_PAID
+    new_status = compute_invoice_payment_status(invoice_total=total_due, paid_total=paid_after)
+    if paid_after > total_due or (paid_after < total_due and new_status == INVOICE_CLOSED) or (
+        paid_after == 0 and new_status != PAYMENT_PENDING
+    ):
+        raise ValueError("Inconsistent invoice payment status calculation")
+    invoice.status = new_status
+    complete = new_status == INVOICE_CLOSED
+    if complete:
+        invoice.closed_by_id = actor.id
+        invoice.closed_at = utc_now()
     workflow = _workflow(db, invoice.project_id)
-    state = PAYMENT_RECEIVED if complete else PARTIALLY_PAID
     _transition(
         db,
         workflow=workflow,
         actor=actor,
-        status=state,
+        status=new_status,
         event_type="invoice_payment_received" if complete else "invoice_partial_payment",
         title="Payment Received" if complete else "Partial Payment",
         comments=f"{invoice.currency} {payload.amount} ({payload.payment_reference})",
     )
+    if complete:
+        _maybe_finance_closure_pending(db, actor=actor, workflow=workflow, exclude_invoice_id=invoice.id)
     project = _project(db, invoice.project_id)
     _notify(
         db,
@@ -1277,9 +1327,17 @@ def close_invoice(
     invoice = db.get(ProjectInvoice, invoice_id)
     if invoice is None:
         raise ValueError("Invoice not found")
-    total_due = Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0)
-    if _payment_total(db, invoice.id) < total_due or invoice.status != PAYMENT_RECEIVED:
+    total_due = _invoice_total_due(invoice)
+    paid = _payment_total(db, invoice.id)
+    if paid < total_due:
         raise ValueError("Full payment is required before invoice closure")
+    if invoice.status == INVOICE_CLOSED:
+        if invoice.closed_at is None:
+            invoice.closed_at = utc_now()
+            invoice.closed_by_id = actor.id
+        return invoice
+    if paid > total_due:
+        raise ValueError("Inconsistent invoice payment status calculation")
     invoice.status = INVOICE_CLOSED
     invoice.closed_by_id = actor.id
     invoice.closed_at = utc_now()
@@ -1293,21 +1351,7 @@ def close_invoice(
         title=f"Invoice Closed {invoice.invoice_number}",
         comments=payload.comments,
     )
-    open_count = int(db.scalar(select(func.count(ProjectInvoice.id)).where(
-        ProjectInvoice.project_id == invoice.project_id,
-        ProjectInvoice.id != invoice.id,
-        ProjectInvoice.status != INVOICE_CLOSED,
-    )) or 0)
-    if open_count == 0:
-        _transition(
-            db,
-            workflow=workflow,
-            actor=actor,
-            status=FINANCE_CLOSURE_PENDING,
-            event_type="finance_closure_pending",
-            title="Finance Closure Pending",
-            comments="All invoices are fully paid and closed.",
-        )
+    _maybe_finance_closure_pending(db, actor=actor, workflow=workflow, exclude_invoice_id=invoice.id)
     return invoice
 
 
@@ -1372,8 +1416,16 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
     paid = _payment_total(db, row.id)
     due = Decimal(row.amount) + Decimal(row.tax_amount or 0)
     effective_status = row.status
-    if row.status in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID} and row.due_date < date.today() and paid < due:
-        effective_status = PAYMENT_OVERDUE
+    if row.status != INVOICE_DRAFT:
+        derived = compute_invoice_payment_status(invoice_total=due, paid_total=paid)
+        if derived == INVOICE_CLOSED:
+            effective_status = INVOICE_CLOSED
+        elif paid > 0:
+            effective_status = PAYMENT_OVERDUE if row.due_date < date.today() else PARTIALLY_PAID
+        elif row.due_date < date.today() and row.status in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID}:
+            effective_status = PAYMENT_OVERDUE
+        else:
+            effective_status = derived
     payments = list(db.scalars(select(ProjectInvoicePayment).where(
         ProjectInvoicePayment.invoice_id == row.id
     ).order_by(ProjectInvoicePayment.payment_date.asc(), ProjectInvoicePayment.id.asc())).all())
@@ -1515,6 +1567,7 @@ def _project_summary(db: Session, project: FinanceProject, workflow: ProjectWork
 
 def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
+    query = exclude_hidden_projects(db, query)
     if role == "bd":
         query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
     elif is_technical_pm_role(role):
@@ -1542,7 +1595,7 @@ def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
     if role in MANAGEMENT_ROLES:
         payload["department_overview"] = {
             "bd": {
-                "clients": int(db.scalar(select(func.count(FinanceClient.id))) or 0),
+                "clients": int(db.scalar(exclude_hidden_clients(db, select(func.count(FinanceClient.id)))) or 0),
                 "projects": len(rows),
                 "pending_finance_approvals": statuses.count("pending_finance_approval"),
                 "returned_projects": statuses.count("finance_returned"),
@@ -1550,7 +1603,7 @@ def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
             },
             "finance": {
                 "project_approvals": statuses.count("pending_finance_approval"),
-                "clients": int(db.scalar(select(func.count(FinanceClient.id))) or 0),
+                "clients": int(db.scalar(exclude_hidden_clients(db, select(func.count(FinanceClient.id)))) or 0),
                 "projects": len(rows),
                 "payment_pending": summary["payment_pending"],
                 "overdue": summary["overdue"],

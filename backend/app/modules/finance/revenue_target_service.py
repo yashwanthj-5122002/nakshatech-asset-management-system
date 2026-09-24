@@ -36,7 +36,12 @@ def revenue_target_payload(row: FinanceRevenueTarget, users: dict[int, User] | N
     }
 
 
-def list_revenue_targets(db: Session, *, year: int | None = None) -> list[dict]:
+def list_revenue_targets(
+    db: Session,
+    *,
+    year: int | None = None,
+    department_scope: str | None = None,
+) -> list[dict]:
     stmt = select(FinanceRevenueTarget).order_by(
         FinanceRevenueTarget.month_start.desc(),
         FinanceRevenueTarget.department_code,
@@ -46,6 +51,8 @@ def list_revenue_targets(db: Session, *, year: int | None = None) -> list[dict]:
             FinanceRevenueTarget.month_start >= date(year, 1, 1),
             FinanceRevenueTarget.month_start <= date(year, 12, 31),
         )
+    if department_scope is not None:
+        stmt = stmt.where(FinanceRevenueTarget.department_code == department_scope)
     rows = list(db.scalars(stmt).all())
     user_ids = {row.created_by_id for row in rows} | {row.updated_by_id for row in rows}
     users = {

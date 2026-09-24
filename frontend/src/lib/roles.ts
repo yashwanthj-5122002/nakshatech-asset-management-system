@@ -15,6 +15,21 @@ export function isTechnicalProjectManager(role: Role): boolean {
   return TECHNICAL_PM_ROLES.includes(role)
 }
 
+// Finance Command Center: management/admin/finance see all departments; technical PMs see only their department.
+export const COMMAND_CENTER_ROLES: Role[] = ['finance', 'admin', 'management', ...TECHNICAL_PM_ROLES]
+
+const ROLE_DEPARTMENT_CODE: Partial<Record<Role, string>> = {
+  ortho: 'ortho',
+  lidar: 'lidar',
+  mobile_mapping: 'mobile_mapping',
+  laser_scanning: 'laser_scanning',
+  civil: 'civil',
+}
+
+export function departmentCodeForRole(role: Role): string | null {
+  return ROLE_DEPARTMENT_CODE[role] ?? null
+}
+
 export function canAccessRole(userRole: Role, allowedRoles?: Role[]): boolean {
   if (!allowedRoles || allowedRoles.length === 0) return true
   if (allowedRoles.includes(userRole)) return true

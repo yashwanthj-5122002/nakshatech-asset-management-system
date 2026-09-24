@@ -52,6 +52,7 @@ from app.modules.commercial.schemas import (
     VendorPaymentInput,
 )
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectAssignment
+from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import OrthoWorkPackage, ProjectWorkflow, ProjectWorkflowEvent
 
@@ -351,6 +352,8 @@ def list_estimate_queue(db: Session, *, statuses: tuple[str, ...] = ("PENDING_AP
         row for row in rows
         if not (row.revision_no == 1 and _status_key(_workflow(db, row.project_id)) in PROJECT_APPROVAL_STATES)
     ]
+    visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+    rows = [row for row in rows if row.project_id in visible]
     return [_estimate_payload(row) for row in rows]
 
 
@@ -865,6 +868,9 @@ def list_project_expenses(db: Session, *, actor: User, role: str, project_id: in
     if status:
         query = query.where(ProjectExpense.status == status.strip().upper())
     rows = list(db.scalars(query.order_by(ProjectExpense.expense_date.desc(), ProjectExpense.id.desc())).all())
+    if project_id is None:
+        visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+        rows = [row for row in rows if row.project_id in visible]
     return [_expense_payload(row) for row in rows]
 
 
@@ -1030,6 +1036,9 @@ def list_vendor_invoices(db: Session, *, project_id: int | None = None) -> list[
         _project(db, project_id)
         query = query.where(ProjectVendorInvoice.project_id == project_id)
     rows = list(db.scalars(query.order_by(ProjectVendorInvoice.invoice_date.desc(), ProjectVendorInvoice.id.desc())).all())
+    if project_id is None:
+        visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+        rows = [row for row in rows if row.project_id in visible]
     return [_vendor_invoice_payload(db, row) for row in rows]
 
 
@@ -1319,7 +1328,7 @@ def management_analytics(
     if display not in MANAGEMENT_DISPLAY_CURRENCIES:
         raise ValueError("Selected Management display currency is not enabled")
 
-    project_query = select(FinanceProject)
+    project_query = exclude_hidden_projects(db, select(FinanceProject))
     if project_id:
         project_query = project_query.where(FinanceProject.id == project_id)
     projects = list(db.scalars(project_query.order_by(FinanceProject.project_code)).all())

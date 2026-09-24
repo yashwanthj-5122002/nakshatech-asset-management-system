@@ -1,6 +1,8 @@
-import { BarChart3, ChevronDown, ChevronRight, CircleDollarSign, Eye, EyeOff, FileText, IndianRupee, RefreshCcw, Target, TrendingUp, WalletCards, X } from 'lucide-react'
+import { BarChart3, CalendarDays, ChevronDown, ChevronRight, CircleDollarSign, Eye, EyeOff, FileText, IndianRupee, Lock, RefreshCcw, Target, TrendingUp, WalletCards, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../../lib/api'
+import { useAuth } from '../../../context/AuthContext'
+import { departmentCodeForRole, isTechnicalProjectManager } from '../../../lib/roles'
 import '../finance-expenses.css'
 import './sales-revenue.css'
 
@@ -33,6 +35,7 @@ interface InvoiceRow {
   raised_at: string | null
   closed_at: string | null
   notes: string | null
+  open_sales_category: string | null
   payments: PaymentRow[]
 }
 
@@ -66,13 +69,24 @@ interface SalesProject {
   currency: string
   sales_date: string
   projected_payment_date: string | null
+  completion_date?: string | null
+  project_created_at?: string | null
+  project_status?: string | null
   sales_value: number
   sales_value_inr: number
   open_sales_inr: number
+  open_sales_categories: OpenSalesCategories
+  open_sales_reconciliation_difference_inr: number
+  open_sales_reconciled: boolean
+  unbilled_open_sales_inr: number
+  partial_payment_balance_inr: number
+  open_payment_pending_invoice_count: number
+  open_partial_invoice_count: number
   received_against_open_sales_inr: number
   outstanding_inr: number
   closed_revenue_inr: number
   sales_status: string
+  invoice_not_raised: boolean
   sales_visible: boolean
   revenue_visible: boolean
   bd_sales_invoice: BDSalesInvoice
@@ -80,6 +94,42 @@ interface SalesProject {
   open_invoice_count: number
   closed_invoice_count: number
   invoices: InvoiceRow[]
+}
+
+interface OpenSalesCategories {
+  invoice_not_raised_inr: number
+  payment_pending_inr: number
+  partial_payment_inr: number
+  payment_received_closure_pending_inr: number
+  other_open_inr: number
+}
+
+interface KpiSummary {
+  open_sales_inr: number
+  categories: OpenSalesCategories
+  categories_sum_inr: number
+  reconciliation_difference_inr: number
+  reconciled: boolean
+  realized_revenue_inr: number
+  outstanding_inr: number
+  received_against_open_sales_inr: number
+  open_invoice_total_inr: number
+  open_invoice_balance_inr: number
+  unbilled_open_sales_inr: number
+  counts: {
+    open_sales_projects: number
+    revenue_events: number
+    partial_projects: number
+    overdue_projects: number
+    payment_pending_invoices: number
+    partial_invoices: number
+    invoice_not_raised_projects: number
+  }
+  collection: {
+    payment_pending_amount_inr: number
+    partial_payment_balance_inr: number
+    invoice_not_raised_amount_inr: number
+  }
 }
 
 interface RevenueEvent {
@@ -108,6 +158,7 @@ interface RevenueEvent {
 interface Overview {
   projects: SalesProject[]
   revenue_events: RevenueEvent[]
+  kpi_summary?: KpiSummary
 }
 
 interface RevenueTarget {
@@ -127,9 +178,11 @@ interface RevenueTargetResponse {
   targets: RevenueTarget[]
 }
 
-type VisualizationKey = 'monthly' | 'department' | 'status' | 'bd'
+type VisualizationKey = 'monthly' | 'department' | 'status' | 'bd' | 'sales_revenue'
 
-type DrilldownKey = 'open_sales' | 'revenue' | 'outstanding' | 'target'
+type DrilldownKey = 'open_sales' | 'revenue' | 'outstanding' | 'target' | 'payment_pending' | 'partial_payment' | 'invoice_not_raised'
+
+type Period = 'today' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
 
 interface DrilldownMeta {
   kicker: string
@@ -158,7 +211,24 @@ const drilldownMeta: Record<DrilldownKey, DrilldownMeta> = {
     title: 'Monthly Target — Department Performance',
     subtitle: 'Target vs Actual Revenue for the selected month. Actual only counts fully paid + closed Finance invoices.',
   },
+  payment_pending: {
+    kicker: 'KPI DRILL-DOWN',
+    title: 'Payment Pending — Invoices Awaiting First Payment',
+    subtitle: 'Finance invoices that are raised with paid amount = 0, scoped to the selected department and filters.',
+  },
+  partial_payment: {
+    kicker: 'KPI DRILL-DOWN',
+    title: 'Partial Payment — Partly Collected Invoices',
+    subtitle: 'Finance invoices raised with paid > 0 and balance > 0, scoped to the selected department and filters.',
+  },
+  invoice_not_raised: {
+    kicker: 'KPI DRILL-DOWN',
+    title: 'Invoice Not Raised — Commercial Value Without Finance Invoice',
+    subtitle: 'Projects with commercial/sales value but zero Finance invoices, scoped to the selected department and filters.',
+  },
 }
+
+const PAYMENT_STATUS_FILTERS = ['Payment Pending', 'Partial Payment', 'Invoice Not Raised', 'Revenue Closed'] as const
 
 const DEPARTMENTS = [
   ['ortho', 'ORTHO'],
@@ -173,6 +243,7 @@ const visualizationOptions: Array<{ key: VisualizationKey; label: string }> = [
   { key: 'department', label: 'Department-wise Sales' },
   { key: 'status', label: 'Payment Status Distribution' },
   { key: 'bd', label: 'BD-wise Open Sales' },
+  { key: 'sales_revenue', label: 'Sales vs Revenue (with gap)' },
 ]
 
 function inr(value: number) {
@@ -191,6 +262,81 @@ function currentMonth() {
   return new Date().toISOString().slice(0, 7)
 }
 
+function currentDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function currentWeek() {
+  const now = new Date()
+  const target = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+  const day = target.getUTCDay() || 7
+  target.setUTCDate(target.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1))
+  const week = Math.ceil((((target.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+}
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
+
+function weekRange(value: string): [string, string] {
+  const match = /^(\d{4})-W(\d{2})$/.exec(value)
+  if (!match) return [currentDate(), currentDate()]
+  const year = Number(match[1])
+  const week = Number(match[2])
+  const jan4 = new Date(Date.UTC(year, 0, 4))
+  const day = jan4.getUTCDay() || 7
+  const week1 = new Date(jan4)
+  week1.setUTCDate(jan4.getUTCDate() - day + 1)
+  const start = new Date(week1)
+  start.setUTCDate(week1.getUTCDate() + (week - 1) * 7)
+  const end = new Date(start)
+  end.setUTCDate(start.getUTCDate() + 6)
+  return [isoDate(start), isoDate(end)]
+}
+
+function monthRange(value: string): [string, string] {
+  const match = /^(\d{4})-(\d{2})$/.exec(value)
+  if (!match) return [value, value]
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const start = Date.UTC(year, month - 1, 1)
+  const end = Date.UTC(year, month, 0)
+  return [isoDate(new Date(start)), isoDate(new Date(end))]
+}
+
+function quarterRange(year: number, quarter: number): [string, string] {
+  const startMonth = (quarter - 1) * 3
+  const start = Date.UTC(year, startMonth, 1)
+  const end = Date.UTC(year, startMonth + 3, 0)
+  return [isoDate(new Date(start)), isoDate(new Date(end))]
+}
+
+function dateRange(period: Period, values: {
+  day: string
+  week: string
+  month: string
+  quarter: number
+  year: number
+  from: string
+  to: string
+}): [string, string] {
+  if (period === 'today') return [currentDate(), currentDate()]
+  if (period === 'daily') return [values.day, values.day]
+  if (period === 'weekly') return weekRange(values.week)
+  if (period === 'monthly') return monthRange(values.month)
+  if (period === 'quarterly') return quarterRange(values.year, values.quarter)
+  if (period === 'yearly') return [`${values.year}-01-01`, `${values.year}-12-31`]
+  return [values.from, values.to]
+}
+
+function dateInside(value: string | null, range: [string, string]) {
+  if (!value) return false
+  const day = value.slice(0, 10)
+  return day >= range[0] && day <= range[1]
+}
+
 function monthLabel(value: string) {
   const d = new Date(`${value}-01T00:00:00`)
   return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
@@ -202,6 +348,34 @@ function titleCase(value: string) {
 
 function isRevenueQualifyingInvoice(inv: InvoiceRow) {
   return inv.status === 'INVOICE_CLOSED' && inv.paid_amount >= inv.total_amount
+}
+
+function isOpenInvoice(inv: InvoiceRow) {
+  return !isRevenueQualifyingInvoice(inv)
+}
+
+function isPaymentPendingInvoice(inv: InvoiceRow) {
+  if (inv.open_sales_category != null) return inv.open_sales_category === 'payment_pending_inr'
+  return isOpenInvoice(inv) && inv.paid_amount <= 0 && inv.total_amount > 0
+}
+
+function isPartialPaymentInvoice(inv: InvoiceRow) {
+  if (inv.open_sales_category != null) return inv.open_sales_category === 'partial_payment_inr'
+  return isOpenInvoice(inv) && inv.paid_amount > 0 && inv.balance > 0
+}
+
+function isInvoicesNotRaised(row: SalesProject) {
+  return Boolean(row.invoice_not_raised ?? (row.sales_value_inr > 0 && row.invoice_count === 0))
+}
+
+function projectPaymentStatus(row: SalesProject): string {
+  if (row.invoice_not_raised && row.open_invoice_count === 0) return 'Invoice Not Raised'
+  if (row.invoices.some(inv => isOpenInvoice(inv) && inv.open_sales_category === 'partial_payment_inr')) return 'Partial Payment'
+  if (row.invoices.some(inv => isOpenInvoice(inv) && inv.open_sales_category === 'payment_pending_inr')) return 'Payment Pending'
+  if (row.invoices.some(inv => isOpenInvoice(inv) && inv.open_sales_category === 'payment_received_closure_pending_inr')) return 'Payment Pending'
+  if (row.closed_invoice_count > 0 && row.open_invoice_count === 0) return 'Revenue Closed'
+  if (row.invoices.some(isOpenInvoice)) return 'Payment Pending'
+  return 'Payment Pending'
 }
 
 interface ProjectCalc {
@@ -317,11 +491,12 @@ function ColumnChart({ title, subtitle, rows }: { title: string; subtitle: strin
   )
 }
 
-function TrendChart({ title, subtitle, rows, secondaryLabel }: {
+function TrendChart({ title, subtitle, rows, secondaryLabel, gapLabel }: {
   title: string
   subtitle: string
   rows: Array<{ label: string; value: number; secondary?: number }>
   secondaryLabel?: string
+  gapLabel?: string
 }) {
   if (rows.length === 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
   const width = 760
@@ -363,8 +538,9 @@ function TrendChart({ title, subtitle, rows, secondaryLabel }: {
         </svg>
       </div>
       <div className="sr-chart-legend">
-        <span><i className="primary" /> Sales</span>
+        <span><i className="primary" /> {secondaryLabel ? 'Sales' : 'Sales'}</span>
         {secondaryLabel && <span><i className="secondary" /> {secondaryLabel}</span>}
+        {gapLabel && <span><i className="primary" style={{ background: '#ea580c' }} /> {gapLabel}</span>}
       </div>
     </ChartShell>
   )
@@ -428,6 +604,8 @@ function RankingChart({ title, subtitle, rows }: { title: string; subtitle: stri
 }
 
 export function FinanceCommandCenter() {
+  const { user } = useAuth()
+  const lockedDepartment = user && isTechnicalProjectManager(user.role) ? departmentCodeForRole(user.role) : null
   const [data, setData] = useState<Overview | null>(null)
   const [revenueTargets, setRevenueTargets] = useState<RevenueTarget[]>([])
   const [loading, setLoading] = useState(true)
@@ -436,13 +614,33 @@ export function FinanceCommandCenter() {
   const [visualizationVisible, setVisualizationVisible] = useState(true)
   const [targetMonth, setTargetMonth] = useState(currentMonth)
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
-  const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments'>('sales')
+  const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments' | 'timeline'>('sales')
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState<string | null>(null)
   const [drilldown, setDrilldown] = useState<DrilldownKey | null>(null)
   const [drilldownLoading, setDrilldownLoading] = useState(false)
   const [drilldownError, setDrilldownError] = useState('')
   const [drilldownData, setDrilldownData] = useState<{ overview: Overview; targets: RevenueTarget[] } | null>(null)
   const [expandedCalcId, setExpandedCalcId] = useState<string | null>(null)
+  const [period, setPeriod] = useState<Period>('custom')
+  const [day, setDay] = useState(currentDate)
+  const [week, setWeek] = useState(currentWeek)
+  const [monthFilter, setMonthFilter] = useState(currentMonth)
+  const [quarter, setQuarter] = useState(Math.floor(new Date().getMonth() / 3) + 1)
+  const [year, setYear] = useState(new Date().getFullYear())
+  const [from, setFrom] = useState('2000-01-01')
+  const [to, setTo] = useState(currentDate)
+  const [department, setDepartment] = useState(lockedDepartment ?? 'all')
+  const [client, setClient] = useState('all')
+  const [projectFilter, setProjectFilter] = useState('all')
+  const [bd, setBd] = useState('all')
+  const [pm, setPm] = useState('all')
+  const [currency, setCurrency] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [salesDateBasis, setSalesDateBasis] = useState<'projected' | 'booked'>('projected')
+
+  useEffect(() => {
+    if (lockedDepartment) setDepartment(lockedDepartment)
+  }, [lockedDepartment])
 
   function load() {
     setLoading(true)
@@ -491,6 +689,63 @@ export function FinanceCommandCenter() {
   const allProjects = data?.projects ?? []
   const allRevenue = data?.revenue_events ?? []
 
+  const range = useMemo(() => dateRange(period, { day, week, month: monthFilter, quarter, year, from, to }), [period, day, week, monthFilter, quarter, year, from, to])
+
+  const filterOptions = useMemo(() => {
+    const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b))
+    return {
+      clients: unique(allProjects.map(row => row.client_name)),
+      projects: unique(allProjects.map(row => row.project_code)),
+      bd: unique(allProjects.map(row => row.bd_name)),
+      pm: unique(allProjects.map(row => row.project_manager_name)),
+      currencies: unique(allProjects.map(row => row.currency)),
+      statuses: [...PAYMENT_STATUS_FILTERS],
+    }
+  }, [allProjects])
+
+  function dimensionsMatch(row: { department_code: string; client_name: string; project_code: string; bd_name: string; project_manager_name: string; currency: string }) {
+    const departmentScope = lockedDepartment ?? department
+    return (departmentScope === 'all' || row.department_code === departmentScope)
+      && (client === 'all' || row.client_name === client)
+      && (projectFilter === 'all' || row.project_code === projectFilter)
+      && (bd === 'all' || row.bd_name === bd)
+      && (pm === 'all' || row.project_manager_name === pm)
+      && (currency === 'all' || row.currency === currency)
+  }
+
+  const filteredProjects = useMemo(() => allProjects.filter(row =>
+    (salesDateBasis === 'projected' ? dateInside(row.projected_payment_date, range) : dateInside(row.sales_date, range))
+    && dimensionsMatch(row)
+    && (statusFilter === 'all' || projectPaymentStatus(row) === statusFilter)
+  ), [allProjects, range, department, lockedDepartment, client, projectFilter, bd, pm, currency, statusFilter, salesDateBasis])
+
+  const filteredRevenue = useMemo(() => allRevenue.filter(row =>
+    dateInside(row.revenue_date, range)
+    && dimensionsMatch(row)
+  ), [allRevenue, range, department, client, projectFilter, bd, pm, currency])
+
+  const activeProjects = filteredProjects
+  const activeRevenue = filteredRevenue
+
+  function resetDimensionFilters() {
+    setDepartment(lockedDepartment ?? 'all')
+    setClient('all')
+    setProjectFilter('all')
+    setBd('all')
+    setPm('all')
+    setCurrency('all')
+    setStatusFilter('all')
+    setSalesDateBasis('projected')
+    setPeriod('custom')
+    setDay(currentDate)
+    setWeek(currentWeek)
+    setMonthFilter(currentMonth)
+    setQuarter(Math.floor(new Date().getMonth() / 3) + 1)
+    setYear(new Date().getFullYear())
+    setFrom('2000-01-01')
+    setTo(currentDate)
+  }
+
   const selectedProject = selectedProjectId == null ? null : allProjects.find(row => row.project_id === selectedProjectId) ?? null
   const selectedInvoice = selectedProject?.invoices.find(row => row.invoice_number === selectedInvoiceNumber)
     ?? selectedProject?.invoices[0]
@@ -512,32 +767,60 @@ export function FinanceCommandCenter() {
     }
   }, [selectedProjectId, drilldown])
 
+  const serverKpiSummary = data?.kpi_summary ?? null
+
   const salesKpis = useMemo(() => {
-    const openSales = allProjects.reduce((sum, row) => sum + row.open_sales_inr, 0)
-    const received = allProjects.reduce((sum, row) => sum + row.received_against_open_sales_inr, 0)
-    const outstanding = allProjects.reduce((sum, row) => sum + row.outstanding_inr, 0)
-    const closedRevenue = allRevenue.reduce((sum, row) => sum + row.revenue_amount_inr, 0)
-    const openInvoiced = allProjects.reduce((sum, row) => sum + row.invoices.filter(inv => inv.status !== 'INVOICE_CLOSED').reduce((s, inv) => s + inv.total_inr, 0), 0)
+    const sumCategories = (key: keyof OpenSalesCategories) =>
+      activeProjects.reduce((sum, row) => sum + (row.open_sales_categories?.[key] ?? 0), 0)
+    const categories: OpenSalesCategories = {
+      invoice_not_raised_inr: sumCategories('invoice_not_raised_inr'),
+      payment_pending_inr: sumCategories('payment_pending_inr'),
+      partial_payment_inr: sumCategories('partial_payment_inr'),
+      payment_received_closure_pending_inr: sumCategories('payment_received_closure_pending_inr'),
+      other_open_inr: sumCategories('other_open_inr'),
+    }
+    const categoriesSum = Object.values(categories).reduce((sum, value) => sum + value, 0)
+    const openSales = activeProjects.reduce((sum, row) => sum + row.open_sales_inr, 0)
+    const received = activeProjects.reduce((sum, row) => sum + row.received_against_open_sales_inr, 0)
+    const outstanding = activeProjects.reduce((sum, row) => sum + row.outstanding_inr, 0)
+    const closedRevenue = activeRevenue.reduce((sum, row) => sum + row.revenue_amount_inr, 0)
+    const openInvoiced = activeProjects.reduce((sum, row) =>
+      sum + row.invoices.filter(inv => isOpenInvoice(inv) && inv.open_sales_category != null).reduce((s, inv) => s + inv.total_inr, 0), 0)
     return {
       openSales,
       received,
       outstanding,
       closedRevenue,
       openInvoiced,
-      salesCount: allProjects.filter(row => row.sales_visible).length,
-      revenueCount: allRevenue.length,
-      partial: allProjects.filter(row => row.sales_status === 'Partially Paid').length,
-      overdue: allProjects.filter(row => row.sales_status === 'Overdue').length,
+      categories,
+      categoriesSum,
+      reconciled: Math.abs(openSales - categoriesSum) <= 0.01,
+      salesCount: activeProjects.filter(row => row.sales_visible).length,
+      revenueCount: activeRevenue.length,
+      partial: activeProjects.filter(row => row.sales_status === 'Partially Paid').length,
+      overdue: activeProjects.filter(row => row.sales_status === 'Overdue').length,
+      paymentPendingCount: activeProjects.reduce((sum, row) => sum + (row.open_payment_pending_invoice_count || 0), 0),
+      paymentPendingAmount: categories.payment_pending_inr,
+      partialCount: activeProjects.reduce((sum, row) => sum + (row.open_partial_invoice_count || 0), 0),
+      partialAmount: activeProjects.reduce((sum, row) => sum + (row.partial_payment_balance_inr || 0), 0),
+      notRaisedCount: activeProjects.filter(row => isInvoicesNotRaised(row)).length,
+      notRaisedAmount: categories.invoice_not_raised_inr,
     }
-  }, [allProjects, allRevenue])
+  }, [activeProjects, activeRevenue])
 
   const targetMonthRows = useMemo(() => {
+    const departmentScope = lockedDepartment ?? department
     const targetByDepartment = new Map(
-      revenueTargets.filter(row => row.month === targetMonth).map(row => [row.department_code, row])
+      revenueTargets
+        .filter(row => row.month === targetMonth && (departmentScope === 'all' || row.department_code === departmentScope))
+        .map(row => [row.department_code, row])
     )
-    return DEPARTMENTS.map(([code, label]) => {
+    const departments = departmentScope === 'all'
+      ? DEPARTMENTS
+      : DEPARTMENTS.filter(([code]) => code === departmentScope)
+    return departments.map(([code, label]) => {
       const targetRow = targetByDepartment.get(code)
-      const actual = allRevenue
+      const actual = activeRevenue
         .filter(row => row.department_code === code && row.revenue_date.slice(0, 7) === targetMonth)
         .reduce((sum, row) => sum + row.revenue_amount_inr, 0)
       const target = targetRow?.target_amount_inr || 0
@@ -545,7 +828,7 @@ export function FinanceCommandCenter() {
       const achievement = target > 0 ? (actual / target) * 100 : 0
       return { code, label, target, actual, remaining, achievement, updatedBy: targetRow?.updated_by_name || null }
     })
-  }, [revenueTargets, allRevenue, targetMonth])
+  }, [revenueTargets, activeRevenue, targetMonth, department, lockedDepartment])
 
   const targetSummary = useMemo(() => {
     const target = targetMonthRows.reduce((sum, row) => sum + row.target, 0)
@@ -560,7 +843,7 @@ export function FinanceCommandCenter() {
 
   const monthlyChart = useMemo(() => {
     const map = new Map<string, { value: number; secondary: number }>()
-    for (const row of allProjects.filter(item => item.sales_visible)) {
+    for (const row of activeProjects.filter(item => item.sales_visible)) {
       const chartDate = row.projected_payment_date || row.sales_date
       if (!chartDate) continue
       const key = chartDate.slice(0, 7)
@@ -574,32 +857,67 @@ export function FinanceCommandCenter() {
       value: value.value,
       secondary: value.secondary,
     }))
-  }, [allProjects])
+  }, [activeProjects])
+
+  const salesRevenueGapChart = useMemo(() => {
+    const map = new Map<string, { sales: number; revenue: number }>()
+    for (const row of activeProjects.filter(item => item.sales_visible)) {
+      const chartDate = row.projected_payment_date || row.sales_date
+      if (!chartDate) continue
+      const key = chartDate.slice(0, 7)
+      const item = map.get(key) || { sales: 0, revenue: 0 }
+      item.sales += row.open_sales_inr
+      map.set(key, item)
+    }
+    for (const row of activeRevenue) {
+      const key = row.revenue_date.slice(0, 7)
+      const item = map.get(key) || { sales: 0, revenue: 0 }
+      item.revenue += row.revenue_amount_inr
+      map.set(key, item)
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => ({
+      label: monthLabel(key),
+      value: value.sales,
+      secondary: value.revenue,
+      gap: Math.max(value.sales - value.revenue, 0),
+    }))
+  }, [activeProjects, activeRevenue])
 
   const departmentChart = useMemo(() => {
     const map = new Map<string, number>()
-    for (const row of allProjects.filter(item => item.sales_visible)) {
+    for (const row of activeProjects.filter(item => item.sales_visible)) {
       map.set(row.department_label, (map.get(row.department_label) || 0) + row.open_sales_inr)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }))
-  }, [allProjects])
+  }, [activeProjects])
 
   const statusChart = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const row of allProjects.filter(item => item.sales_visible)) {
-      map.set(row.sales_status, (map.get(row.sales_status) || 0) + row.open_sales_inr)
+    const buckets: Record<string, number> = {
+      'Payment Pending': 0,
+      'Partial Payment': 0,
+      'Invoice Not Raised': 0,
+      'Revenue Closed': 0,
     }
-    return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }))
-  }, [allProjects])
+    for (const row of activeProjects) {
+      const categories = row.open_sales_categories
+      buckets['Payment Pending'] += (categories?.payment_pending_inr ?? 0)
+        + (categories?.payment_received_closure_pending_inr ?? 0)
+        + (categories?.other_open_inr ?? 0)
+      buckets['Partial Payment'] += categories?.partial_payment_inr ?? 0
+      buckets['Invoice Not Raised'] += categories?.invoice_not_raised_inr ?? 0
+      buckets['Revenue Closed'] += row.closed_revenue_inr
+    }
+    return Object.entries(buckets).map(([label, value]) => ({ label, value }))
+  }, [activeProjects])
 
   const bdChart = useMemo(() => {
     const map = new Map<string, number>()
-    for (const row of allProjects.filter(item => item.sales_visible)) {
+    for (const row of activeProjects.filter(item => item.sales_visible)) {
       const key = row.bd_name || 'Unassigned'
       map.set(key, (map.get(key) || 0) + row.open_sales_inr)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
-  }, [allProjects])
+  }, [activeProjects])
 
   function renderVisualization() {
     if (visualizationKey === 'monthly') {
@@ -624,6 +942,20 @@ export function FinanceCommandCenter() {
     if (visualizationKey === 'status') {
       return <DonutChart title="Payment Status Distribution" subtitle="How open Sales money is distributed across collection states." rows={statusChart} />
     }
+    if (visualizationKey === 'sales_revenue') {
+      const totalSales = salesRevenueGapChart.reduce((sum, row) => sum + row.value, 0)
+      const totalRevenue = salesRevenueGapChart.reduce((sum, row) => sum + (row.secondary || 0), 0)
+      const totalGap = Math.max(totalSales - totalRevenue, 0)
+      return (
+        <TrendChart
+          title="Sales vs Revenue (with gap)"
+          subtitle={`Open Sales ${inr(totalSales)} vs Realized Revenue ${inr(totalRevenue)} · Gap ${inr(totalGap)}. Gap = open pipeline not yet closed into revenue.`}
+          rows={salesRevenueGapChart}
+          secondaryLabel="Revenue"
+          gapLabel="Gap"
+        />
+      )
+    }
     return <RankingChart title="BD-wise Open Sales" subtitle="Commercial ownership view for open sales pipeline." rows={bdChart} />
   }
 
@@ -641,7 +973,7 @@ export function FinanceCommandCenter() {
         <article className="finance-panel">
           <div className="finance-panel-header">
             <div>
-              <span className="finance-panel-kicker">PHASE 1</span>
+              <span>PHASE 3 · DEPARTMENT INTELLIGENCE</span>
               <h2 id="finance-command-center-title">FINANCE COMMAND CENTER</h2>
               <p>Unified KPI, sales visualization, revenue and target achievement view.</p>
             </div>
@@ -658,7 +990,7 @@ export function FinanceCommandCenter() {
         <article className="finance-panel">
           <div className="finance-panel-header">
             <div>
-              <span className="finance-panel-kicker">PHASE 1</span>
+              <span>PHASE 3 · DEPARTMENT INTELLIGENCE</span>
               <h2 id="finance-command-center-title">FINANCE COMMAND CENTER</h2>
             </div>
           </div>
@@ -677,13 +1009,13 @@ export function FinanceCommandCenter() {
         <article className="finance-panel">
           <div className="finance-panel-header">
             <div>
-              <span className="finance-panel-kicker">PHASE 1</span>
+              <span>PHASE 3 · DEPARTMENT INTELLIGENCE</span>
               <h2 id="finance-command-center-title">FINANCE COMMAND CENTER</h2>
               <p>Unified KPI, sales visualization, revenue and target achievement view.</p>
             </div>
             <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
           </div>
-          <div className="finance-empty-state">No finance data available</div>
+          <div className="finance-empty-state">No records available</div>
         </article>
       </section>
     )
@@ -693,14 +1025,46 @@ export function FinanceCommandCenter() {
     <section aria-labelledby="finance-command-center-title">
       <article className="finance-panel">
         <div className="finance-panel-header">
-          <div>
-            <span className="finance-panel-kicker">PHASE 1</span>
-            <h2 id="finance-command-center-title">FINANCE COMMAND CENTER</h2>
-            <p>Real KPI, sales visualization, revenue/collection summary and monthly target achievement from live Sales/Revenue APIs. No forecast, no hard-coded values.</p>
-          </div>
-          <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
+            <div>
+              <span>PHASE 3 · DEPARTMENT INTELLIGENCE</span>
+              <h2 id="finance-command-center-title">FINANCE COMMAND CENTER</h2>
+              <p>Real KPI, sales visualization, revenue/collection summary and monthly target achievement from live Sales/Revenue APIs. No forecast, no hard-coded values.</p>
+            </div>
+            <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
         </div>
       </article>
+
+      <section className="sr-filter-panel" aria-label="Finance Command Center filters">
+        <div className="sr-filter-title"><CalendarDays size={18}/><div><strong>Analytics filters</strong><span>Every KPI, table and chart below follows the same selection.</span></div></div>
+        <div className="sr-filter-grid">
+          <label><span>Period</span><select value={period} onChange={e => setPeriod(e.target.value as Period)}>
+            <option value="today">Today</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="custom">Custom Range</option>
+          </select></label>
+          {period === 'daily' && <label><span>Date</span><input type="date" value={day} onChange={e => setDay(e.target.value)}/></label>}
+          {period === 'weekly' && <label><span>Week</span><input type="week" value={week} onChange={e => setWeek(e.target.value)}/></label>}
+          {period === 'monthly' && <label><span>Month</span><input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}/></label>}
+          {period === 'quarterly' && <><label><span>Year</span><input type="number" min="2000" max="2100" value={year} onChange={e => setYear(Number(e.target.value))}/></label><label><span>Quarter</span><select value={quarter} onChange={e => setQuarter(Number(e.target.value))}><option value={1}>Q1</option><option value={2}>Q2</option><option value={3}>Q3</option><option value={4}>Q4</option></select></label></>}
+          {period === 'yearly' && <label><span>Year</span><input type="number" min="2000" max="2100" value={year} onChange={e => setYear(Number(e.target.value))}/></label>}
+          {period === 'custom' && <><label><span>From</span><input type="date" value={from} onChange={e => setFrom(e.target.value)}/></label><label><span>To</span><input type="date" value={to} onChange={e => setTo(e.target.value)}/></label></>}
+          <label><span>Department{lockedDepartment ? ' (locked)' : ''}</span>
+            <select value={lockedDepartment ?? department} onChange={e => setDepartment(e.target.value)} disabled={Boolean(lockedDepartment)}>
+              {lockedDepartment
+                ? DEPARTMENTS.filter(([code]) => code === lockedDepartment).map(([code, label]) => <option key={code} value={code}>{label}</option>)
+                : <><option value="all">All Departments</option>{DEPARTMENTS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</>}
+            </select>
+            {lockedDepartment && <small style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}><Lock size={11}/> Your department only</small>}
+          </label>
+          <label><span>Client</span><select value={client} onChange={e => setClient(e.target.value)}><option value="all">All Clients</option>{filterOptions.clients.map(v => <option key={v}>{v}</option>)}</select></label>
+          <label><span>Project</span><select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}><option value="all">All Projects</option>{filterOptions.projects.map(v => <option key={v}>{v}</option>)}</select></label>
+          <label><span>BD Person</span><select value={bd} onChange={e => setBd(e.target.value)}><option value="all">All BD</option>{filterOptions.bd.map(v => <option key={v}>{v}</option>)}</select></label>
+          <label><span>Project Manager</span><select value={pm} onChange={e => setPm(e.target.value)}><option value="all">All PMs</option>{filterOptions.pm.map(v => <option key={v}>{v}</option>)}</select></label>
+          <label><span>Currency</span><select value={currency} onChange={e => setCurrency(e.target.value)}><option value="all">All Currencies</option>{filterOptions.currencies.map(v => <option key={v}>{v}</option>)}</select></label>
+          <label><span>Sales Date Basis</span><select value={salesDateBasis} onChange={e => setSalesDateBasis(e.target.value as 'projected' | 'booked')}><option value="projected">Projected Payment Date</option><option value="booked">BD Sales / Commercial Date</option></select></label>
+          <label><span>Payment Status</span><select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">All Statuses</option>{PAYMENT_STATUS_FILTERS.map(v => <option key={v} value={v}>{v}</option>)}</select></label>
+          <button className="sr-reset" type="button" onClick={resetDimensionFilters}>Clear filters</button>
+        </div>
+        <div className="sr-range-note">Showing Command Center data for <strong>{range[0]} to {range[1]}</strong>{(lockedDepartment ?? department) !== 'all' ? ` · ${DEPARTMENTS.find(([code]) => code === (lockedDepartment ?? department))?.[1] || department}` : ''}{currency !== 'all' ? ` · ${currency}` : ''}{statusFilter !== 'all' ? ` · ${statusFilter}` : ''}{serverKpiSummary ? ` · Backend KPI ${serverKpiSummary.reconciled ? 'reconciled' : 'mismatch ' + serverKpiSummary.reconciliation_difference_inr}` : ''}{salesKpis.reconciled ? '' : ' · Filtered KPI mismatch'}</div>
+      </section>
 
       <section className="finance-kpi-grid finance-kpi-grid-4" aria-label="Finance KPI summary">
         <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('open_sales')} aria-label="Open Sales Pipeline details">
@@ -730,21 +1094,24 @@ export function FinanceCommandCenter() {
       </section>
 
       <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary" aria-label="Collection summary">
-        <article className="finance-kpi-card">
-          <span><FileText size={15}/> Open Invoiced</span>
-          <strong>{inr(salesKpis.openInvoiced)}</strong>
-          <small>Finance invoices not yet closed</small>
-        </article>
-        <article className="finance-kpi-card">
-          <span><WalletCards size={15}/> Received on Open Sales</span>
-          <strong>{inr(salesKpis.received)}</strong>
-          <small>Stays in Sales until invoice closure</small>
-        </article>
-        <article className="finance-kpi-card">
-          <span><CircleDollarSign size={15}/> Collection Ratio</span>
-          <strong>{salesKpis.openSales > 0 ? `${((salesKpis.received / salesKpis.openSales) * 100).toFixed(1)}%` : '—'}</strong>
-          <small>Received ÷ open sales pipeline</small>
-        </article>
+        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('payment_pending')} aria-label="Payment Pending details">
+          <span><FileText size={15}/> Payment Pending</span>
+          <strong>{inr(salesKpis.paymentPendingAmount)}</strong>
+          <small>{salesKpis.paymentPendingCount} invoice(s) with paid = 0</small>
+          <em className="kpi-drilldown-hint">View invoices awaiting first payment</em>
+        </button>
+        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('partial_payment')} aria-label="Partial Payment details">
+          <span><WalletCards size={15}/> Partial Payment</span>
+          <strong>{inr(salesKpis.partialAmount)}</strong>
+          <small>{salesKpis.partialCount} invoice(s) partly paid · balance open</small>
+          <em className="kpi-drilldown-hint">View partly collected invoices</em>
+        </button>
+        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('invoice_not_raised')} aria-label="Invoice Not Raised details">
+          <span><CircleDollarSign size={15}/> Invoice Not Raised</span>
+          <strong>{inr(salesKpis.notRaisedAmount)}</strong>
+          <small>{salesKpis.notRaisedCount} project(s) with sales value, no Finance invoice</small>
+          <em className="kpi-drilldown-hint">View unbilled commercial value</em>
+        </button>
         <article className="finance-kpi-card">
           <span><Target size={15}/> Target Remaining</span>
           <strong>{inr(targetSummary.remaining)}</strong>
@@ -810,6 +1177,19 @@ export function FinanceCommandCenter() {
       </section>
       {visualizationVisible && <section className="sr-visual-stage">{renderVisualization()}</section>}
 
+      <section className="sr-visual-stage" aria-label="Payment status and sales versus revenue charts">
+        <div className="sr-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+          <DonutChart title="Payment Status Distribution" subtitle="How open Sales money is distributed across collection states under the current filters." rows={statusChart} />
+          <TrendChart
+            title="Sales vs Revenue (with gap)"
+            subtitle="Open sales pipeline (Sales) vs fully paid + closed invoice events (Revenue). Gap = pipeline not yet realized."
+            rows={salesRevenueGapChart}
+            secondaryLabel="Revenue"
+            gapLabel="Gap"
+          />
+        </div>
+      </section>
+
       <section className="sr-panel">
         <div className="sr-panel-heading">
           <div>
@@ -817,10 +1197,10 @@ export function FinanceCommandCenter() {
             <h3>Sales Projects</h3>
             <p>Open sales pipeline rows. Open a project for BD Sales, Finance Invoice and payment detail.</p>
           </div>
-          <strong>{allProjects.filter(row => row.sales_visible).length}</strong>
+          <strong>{activeProjects.filter(row => row.sales_visible).length}</strong>
         </div>
-        {allProjects.filter(row => row.sales_visible).length === 0 ? (
-          <div className="sr-empty">No sales records available.</div>
+        {activeProjects.filter(row => row.sales_visible).length === 0 ? (
+          <div className="sr-empty">No records available</div>
         ) : (
           <div className="sr-table-wrap">
             <table className="sr-table">
@@ -836,7 +1216,7 @@ export function FinanceCommandCenter() {
                 </tr>
               </thead>
               <tbody>
-                {[...allProjects.filter(row => row.sales_visible)]
+                {[...activeProjects.filter(row => row.sales_visible)]
                   .sort((a, b) => (b.sales_date || '').localeCompare(a.sales_date || '') || b.project_code.localeCompare(a.project_code))
                   .slice(0, 10)
                   .map(row => (
@@ -863,10 +1243,10 @@ export function FinanceCommandCenter() {
             <h3>Revenue Summary</h3>
             <p>Recent realized revenue events from fully paid + closed Finance invoices.</p>
           </div>
-          <strong>{allRevenue.length}</strong>
+          <strong>{activeRevenue.length}</strong>
         </div>
-        {allRevenue.length === 0 ? (
-          <div className="sr-empty">No revenue records available.</div>
+        {activeRevenue.length === 0 ? (
+          <div className="sr-empty">No records available</div>
         ) : (
           <div className="sr-table-wrap">
             <table className="sr-table">
@@ -880,7 +1260,7 @@ export function FinanceCommandCenter() {
                 </tr>
               </thead>
               <tbody>
-                {[...allRevenue]
+                {[...activeRevenue]
                   .sort((a, b) => b.revenue_date.localeCompare(a.revenue_date))
                   .slice(0, 10)
                   .map(row => (
@@ -910,10 +1290,27 @@ export function FinanceCommandCenter() {
               <button className="sr-modal-close" type="button" onClick={() => setSelectedProjectId(null)} aria-label="Close project details"><X size={20}/></button>
             </div>
 
+            <div className="sr-facts" style={{ marginBottom: 12 }}>
+              <div><span>Client ID</span><strong>{selectedProject.client_code || '—'}</strong></div>
+              <div><span>Client Name</span><strong>{selectedProject.client_name || '—'}</strong></div>
+              <div><span>Project ID</span><strong>{selectedProject.project_code}</strong></div>
+              <div><span>Project Name</span><strong>{selectedProject.project_name}</strong></div>
+              <div><span>Department</span><strong>{selectedProject.department_label}</strong></div>
+              <div><span>BD Person</span><strong>{selectedProject.bd_name || '—'}</strong></div>
+              <div><span>Project Manager</span><strong>{selectedProject.project_manager_name || '—'}</strong></div>
+              <div><span>Currency</span><strong>{selectedProject.currency || '—'}</strong></div>
+              <div><span>Projected payment date</span><strong>{selectedProject.projected_payment_date || '—'}</strong></div>
+              <div><span>Completion date</span><strong>{selectedProject.completion_date || '—'}</strong></div>
+              <div><span>Project status</span><strong>{selectedProject.project_status || '—'}</strong></div>
+              <div><span>Project created</span><strong>{selectedProject.project_created_at || '—'}</strong></div>
+              <div><span>Payment status</span><strong>{projectPaymentStatus(selectedProject)}</strong></div>
+            </div>
+
             <div className="sr-detail-tabs">
-              <button className={detailTab === 'sales' ? 'active' : ''} onClick={() => setDetailTab('sales')}>View BD Sales Invoice</button>
-              <button className={detailTab === 'finance' ? 'active' : ''} onClick={() => setDetailTab('finance')}>View Finance Invoice</button>
-              <button className={detailTab === 'payments' ? 'active' : ''} onClick={() => setDetailTab('payments')}>View Payment History</button>
+              <button className={detailTab === 'sales' ? 'active' : ''} onClick={() => setDetailTab('sales')}>Commercial</button>
+              <button className={detailTab === 'finance' ? 'active' : ''} onClick={() => setDetailTab('finance')}>Finance Invoice</button>
+              <button className={detailTab === 'payments' ? 'active' : ''} onClick={() => setDetailTab('payments')}>Payment History</button>
+              <button className={detailTab === 'timeline' ? 'active' : ''} onClick={() => setDetailTab('timeline')}>Timeline</button>
             </div>
 
             {detailTab === 'sales' && (
@@ -999,6 +1396,46 @@ export function FinanceCommandCenter() {
                 )}
               </>
             )}
+
+            {detailTab === 'timeline' && (
+              (() => {
+                const events: Array<{ date: string; label: string; detail?: string }> = []
+                if (selectedProject.project_created_at) events.push({ date: selectedProject.project_created_at, label: 'Project Created', detail: selectedProject.project_code })
+                if (selectedProject.sales_date) events.push({ date: selectedProject.sales_date, label: 'Commercial Approval', detail: selectedProject.bd_sales_invoice.reference || `Revision ${selectedProject.bd_sales_invoice.revision_no || 1}` })
+                if (selectedProject.projected_payment_date) events.push({ date: selectedProject.projected_payment_date, label: 'Projected client payment', detail: 'From commercial baseline or open invoice due date' })
+                for (const inv of selectedProject.invoices) {
+                  events.push({ date: inv.invoice_date, label: `Invoice Raised — ${inv.invoice_number}`, detail: `${titleCase(inv.status)} · due ${inv.due_date} · ${money(inv.total_amount, inv.currency)}` })
+                  if (inv.raised_at) events.push({ date: inv.raised_at.slice(0, 10), label: `Invoice raised at — ${inv.invoice_number}`, detail: inv.raised_at.replace('T', ' ').slice(0, 19) })
+                  for (const payment of inv.payments) {
+                    events.push({ date: payment.payment_date, label: `Payment Received — ${payment.payment_reference || inv.invoice_number}`, detail: `${money(payment.amount, payment.currency)} · ${inr(payment.amount_inr)} · ${titleCase(payment.payment_mode)}` })
+                  }
+                  if (inv.closed_at) events.push({ date: inv.closed_at.slice(0, 10), label: `Revenue Closed — ${inv.invoice_number}`, detail: inv.closed_at.replace('T', ' ').slice(0, 19) })
+                }
+                if (selectedProject.completion_date) events.push({ date: selectedProject.completion_date, label: 'Completion date', detail: 'Project end date from Finance Project Master' })
+                const completed = events.filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date))
+                if (completed.length === 0) return <div className="sr-empty">No records available</div>
+                return (
+                  <>
+                    <div className="sr-facts">
+                      <div><span>Timeline events</span><strong>{completed.length}</strong></div>
+                      <div><span>Completion date</span><strong>{selectedProject.completion_date || '—'}</strong></div>
+                      <div><span>Project status</span><strong>{selectedProject.project_status || '—'}</strong></div>
+                      <div><span>Sales status</span><strong>{selectedProject.sales_status}</strong></div>
+                      <div><span>Payment status</span><strong>{projectPaymentStatus(selectedProject)}</strong></div>
+                    </div>
+                    <div className="finance-timeline">
+                      {completed.map((event, index) => (
+                        <div className="finance-timeline-item" key={`${event.date}-${event.label}-${index}`}>
+                          <strong>{event.label}</strong>
+                          <span>{event.date}</span>
+                          {event.detail && <p>{event.detail}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
+              })()
+            )}
           </section>
         </div>
       )}
@@ -1027,9 +1464,90 @@ export function FinanceCommandCenter() {
             )}
 
             {!drilldownLoading && !drilldownError && drilldownData && (() => {
-              const ddProjects = drilldownData.overview.projects
-              const ddRevenue = drilldownData.overview.revenue_events
-              const ddTargets = drilldownData.targets
+              const ddProjects = drilldownData.overview.projects.filter(row => dimensionsMatch(row) && (salesDateBasis === 'projected' ? dateInside(row.projected_payment_date, range) : dateInside(row.sales_date, range)) && (statusFilter === 'all' || projectPaymentStatus(row) === statusFilter))
+              const ddRevenue = drilldownData.overview.revenue_events.filter(row => dateInside(row.revenue_date, range) && dimensionsMatch(row))
+              const departmentScope = lockedDepartment ?? department
+              const ddTargets = drilldownData.targets.filter(row => departmentScope === 'all' || row.department_code === departmentScope)
+
+              if (drilldown === 'payment_pending' || drilldown === 'partial_payment' || drilldown === 'invoice_not_raised') {
+                type CollectionRow = { row: SalesProject; inv: InvoiceRow | null }
+                let rows: CollectionRow[] = []
+                let headline = 0
+                let headlineLabel = ''
+                if (drilldown === 'payment_pending') {
+                  rows = ddProjects.flatMap(row => row.invoices.filter(isPaymentPendingInvoice).map(inv => ({ row, inv })))
+                  headline = ddProjects.reduce((sum, row) => sum + (row.open_sales_categories?.payment_pending_inr ?? 0), 0)
+                  headlineLabel = 'Payment Pending (backend category INR)'
+                } else if (drilldown === 'partial_payment') {
+                  rows = ddProjects.flatMap(row => row.invoices.filter(isPartialPaymentInvoice).map(inv => ({ row, inv })))
+                  headline = ddProjects.reduce((sum, row) => sum + (row.partial_payment_balance_inr || 0), 0)
+                  headlineLabel = 'Partial Payment (open balance INR)'
+                } else {
+                  rows = ddProjects.filter(isInvoicesNotRaised).map(row => ({ row, inv: null }))
+                  headline = ddProjects.reduce((sum, row) => sum + (row.open_sales_categories?.invoice_not_raised_inr ?? 0), 0)
+                  headlineLabel = 'Invoice Not Raised (backend unbilled INR)'
+                }
+                const projectCount = new Set(rows.map(item => item.row.project_id)).size
+                return (
+                  <>
+                    <div className="sr-facts">
+                      <div><span>{headlineLabel}</span><strong>{inr(headline)}</strong></div>
+                      <div><span>Rows</span><strong>{rows.length}</strong></div>
+                      <div><span>Projects</span><strong>{projectCount}</strong></div>
+                      <div>
+                        <span>Status</span>
+                        <strong>
+                          <span className={`finance-status ${rows.length > 0 ? 'tone-success' : 'tone-draft'}`}>
+                            {rows.length > 0 ? 'RECORDS FOUND' : 'NO RECORDS'}
+                          </span>
+                        </strong>
+                      </div>
+                    </div>
+                    {rows.length === 0 ? (
+                      <div className="sr-empty">No records available</div>
+                    ) : (
+                      <div className="sr-table-wrap">
+                        <table className="sr-table">
+                          <thead>
+                            <tr>
+                              <th>Client Name</th>
+                              <th>Client ID</th>
+                              <th>Project ID / Name</th>
+                              <th>Department</th>
+                              <th>BD Person</th>
+                              <th>Project Manager</th>
+                              <th>Amount</th>
+                              <th>Projected Payment</th>
+                              <th>Currency</th>
+                              <th>Payment Status</th>
+                              <th>Completion / Status</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map(({ row, inv }) => (
+                              <tr key={inv ? `inv-${inv.id}` : `project-${row.project_id}`}>
+                                <td>{row.client_name || '—'}</td>
+                                <td>{row.client_code || '—'}</td>
+                                <td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span></td>
+                                <td>{row.department_label}</td>
+                                <td>{row.bd_name || '—'}</td>
+                                <td>{row.project_manager_name || '—'}</td>
+                                <td>{inv ? <>{inr(inv.total_inr)}<br/><small>Paid {inr(inv.paid_inr)} · Bal {inr(inv.balance_inr)}</small></> : <>{inr(row.sales_value_inr)}<br/><small>sales value</small></>}</td>
+                                <td>{row.projected_payment_date || '—'}</td>
+                                <td>{row.currency || '—'}</td>
+                                <td><span className="sr-status">{inv ? titleCase(inv.status) : projectPaymentStatus(row)}</span></td>
+                                <td>{row.completion_date || '—'}<br/><small>{row.project_status || '—'}</small></td>
+                                <td><button className="finance-secondary-button" type="button" onClick={() => { setSelectedProjectId(row.project_id); setSelectedInvoiceNumber(inv?.invoice_number ?? row.invoices[0]?.invoice_number ?? null); setDetailTab('sales') }}>Project details</button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )
+              }
 
               if (drilldown === 'open_sales') {
                 const rows = ddProjects
@@ -1282,12 +1800,12 @@ export function FinanceCommandCenter() {
                             {rows.map(({ row, calc }) => {
                               const key = `outstanding-${row.project_id}`
                               const expanded = expandedCalcId === key
-                              const projectOpenInvoices = row.invoices.filter(inv => !isRevenueQualifyingInvoice(inv) && inv.balance_inr > 0)
-                              return (
-                                <Fragment key={row.project_id}>
-                                  <tr>
-                                    <td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_code || '—'} · {row.client_name}</small></td>
-                                    <td><span className="sr-status">{row.sales_status}</span></td>
+                const projectOpenInvoices = row.invoices.filter(inv => !isRevenueQualifyingInvoice(inv) && inv.balance_inr > 0)
+                return (
+                                  <Fragment key={row.project_id}>
+                                    <tr>
+                                      <td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_code || '—'} · {row.client_name}</small></td>
+                                      <td><span className="sr-status">{row.sales_status}</span><br/><small>{projectPaymentStatus(row)}</small></td>
                                     <td>{inr(calc.unbilledOpenSalesInr)}</td>
                                     <td>{inr(calc.openInvoiceBalanceInr)}</td>
                                     <td><strong>{inr(row.outstanding_inr)}</strong></td>
@@ -1373,7 +1891,10 @@ export function FinanceCommandCenter() {
                 ddTargets.filter(row => row.month === targetMonth).map(row => [row.department_code, row])
               )
               const monthRevenue = ddRevenue.filter(row => row.revenue_date.slice(0, 7) === targetMonth)
-              const targetRows = DEPARTMENTS.map(([code, label]) => {
+              const targetDepartments = (lockedDepartment ?? department) === 'all'
+                ? DEPARTMENTS
+                : DEPARTMENTS.filter(([code]) => code === (lockedDepartment ?? department))
+              const targetRows = targetDepartments.map(([code, label]) => {
                 const targetRow = targetByDepartment.get(code)
                 const events = monthRevenue.filter(row => row.department_code === code)
                 const actual = events.reduce((sum, row) => sum + row.revenue_amount_inr, 0)

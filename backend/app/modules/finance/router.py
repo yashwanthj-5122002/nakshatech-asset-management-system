@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import department_for_pm_role, is_technical_pm_role, normalize_department_code_or_default
+from app.core.roles import SOFTWARE_TEAM_ROLE
 from app.models.entities import utc_now
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.attachments import (
@@ -119,6 +121,27 @@ def _require_role(auth: CurrentAuth, *roles: str) -> None:
         raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
 
 
+_COMMAND_CENTER_ROLES = {FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE, SOFTWARE_TEAM_ROLE}
+
+
+def _command_center_department_scope(auth: CurrentAuth) -> str | None:
+    """Resolve Finance Command Center department visibility for the caller.
+
+    Returns None (all departments) for management/admin/finance/software_team.
+    Returns a single canonical department code for technical PM roles.
+    Raises 403 for employees and any other non-authorized role.
+    """
+    role = _role(auth)
+    if role in _COMMAND_CENTER_ROLES:
+        return None
+    if is_technical_pm_role(role):
+        scope = department_for_pm_role(role)
+        if scope is None:
+            raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
+        return normalize_department_code_or_default(scope)
+    raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
+
+
 def _visible_claim_or_404(db: Session, auth: CurrentAuth, claim_id: int):
     claim = get_visible_claim(db, claim_id=claim_id, viewer=auth.user, effective_role=_role(auth))
     if claim is None:
@@ -140,8 +163,8 @@ def get_sales_revenue_overview(
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
     """Read-only Sales/Revenue intelligence backed by the existing commercial and billing lifecycle."""
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
-    return sales_revenue_overview(db)
+    department_scope = _command_center_department_scope(auth)
+    return sales_revenue_overview(db, department_scope=department_scope)
 
 
 @router.get("/revenue-targets")
@@ -150,8 +173,8 @@ def get_revenue_targets(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
-    return {"targets": list_revenue_targets(db, year=year)}
+    department_scope = _command_center_department_scope(auth)
+    return {"targets": list_revenue_targets(db, year=year, department_scope=department_scope)}
 
 
 @router.put("/revenue-targets")

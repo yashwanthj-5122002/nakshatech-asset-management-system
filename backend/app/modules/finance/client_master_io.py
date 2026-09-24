@@ -20,6 +20,7 @@ from app.modules.finance.models import (
     FinanceProject,
     FinanceProjectAssignment,
 )
+from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects, hidden_project_ids
 from app.modules.travel_km.models import TravelKmClaim
 
 _ALLOWED_CODE = re.compile(r"^[A-Z0-9 ._/\-]+$")
@@ -222,7 +223,9 @@ def import_client_master_workbook(
 
 
 def client_tracking(db: Session, client: FinanceClient) -> dict[str, Any]:
-    project_ids = [project.id for project in client.projects]
+    hidden = hidden_project_ids(db)
+    projects = [project for project in (client.projects or []) if project.id not in hidden]
+    project_ids = [project.id for project in projects]
     assignments = [] if not project_ids else list(db.scalars(
         select(FinanceProjectAssignment).where(
             FinanceProjectAssignment.project_id.in_(project_ids),
@@ -237,7 +240,7 @@ def client_tracking(db: Session, client: FinanceClient) -> dict[str, Any]:
     ).all())
     return {
         "project_count": len(project_ids),
-        "active_project_count": sum(1 for p in client.projects if p.is_active),
+        "active_project_count": sum(1 for p in projects if p.is_active),
         "assigned_employee_count": len({a.user_id for a in assignments}),
         "travel_claim_count": len(travel),
         "total_travel_km": round(sum(float(c.odometer_km or 0) for c in travel), 2),
@@ -286,8 +289,12 @@ def _append_sheet(wb: Workbook, title: str, headers: list[str], rows: list[list[
 
 
 def build_crm_workbook(db: Session, *, client_id: int | None = None, project_id: int | None = None) -> bytes:
-    clients = list(db.scalars(select(FinanceClient).order_by(FinanceClient.client_code.asc())).all())
-    projects = list(db.scalars(select(FinanceProject).order_by(FinanceProject.project_code.asc())).all())
+    clients = list(db.scalars(
+        exclude_hidden_clients(db, select(FinanceClient).order_by(FinanceClient.client_code.asc()))
+    ).all())
+    projects = list(db.scalars(
+        exclude_hidden_projects(db, select(FinanceProject).order_by(FinanceProject.project_code.asc()))
+    ).all())
     if client_id is not None:
         clients = [c for c in clients if c.id == client_id]
         projects = [p for p in projects if p.client_id == client_id]

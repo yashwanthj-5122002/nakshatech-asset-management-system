@@ -32,6 +32,10 @@ from app.modules.finance.service import (
     money,
     remaining_amount,
 )
+from app.modules.finance.visibility import (
+    hidden_client_ids,
+    hidden_project_ids,
+)
 
 MAX_REPORT_ROWS = 50_000
 REPORT_PAGE_SIZE_MAX = 250
@@ -159,8 +163,23 @@ def _claim_filter_conditions(
     return conditions
 
 
+def _hidden_project_conditions(db: Session):
+    project_ids = hidden_project_ids(db)
+    client_ids = hidden_client_ids(db)
+    conditions = []
+    if project_ids:
+        conditions.append(FinanceProject.id.not_in(project_ids))
+    if client_ids:
+        conditions.append(or_(
+            FinanceProject.client_id.is_(None),
+            FinanceProject.client_id.not_in(client_ids),
+        ))
+    return conditions
+
+
 def _filtered_claim_query(
     *,
+    db: Session,
     period: ResolvedPeriod,
     project_id: int | None = None,
     claim_type: str | None = None,
@@ -179,6 +198,7 @@ def _filtered_claim_query(
         category=category,
         search=search,
     )
+    conditions.extend(_hidden_project_conditions(db))
     return (
         select(ExpenseClaim)
         .join(User, User.id == ExpenseClaim.requester_id)
@@ -196,7 +216,7 @@ def _filtered_claim_query(
 
 
 def filtered_finance_claims(db: Session, **filters) -> list[ExpenseClaim]:
-    query = _filtered_claim_query(**filters)
+    query = _filtered_claim_query(db=db, **filters)
     return list(db.scalars(query).unique().all())
 
 
@@ -247,6 +267,7 @@ def filtered_finance_payments(
         category=category,
         search=search,
     )
+    conditions.extend(_hidden_project_conditions(db))
     query = (
         select(ExpenseClaimPayment)
         .join(ExpenseClaim, ExpenseClaim.id == ExpenseClaimPayment.claim_id)
@@ -338,6 +359,7 @@ def finance_report_payload(
         "search": search,
     }
     conditions = _claim_filter_conditions(**filter_kwargs)
+    conditions.extend(_hidden_project_conditions(db))
 
     payment_sum = (
         select(
@@ -400,6 +422,7 @@ def finance_report_payload(
     pending_finance_total = money(totals.pending_finance)
 
     payment_conditions = _payment_filter_conditions(**filter_kwargs)
+    payment_conditions.extend(_hidden_project_conditions(db))
     payment_period_row = db.execute(
         select(
             func.count(ExpenseClaimPayment.id).label("payment_count"),
@@ -605,7 +628,7 @@ def finance_report_payload(
         page = total_pages
     start_index = (page - 1) * page_size
     visible_claims = list(db.scalars(
-        _filtered_claim_query(**filter_kwargs).offset(start_index).limit(page_size)
+        _filtered_claim_query(db=db, **filter_kwargs).offset(start_index).limit(page_size)
     ).unique().all())
 
     requester_cache: dict[int, User | None] = {}

@@ -40,6 +40,7 @@ from app.modules.finance.service import (
     remaining_amount,
     set_project_status,
 )
+from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
 from app.modules.notifications.service import create_global_notification, resolve_recipient_users
 from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectReworkCycle
 from app.modules.operations.lifecycle_service import (
@@ -359,6 +360,7 @@ def employee_options(db: Session, *, department_code: str | None = None) -> list
 
 def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
+    query = exclude_hidden_projects(db, query)
     if role == BD_ROLE:
         query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
@@ -622,10 +624,12 @@ def _finance_closure_readiness(db: Session, workflow: ProjectWorkflow, normalize
 
 
 def finance_dashboard(db: Session) -> dict:
+    query = exclude_hidden_projects(
+        db,
+        _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id),
+    )
     projects = list(db.scalars(
-        _project_query()
-        .join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
-        .order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())
+        query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())
     ).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow)).all()}
     payloads = []
@@ -1979,6 +1983,10 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
     if role in {ADMIN_ROLE, MANAGEMENT_ROLE}:
         project_ids.update(int(v) for v in db.scalars(select(ProjectWorkflow.project_id)).all())
 
+    if not project_ids:
+        return {"viewer_mode": "participant" if role == EMPLOYEE_ROLE else "project_manager", "projects": [], "employees": []}
+
+    project_ids = set(filter_visible_project_ids(db, project_ids))
     if not project_ids:
         return {"viewer_mode": "participant" if role == EMPLOYEE_ROLE else "project_manager", "projects": [], "employees": []}
 

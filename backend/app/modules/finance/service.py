@@ -28,6 +28,7 @@ from app.modules.finance.models import (
     FinanceProjectAssignment,
     FinanceProjectMasterProfile,
 )
+from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects, hidden_project_ids
 from app.modules.finance.schemas import (
     ExpenseClaimCreateRequest,
     FinanceClientCreateRequest,
@@ -74,6 +75,46 @@ LEGACY_FAKE_PROJECT_CODES = {
     "PRJ-2026-005",
     "PRJ-2026-006",
 }
+
+_VALID_SOURCE_TEAMS = {
+    "bd_team",
+    "software_team",
+    "team_manager",
+    "manager",
+    "department_head",
+    "management",
+    "other",
+}
+_SOURCE_TEAM_ALIASES = {"bd": "bd_team"}
+_VALID_PROJECT_STATUSES = {"active", "on_hold", "completed", "inactive"}
+_PROJECT_STATUS_ALIASES = {"closed": "completed"}
+
+
+def normalize_source_team(value: str | None) -> str | None:
+    """Map legacy source-team DB values onto FinanceClientSourceTeam without writing back."""
+    if value is None:
+        return None
+    cleaned = str(value).strip().lower()
+    if not cleaned:
+        return None
+    normalized = _SOURCE_TEAM_ALIASES.get(cleaned, cleaned)
+    return normalized if normalized in _VALID_SOURCE_TEAMS else "other"
+
+
+def normalize_client_source_team(value: str | None) -> str:
+    return normalize_source_team(value) or "other"
+
+
+def normalize_project_status(value: str | None, *, is_active: bool = True) -> str:
+    """Map legacy project_status DB values onto FinanceProjectMasterStatus without writing back."""
+    if value is None:
+        return "active" if is_active else "inactive"
+    cleaned = str(value).strip().lower()
+    if not cleaned:
+        return "active" if is_active else "inactive"
+    normalized = _PROJECT_STATUS_ALIASES.get(cleaned, cleaned)
+    return normalized if normalized in _VALID_PROJECT_STATUSES else ("active" if is_active else "inactive")
+
 
 def money(value: float | Decimal | int | str | None) -> Decimal:
     if value is None:
@@ -255,13 +296,15 @@ def project_master_users(db: Session) -> list[User]:
 
 
 def list_finance_clients(db: Session) -> list[FinanceClient]:
-    return list(db.scalars(select(FinanceClient).order_by(FinanceClient.client_code.asc())).all())
+    query = exclude_hidden_clients(db, select(FinanceClient).order_by(FinanceClient.client_code.asc()))
+    return list(db.scalars(query).all())
 
 
 def client_payload(client: FinanceClient) -> dict:
-    projects = list(client.projects or [])
-    profile = client.master_profile
     db = object_session(client)
+    hidden_projects = hidden_project_ids(db) if db is not None else set()
+    projects = [project for project in (client.projects or []) if project.id not in hidden_projects]
+    profile = client.master_profile
     created_by = db.get(User, client.created_by_id) if db is not None and client.created_by_id else None
     updated_by = db.get(User, client.updated_by_id) if db is not None and client.updated_by_id else None
     return {
@@ -285,7 +328,7 @@ def client_payload(client: FinanceClient) -> dict:
         "description": client.description,
         "country": client.country,
         "gst_number": client.gst_number,
-        "source_team": client.source_team,
+        "source_team": normalize_client_source_team(client.source_team),
         "source_person_name": client.source_person_name,
         "is_active": client.is_active,
         "project_count": len(projects),
@@ -377,10 +420,10 @@ def update_finance_client(db: Session, *, client: FinanceClient, actor: User, pa
 
 
 def client_projects(db: Session, client_id: int) -> list[FinanceProject]:
+    query = select(FinanceProject).where(FinanceProject.client_id == client_id)
+    query = exclude_hidden_projects(db, query)
     return list(db.scalars(
-        select(FinanceProject)
-        .where(FinanceProject.client_id == client_id)
-        .order_by(FinanceProject.project_code.asc(), FinanceProject.id.asc())
+        query.order_by(FinanceProject.project_code.asc(), FinanceProject.id.asc())
     ).all())
 
 
@@ -521,7 +564,10 @@ def _project_status_for_claim_rules(project: FinanceProject) -> str:
     """
     loaded_profile = project.__dict__.get("master_profile")
     if loaded_profile is not None:
-        return loaded_profile.project_status or ("active" if project.is_active else "inactive")
+        return normalize_project_status(
+            loaded_profile.project_status,
+            is_active=project.is_active,
+        )
 
     # The legacy boolean is sufficient for open projects and avoids an extra
     # database query on the high-volume employee project-selection path.
@@ -546,7 +592,7 @@ def _project_status_for_claim_rules(project: FinanceProject) -> str:
     profile = session.get(FinanceProjectMasterProfile, project.id)
     if profile is None:
         return "inactive"
-    return profile.project_status or "inactive"
+    return normalize_project_status(profile.project_status, is_active=False)
 
 
 def project_expense_allowed(project: FinanceProject, *, on_date: date | None = None) -> tuple[bool, str | None]:
@@ -571,23 +617,24 @@ def project_expense_allowed(project: FinanceProject, *, on_date: date | None = N
 
 
 def active_projects(db: Session) -> list[FinanceProject]:
-    projects = list(db.scalars(
-        select(FinanceProject)
-        .where(FinanceProject.is_active.is_(True))
-        .order_by(FinanceProject.project_code.asc())
-    ).all())
+    query = select(FinanceProject).where(FinanceProject.is_active.is_(True))
+    query = exclude_hidden_projects(db, query)
+    projects = list(db.scalars(query.order_by(FinanceProject.project_code.asc())).all())
     return [project for project in projects if project_expense_allowed(project)[0]]
 
 
 def all_projects(db: Session) -> list[FinanceProject]:
-    return list(db.scalars(select(FinanceProject).order_by(FinanceProject.project_code.asc())).all())
+    query = select(FinanceProject).order_by(FinanceProject.project_code.asc())
+    query = exclude_hidden_projects(db, query)
+    return list(db.scalars(query).all())
 
 
 def project_payload(project: FinanceProject) -> dict:
     today = utc_now().date()
     allowed, block_reason = project_expense_allowed(project, on_date=today)
     profile = project.master_profile
-    master_status = profile.project_status if profile else ("active" if project.is_active else "inactive")
+    raw_status = profile.project_status if profile else ("active" if project.is_active else "inactive")
+    master_status = normalize_project_status(raw_status, is_active=project.is_active)
     if master_status in {"inactive", "on_hold", "completed"}:
         lifecycle = master_status
     elif project.client is not None and not project.client.is_active:
@@ -608,7 +655,7 @@ def project_payload(project: FinanceProject) -> dict:
         "client_code": client.client_code if client else None,
         "client_name": client.client_name if client else project.client_name,
         "project_number": project.project_number,
-        "project_source_team": project.project_source_team,
+        "project_source_team": normalize_source_team(project.project_source_team),
         "project_source_person_name": project.project_source_person_name,
         "client_awarded_by_name": project.client_awarded_by_name,
         "project_award_date": project.project_award_date,

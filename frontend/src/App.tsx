@@ -38,7 +38,7 @@ import { HandoverReturnPage } from './pages/HandoverReturnPage'
 import { PurchaseProcurementPage } from './pages/PurchaseProcurementPage'
 import { PurchaseRequestsPage } from './pages/PurchaseRequestsPage'
 import { BackupCenterPage } from './pages/BackupCenterPage'
-import { roleHomePath } from './lib/roles'
+import { roleHomePath, TECHNICAL_PM_ROLES } from './lib/roles'
 import { RegisterPage } from './features/employee_portal/pages/RegisterPage'
 import { ForgotPasswordPage } from './features/employee_portal/pages/ForgotPasswordPage'
 import { AuthenticatorPage } from './features/employee_portal/pages/AuthenticatorPage'
@@ -78,6 +78,7 @@ import { ClientFeedbackPage } from './features/operations/pages/ClientFeedbackPa
 import { BDClientFeedbackPage } from './features/operations/pages/BDClientFeedbackPage'
 import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
 import { SalesRevenuePage } from './features/finance/pages/SalesRevenuePage'
+import { FinanceCommandCenter } from './features/finance/pages/FinanceCommandCenter'
 import { ManagementProject360Page } from './features/operations/pages/ManagementProject360Page'
 import { FinanceClientRegisterPage } from './features/finance/pages/FinanceClientRegisterPage'
 import { FinanceProjectRegisterPage } from './features/finance/pages/FinanceProjectRegisterPage'
@@ -175,6 +176,7 @@ export default function App() {
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/sales" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="sales" /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/revenue" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="revenue" /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/command-center" element={<ProtectedRoute roles={['finance', 'admin', 'management', ...TECHNICAL_PM_ROLES]}><WithLayout><FinanceCommandCenter /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/uat-2026" element={<ProtectedRoute roles={['finance']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />

@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.departments import department_label, normalize_department_code_or_default
+from app.core.departments import department_label, normalize_department_code, normalize_department_code_or_default
 from app.models.entities import User
 from app.modules.commercial.models import ProjectCommercialEstimateRevision
 from app.modules.finance.models import FinanceProject
+from app.modules.finance.visibility import exclude_hidden_projects
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import ProjectWorkflow
 
+logger = logging.getLogger(__name__)
 
 INVOICE_CLOSED = "INVOICE_CLOSED"
 PAYMENT_RECEIVED = "PAYMENT_RECEIVED"
@@ -22,6 +25,18 @@ PARTIALLY_PAID = "PARTIALLY_PAID"
 PAYMENT_PENDING = "PAYMENT_PENDING"
 INVOICE_RAISED = "INVOICE_RAISED"
 INVOICE_DRAFT = "INVOICE_DRAFT"
+
+# Open Sales Pipeline must equal the sum of these mutually exclusive categories (INR).
+OPEN_SALES_CATEGORIES: tuple[str, ...] = (
+    "invoice_not_raised_inr",
+    "payment_pending_inr",
+    "partial_payment_inr",
+    "payment_received_closure_pending_inr",
+    "other_open_inr",
+)
+
+_MONEY_QUANT = Decimal("0.01")
+_RECON_TOLERANCE = Decimal("0.01")
 
 
 def _decimal(value: object | None) -> Decimal:
@@ -127,24 +142,140 @@ def _date_iso(value: date | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def sales_revenue_overview(db: Session) -> dict:
+def _quantize_money(value: Decimal) -> Decimal:
+    return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
+def _empty_open_sales_categories() -> dict[str, Decimal]:
+    return {key: Decimal("0") for key in OPEN_SALES_CATEGORIES}
+
+
+def classify_open_invoice(
+    *,
+    status: str | None,
+    paid_original: Decimal,
+    balance_original: Decimal,
+    total_original: Decimal,
+) -> str:
+    """Classify an open (non-revenue) invoice into an Open Sales category.
+
+    Classification uses original-currency paid/balance so FX conversion cannot
+    invent or hide a payment state. Category amounts are still booked in INR.
+    """
+    normalized = (status or "").strip().upper()
+    if normalized == INVOICE_DRAFT or total_original <= 0:
+        return "other_open_inr"
+    if paid_original <= 0:
+        return "payment_pending_inr"
+    if balance_original > 0:
+        return "partial_payment_inr"
+    if paid_original >= total_original:
+        return "payment_received_closure_pending_inr"
+    return "other_open_inr"
+
+
+def _categories_payload(categories: dict[str, Decimal]) -> dict[str, float]:
+    return {key: _money(_quantize_money(categories[key])) for key in OPEN_SALES_CATEGORIES}
+
+
+def _categories_sum(categories: dict[str, Decimal]) -> Decimal:
+    return sum((categories[key] for key in OPEN_SALES_CATEGORIES), Decimal("0"))
+
+
+def _reconcile_open_sales(
+    *,
+    open_sales_inr: Decimal,
+    categories: dict[str, Decimal],
+    project: FinanceProject | None = None,
+    department_scope: str | None = None,
+) -> tuple[Decimal, bool]:
+    categories_sum = _categories_sum(categories)
+    difference = _quantize_money(open_sales_inr - categories_sum)
+    matched = abs(difference) <= _RECON_TOLERANCE
+    if not matched:
+        logger.error(
+            "Finance KPI reconciliation failed: Department=%s ProjectId=%s ProjectCode=%s ProjectName=%s Amount=%s Expected=%s Calculated=%s Difference=%s",
+            department_scope or "all",
+            project.id if project is not None else None,
+            project.project_code if project is not None else "N/A",
+            project.project_name if project is not None else "N/A",
+            open_sales_inr,
+            open_sales_inr,
+            categories_sum,
+            difference,
+        )
+    return difference, matched
+
+
+def _empty_kpi_summary() -> dict:
+    return {
+        "open_sales_inr": 0.0,
+        "categories": {key: 0.0 for key in OPEN_SALES_CATEGORIES},
+        "categories_sum_inr": 0.0,
+        "reconciliation_difference_inr": 0.0,
+        "reconciled": True,
+        "realized_revenue_inr": 0.0,
+        "outstanding_inr": 0.0,
+        "received_against_open_sales_inr": 0.0,
+        "open_invoice_total_inr": 0.0,
+        "open_invoice_balance_inr": 0.0,
+        "unbilled_open_sales_inr": 0.0,
+        "counts": {
+            "open_sales_projects": 0,
+            "revenue_events": 0,
+            "partial_projects": 0,
+            "overdue_projects": 0,
+            "payment_pending_invoices": 0,
+            "partial_invoices": 0,
+            "invoice_not_raised_projects": 0,
+        },
+        "collection": {
+            "payment_pending_amount_inr": 0.0,
+            "partial_payment_balance_inr": 0.0,
+            "invoice_not_raised_amount_inr": 0.0,
+        },
+    }
+
+
+def sales_revenue_overview(db: Session, *, department_scope: str | None = None) -> dict:
     """Return one authoritative read model for Finance Sales and Revenue analytics.
 
     Sales is the still-open commercial pipeline. A project's commercial value remains in Sales
     until an invoice has been fully paid AND Finance closes that invoice. Revenue contains only
     payments attached to closed invoices. This keeps dashboards read-only and reuses the existing
     Commercial -> Billing -> Payment -> Invoice Close lifecycle instead of creating a second ledger.
+
+    ``department_scope`` (canonical code) restricts the payload to that performing department so
+    technical PM roles never receive other departments' projects from this API.
     """
 
-    projects = list(db.scalars(select(FinanceProject).order_by(FinanceProject.id)).unique().all())
+    project_query = exclude_hidden_projects(db, select(FinanceProject).order_by(FinanceProject.id))
+    projects = list(db.scalars(project_query).unique().all())
     if not projects:
-        return {"projects": [], "revenue_events": []}
+        return {"projects": [], "revenue_events": [], "kpi_summary": _empty_kpi_summary()}
 
     project_ids = [row.id for row in projects]
     workflows = {
         row.project_id: row
         for row in db.scalars(select(ProjectWorkflow).where(ProjectWorkflow.project_id.in_(project_ids))).all()
     }
+
+    if department_scope is not None:
+        scoped = normalize_department_code(department_scope)
+        if scoped is None:
+            return {"projects": [], "revenue_events": [], "kpi_summary": _empty_kpi_summary()}
+        projects = [
+            project
+            for project in projects
+            if normalize_department_code_or_default(
+                workflows[project.id].performing_department_code if project.id in workflows else None
+            )
+            == scoped
+        ]
+        if not projects:
+            return {"projects": [], "revenue_events": [], "kpi_summary": _empty_kpi_summary()}
+        project_ids = [row.id for row in projects]
+        workflows = {pid: row for pid, row in workflows.items() if pid in set(project_ids)}
 
     revisions_by_project: dict[int, list[ProjectCommercialEstimateRevision]] = defaultdict(list)
     for row in db.scalars(
@@ -191,6 +322,21 @@ def sales_revenue_overview(db: Session) -> dict:
     payload_projects: list[dict] = []
     revenue_events: list[dict] = []
 
+    kpi_open_sales = Decimal("0")
+    kpi_categories = _empty_open_sales_categories()
+    kpi_realized_revenue = Decimal("0")
+    kpi_outstanding = Decimal("0")
+    kpi_open_received = Decimal("0")
+    kpi_open_invoice_total = Decimal("0")
+    kpi_open_invoice_balance = Decimal("0")
+    kpi_unbilled = Decimal("0")
+    kpi_partial_balance = Decimal("0")
+    kpi_payment_pending_invoices = 0
+    kpi_partial_invoices = 0
+    kpi_invoice_not_raised_projects = 0
+    kpi_partial_projects = 0
+    kpi_overdue_projects = 0
+
     for project in projects:
         workflow = workflows.get(project.id)
         baseline = _baseline_revision(revisions_by_project.get(project.id, []))
@@ -230,6 +376,10 @@ def sales_revenue_overview(db: Session) -> dict:
         open_received_inr = Decimal("0")
         open_invoice_total_inr = Decimal("0")
         open_invoice_balance_inr = Decimal("0")
+        open_categories = _empty_open_sales_categories()
+        open_partial_balance_inr = Decimal("0")
+        open_payment_pending_count = 0
+        open_partial_count = 0
 
         for invoice in project_invoices:
             payments = payments_by_invoice.get(invoice.id, [])
@@ -242,8 +392,8 @@ def sales_revenue_overview(db: Session) -> dict:
             if paid_inr == 0 and paid_original == invoice_total and total_inr > 0:
                 paid_inr = total_inr
             balance_inr = max(total_inr - paid_inr, Decimal("0")) if total_inr > 0 else Decimal("0")
-            is_closed = (invoice.status or "").upper() == INVOICE_CLOSED
             qualifies_as_revenue = invoice.id in revenue_invoice_ids
+            open_sales_category: str | None = None
 
             if qualifies_as_revenue:
                 # Remove the invoice's locked accounting value from the open Sales pipeline,
@@ -252,6 +402,18 @@ def sales_revenue_overview(db: Session) -> dict:
                 closed_sales_value_inr += total_inr
                 closed_revenue_inr += paid_inr if paid_inr > 0 else total_inr
             else:
+                open_sales_category = classify_open_invoice(
+                    status=invoice.status,
+                    paid_original=paid_original,
+                    balance_original=balance_original,
+                    total_original=invoice_total,
+                )
+                open_categories[open_sales_category] += total_inr
+                if open_sales_category == "payment_pending_inr":
+                    open_payment_pending_count += 1
+                elif open_sales_category == "partial_payment_inr":
+                    open_partial_count += 1
+                    open_partial_balance_inr += balance_inr
                 open_received_inr += paid_inr
                 open_invoice_total_inr += total_inr
                 open_invoice_balance_inr += balance_inr
@@ -287,6 +449,7 @@ def sales_revenue_overview(db: Session) -> dict:
                 "raised_at": invoice.raised_at.isoformat() if invoice.raised_at else None,
                 "closed_at": invoice.closed_at.isoformat() if invoice.closed_at else None,
                 "notes": invoice.notes,
+                "open_sales_category": open_sales_category,
                 "payments": payment_rows,
             }
             invoice_payloads.append(invoice_row)
@@ -336,6 +499,15 @@ def sales_revenue_overview(db: Session) -> dict:
             open_sales_inr = open_invoice_total_inr
             outstanding_inr = open_invoice_balance_inr
 
+        # Open Sales Pipeline identity: open_sales = unbilled (invoice not raised) + open invoice categories.
+        open_categories["invoice_not_raised_inr"] = unbilled_open_sales_inr
+        recon_difference, recon_matched = _reconcile_open_sales(
+            open_sales_inr=_quantize_money(open_sales_inr),
+            categories={key: _quantize_money(value) for key, value in open_categories.items()},
+            project=project,
+            department_scope=department_scope,
+        )
+
         sales_date = (
             baseline.estimate_date if baseline is not None
             else project.project_award_date
@@ -350,6 +522,28 @@ def sales_revenue_overview(db: Session) -> dict:
         sales_reference = None
         if baseline is not None:
             sales_reference = baseline.quotation_reference or f"{project.project_code}-REV{baseline.revision_no}"
+
+        sales_status = _sales_status(project_invoices, open_invoices)
+        invoice_not_raised = bool(not project_invoices and open_sales_inr > 0) or unbilled_open_sales_inr > 0
+        if open_sales_inr > 0:
+            kpi_open_sales += open_sales_inr
+            for key in OPEN_SALES_CATEGORIES:
+                kpi_categories[key] += open_categories[key]
+            kpi_outstanding += outstanding_inr
+            kpi_open_received += open_received_inr
+            kpi_open_invoice_total += open_invoice_total_inr
+            kpi_open_invoice_balance += open_invoice_balance_inr
+            kpi_unbilled += unbilled_open_sales_inr
+            kpi_partial_balance += open_partial_balance_inr
+            kpi_payment_pending_invoices += open_payment_pending_count
+            kpi_partial_invoices += open_partial_count
+            if invoice_not_raised:
+                kpi_invoice_not_raised_projects += 1
+            if sales_status == "Partially Paid":
+                kpi_partial_projects += 1
+            if sales_status == "Overdue":
+                kpi_overdue_projects += 1
+        kpi_realized_revenue += closed_revenue_inr
 
         payload_projects.append({
             "project_id": project.id,
@@ -369,13 +563,28 @@ def sales_revenue_overview(db: Session) -> dict:
             "currency": sales_currency,
             "sales_date": sales_date.isoformat(),
             "projected_payment_date": _date_iso(projected_payment_date),
+            "completion_date": _date_iso(project.end_date),
+            "project_created_at": project.created_at.date().isoformat() if project.created_at else None,
+            "project_status": (
+                project_profile.project_status
+                if project_profile is not None
+                else ("active" if project.is_active else "inactive")
+            ),
             "sales_value": _money(sales_value),
             "sales_value_inr": _money(sales_value_inr),
             "open_sales_inr": _money(open_sales_inr),
+            "open_sales_categories": _categories_payload(open_categories),
+            "open_sales_reconciliation_difference_inr": _money(recon_difference),
+            "open_sales_reconciled": recon_matched,
+            "unbilled_open_sales_inr": _money(unbilled_open_sales_inr),
+            "partial_payment_balance_inr": _money(open_partial_balance_inr),
+            "open_payment_pending_invoice_count": open_payment_pending_count,
+            "open_partial_invoice_count": open_partial_count,
             "received_against_open_sales_inr": _money(open_received_inr),
             "outstanding_inr": _money(outstanding_inr),
             "closed_revenue_inr": _money(closed_revenue_inr),
-            "sales_status": _sales_status(project_invoices, open_invoices),
+            "sales_status": sales_status,
+            "invoice_not_raised": invoice_not_raised,
             "sales_visible": bool(open_sales_inr > 0 or open_invoices or not closed_invoices),
             "revenue_visible": bool(closed_invoices),
             "bd_sales_invoice": {
@@ -400,7 +609,53 @@ def sales_revenue_overview(db: Session) -> dict:
             "invoices": invoice_payloads,
         })
 
+    kpi_categories_sum = _quantize_money(_categories_sum(kpi_categories))
+    kpi_open_sales_quantized = _quantize_money(kpi_open_sales)
+    kpi_difference = _quantize_money(kpi_open_sales_quantized - kpi_categories_sum)
+    kpi_reconciled = abs(kpi_difference) <= _RECON_TOLERANCE
+    if not kpi_reconciled:
+        logger.error(
+            "Finance KPI summary reconciliation failed: Department=%s ProjectId=%s ProjectCode=%s ProjectName=%s Amount=%s Expected=%s Calculated=%s Difference=%s",
+            department_scope or "all",
+            None,
+            "ALL",
+            "ALL",
+            kpi_open_sales_quantized,
+            kpi_open_sales_quantized,
+            kpi_categories_sum,
+            kpi_difference,
+        )
+
+    kpi_summary = {
+        "open_sales_inr": _money(kpi_open_sales_quantized),
+        "categories": _categories_payload(kpi_categories),
+        "categories_sum_inr": _money(kpi_categories_sum),
+        "reconciliation_difference_inr": _money(kpi_difference),
+        "reconciled": kpi_reconciled,
+        "realized_revenue_inr": _money(_quantize_money(kpi_realized_revenue)),
+        "outstanding_inr": _money(_quantize_money(kpi_outstanding)),
+        "received_against_open_sales_inr": _money(_quantize_money(kpi_open_received)),
+        "open_invoice_total_inr": _money(_quantize_money(kpi_open_invoice_total)),
+        "open_invoice_balance_inr": _money(_quantize_money(kpi_open_invoice_balance)),
+        "unbilled_open_sales_inr": _money(_quantize_money(kpi_unbilled)),
+        "counts": {
+            "open_sales_projects": sum(1 for row in payload_projects if row["sales_visible"]),
+            "revenue_events": len(revenue_events),
+            "partial_projects": kpi_partial_projects,
+            "overdue_projects": kpi_overdue_projects,
+            "payment_pending_invoices": kpi_payment_pending_invoices,
+            "partial_invoices": kpi_partial_invoices,
+            "invoice_not_raised_projects": kpi_invoice_not_raised_projects,
+        },
+        "collection": {
+            "payment_pending_amount_inr": _money(kpi_categories["payment_pending_inr"]),
+            "partial_payment_balance_inr": _money(_quantize_money(kpi_partial_balance)),
+            "invoice_not_raised_amount_inr": _money(kpi_categories["invoice_not_raised_inr"]),
+        },
+    }
+
     return {
         "projects": payload_projects,
         "revenue_events": sorted(revenue_events, key=lambda row: (row["revenue_date"], row["project_code"]), reverse=True),
+        "kpi_summary": kpi_summary,
     }
