@@ -644,12 +644,12 @@ def employee_project_payload(project: FinanceProject) -> dict:
     data = project_payload(project)
     return {
         **data,
-        # Employees need the operational Client ID and Project ID only. Keep the
-        # manual Client Code, but never expose Client Name or commercial/owner data.
-        "client_name": None,
-        "project_name": project.project_code,
+        # Employees need operational Client Name + Project ID/Name for claim
+        # selection. Hide Client Code, contacts, owners and commercial metadata.
+        "client_name": project.client.client_name if project.client else project.client_name,
+        "project_name": project.project_name,
         "client_id": None,
-        "client_code": project.client.client_code if project.client else None,
+        "client_code": None,
         "project_source_team": None,
         "project_source_person_name": None,
         "client_awarded_by_name": None,
@@ -933,8 +933,9 @@ def create_claim(db: Session, *, requester: User, payload: ExpenseClaimCreateReq
     project = db.get(FinanceProject, payload.project_id)
     if not project:
         raise ValueError("Select a valid Project ID")
-    if not project_is_assigned_to_user(db, project_id=project.id, user_id=requester.id):
-        raise PermissionError("You can raise an expense only for a project assigned to you")
+    allowed, reason = project_expense_allowed(project)
+    if not allowed:
+        raise ValueError(reason or "This project does not accept new expenses")
     claim = ExpenseClaim(
         claim_code=f"DRAFT-{secrets.token_hex(10)}",
         requester_id=requester.id,
@@ -961,8 +962,9 @@ def update_claim(db: Session, *, claim: ExpenseClaim, requester: User, payload: 
     project = db.get(FinanceProject, payload.project_id)
     if not project:
         raise ValueError("Select a valid Project ID")
-    if not project_is_assigned_to_user(db, project_id=project.id, user_id=requester.id):
-        raise PermissionError("You can use only Project IDs currently assigned to you")
+    allowed, reason = project_expense_allowed(project)
+    if not allowed:
+        raise ValueError(reason or "This project does not accept new expenses")
     _apply_claim_fields(db, claim, requester, payload, project)
     add_event(
         db,

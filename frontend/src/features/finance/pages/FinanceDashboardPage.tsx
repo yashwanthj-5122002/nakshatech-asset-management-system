@@ -8,7 +8,10 @@ import type { FinanceBreakdownItem, FinanceDashboard } from '../../../types'
 import { financeClaimTypeLabels, financeStatusLabels, financeStatusTone, formatInr } from '../finance-utils'
 import { FinanceCommercialSummary } from '../../commercial/components/FinanceCommercialSummary'
 import type { CommercialSummary } from '../../commercial/types'
+import { FinanceCommandCenter } from './FinanceCommandCenter'
 import '../finance-expenses.css'
+
+type FinanceDashboardView = 'classic' | 'command_center'
 
 type EventRow={id:number;event_type:string;from_status?:string|null;to_status:string;comments?:string|null;actor_name?:string|null;actor_role?:string|null;created_at:string}
 type WorkflowClient={organization_name?:string|null;client_code?:string|null;client_email?:string|null;organization_email?:string|null;location?:string|null;gst_number?:string|null;contact_person_name?:string|null;contact_person_email?:string|null;contact_person_phone?:string|null;bd_person?:string|null}
@@ -30,6 +33,7 @@ function BreakdownPanel({title,subtitle,items}:{title:string;subtitle:string;ite
 
 export function FinanceDashboardPage(){
   const {user}=useAuth();const [data,setData]=useState<FinanceDashboard|null>(null);const [workflow,setWorkflow]=useState<WorkflowDashboard|null>(null)
+  const [view,setView]=useState<FinanceDashboardView>('classic')
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false)
   const [reviewId,setReviewId]=useState<number|null>(null);const [returnFeedback,setReturnFeedback]=useState('');const [approveNote,setApproveNote]=useState('')
   function load(){setLoading(true);setError('');void Promise.all([apiFetch<FinanceDashboard>('/finance/dashboard'),apiFetch<WorkflowDashboard>('/operations/workflow/finance/dashboard')]).then(([a,b])=>{setData(a);setWorkflow(b)}).catch(e=>setError(e instanceof Error?e.message:'Could not load Finance dashboard')).finally(()=>setLoading(false))}
@@ -48,6 +52,16 @@ export function FinanceDashboardPage(){
 
   return <div className="finance-page">
     <DashboardHeader eyebrow="FINANCE · PROJECT APPROVAL + EXPENSES" title={user?.role==='management'?'Finance & Project Oversight':'Finance Dashboard'} description={user?.role==='finance'?'Approve or return BD-created projects, retain the existing Expense approval workflow, and perform Finance Closure after Operational Completion.':'Read-only project workflow visibility plus the existing project-expense controls for your role.'} actions={<div className="finance-header-actions"><button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button><Link className="finance-secondary-button" to="/finance/reports"><FileSpreadsheet size={16}/> Reports & Excel</Link>{user?.role==='finance'&&<Link className="finance-secondary-button" to="/finance/uat-2026">2026 Testing Data</Link>}<Link className="finance-primary-button" to="/finance/claims"><FileCheck2 size={16}/> Expense Claims & Approvals</Link></div>}/>
+    <section className="finance-panel" aria-label="Finance dashboard view">
+      <div className="finance-toolbar">
+        <strong>View:</strong>
+        <div className="finance-header-actions" role="group" aria-label="Select Finance dashboard view">
+          <button className={view==='classic'?'finance-primary-button':'finance-secondary-button'} type="button" aria-pressed={view==='classic'} onClick={()=>setView('classic')}>Classic Dashboard</button>
+          <button className={view==='command_center'?'finance-primary-button':'finance-secondary-button'} type="button" aria-pressed={view==='command_center'} onClick={()=>setView('command_center')}>Finance Command Center</button>
+        </div>
+      </div>
+    </section>
+    {view==='command_center'?<FinanceCommandCenter/>:<>
     {notice&&<div className="finance-success-message">{notice}</div>}{error&&<div className="finance-error">{error} <button type="button" className="finance-inline-link" onClick={load}>Retry</button></div>}{loading&&<div className="finance-panel finance-empty-state">Loading Finance dashboard...</div>}
 
     {workflow&&<>
@@ -88,6 +102,7 @@ export function FinanceDashboardPage(){
       <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary"><article className="finance-kpi-card"><span><ReceiptIndianRupee size={15}/> Finance Approved</span><strong>{formatInr(data.approved_amount)}</strong><small>{data.approved_count} approved / payment-stage claim(s)</small></article><article className="finance-kpi-card"><span><CircleDollarSign size={15}/> Outstanding</span><strong>{formatInr(data.outstanding_amount)}</strong><small>{data.partially_paid_count} partially paid claim(s)</small></article><article className="finance-kpi-card"><span><FileCheck2 size={15}/> Sent Back / Rejected</span><strong>{data.sent_back_count+data.rejected_count}</strong><small>{data.sent_back_count} sent back · {data.rejected_count} rejected</small></article><article className="finance-kpi-card"><span>Expense Workflow</span><strong>UNCHANGED</strong><small>Admin → Finance → Payment → Settlement</small></article></section>
       <section className="finance-breakdown-grid"><BreakdownPanel title="Project-wise Spend" subtitle="Requested amount grouped by assigned Project ID." items={data.by_project}/><BreakdownPanel title="Request Type Mix" subtitle="Advance, reimbursement, and additional-advance exposure." items={data.by_type.map(item=>({...item,label:financeClaimTypeLabels[item.key as keyof typeof financeClaimTypeLabels]||item.label}))}/><BreakdownPanel title="Category-wise Spend" subtitle="Where project money is being requested or reimbursed." items={data.by_category}/></section>
       <section className="finance-panel"><div className="finance-panel-header"><div><span className="finance-panel-kicker">EXISTING EXPENSE WORKFLOW · RETAINED</span><h2>Recent Expense Claims</h2><p>Existing expense approvals remain intact. Employee project selection is now limited to Project IDs assigned to that employee.</p></div><Link className="finance-secondary-button" to="/finance/claims">View All</Link></div>{data.recent_claims.length===0?<div className="finance-empty-state">No project expense claims have been raised yet.</div>:<div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Claim</th><th>Employee</th><th>Project</th><th>Type</th><th>Amount</th><th>Status</th><th>Submitted</th></tr></thead><tbody>{data.recent_claims.map(claim=><tr key={claim.id}><td><Link to={`/finance/claims/${claim.id}`}>{claim.claim_code}</Link></td><td><strong>{claim.requester_name}</strong><br/><small>{claim.requester_email}</small></td><td>{claim.project.project_code}<br/><small>{claim.project.project_name}</small></td><td>{financeClaimTypeLabels[claim.claim_type]}</td><td><strong>{formatInr(claim.total_amount)}</strong></td><td><span className={`finance-status tone-${financeStatusTone(claim.status)}`}>{financeStatusLabels[claim.status]}</span></td><td>{claim.submitted_at?new Date(claim.submitted_at).toLocaleDateString('en-IN'):'Draft'}</td></tr>)}</tbody></table></div>}</section>
+    </>}
     </>}
   </div>
 }

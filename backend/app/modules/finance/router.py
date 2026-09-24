@@ -184,7 +184,7 @@ async def import_client_master_excel(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     filename = (file.filename or "client-master.xlsx").strip()
     if not filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=422, detail="Upload an .xlsx Client Master workbook")
@@ -262,7 +262,7 @@ def create_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     try:
         client = create_finance_client(db, actor=auth.user, payload=payload)
     except ValueError as exc:
@@ -284,7 +284,7 @@ def update_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     client = db.get(FinanceClient, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Finance client not found")
@@ -350,7 +350,7 @@ def create_project_for_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     client = db.get(FinanceClient, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Finance client not found")
@@ -376,7 +376,7 @@ def update_project_for_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None or project.client_id != client_id:
         raise HTTPException(status_code=404, detail="Finance project not found for this client")
@@ -419,9 +419,9 @@ def list_projects(
     if role not in {EMPLOYEE_ROLE, *VISIBLE_STAFF_ROLES}:
         raise HTTPException(status_code=403, detail="Finance project access is not available for this role")
     if role == EMPLOYEE_ROLE:
-        # Least-privilege project selection: an employee can raise a project
-        # expense only against projects to which the PM has assigned them.
-        return [employee_project_payload(project) for project in assigned_projects_for_user(db, user_id=auth.user.id)]
+        # Employees see every project for selection; expense gating is lifecycle-based
+        # (expense_allowed / expense_block_reason) on employee_project_payload.
+        return [employee_project_payload(project) for project in all_projects(db)]
     return [project_payload(project) for project in active_projects(db)]
 
 
@@ -444,7 +444,7 @@ def update_project_status(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Finance project not found")
@@ -517,7 +517,7 @@ def update_project_schedule(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Finance project not found")
@@ -658,7 +658,7 @@ def decide_claim_as_admin(
 ) -> dict:
     # Strict on purpose: Software Team's normal Admin-equivalent behavior does
     # not grant financial verification authority.
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     claim = _visible_claim_or_404(db, auth, claim_id)
     try:
         claim = admin_decision(
@@ -1227,7 +1227,7 @@ def decide_settlement_as_admin(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     settlement = _visible_settlement_or_404(db, auth, settlement_id)
     try:
         settlement = admin_settlement_decision(db, settlement=settlement, actor=auth.user, action=payload.action, comments=payload.comments, request=request)
