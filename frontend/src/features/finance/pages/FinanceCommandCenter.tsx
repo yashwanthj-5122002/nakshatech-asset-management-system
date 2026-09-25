@@ -1,9 +1,10 @@
 import { BarChart3, CalendarDays, ChevronDown, ChevronRight, CircleDollarSign, Eye, EyeOff, FileText, IndianRupee, Lock, RefreshCcw, Target, TrendingUp, WalletCards, X } from 'lucide-react'
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../../../lib/api'
 import { useAuth } from '../../../context/AuthContext'
+import { CommandCenterHero, useNkReveal } from '../../../components/CommandCenterHero'
 import { departmentCodeForRole, isTechnicalProjectManager } from '../../../lib/roles'
-import { aggregateFinanceCommandCenterKpis, openSalesCategoriesForProject } from './financeCommandCenterKpis'
+import { aggregateFinanceCommandCenterKpis, openSalesCategoriesForProject, openSalesForProject } from './financeCommandCenterKpis'
 import '../finance-expenses.css'
 import './sales-revenue.css'
 
@@ -387,6 +388,7 @@ interface ProjectCalc {
   baselineOpenSalesInr: number
   unbilledOpenSalesInr: number
   expectedOpenSalesInr: number
+  commandCenterOpenSalesInr: number
   expectedOutstandingInr: number
   openSalesMatched: boolean
   outstandingMatched: boolean
@@ -402,7 +404,8 @@ function computeProjectCalc(row: SalesProject): ProjectCalc {
   const baselineOpenSalesInr = Math.max(row.sales_value_inr - closedSalesValueInr, 0)
   const unbilledOpenSalesInr = Math.max(baselineOpenSalesInr - openInvoiceTotalInr, 0)
   const expectedOpenSalesInr = unbilledOpenSalesInr + openInvoiceBalanceInr
-  let expectedOutstandingInr = unbilledOpenSalesInr + openInvoiceBalanceInr
+  const commandCenterOpenSalesInr = openSalesForProject(row)
+  const expectedOutstandingInr = unbilledOpenSalesInr + openInvoiceBalanceInr
   const tolerance = 0.01
   return {
     closedSalesValueInr,
@@ -412,8 +415,9 @@ function computeProjectCalc(row: SalesProject): ProjectCalc {
     baselineOpenSalesInr,
     unbilledOpenSalesInr,
     expectedOpenSalesInr,
+    commandCenterOpenSalesInr,
     expectedOutstandingInr,
-    openSalesMatched: Math.abs(expectedOpenSalesInr - row.open_sales_inr) <= tolerance,
+    openSalesMatched: Math.abs(expectedOpenSalesInr - commandCenterOpenSalesInr) <= tolerance,
     outstandingMatched: Math.abs(expectedOutstandingInr - row.outstanding_inr) <= tolerance,
   }
 }
@@ -607,6 +611,8 @@ export function FinanceCommandCenter() {
   const [revenueTargets, setRevenueTargets] = useState<RevenueTarget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  useNkReveal(rootRef, !loading && !error)
   const [visualizationKey, setVisualizationKey] = useState<VisualizationKey>('monthly')
   const [visualizationVisible, setVisualizationVisible] = useState(true)
   const [targetMonth, setTargetMonth] = useState(currentMonth)
@@ -810,7 +816,7 @@ export function FinanceCommandCenter() {
       if (!chartDate) continue
       const key = chartDate.slice(0, 7)
       const item = map.get(key) || { value: 0, secondary: 0 }
-      item.value += row.open_sales_inr
+      item.value += openSalesForProject(row)
       item.secondary += row.received_against_open_sales_inr
       map.set(key, item)
     }
@@ -828,7 +834,7 @@ export function FinanceCommandCenter() {
       if (!chartDate) continue
       const key = chartDate.slice(0, 7)
       const item = map.get(key) || { sales: 0, revenue: 0 }
-      item.sales += row.open_sales_inr
+      item.sales += openSalesForProject(row)
       map.set(key, item)
     }
     for (const row of activeRevenue) {
@@ -848,7 +854,7 @@ export function FinanceCommandCenter() {
   const departmentChart = useMemo(() => {
     const map = new Map<string, number>()
     for (const row of activeProjects.filter(item => item.sales_visible)) {
-      map.set(row.department_label, (map.get(row.department_label) || 0) + row.open_sales_inr)
+      map.set(row.department_label, (map.get(row.department_label) || 0) + openSalesForProject(row))
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }))
   }, [activeProjects])
@@ -876,7 +882,7 @@ export function FinanceCommandCenter() {
     const map = new Map<string, number>()
     for (const row of activeProjects.filter(item => item.sales_visible)) {
       const key = row.bd_name || 'Unassigned'
-      map.set(key, (map.get(key) || 0) + row.open_sales_inr)
+      map.set(key, (map.get(key) || 0) + openSalesForProject(row))
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
   }, [activeProjects])
@@ -931,7 +937,7 @@ export function FinanceCommandCenter() {
 
   if (loading) {
     return (
-      <section aria-labelledby="finance-command-center-title">
+      <section aria-labelledby="finance-command-center-title" className="nk-arch-command">
         <article className="finance-panel">
           <div className="finance-panel-header">
             <div>
@@ -984,20 +990,30 @@ export function FinanceCommandCenter() {
   }
 
   return (
-    <section aria-labelledby="finance-command-center-title">
-      <article className="finance-panel">
-        <div className="finance-panel-header">
-            <div>
-              <span>PHASE 3 · DEPARTMENT INTELLIGENCE</span>
-              <h2 id="finance-command-center-title">FINANCE COMMAND CENTER</h2>
-              <p>Real KPI, sales visualization, revenue/collection summary and monthly target achievement from live Sales/Revenue APIs. No forecast, no hard-coded values.</p>
-            </div>
-            <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
-        </div>
-      </article>
+    <div className="nk-arch-command" ref={rootRef}>
+      <CommandCenterHero
+        id="finance-command-center-title"
+        kicker="Phase 3 · Department Intelligence"
+        title="Finance Command Center"
+        description="Real KPI, sales visualization, revenue/collection summary and monthly target achievement from live Sales/Revenue APIs. No forecast, no hard-coded values."
+        icon={BarChart3}
+        liveTitle="Live Financial Data"
+        liveNote="Streaming from Sales / Revenue APIs"
+        actions={
+          <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
+        }
+      />
 
-      <section className="sr-filter-panel" aria-label="Finance Command Center filters">
+      <section className="sr-filter-panel" aria-label="Finance Command Center filters" data-nk-reveal>
         <div className="sr-filter-title"><CalendarDays size={18}/><div><strong>Analytics filters</strong><span>Every KPI, table and chart below follows the same selection.</span></div></div>
+        <div className="nk-range-chips" role="group" aria-label="Quick date range">
+          <span className="nk-range-chips-label">Quick range</span>
+          <button type="button" className={period === 'today' ? 'is-active' : ''} onClick={() => setPeriod('today')}>Today</button>
+          <button type="button" className={period === 'weekly' ? 'is-active' : ''} onClick={() => setPeriod('weekly')}>This Week</button>
+          <button type="button" className={period === 'monthly' ? 'is-active' : ''} onClick={() => setPeriod('monthly')}>This Month</button>
+          <button type="button" className={period === 'quarterly' ? 'is-active' : ''} onClick={() => setPeriod('quarterly')}>This Quarter</button>
+          <button type="button" className={period === 'yearly' ? 'is-active' : ''} onClick={() => setPeriod('yearly')}>This Year</button>
+        </div>
         <div className="sr-filter-grid">
           <label><span>Period</span><select value={period} onChange={e => setPeriod(e.target.value as Period)}>
             <option value="today">Today</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="custom">Custom Range</option>
@@ -1028,26 +1044,26 @@ export function FinanceCommandCenter() {
         <div className="sr-range-note">Showing Command Center data for <strong>{range[0]} to {range[1]}</strong>{(lockedDepartment ?? department) !== 'all' ? ` · ${DEPARTMENTS.find(([code]) => code === (lockedDepartment ?? department))?.[1] || department}` : ''}{currency !== 'all' ? ` · ${currency}` : ''}{statusFilter !== 'all' ? ` · ${statusFilter}` : ''}{serverKpiSummary ? ` · Backend KPI ${serverKpiSummary.reconciled ? 'reconciled' : 'mismatch ' + serverKpiSummary.reconciliation_difference_inr}` : ''}{salesKpis.reconciled ? '' : ' · Filtered KPI mismatch'}</div>
       </section>
 
-      <section className="finance-kpi-grid finance-kpi-grid-4" aria-label="Finance KPI summary">
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('open_sales')} aria-label="Open Sales Pipeline details">
+      <section className="finance-kpi-grid finance-kpi-grid-4" aria-label="Finance KPI summary" data-nk-reveal="stagger">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="open_sales" type="button" onClick={() => openDrilldown('open_sales')} aria-label="Open Sales Pipeline details">
           <span><TrendingUp size={15}/> Open Sales Pipeline</span>
           <strong>{inr(salesKpis.openSales)}</strong>
           <small>{salesKpis.salesCount} open sales project(s)</small>
           <em className="kpi-drilldown-hint">View contributing projects</em>
         </button>
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('revenue')} aria-label="Realized Revenue details">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="revenue" type="button" onClick={() => openDrilldown('revenue')} aria-label="Realized Revenue details">
           <span><IndianRupee size={15}/> Realized Revenue</span>
           <strong>{inr(salesKpis.closedRevenue)}</strong>
           <small>{salesKpis.revenueCount} closed invoice event(s)</small>
           <em className="kpi-drilldown-hint">View contributing events</em>
         </button>
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('target')} aria-label="Monthly Target details">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="target" type="button" onClick={() => openDrilldown('target')} aria-label="Monthly Target details">
           <span><Target size={15}/> Monthly Target</span>
           <strong>{inr(targetSummary.target)}</strong>
           <small>{monthLabel(targetMonth)} · {targetSummary.achievement.toFixed(1)}% achieved</small>
           <em className="kpi-drilldown-hint">View department performance</em>
         </button>
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('outstanding')} aria-label="Outstanding details">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="outstanding" type="button" onClick={() => openDrilldown('outstanding')} aria-label="Outstanding details">
           <span><CircleDollarSign size={15}/> Outstanding</span>
           <strong>{inr(salesKpis.outstanding)}</strong>
           <small>{salesKpis.partial} partial · {salesKpis.overdue} overdue</small>
@@ -1055,33 +1071,33 @@ export function FinanceCommandCenter() {
         </button>
       </section>
 
-      <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary" aria-label="Collection summary">
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('payment_pending')} aria-label="Payment Pending details">
+      <section className="finance-kpi-grid finance-kpi-grid-4 finance-kpi-grid-secondary" aria-label="Collection summary" data-nk-reveal="stagger">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="payment_pending" type="button" onClick={() => openDrilldown('payment_pending')} aria-label="Payment Pending details">
           <span><FileText size={15}/> Payment Pending</span>
           <strong>{inr(salesKpis.paymentPendingAmount)}</strong>
           <small>{salesKpis.paymentPendingCount} invoice(s) with paid = 0</small>
           <em className="kpi-drilldown-hint">View invoices awaiting first payment</em>
         </button>
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('partial_payment')} aria-label="Partial Payment details">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="partial_payment" type="button" onClick={() => openDrilldown('partial_payment')} aria-label="Partial Payment details">
           <span><WalletCards size={15}/> Partial Payment</span>
           <strong>{inr(salesKpis.partialAmount)}</strong>
           <small>{salesKpis.partialCount} invoice(s) partly paid · balance open</small>
           <em className="kpi-drilldown-hint">View partly collected invoices</em>
         </button>
-        <button className="finance-kpi-card kpi-drilldown" type="button" onClick={() => openDrilldown('invoice_not_raised')} aria-label="Invoice Not Raised details">
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="invoice_not_raised" type="button" onClick={() => openDrilldown('invoice_not_raised')} aria-label="Invoice Not Raised details">
           <span><CircleDollarSign size={15}/> Invoice Not Raised</span>
           <strong>{inr(salesKpis.notRaisedAmount)}</strong>
           <small>{salesKpis.notRaisedCount} project(s) with sales value, no Finance invoice</small>
           <em className="kpi-drilldown-hint">View unbilled commercial value</em>
         </button>
-        <article className="finance-kpi-card">
+        <article className="finance-kpi-card" data-kpi="target_remaining">
           <span><Target size={15}/> Target Remaining</span>
           <strong>{inr(targetSummary.remaining)}</strong>
           <small>Actual {inr(targetSummary.actual)} of {inr(targetSummary.target)}</small>
         </article>
       </section>
 
-      <section className="sr-target-panel" aria-labelledby="command-target-heading">
+      <section className="sr-target-panel" aria-labelledby="command-target-heading" data-nk-reveal>
         <div className="sr-target-heading">
           <div>
             <span>MONTHLY REVENUE TARGET</span>
@@ -1121,7 +1137,7 @@ export function FinanceCommandCenter() {
         </div>
       </section>
 
-      <section className="sr-viz-toolbar">
+      <section className="sr-viz-toolbar" data-nk-reveal>
         <div>
           <span>VISUALIZATIONS</span>
           <strong>Choose the analysis you want to view</strong>
@@ -1139,7 +1155,7 @@ export function FinanceCommandCenter() {
       </section>
       {visualizationVisible && <section className="sr-visual-stage">{renderVisualization()}</section>}
 
-      <section className="sr-visual-stage" aria-label="Payment status and sales versus revenue charts">
+      <section className="sr-visual-stage" aria-label="Payment status and sales versus revenue charts" data-nk-reveal>
         <div className="sr-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
           <DonutChart title="Payment Status Distribution" subtitle="How open Sales money is distributed across collection states under the current filters." rows={statusChart} />
           <TrendChart
@@ -1152,7 +1168,7 @@ export function FinanceCommandCenter() {
         </div>
       </section>
 
-      <section className="sr-panel">
+      <section className="sr-panel" data-nk-reveal>
         <div className="sr-panel-heading">
           <div>
             <span>LIVE MONEY PIPELINE</span>
@@ -1185,7 +1201,7 @@ export function FinanceCommandCenter() {
                     <tr key={row.project_id}>
                       <td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_code || '—'} · {row.client_name}</small></td>
                       <td><strong>{row.bd_name}</strong><br/><span>{row.department_label}</span><br/><small>PM: {row.project_manager_name}</small></td>
-                      <td><strong>{inr(row.open_sales_inr)}</strong></td>
+                      <td><strong>{inr(openSalesForProject(row))}</strong></td>
                       <td><strong>{inr(row.received_against_open_sales_inr)}</strong><br/><small>Outstanding {inr(row.outstanding_inr)}</small></td>
                       <td>{row.projected_payment_date || '—'}</td>
                       <td><span className="sr-status">{row.sales_status}</span></td>
@@ -1198,7 +1214,7 @@ export function FinanceCommandCenter() {
         )}
       </section>
 
-      <section className="sr-panel">
+      <section className="sr-panel" data-nk-reveal>
         <div className="sr-panel-heading">
           <div>
             <span>CLOSED & REALIZED MONEY</span>
@@ -1513,10 +1529,10 @@ export function FinanceCommandCenter() {
 
               if (drilldown === 'open_sales') {
                 const rows = ddProjects
-                  .filter(row => row.open_sales_inr > 0)
                   .map(row => ({ row, calc: computeProjectCalc(row) }))
-                  .sort((a, b) => b.row.open_sales_inr - a.row.open_sales_inr)
-                const total = rows.reduce((sum, item) => sum + item.row.open_sales_inr, 0)
+                  .filter(item => item.calc.commandCenterOpenSalesInr > 0)
+                  .sort((a, b) => b.calc.commandCenterOpenSalesInr - a.calc.commandCenterOpenSalesInr)
+                const total = rows.reduce((sum, item) => sum + item.calc.commandCenterOpenSalesInr, 0)
                 const matched = rows.filter(item => item.calc.openSalesMatched).length
                 const recomputed = rows.reduce((sum, item) => sum + item.calc.expectedOpenSalesInr, 0)
                 return (
@@ -1565,7 +1581,7 @@ export function FinanceCommandCenter() {
                                     <td>{inr(row.sales_value_inr)}</td>
                                     <td>{inr(calc.closedSalesValueInr)}</td>
                                     <td>{inr(calc.openInvoiceTotalInr)}</td>
-                                    <td><strong>{inr(row.open_sales_inr)}</strong></td>
+                                    <td><strong>{inr(calc.commandCenterOpenSalesInr)}</strong></td>
                                     <td>
                                       <span className={`finance-status ${calc.openSalesMatched ? 'tone-success' : 'tone-danger'}`}>
                                         {calc.openSalesMatched ? 'MATCHED' : 'MISMATCH'}
@@ -1587,15 +1603,12 @@ export function FinanceCommandCenter() {
                                             <div className="sr-calc-step"><span>Baseline open = max(sales − closed, 0)</span><strong>{inr(calc.baselineOpenSalesInr)}</strong></div>
                                              <div className="sr-calc-step"><span>Open invoice balances still to collect INR</span><strong>{inr(calc.openInvoiceBalanceInr)}</strong></div>
                                              <div className="sr-calc-step"><span>Recomputed open_sales_inr = unbilled value + unpaid invoice balances</span><strong>{inr(calc.expectedOpenSalesInr)}</strong></div>
-                                            <div className="sr-calc-step"><span>API open_sales_inr</span><strong>{inr(row.open_sales_inr)}</strong></div>
+                                            <div className="sr-calc-step"><span>Command Center open_sales_inr</span><strong>{inr(calc.commandCenterOpenSalesInr)}</strong></div>
+                                            <div className="sr-calc-step"><span>Raw API open_sales_inr</span><strong>{inr(row.open_sales_inr)}</strong></div>
                                             <div className="sr-calc-step"><span>Open invoices received INR (still in Sales)</span><strong>{inr(calc.openReceivedInr)}</strong></div>
                                           </div>
                                           <p className="sr-calc-formula">
                                             open_sales_inr = unbilled_open_sales_inr + unpaid invoice balances
-                                          </p>
-                                          <p className="sr-calc-formula" style={{ display: 'none' }}>
-                                            open_sales_inr = max(max(sales_value_inr − closed_invoice_total_inr, 0), open_invoice_total_inr)
-                                            {row.sales_value_inr === 0 && calc.openInvoiceTotalInr > 0 ? '; special case sales_value_inr = 0 → open_sales_inr = open_invoice_total_inr' : ''}
                                           </p>
                                         </div>
                                       </td>
@@ -2023,6 +2036,6 @@ export function FinanceCommandCenter() {
           </section>
         </div>
       )}
-    </section>
+    </div>
   )
 }

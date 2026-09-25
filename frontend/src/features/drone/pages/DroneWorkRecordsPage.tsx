@@ -58,7 +58,7 @@ export function DroneWorkRecordsPage() {
   }
 
   return <>
-    <DashboardHeader eyebrow="DRONE DEPARTMENT WORKFLOW" title="Drone Work Records" description="Record inspections, flight planning, equipment checks, field preparation and operational tasks. Dispatch and return transactions automatically create linked work records here." />
+    <DashboardHeader eyebrow="DRONE DEPARTMENT WORKFLOW" title="Drone Work Records" description="Record inspections, flight planning, equipment checks, field preparation and operational tasks. Dispatch and return transactions automatically create linked work records here." meta={<><span className="nk-meta-chip"><ClipboardList size={14} /> Inspections, flight planning, checks and field prep</span><span className="nk-meta-chip"><CheckCircle2 size={14} /> Dispatch and return auto-create linked work records</span></>} />
     {error && <div className="error-message">{error}</div>}
     {success && <div className="success-message">{success}</div>}
     <section className="work-record-layout">

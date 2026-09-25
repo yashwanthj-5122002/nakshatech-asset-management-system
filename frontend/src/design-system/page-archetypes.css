@@ -1,0 +1,720 @@
+/* ==========================================================================
+   NakshaTech Design System — Page Archetypes
+   1. Command Center     (.nk-arch-command)
+   2. Operational Dash   (.nk-arch-ops)
+   3. Workbench/Register (.nk-arch-workbench)
+   Presentation only.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. COMMAND CENTER — premium hero, atmospheric depth, KPI-forward
+   -------------------------------------------------------------------------- */
+.nk-arch-command {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nk-space-5);
+}
+
+/* Sentinel marks the top of the command page for the collapse observer */
+.nk-command-sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+/* Full landing hero — sticky so it compresses into the command bar */
+.nk-arch-command .nk-hero {
+  position: sticky;
+  top: var(--nk-topbar-h);
+  z-index: 15;
+  overflow: hidden;
+  isolation: isolate;
+  padding: clamp(26px, 3vw, 44px) clamp(22px, 2.6vw, 38px);
+  border-radius: var(--nk-radius-2xl);
+  color: #fff;
+  background:
+    radial-gradient(ellipse at 12% 18%, color-mix(in srgb, var(--dept-accent) 44%, transparent), transparent 44%),
+    radial-gradient(ellipse at 88% 8%, color-mix(in srgb, var(--dept-accent-2) 36%, transparent), transparent 40%),
+    radial-gradient(ellipse at 62% 135%, color-mix(in srgb, var(--dept-accent) 38%, transparent), transparent 58%),
+    linear-gradient(135deg, var(--dept-hero-start) 0%, var(--dept-hero-mid) 45%, var(--dept-hero-end) 100%);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 28%, rgba(148, 197, 232, 0.18));
+  box-shadow: 0 22px 54px rgba(3, 20, 38, 0.34), 0 0 30px color-mix(in srgb, var(--dept-glow) 55%, transparent);
+  transition:
+    padding var(--nk-hero-dur) var(--nk-ease),
+    border-radius var(--nk-hero-dur) var(--nk-ease),
+    box-shadow var(--nk-hero-dur) var(--nk-ease),
+    border-color var(--nk-hero-dur) var(--nk-ease);
+}
+
+/* Terrain / geospatial atmosphere — kept behind the text */
+.nk-arch-command .nk-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: url("/welcome-terrain-relief-reference.webp") right 38% / cover no-repeat;
+  opacity: 0.26;
+  filter: saturate(0.75) contrast(1.05);
+  mask-image: linear-gradient(100deg, transparent 8%, rgba(0, 0, 0, 0.75) 48%, #000 100%);
+}
+
+.nk-arch-command .nk-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(147, 197, 226, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(147, 197, 226, 0.5) 1px, transparent 1px),
+    radial-gradient(ellipse at 78% 120%, color-mix(in srgb, var(--dept-accent) 34%, transparent), transparent 55%);
+  background-size: 52px 52px, 52px 52px, auto;
+  opacity: 0.5;
+  mask-image: radial-gradient(ellipse at 75% 40%, #000 5%, transparent 78%);
+}
+
+.nk-arch-command .nk-hero-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--nk-space-5);
+  transition: gap var(--nk-hero-dur) var(--nk-ease);
+}
+
+.nk-arch-command .nk-hero-copy { min-width: 0; max-width: 760px; }
+
+/* Folding regions — collapse smoothly on scroll */
+.nk-arch-command .nk-hero-fold {
+  overflow: hidden;
+  max-height: 220px;
+  opacity: 1;
+  transition:
+    max-height var(--nk-hero-dur) var(--nk-ease),
+    opacity 300ms var(--nk-ease),
+    margin var(--nk-hero-dur) var(--nk-ease);
+}
+
+.nk-arch-command .nk-hero-fold-top { margin-bottom: 10px; }
+
+.nk-arch-command .nk-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 44%, rgba(255, 255, 255, 0.2));
+  background: color-mix(in srgb, var(--dept-accent) 22%, transparent);
+  color: color-mix(in srgb, var(--dept-accent) 30%, #ffffff);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nk-arch-command .nk-hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.nk-arch-command .nk-hero-title-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 45%, rgba(255, 255, 255, 0.22));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--dept-accent) 38%, transparent), color-mix(in srgb, var(--dept-accent-2) 30%, transparent));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--dept-glow) 86%, transparent);
+  color: #d7f6fd;
+  transition:
+    width var(--nk-hero-dur) var(--nk-ease),
+    height var(--nk-hero-dur) var(--nk-ease),
+    border-radius var(--nk-hero-dur) var(--nk-ease);
+}
+
+.nk-arch-command .nk-hero h1 {
+  margin: 0;
+  color: #fff;
+  font-size: var(--nk-fs-hero);
+  font-weight: 830;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  transition: font-size var(--nk-hero-dur) var(--nk-ease), letter-spacing var(--nk-hero-dur) var(--nk-ease);
+}
+
+.nk-arch-command .nk-hero-fold-bottom p {
+  margin: 10px 0 0;
+  max-width: 660px;
+  color: rgba(214, 232, 246, 0.84);
+  font-size: var(--nk-fs-md);
+  line-height: 1.55;
+}
+
+.nk-arch-command .nk-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Live data indicator card */
+.nk-arch-command .nk-hero-live {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(160, 205, 235, 0.24);
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: padding var(--nk-hero-dur) var(--nk-ease), background var(--nk-hero-dur) var(--nk-ease);
+}
+
+.nk-arch-command .nk-hero-live-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22e39a;
+  box-shadow: 0 0 0 4px rgba(34, 227, 154, 0.2);
+  animation: nk-live-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes nk-live-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(34, 227, 154, 0.2); }
+  50% { box-shadow: 0 0 0 7px rgba(34, 227, 154, 0.05); }
+}
+
+.nk-arch-command .nk-hero-live strong {
+  display: block;
+  color: color-mix(in srgb, var(--dept-accent) 30%, #ffffff);
+  font-size: 0.66rem;
+  font-weight: 820;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nk-arch-command .nk-hero-live small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(200, 224, 244, 0.75);
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+  transition: max-height var(--nk-hero-dur) var(--nk-ease), opacity 300ms var(--nk-ease), margin var(--nk-hero-dur) var(--nk-ease);
+  max-height: 40px;
+}
+
+/* Hero actions on the dark surface */
+.nk-arch-command .nk-hero-actions .finance-secondary-button {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: transparent;
+  color: var(--nk-navy-700);
+  box-shadow: 0 6px 18px rgba(3, 20, 38, 0.3);
+}
+
+.nk-arch-command .nk-hero-actions .finance-secondary-button:hover {
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(3, 20, 38, 0.36);
+}
+
+/* ---------------------------- COLLAPSED STATE ---------------------------- */
+.nk-arch-command .nk-hero.is-collapsed {
+  padding-top: 11px;
+  padding-bottom: 11px;
+  border-radius: var(--nk-radius-lg);
+  border-color: color-mix(in srgb, var(--dept-accent) 58%, rgba(255, 255, 255, 0.16));
+  box-shadow:
+    0 16px 38px rgba(3, 20, 38, 0.42),
+    0 0 24px var(--dept-glow);
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-fold {
+  max-height: 0;
+  opacity: 0;
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-fold-top { margin-bottom: 0; }
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-fold-bottom p { margin-top: 0; }
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-inner {
+  align-items: center;
+  gap: 16px;
+  flex-wrap: nowrap;
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-copy { flex: 1 1 auto; }
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-actions {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  max-width: min(68%, 920px);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-actions::-webkit-scrollbar { display: none; }
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-actions > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.nk-arch-command .nk-hero.is-collapsed h1 {
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-title-row { gap: 11px; }
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-title-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-live {
+  padding: 7px 13px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nk-arch-command .nk-hero.is-collapsed .nk-hero-live small {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
+/* Command-center KPI strip sits on dark hero when marked */
+.nk-arch-command .nk-hero-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(160, 205, 235, 0.16);
+}
+
+.nk-arch-command .nk-hero-kpi {
+  padding: 12px 14px;
+  border-radius: var(--nk-radius-md);
+  border: 1px solid rgba(160, 205, 235, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nk-arch-command .nk-hero-kpi span {
+  display: block;
+  color: rgba(186, 214, 236, 0.85);
+  font-size: var(--nk-fs-xs);
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nk-arch-command .nk-hero-kpi strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff;
+  font-size: var(--nk-fs-xl);
+  letter-spacing: -0.02em;
+}
+
+/* --------------------------------------------------------------------------
+   2. OPERATIONAL DASHBOARD — medium hero, department accent, light motion
+   -------------------------------------------------------------------------- */
+.nk-arch-ops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nk-space-4);
+}
+
+.nk-arch-ops .nk-ops-header {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nk-space-4);
+  padding: clamp(18px, 2vw, 26px) clamp(18px, 2vw, 28px);
+  border-radius: var(--nk-radius-2xl);
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--dept-accent) 16%, transparent), transparent 48%),
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--dept-accent-2) 14%, transparent), transparent 44%),
+    linear-gradient(135deg, #ffffff 0%, #f5fafe 60%, #eff6fd 100%);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 24%, var(--nk-border));
+  box-shadow: var(--nk-shadow-md);
+}
+
+.nk-arch-ops .nk-ops-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(rgba(120, 170, 210, 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 170, 210, 0.28) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at 88% 0%, #000 4%, transparent 62%);
+}
+
+.nk-arch-ops .nk-ops-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2), transparent 85%);
+  opacity: 0.9;
+}
+
+.nk-arch-ops .nk-ops-header h1 {
+  margin: 6px 0 6px;
+  font-size: clamp(1.35rem, 1.9vw, 1.85rem);
+  font-weight: 820;
+  letter-spacing: -0.02em;
+  color: var(--nk-text);
+}
+
+.nk-arch-ops .nk-ops-header p {
+  margin: 0;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-md);
+  max-width: 820px;
+  line-height: 1.55;
+}
+
+.nk-arch-ops .nk-ops-accent {
+  width: 100%;
+  height: 3px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2), transparent 85%);
+  opacity: 0.75;
+}
+
+/* --------------------------------------------------------------------------
+   3. WORKBENCH / REGISTER — compact premium header card, actions, tables
+   -------------------------------------------------------------------------- */
+.nk-arch-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nk-space-4);
+}
+
+.nk-arch-workbench .nk-wb-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nk-space-3);
+  padding: 14px 18px;
+  border-radius: var(--nk-radius-lg);
+  border: 1px solid var(--nk-border);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 251, 255, 0.92)),
+    linear-gradient(90deg, color-mix(in srgb, var(--dept-accent) 8%, transparent), transparent 55%);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.nk-arch-workbench .nk-wb-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.nk-arch-workbench .nk-wb-title h1 {
+  margin: 0;
+  font-size: clamp(1.15rem, 1.4vw, 1.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--nk-text);
+}
+
+.nk-arch-workbench .nk-wb-title p {
+  margin: 0;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-sm);
+  max-width: 720px;
+}
+
+.nk-arch-workbench .nk-wb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   SCROLL REVEAL — one-shot viewport entry (IntersectionObserver adds
+   .is-visible; no continuous scroll listeners, no React state per scroll)
+   -------------------------------------------------------------------------- */
+[data-nk-reveal] {
+  opacity: 0;
+  transform: translateY(16px) scale(0.987);
+  transition:
+    opacity 0.6s var(--nk-ease),
+    transform 0.6s var(--nk-ease);
+  transition-delay: var(--nk-reveal-delay, 0ms);
+}
+
+[data-nk-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Staggered group: parent stays visible, children cascade in */
+[data-nk-reveal="stagger"] {
+  opacity: 1;
+  transform: none;
+}
+
+[data-nk-reveal="stagger"] > * {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s var(--nk-ease), transform 0.55s var(--nk-ease);
+}
+
+[data-nk-reveal="stagger"].is-visible > * {
+  opacity: 1;
+  transform: none;
+}
+
+[data-nk-reveal="stagger"].is-visible > *:nth-child(1) { transition-delay: 0ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(2) { transition-delay: 70ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(3) { transition-delay: 140ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(4) { transition-delay: 210ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(5) { transition-delay: 280ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(6) { transition-delay: 350ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(7) { transition-delay: 420ms; }
+[data-nk-reveal="stagger"].is-visible > *:nth-child(8) { transition-delay: 490ms; }
+
+/* --------------------------------------------------------------------------
+   QUICK RANGE CHIPS — maps onto the existing Period state only
+   -------------------------------------------------------------------------- */
+.nk-range-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.nk-range-chips > span.nk-range-chips-label {
+  margin-right: 4px;
+  color: var(--nk-text-muted);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nk-range-chips button {
+  min-height: 34px;
+  padding: 0 15px;
+  border: 1px solid var(--nk-border);
+  border-radius: 999px;
+  background: var(--nk-surface-soft);
+  color: var(--nk-text-secondary);
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    background var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    color var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.nk-range-chips button:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 50%, var(--nk-border));
+  background: #fff;
+  color: var(--nk-navy-700);
+  transform: translateY(-1px);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.nk-range-chips button.is-active {
+  background: linear-gradient(135deg, var(--nk-navy-600), var(--nk-blue) 55%, var(--nk-cyan));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(18, 106, 232, 0.3);
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 1100px) {
+  .nk-arch-command .nk-hero-inner { flex-direction: column; align-items: stretch; }
+  .nk-arch-command .nk-hero-live { align-self: flex-start; }
+  .nk-arch-command .nk-hero.is-collapsed .nk-hero-inner { flex-direction: row; align-items: center; }
+}
+
+@media (max-width: 720px) {
+  .nk-arch-command .nk-hero { padding: 18px 16px; border-radius: var(--nk-radius-xl); }
+  .nk-arch-command .nk-hero.is-collapsed { padding-top: 10px; padding-bottom: 10px; }
+  .nk-arch-command .nk-hero.is-collapsed .nk-hero-live { display: none; }
+  .nk-arch-command .nk-hero.is-collapsed .nk-hero-actions { display: none; }
+  .nk-arch-ops .nk-ops-header { padding: 14px 14px; }
+  .nk-arch-workbench .nk-wb-header { flex-direction: column; align-items: stretch; }
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion — reveal everything instantly, no hero morph animation
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  [data-nk-reveal],
+  [data-nk-reveal] > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .nk-arch-command .nk-hero,
+  .nk-arch-command .nk-hero-fold,
+  .nk-arch-command .nk-hero h1,
+  .nk-arch-command .nk-hero-title-icon,
+  .nk-arch-command .nk-hero-live small { transition: none; }
+  .nk-arch-command .nk-hero-live-dot,
+  .app-shell .system-indicator { animation: none; }
+}
+
+/* --------------------------------------------------------------------------
+   HERO VARIANTS — every archetype shares one sticky collapsing hero,
+   tuned per context so dashboards read big and registers read compact.
+   -------------------------------------------------------------------------- */
+
+/* DashboardHeader is a header-only component. Making its archetype wrapper
+   layout-transparent lets the Sales/Revenue sticky hero use the full page as
+   its containing block, so the compact bar persists without a layout jump. */
+.nk-arch-ops.nk-arch-command {
+  display: contents;
+}
+
+.nk-arch-ops.nk-arch-command > .nk-hero { margin-bottom: var(--nk-space-4); }
+.nk-arch-ops.nk-arch-command > .nk-ops-summary { margin-bottom: var(--nk-space-4); }
+.nk-arch-ops.nk-arch-command > .nk-ops-summary + .nk-ops-meta { margin-top: -4px; }
+.nk-arch-ops.nk-arch-command > .nk-ops-meta { margin-bottom: var(--nk-space-5); }
+
+/* Operational dashboards use the exact Sales/Revenue hero dimensions. */
+.nk-arch-ops.nk-arch-command .nk-hero {
+  padding: clamp(26px, 3vw, 44px) clamp(22px, 2.6vw, 38px);
+}
+
+.nk-arch-ops.nk-arch-command .nk-hero h1 {
+  font-size: var(--nk-fs-hero);
+}
+
+.nk-arch-ops.nk-arch-command .nk-hero.is-collapsed {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.nk-arch-ops.nk-arch-command .nk-hero.is-collapsed h1 { font-size: 1rem; }
+
+/* Workbenches / registers: compact hero that collapses into a slim bar */
+.nk-arch-workbench.nk-arch-command .nk-hero {
+  padding: clamp(16px, 1.6vw, 22px) clamp(18px, 2vw, 26px);
+  border-radius: var(--nk-radius-xl);
+}
+
+.nk-arch-workbench.nk-arch-command .nk-hero h1 {
+  font-size: clamp(1.15rem, 1.5vw, 1.45rem);
+}
+
+/* Collapsed workbench hero obeys the shared slim command-bar dimensions */
+.nk-arch-workbench.nk-arch-command .nk-hero.is-collapsed {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: var(--nk-radius-lg);
+}
+
+.nk-arch-workbench.nk-arch-command .nk-hero.is-collapsed h1 {
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.nk-arch-workbench.nk-arch-command .nk-hero-fold-top { margin-bottom: 6px; }
+.nk-arch-workbench.nk-arch-command .nk-hero-title-row { gap: 10px; }
+.nk-arch-workbench.nk-arch-command .nk-hero-fold-bottom p { font-size: var(--nk-fs-sm); }
+
+/* Hero action clusters keep legacy button families readable on the dark surface */
+.nk-arch-command .nk-hero-actions .operations-button.secondary,
+.nk-arch-command .nk-hero-actions .travel-km-secondary,
+.nk-arch-command .nk-hero-actions .commercial-button.secondary,
+.nk-arch-command .nk-hero-actions .secondary-button {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: var(--nk-navy-800);
+}
+
+.nk-arch-command .nk-hero-actions .operations-button.secondary:hover,
+.nk-arch-command .nk-hero-actions .travel-km-secondary:hover,
+.nk-arch-command .nk-hero-actions .commercial-button.secondary:hover,
+.nk-arch-command .nk-hero-actions .secondary-button:hover {
+  background: #fff;
+  border-color: #fff;
+  box-shadow: 0 10px 24px rgba(3, 20, 38, 0.35);
+}
+
+.nk-arch-command .nk-hero-actions .operations-button:not(.secondary),
+.nk-arch-command .nk-hero-actions .travel-km-primary,
+.nk-arch-command .nk-hero-actions .primary-button {
+  box-shadow: 0 10px 26px rgba(3, 20, 38, 0.4);
+}
+
+/* Detail strip (legacy `details` slot) becomes a premium mini-stat row */
+.nk-arch-ops .page-header-detail,
+.nk-arch-workbench .page-header-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-header-detail > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 132px;
+  padding: 10px 14px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  background: linear-gradient(180deg, #ffffff, #f8fcff);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.page-header-detail span {
+  color: var(--nk-text-muted);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.page-header-detail strong {
+  color: var(--nk-text);
+  font-size: 1.2rem;
+  font-weight: 830;
+  letter-spacing: -0.02em;
+}

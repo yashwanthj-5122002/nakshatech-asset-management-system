@@ -68,12 +68,12 @@ export function BDProjectManagementPage(){
   async function assignPm(row:Project){const value=pmChoice[row.id]??(row.project_manager_id?String(row.project_manager_id):'');if(!value){setError('Select exactly one Project Manager for this project\'s Performing Department.');return}setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/assign-pm`,{method:'POST',body:JSON.stringify({project_manager_id:Number(value)})});setNotice(`${row.project_code}: Project Manager assigned.`);load()}catch(err){setError(err instanceof Error?err.message:'Unable to assign Project Manager')}finally{setBusy(false)}}
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow="PROJECT REGISTER" title="Project Management" description="Review history, correct returned projects, resubmit the same record, and assign a PM only after Finance approval." details={<>
+    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · PORTFOLIO INTELLIGENCE" title="Project Management" description="Review project history, correct returned projects and resubmit the same record, then assign a PM only after Finance approval." details={<>
       <div><span>Projects</span><strong>{data?.projects.length ?? 0}</strong></div>
       <div><span>Awaiting Finance</span><strong>{data?.projects.filter(row=>row.workflow_status==='pending_finance_approval').length ?? 0}</strong></div>
       <div><span>Returned</span><strong>{data?.projects.filter(row=>row.workflow_status==='finance_returned').length ?? 0}</strong></div>
       <div><span>Draft</span><strong>{data?.projects.filter(row=>row.workflow_status==='draft').length ?? 0}</strong></div>
-    </>} actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
+    </>} actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>} meta={<><span className="nk-meta-chip"><Send size={14}/> Correct returned projects and resubmit the same record</span><span className="nk-meta-chip"><UserRoundCheck size={14}/> PM assigned only after Finance approval</span><span className="nk-meta-chip"><Pencil size={14}/> Draft → Finance → PM → Delivery</span></>}/>
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
     {loading&&<section className="operations-panel"><div className="operations-empty"><span className="spinner"/> Loading projects…</div></section>}
     <section className="operations-panel">

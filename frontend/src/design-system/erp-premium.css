@@ -1,0 +1,2188 @@
+/* ==========================================================================
+   NakshaTech Design System — ERP Enterprise Premium Layer
+   The "one premium platform" pass across every authenticated experience:
+   Department Intelligence dashboards, Workbench registers, Travel KM,
+   Expense/Finance workflows, IT asset registers and shared shells.
+
+   Three experiences, one world-class feel:
+     1. Command Center        -> page-archetypes.css (.nk-arch-command)
+     2. Department Intelligence-> .nk-arch-ops (upgraded here + summary slots)
+     3. Workbench             -> .nk-arch-workbench (upgraded here)
+
+   Rules:
+   - Presentation only. No behaviour, permission, workflow or data changes.
+   - Legacy selectors are overridden with an .app-shell prefix (higher
+     specificity) so feature CSS keeps working untouched.
+   - Login / Welcome selectors are deliberately NOT targeted.
+   - Loaded last in main.tsx so it wins at equal specificity.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. PAGE SHELLS — consistent rhythm, backdrop and spacing
+   ========================================================================== */
+.app-shell .operations-page,
+.app-shell .finance-page,
+.app-shell .travel-km-page,
+.app-shell .asset-register-page {
+  gap: 18px;
+}
+
+.app-shell .operations-page > *,
+.app-shell .finance-page > *,
+.app-shell .travel-km-page > * {
+  min-width: 0;
+}
+
+/* ==========================================================================
+   2. IDENTITY — eyebrow chip, kickers, section heads, department personality
+   ========================================================================== */
+.app-shell .nk-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--dept-accent) 9%, #fff);
+  color: color-mix(in srgb, var(--dept-accent) 72%, var(--nk-navy-800));
+  font-size: var(--nk-fs-xs);
+  font-weight: 820;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.app-shell .nk-eyebrow::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dept-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dept-accent) 22%, transparent);
+}
+
+/* Identity chip sits above the title without stretching across the header */
+.nk-wb-title .nk-eyebrow {
+  align-self: flex-start;
+  margin-bottom: 2px;
+}
+
+.app-shell .operations-kicker,
+.app-shell .travel-km-kicker,
+.app-shell .section-kicker,
+.app-shell .finance-form-section > header span,
+.app-shell .operations-panel header .operations-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: color-mix(in srgb, var(--dept-accent) 80%, var(--nk-navy-800));
+  font-size: var(--nk-fs-xs);
+  font-weight: 820;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app-shell .operations-panel header h2,
+.app-shell .operations-panel header h3 {
+  color: var(--nk-text);
+  font-weight: 810;
+  letter-spacing: -0.015em;
+}
+
+.app-shell .operations-panel header p {
+  color: var(--nk-text-secondary);
+}
+
+.app-shell .travel-km-panel h3 {
+  color: var(--nk-text);
+  letter-spacing: -0.01em;
+}
+
+.app-shell .finance-panel-header h2,
+.app-shell .finance-form-section > header h2,
+.app-shell .finance-form-section > header h3 {
+  color: var(--nk-text);
+  letter-spacing: -0.015em;
+}
+
+/* ==========================================================================
+   3. PANELS — premium surfaces for every legacy family
+   ========================================================================== */
+.app-shell .operations-panel,
+.app-shell .travel-km-panel,
+.app-shell .reporting-panel {
+  position: relative;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  box-shadow: var(--nk-shadow-sm);
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-panel::before,
+.app-shell .travel-km-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22px;
+  right: 22px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dept-accent) 55%, transparent), transparent 72%);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.app-shell .operations-panel:hover,
+.app-shell .travel-km-panel:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 24%, var(--nk-border));
+}
+
+.app-shell .operations-panel header {
+  margin-bottom: 16px;
+}
+
+.app-shell .finance-claim-card {
+  border-radius: var(--nk-radius-xl);
+}
+
+/* ==========================================================================
+   4. KPI / STAT GRIDS — one premium card language everywhere
+   ========================================================================== */
+.app-shell .operations-stats-grid,
+.app-shell .stats-grid,
+.app-shell .travel-km-stat-grid,
+.app-shell .finance-kpi-grid {
+  gap: 14px;
+}
+
+.app-shell .operations-stats-grid > *,
+.app-shell .stats-grid > *,
+.app-shell .travel-km-stat-grid > *,
+.app-shell .finance-kpi-grid > * {
+  min-width: 0;
+}
+
+/* Legacy stat cards without a StatCard component still get the language */
+.app-shell .operations-stats-grid > article,
+.app-shell .stats-grid > article,
+.app-shell .travel-km-stat {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 17px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  background: linear-gradient(180deg, #ffffff, #f9fcff);
+  box-shadow: var(--nk-shadow-xs);
+  transition: transform var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-stats-grid > article::after,
+.app-shell .stats-grid > article::after,
+.app-shell .travel-km-stat::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--dept-accent), var(--dept-accent-2));
+  opacity: 0.75;
+}
+
+.app-shell .operations-stats-grid > article:hover,
+.app-shell .stats-grid > article:hover,
+.app-shell .travel-km-stat:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--dept-accent) 30%, var(--nk-border));
+  box-shadow: var(--nk-shadow-md);
+}
+
+.app-shell .travel-km-stat span {
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* IT drilldown KPI grid: ten cards never fit legibly in one row, so they
+   flow as a readable 5 / 3 / 2 / 1 board instead of clipping labels. */
+.app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards .stat-card {
+  min-height: 0;
+  padding: 15px 14px;
+  gap: 10px;
+}
+
+.app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards .stat-card p {
+  min-height: 2.4em;
+  font-size: 0.84rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards .stat-card small {
+  font-size: 0.66rem;
+}
+
+@media (max-width: 1180px) {
+  .app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .app-shell .dashboard-drilldown-cards.dashboard-drilldown-cards { grid-template-columns: 1fr; }
+}
+
+.app-shell .travel-km-stat strong {
+  color: var(--nk-text);
+  letter-spacing: -0.02em;
+}
+
+.app-shell .travel-km-stat small {
+  color: var(--nk-text-muted);
+}
+
+/* ==========================================================================
+   5. BUTTON SYSTEM — unify legacy action families with the design system
+   ========================================================================== */
+.app-shell .operations-button,
+.app-shell .travel-km-primary,
+.app-shell .travel-km-secondary,
+.app-shell .travel-km-danger,
+.app-shell .travel-km-warning,
+.app-shell .finance-success-button,
+.app-shell .finance-warning-button,
+.app-shell .finance-danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 790;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    transform var(--nk-dur-fast) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-button,
+.app-shell .travel-km-primary,
+.app-shell .finance-success-button {
+  background: linear-gradient(135deg, var(--nk-navy-700), var(--nk-blue) 62%, var(--dept-accent));
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(10, 55, 110, 0.2);
+}
+
+.app-shell .operations-button:hover,
+.app-shell .travel-km-primary:hover,
+.app-shell .finance-success-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(10, 55, 110, 0.26);
+  filter: saturate(1.06);
+}
+
+.app-shell .operations-button.secondary,
+.app-shell .travel-km-secondary {
+  background: #fff;
+  border-color: var(--nk-border-strong);
+  color: var(--nk-navy-700);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .operations-button.secondary:hover,
+.app-shell .travel-km-secondary:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 55%, var(--nk-border-strong));
+  background: color-mix(in srgb, var(--dept-accent) 5%, #fff);
+  color: var(--nk-navy-800);
+  transform: translateY(-1px);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .operations-button.success {
+  background: linear-gradient(135deg, #10855a, var(--nk-green));
+  color: #fff;
+}
+
+.app-shell .operations-button.warning,
+.app-shell .travel-km-warning {
+  background: linear-gradient(135deg, #cf8209, var(--nk-warning));
+  color: #fff;
+}
+
+.app-shell .operations-button.danger,
+.app-shell .travel-km-danger,
+.app-shell .finance-danger-button {
+  background: linear-gradient(135deg, #c24351, var(--nk-danger));
+  color: #fff;
+}
+
+.app-shell .operations-button:disabled,
+.app-shell .travel-km-primary:disabled,
+.app-shell .travel-km-secondary:disabled,
+.app-shell .travel-km-danger:disabled,
+.app-shell .travel-km-warning:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.app-shell .operations-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: center;
+}
+
+/* ==========================================================================
+   6. TABLES & TOOLBARS — same columns/actions, better hierarchy
+   ========================================================================== */
+.app-shell .operations-table-wrap,
+.app-shell .travel-km-table-wrap,
+.app-shell .table-wrap {
+  overflow: auto;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  background: #fff;
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .operations-table th,
+.app-shell .travel-km-table th,
+.app-shell .asset-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #f6fafd, #f1f6fb);
+  border-bottom: 1px solid var(--nk-border-strong);
+  color: var(--nk-navy-700);
+  font-size: var(--nk-fs-xs);
+  font-weight: 840;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-shell .operations-table td,
+.app-shell .travel-km-table td,
+.app-shell .asset-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef3f8;
+  color: var(--nk-text);
+  vertical-align: middle;
+}
+
+.app-shell .operations-table tbody tr,
+.app-shell .travel-km-table tbody tr,
+.app-shell .asset-table tbody tr {
+  transition: background var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-table tbody tr:hover,
+.app-shell .travel-km-table tbody tr:hover,
+.app-shell .asset-table tbody tr:hover {
+  background: color-mix(in srgb, var(--dept-accent) 5%, #fff);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--dept-accent) 65%, transparent);
+}
+
+.app-shell .operations-table td strong { color: var(--nk-text); }
+.app-shell .operations-table td small,
+.app-shell .travel-km-table td small,
+.app-shell .asset-table td small { color: var(--nk-text-muted); }
+
+.app-shell .operations-table a,
+.app-shell .finance-table a {
+  color: var(--nk-blue);
+  font-weight: 760;
+  text-decoration: none;
+}
+.app-shell .operations-table a:hover { text-decoration: underline; }
+
+.app-shell .operations-toolbar,
+.app-shell .finance-toolbar,
+.app-shell .finance-filter-toolbar,
+.app-shell .travel-km-filter-row,
+.app-shell .asset-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-shell .finance-filter-row label,
+.app-shell .finance-filter-group {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app-shell .finance-filter-row label > span,
+.app-shell .finance-filter-group > span {
+  color: var(--nk-text-muted);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.app-shell .filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-sm);
+}
+
+.app-shell .filter-summary strong {
+  color: var(--nk-text);
+  font-size: 1rem;
+}
+
+/* ==========================================================================
+   7. FORMS — clear labels, premium fields, comfortable density
+   ========================================================================== */
+.app-shell .operations-field,
+.app-shell .travel-km-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.app-shell .operations-field > span,
+.app-shell .travel-km-field > span {
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-xs);
+  font-weight: 810;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.app-shell .operations-field input,
+.app-shell .operations-field select,
+.app-shell .operations-field textarea,
+.app-shell .travel-km-field input,
+.app-shell .travel-km-field select,
+.app-shell .travel-km-field textarea,
+.app-shell .travel-km-filter-row input,
+.app-shell .travel-km-filter-row select,
+.app-shell .finance-filter-row input,
+.app-shell .finance-filter-row select,
+.app-shell .finance-search input,
+.app-shell .asset-detail input,
+.app-shell .asset-detail select {
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--nk-border-strong);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--nk-text);
+  font-family: inherit;
+  font-size: var(--nk-fs-md);
+  outline: none;
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-field textarea,
+.app-shell .travel-km-field textarea {
+  min-height: 96px;
+}
+
+.app-shell .operations-field input:focus,
+.app-shell .operations-field select:focus,
+.app-shell .operations-field textarea:focus,
+.app-shell .travel-km-field input:focus,
+.app-shell .travel-km-field select:focus,
+.app-shell .travel-km-field textarea:focus,
+.app-shell .travel-km-filter-row select:focus,
+.app-shell .travel-km-filter-row input:focus,
+.app-shell .finance-filter-row input:focus,
+.app-shell .finance-filter-row select:focus,
+.app-shell .finance-search input:focus,
+.app-shell .asset-detail input:focus,
+.app-shell .asset-detail select:focus {
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .operations-form-grid {
+  gap: 14px;
+}
+
+.app-shell .operations-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-sm);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.app-shell .operations-check input {
+  margin-top: 3px;
+  accent-color: var(--dept-accent);
+}
+
+.app-shell .operations-team-box {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  background: var(--nk-surface-soft);
+  padding: 12px;
+}
+
+/* ==========================================================================
+   8. ALERTS / BANNERS / NOTES
+   ========================================================================== */
+.app-shell .operations-alert,
+.app-shell .travel-km-error,
+.app-shell .travel-km-success,
+.app-shell .travel-km-warning,
+.app-shell .travel-km-readonly-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 15px;
+  border-radius: var(--nk-radius-md);
+  border: 1px solid transparent;
+  font-size: var(--nk-fs-md);
+  font-weight: 680;
+  line-height: 1.5;
+}
+
+.app-shell .operations-alert.success,
+.app-shell .travel-km-success {
+  border-color: color-mix(in srgb, var(--nk-success) 34%, transparent);
+  background: color-mix(in srgb, var(--nk-success) 9%, #fff);
+  color: #0d6b47;
+}
+
+.app-shell .operations-alert.error,
+.app-shell .travel-km-error {
+  border-color: color-mix(in srgb, var(--nk-danger) 34%, transparent);
+  background: color-mix(in srgb, var(--nk-danger) 8%, #fff);
+  color: #a1303c;
+}
+
+.app-shell .operations-alert.warning,
+.app-shell .travel-km-warning {
+  border-color: color-mix(in srgb, var(--nk-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--nk-warning) 10%, #fff);
+  color: #8a5a06;
+}
+
+.app-shell .travel-km-readonly-banner {
+  border-color: color-mix(in srgb, var(--nk-info) 30%, transparent);
+  background: color-mix(in srgb, var(--nk-info) 7%, #fff);
+  color: var(--nk-navy-700);
+}
+
+.app-shell .operations-note {
+  padding: 11px 14px;
+  border-left: 3px solid var(--dept-accent);
+  border-radius: 0 var(--nk-radius-sm) var(--nk-radius-sm) 0;
+  background: color-mix(in srgb, var(--dept-accent) 6%, #fff);
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-sm);
+  line-height: 1.55;
+}
+
+.app-shell .register-month-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 11px;
+  padding: 12px 16px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  background: linear-gradient(135deg, #ffffff, #f5fbff);
+  box-shadow: var(--nk-shadow-xs);
+  color: var(--nk-text-secondary);
+}
+
+.app-shell .register-month-banner strong { color: var(--nk-text); }
+.app-shell .register-month-banner svg { color: var(--dept-accent); flex: 0 0 auto; }
+.app-shell .register-month-banner.historical { border-color: color-mix(in srgb, var(--nk-warning) 40%, var(--nk-border)); }
+.app-shell .register-month-banner.live { border-color: color-mix(in srgb, var(--nk-success) 36%, var(--nk-border)); }
+
+/* ==========================================================================
+   9. EMPTY STATES — intelligent, calm, actionable containers
+   ========================================================================== */
+.app-shell .operations-empty,
+.app-shell .operations-empty-compact,
+.app-shell .finance-empty-state,
+.app-shell .travel-km-empty,
+.app-shell .sr-empty,
+.app-shell .loading-state,
+.app-shell .empty-state {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 34px 24px;
+  border: 1px dashed color-mix(in srgb, var(--dept-accent) 30%, var(--nk-border-strong));
+  border-radius: var(--nk-radius-lg);
+  background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--dept-accent) 6%, transparent), transparent 70%),
+    #fbfdff;
+  color: var(--nk-text-secondary);
+  text-align: center;
+}
+
+.app-shell .operations-empty::before,
+.app-shell .finance-empty-state::before,
+.app-shell .travel-km-empty::before,
+.app-shell .sr-empty::before,
+.app-shell .empty-state::before {
+  content: "";
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--dept-accent) 26%, #fff), #fff);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 30%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--dept-accent) 16%, transparent);
+}
+
+.app-shell .operations-empty strong,
+.app-shell .finance-empty-state strong,
+.app-shell .travel-km-empty strong,
+.app-shell .sr-empty strong,
+.app-shell .empty-state strong {
+  color: var(--nk-text);
+  font-size: var(--nk-fs-lg);
+  font-weight: 810;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .operations-empty p,
+.app-shell .finance-empty-state p,
+.app-shell .travel-km-empty p,
+.app-shell .empty-state p {
+  margin: 0;
+  max-width: 520px;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-md);
+  line-height: 1.6;
+}
+
+/* Inside a table cell the empty state stays compact — text only, no icon block */
+.app-shell .operations-table .operations-empty,
+.app-shell .asset-table .operations-empty {
+  padding: 20px 14px;
+  border: 0;
+  background: transparent;
+}
+
+.app-shell .operations-table .operations-empty::before,
+.app-shell .asset-table .operations-empty::before { display: none; }
+
+/* Premium empty state component (used by migrated pages) */
+.nk-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 40px 26px;
+  border: 1px dashed color-mix(in srgb, var(--dept-accent) 32%, var(--nk-border-strong));
+  border-radius: var(--nk-radius-xl);
+  background:
+    radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--dept-accent) 8%, transparent), transparent 72%),
+    #fbfdff;
+  text-align: center;
+}
+
+.nk-empty-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--dept-accent) 24%, #fff), #fff);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 30%, transparent);
+  color: color-mix(in srgb, var(--dept-accent) 80%, var(--nk-navy-800));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--dept-accent) 16%, transparent);
+}
+
+.nk-empty h3 {
+  margin: 4px 0 0;
+  color: var(--nk-text);
+  font-size: var(--nk-fs-lg);
+  font-weight: 820;
+  letter-spacing: -0.015em;
+}
+
+.nk-empty p {
+  margin: 0;
+  max-width: 520px;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-md);
+  line-height: 1.6;
+}
+
+.nk-empty .nk-empty-action { margin-top: 10px; }
+
+/* ==========================================================================
+   10. STATUS CHIPS / TABS / PAGINATION
+   ========================================================================== */
+.app-shell .operations-status,
+.app-shell .travel-km-status,
+.app-shell .finance-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-shell .operations-status { background: color-mix(in srgb, var(--dept-accent) 10%, #fff); border-color: color-mix(in srgb, var(--dept-accent) 26%, transparent); color: color-mix(in srgb, var(--dept-accent) 78%, var(--nk-navy-800)); }
+.app-shell .operations-status.success { background: color-mix(in srgb, var(--nk-success) 11%, #fff); border-color: color-mix(in srgb, var(--nk-success) 30%, transparent); color: #0d6b47; }
+.app-shell .operations-status.warning { background: color-mix(in srgb, var(--nk-warning) 12%, #fff); border-color: color-mix(in srgb, var(--nk-warning) 34%, transparent); color: #8a5a06; }
+.app-shell .operations-status.danger { background: color-mix(in srgb, var(--nk-danger) 10%, #fff); border-color: color-mix(in srgb, var(--nk-danger) 30%, transparent); color: #a1303c; }
+
+.app-shell .operations-tabs {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-shell .operations-tabs button {
+  border: 1px solid var(--nk-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--nk-text-secondary);
+  font-weight: 760;
+  transition: all var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-tabs button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  color: var(--nk-navy-700);
+}
+
+.app-shell .operations-tabs button.active {
+  background: linear-gradient(135deg, var(--nk-navy-700), var(--dept-accent));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--dept-accent) 26%, rgba(10, 55, 110, 0.3));
+}
+
+/* ==========================================================================
+   11. WORKFLOW / PROGRESS / TIMELINE
+   ========================================================================== */
+.app-shell .operations-progress,
+.app-shell .finance-breakdown-track,
+.app-shell .sr-bar-track {
+  background: #e9eff6;
+}
+
+.app-shell .operations-progress > span,
+.app-shell .finance-breakdown-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2));
+  transform-origin: left center;
+  animation: nk-grow-x 0.9s var(--nk-ease) both;
+}
+
+@keyframes nk-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.app-shell .operations-flow-step,
+.app-shell .travel-km-step {
+  border-color: color-mix(in srgb, var(--dept-accent) 26%, var(--nk-border));
+}
+
+.app-shell .operations-flow-step.active,
+.app-shell .travel-km-step.done {
+  border-color: color-mix(in srgb, var(--dept-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--dept-accent) 7%, #fff);
+}
+
+.app-shell .finance-timeline-item,
+.app-shell .travel-km-event {
+  border-color: color-mix(in srgb, var(--dept-accent) 22%, var(--nk-border));
+}
+
+.app-shell .finance-timeline-item strong,
+.app-shell .travel-km-event-body strong { color: var(--nk-text); }
+
+/* ==========================================================================
+   12. FINANCE FAMILY EXTRAS
+   ========================================================================== */
+.app-shell .finance-detail-facts { gap: 12px; }
+
+.app-shell .finance-fact {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  background: linear-gradient(180deg, #ffffff, #f9fcff);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .finance-fact span {
+  color: var(--nk-text-muted);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.app-shell .finance-fact strong {
+  color: var(--nk-text);
+  font-weight: 760;
+}
+
+.app-shell .finance-decision-box {
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 26%, var(--nk-border));
+  border-radius: var(--nk-radius-lg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--dept-accent) 5%, #fff), #fff);
+}
+
+.app-shell .finance-panel-subheading {
+  color: var(--nk-text);
+  font-weight: 810;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .finance-breakdown-row > div:first-child span { color: var(--nk-text); }
+.app-shell .finance-breakdown-row small { color: var(--nk-text-muted); }
+.app-shell .finance-breakdown-track i { animation: none; }
+
+.app-shell .finance-upload-zone {
+  border: 1.5px dashed color-mix(in srgb, var(--dept-accent) 40%, var(--nk-border-strong));
+  background: color-mix(in srgb, var(--dept-accent) 4%, #fff);
+}
+
+.app-shell .finance-help-text { color: var(--nk-text-muted); }
+
+/* ==========================================================================
+   13. IT ASSET REGISTER FAMILY
+   ========================================================================== */
+.app-shell .asset-filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 170px 190px auto;
+  gap: 10px;
+}
+
+.app-shell .asset-table-panel {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  background: #fff;
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .asset-table td:last-child { color: var(--nk-text-muted); }
+
+.app-shell .asset-detail {
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 24%, var(--nk-border));
+  border-radius: var(--nk-radius-xl);
+  background: linear-gradient(180deg, #ffffff, #f9fcff);
+}
+
+.app-shell .asset-detail h2 {
+  color: var(--nk-text);
+  letter-spacing: -0.02em;
+}
+
+.app-shell .asset-audit-summary {
+  border-color: color-mix(in srgb, var(--dept-accent) 24%, var(--nk-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--dept-accent) 6%, #fff), #f7fbfe);
+}
+
+.app-shell .asset-action-grid .secondary-button,
+.app-shell .asset-action-grid .danger-button {
+  justify-content: flex-start;
+  min-height: 40px;
+}
+
+.app-shell .asset-identity-banner {
+  background:
+    radial-gradient(ellipse at 88% -20%, color-mix(in srgb, var(--dept-accent) 55%, transparent), transparent 55%),
+    linear-gradient(115deg, #082f63 0%, #0b477d 72%, #087f98 100%);
+}
+
+.app-shell .asset-identity-banner h2,
+.app-shell .asset-identity-banner strong { color: #fff; }
+.app-shell .asset-identity-banner p { color: rgba(219, 236, 248, 0.85); }
+
+.app-shell .asset-form-section {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  background: #fff;
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .asset-form-section-heading h2 { color: var(--nk-text); letter-spacing: -0.015em; }
+.app-shell .asset-form-section-heading p { color: var(--nk-text-secondary); }
+.app-shell .asset-form-section-icon {
+  background: color-mix(in srgb, var(--dept-accent) 12%, #fff);
+  border-color: color-mix(in srgb, var(--dept-accent) 26%, transparent);
+  color: color-mix(in srgb, var(--dept-accent) 80%, var(--nk-navy-800));
+}
+
+.app-shell .asset-search-input {
+  border-color: var(--nk-border-strong);
+  background: #fff;
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .asset-search-input:focus-within {
+  border-color: color-mix(in srgb, var(--dept-accent) 60%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 13%, transparent);
+}
+
+.app-shell .asset-search-results {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-md);
+  background: #fff;
+  box-shadow: var(--nk-shadow-md);
+  overflow: hidden;
+}
+
+.app-shell .asset-search-results button {
+  transition: background var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .asset-search-results button:hover {
+  background: color-mix(in srgb, var(--dept-accent) 6%, #fff);
+}
+
+.app-shell .asset-form-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  padding: 12px 16px;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -10px 30px rgba(6, 32, 66, 0.08);
+}
+
+.app-shell .asset-form-sticky-actions span {
+  color: var(--nk-text-muted);
+  font-size: var(--nk-fs-sm);
+}
+
+/* ==========================================================================
+   14. MICRO-INTERACTIONS — once-only, professional, never distracting
+   ========================================================================== */
+.app-shell .panel,
+.app-shell .finance-panel,
+.app-shell .operations-panel,
+.app-shell .travel-km-panel,
+.app-shell .finance-claim-card {
+  animation: nk-fade-up 0.5s var(--nk-ease) both;
+}
+
+@keyframes nk-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Focus visibility for keyboard users across the whole shell */
+.app-shell button:focus-visible,
+.app-shell a:focus-visible,
+.app-shell input:focus-visible,
+.app-shell select:focus-visible,
+.app-shell textarea:focus-visible,
+.app-shell [role="tab"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dept-accent) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* Chart draw / grow once on first render (never loops) */
+.app-shell .sr-trend-line:not(.secondary) {
+  stroke-dasharray: 4200;
+  stroke-dashoffset: 4200;
+  animation: nk-draw 1.5s var(--nk-ease) 0.15s forwards;
+}
+
+@keyframes nk-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.app-shell .sr-column {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: nk-grow-y 0.8s var(--nk-ease) both;
+}
+
+@keyframes nk-grow-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+/* ==========================================================================
+   15. ARCHETYPE SLOTS — department KPI summary strips under dashboards
+   ========================================================================== */
+.nk-ops-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.nk-wb-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.nk-ops-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.nk-ops-meta .nk-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--nk-border);
+  background: #fff;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-xs);
+  font-weight: 780;
+}
+
+.nk-ops-meta .nk-meta-chip svg { color: var(--dept-accent); }
+
+/* Semantic chip tones — readiness / warning states stay legible on any hero */
+.nk-meta-chip-ok {
+  border-color: color-mix(in srgb, var(--nk-success, #16a34a) 42%, var(--nk-border));
+  background: color-mix(in srgb, var(--nk-success, #16a34a) 9%, #fff);
+  color: color-mix(in srgb, var(--nk-success, #16a34a) 78%, var(--nk-text));
+}
+
+.nk-meta-chip-warn {
+  border-color: color-mix(in srgb, var(--nk-warning, #d97706) 42%, var(--nk-border));
+  background: color-mix(in srgb, var(--nk-warning, #d97706) 9%, #fff);
+  color: color-mix(in srgb, var(--nk-warning, #d97706) 78%, var(--nk-text));
+}
+
+/* Compact command strip: headline KPIs sit directly under the identity head.
+   Deliberately denser than the body KPI grid so "headline vs detail" reads. */
+.nk-ops-summary .stat-card,
+.nk-wb-summary .stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border-radius: var(--nk-radius-lg);
+  overflow: hidden;
+}
+
+.nk-ops-summary .stat-card::after,
+.nk-wb-summary .stat-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -30% -60% auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--nk-tone, var(--dept-accent)) 16%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+.nk-ops-summary .stat-icon,
+.nk-wb-summary .stat-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+}
+
+.nk-ops-summary .stat-icon svg,
+.nk-wb-summary .stat-icon svg { width: 19px; height: 19px; }
+
+.nk-ops-summary .stat-card p,
+.nk-wb-summary .stat-card p {
+  margin: 0 0 2px;
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.nk-ops-summary .stat-card strong,
+.nk-wb-summary .stat-card strong {
+  display: block;
+  font-size: clamp(1.15rem, 1.5vw, 1.4rem);
+  font-weight: 830;
+  line-height: 1.15;
+}
+
+.nk-ops-summary .stat-card small,
+.nk-wb-summary .stat-card small {
+  display: block;
+  margin-top: 2px;
+  color: var(--nk-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* ==========================================================================
+   16. SHELL — department-accented navigation identity (structure unchanged)
+   ========================================================================== */
+.app-shell .sidebar nav a.active {
+  background:
+    radial-gradient(circle at 0% 50%, color-mix(in srgb, var(--dept-accent) 34%, transparent), transparent 70%),
+    linear-gradient(90deg, color-mix(in srgb, var(--dept-accent) 30%, transparent), rgba(255, 255, 255, 0.05));
+  border-color: color-mix(in srgb, var(--dept-accent) 55%, transparent);
+  box-shadow:
+    inset 3px 0 0 var(--dept-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 20px rgba(2, 16, 31, 0.32),
+    0 0 18px color-mix(in srgb, var(--dept-accent) 26%, transparent);
+}
+
+.app-shell .sidebar nav a.active svg {
+  color: color-mix(in srgb, var(--dept-accent) 55%, #ffffff);
+}
+
+.app-shell .sidebar-department-card {
+  border-color: color-mix(in srgb, var(--dept-accent) 34%, rgba(255, 255, 255, 0.14));
+}
+
+.app-shell .sidebar .logo-lockup::after {
+  background: linear-gradient(90deg, transparent, var(--dept-accent), transparent);
+  opacity: 0.6;
+}
+
+/* ==========================================================================
+   17. RESPONSIVE
+   ========================================================================== */
+@media (max-width: 1100px) {
+  .app-shell .asset-filters { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 760px) {
+  .app-shell .operations-stats-grid,
+  .app-shell .stats-grid,
+  .app-shell .travel-km-stat-grid,
+  .app-shell .finance-kpi-grid,
+  .nk-ops-summary,
+  .nk-wb-summary { grid-template-columns: 1fr 1fr; }
+
+  .app-shell .asset-filters { grid-template-columns: 1fr; }
+  .app-shell .operations-form-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .app-shell .operations-stats-grid,
+  .app-shell .stats-grid,
+  .app-shell .travel-km-stat-grid,
+  .app-shell .finance-kpi-grid,
+  .nk-ops-summary,
+  .nk-wb-summary { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   17. REDUCED MOTION — show everything instantly, no loops
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .panel,
+  .app-shell .finance-panel,
+  .app-shell .operations-panel,
+  .app-shell .travel-km-panel,
+  .app-shell .finance-claim-card {
+    animation: none;
+  }
+
+  .app-shell .operations-progress > span,
+  .app-shell .finance-breakdown-track i {
+    animation: none;
+  }
+
+  .app-shell .sr-trend-line:not(.secondary) {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+
+  .app-shell .sr-column {
+    animation: none;
+    transform: none;
+  }
+
+  .app-shell .operations-stats-grid > *,
+  .app-shell .stats-grid > *,
+  .app-shell .travel-km-stat {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   18. INTERACTION POLISH — entrance, hover elevation, glow, button language
+   Applied globally so every authenticated page feels like one product.
+   ========================================================================== */
+
+/* --- Buttons: one premium action family across IT / Drone / legacy pages --- */
+.app-shell .primary-button,
+.app-shell .secondary-button,
+.app-shell .danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 15px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 790;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    transform var(--nk-dur-fast) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .primary-button {
+  background: linear-gradient(135deg, var(--nk-navy-700), var(--nk-blue) 62%, var(--dept-accent));
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(10, 55, 110, 0.2);
+}
+
+.app-shell .primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 13px 27px rgba(10, 55, 110, 0.27);
+  filter: saturate(1.05);
+}
+
+.app-shell .secondary-button {
+  background: #fff;
+  border-color: var(--nk-border-strong);
+  color: var(--nk-navy-700);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .secondary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dept-accent) 55%, var(--nk-border-strong));
+  background: color-mix(in srgb, var(--dept-accent) 5%, #fff);
+  color: var(--nk-navy-800);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .danger-button {
+  background: linear-gradient(135deg, #c24351, var(--nk-danger));
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(194, 67, 81, 0.2);
+}
+
+.app-shell .danger-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 13px 27px rgba(194, 67, 81, 0.28);
+}
+
+.app-shell .primary-button:disabled,
+.app-shell .secondary-button:disabled,
+.app-shell .danger-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* --- Context chips: gentle lift + accent glow on hover --- */
+.nk-ops-meta .nk-meta-chip {
+  transition:
+    transform var(--nk-dur-fast) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.nk-ops-meta .nk-meta-chip:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  background: color-mix(in srgb, var(--dept-accent) 6%, #fff);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--dept-accent) 14%, rgba(7, 37, 74, 0.08));
+}
+
+/* --- Module cards: hover elevation + top glow --- */
+.app-shell .module-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    transform var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .module-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--dept-accent) 12%, transparent), transparent 68%);
+  transition: opacity var(--nk-dur) var(--nk-ease);
+  pointer-events: none;
+}
+
+.app-shell .module-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  box-shadow:
+    0 20px 42px rgba(7, 37, 74, 0.13),
+    0 0 0 1px color-mix(in srgb, var(--dept-accent) 24%, transparent);
+}
+
+.app-shell .module-card:hover::after { opacity: 1; }
+.app-shell .module-card > svg { color: var(--dept-accent); transition: transform var(--nk-dur) var(--nk-ease); }
+.app-shell .module-card:hover > svg { transform: translateY(-2px) scale(1.06); }
+
+/* --- Panel / card glow on hover (accent-tinted, never loud) --- */
+.app-shell .operations-panel:hover,
+.app-shell .travel-km-panel:hover,
+.app-shell .reporting-panel:hover,
+.app-shell .finance-claim-card:hover {
+  box-shadow:
+    var(--nk-shadow-md),
+    0 0 0 1px color-mix(in srgb, var(--dept-accent) 18%, transparent);
+}
+
+.app-shell .operations-daily-card,
+.app-shell .reporting-department-card,
+.app-shell .reporting-summary-card,
+.app-shell .linked-records > div,
+.app-shell .drone-asset-row,
+.app-shell .asset-search-results button {
+  transition:
+    transform var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-daily-card:hover,
+.app-shell .reporting-department-card:hover,
+.app-shell .reporting-summary-card:hover,
+.app-shell .linked-records > div:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--dept-accent) 34%, var(--nk-border));
+  box-shadow: 0 14px 30px rgba(7, 37, 74, 0.1);
+}
+
+/* --- Workflow selectors (billing pipeline, module switch, tree rows) --- */
+.app-shell .operations-workflow-tree button,
+.app-shell .work-mode-switch button,
+.app-shell .agent-monitor-stats button {
+  transition:
+    transform var(--nk-dur-fast) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .operations-workflow-tree button:hover,
+.app-shell .work-mode-switch button:hover,
+.app-shell .agent-monitor-stats button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  box-shadow: var(--nk-shadow-sm);
+}
+
+/* --- Page entrance: every top-level block settles in once, never loops --- */
+.app-shell .operations-page > *,
+.app-shell .finance-page > *,
+.app-shell .travel-km-page > *,
+.app-shell .asset-register-page > * {
+  animation: nk-fade-up 0.45s var(--nk-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .operations-page > *,
+  .app-shell .finance-page > *,
+  .app-shell .travel-km-page > *,
+  .app-shell .asset-register-page > * {
+    animation: none;
+  }
+
+  .app-shell .primary-button,
+  .app-shell .secondary-button,
+  .app-shell .danger-button,
+  .app-shell .module-card,
+  .app-shell .module-card > svg,
+  .app-shell .operations-daily-card,
+  .app-shell .reporting-department-card,
+  .app-shell .reporting-summary-card,
+  .app-shell .linked-records > div,
+  .nk-ops-meta .nk-meta-chip {
+    transition: none;
+  }
+
+  .app-shell .module-card:hover,
+  .app-shell .operations-daily-card:hover,
+  .app-shell .reporting-department-card:hover,
+  .app-shell .reporting-summary-card:hover,
+  .app-shell .linked-records > div:hover,
+  .app-shell .primary-button:hover:not(:disabled),
+  .app-shell .secondary-button:hover:not(:disabled),
+  .app-shell .danger-button:hover:not(:disabled),
+  .nk-ops-meta .nk-meta-chip:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   19. PREMIUM SURFACE SYSTEM — one glass/panel/filter/table/form language
+   applied to every authenticated page so the whole ERP reads as one product.
+   ========================================================================== */
+
+/* --- Content panels: light glass, accent hairline, inner top highlight --- */
+.app-shell .panel,
+.app-shell .panel-card,
+.app-shell .finance-panel,
+.app-shell .operations-panel,
+.app-shell .travel-km-panel,
+.app-shell .reporting-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(249, 252, 255, 0.99));
+  backdrop-filter: blur(14px) saturate(1.08);
+  -webkit-backdrop-filter: blur(14px) saturate(1.08);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 16%, var(--nk-border));
+  box-shadow:
+    var(--nk-shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.app-shell .panel:hover,
+.app-shell .panel-card:hover,
+.app-shell .finance-panel:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 32%, var(--nk-border));
+  box-shadow:
+    var(--nk-shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+/* Panel headings share one hierarchy */
+.app-shell .panel-heading h2,
+.app-shell .panel-heading h3,
+.app-shell .panel-title-row h2,
+.app-shell .panel-title-row h3,
+.app-shell .finance-panel-header h2 {
+  color: var(--nk-text);
+  font-weight: 820;
+  letter-spacing: -0.018em;
+}
+
+.app-shell .panel-heading small,
+.app-shell .panel-helper {
+  color: var(--nk-text-muted);
+}
+
+/* --- KPI cards: tone accent rail + soft highlight + glow on hover --- */
+.app-shell .stat-card::before,
+.app-shell .sr-kpi-grid article::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: var(--nk-radius-lg) var(--nk-radius-lg) 0 0;
+  background: linear-gradient(90deg, var(--nk-tone), color-mix(in srgb, var(--nk-tone) 20%, transparent));
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.app-shell .stat-card::after,
+.app-shell .sr-kpi-grid article::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  bottom: -34px;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--nk-tone) 14%, transparent), transparent 70%);
+  opacity: 0;
+  transition: opacity var(--nk-dur) var(--nk-ease);
+  pointer-events: none;
+}
+
+.app-shell .stat-card:hover::after,
+.app-shell .sr-kpi-grid article:hover::after { opacity: 1; }
+.app-shell .stat-card,
+.app-shell .sr-kpi-grid article { overflow: hidden; }
+.app-shell .stat-card strong,
+.app-shell .sr-kpi-grid article strong { position: relative; z-index: 1; }
+.app-shell .stat-card p,
+.app-shell .stat-card small,
+.app-shell .sr-kpi-grid article p,
+.app-shell .sr-kpi-grid article small,
+.app-shell .sr-kpi-grid article span { position: relative; z-index: 1; }
+
+/* Legacy KPI boxes (finance / travel / business) inherit the same language */
+.app-shell .finance-kpi-card,
+.app-shell .travel-km-stat {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .finance-kpi-card::after,
+.app-shell .travel-km-stat::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--kpi-accent, var(--dept-accent)), transparent 72%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.app-shell .finance-kpi-card:hover,
+.app-shell .travel-km-stat:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--nk-shadow-md), 0 0 0 1px color-mix(in srgb, var(--dept-accent) 20%, transparent);
+}
+
+/* --- Filters: one premium control bar language --- */
+.app-shell .filter-panel,
+.app-shell .activity-filter-panel,
+.app-shell .finance-report-control-panel,
+.app-shell .table-toolbar,
+.app-shell .ticket-list-toolbar,
+.app-shell .drone-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 14%, var(--nk-border));
+  border-radius: var(--nk-radius-lg);
+  background: linear-gradient(180deg, rgba(247, 251, 255, 0.94), rgba(255, 255, 255, 0.98));
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .filter-panel input,
+.app-shell .filter-panel select,
+.app-shell .activity-filter-panel input,
+.app-shell .activity-filter-panel select,
+.app-shell .table-toolbar input,
+.app-shell .table-toolbar select,
+.app-shell .ticket-list-toolbar input,
+.app-shell .ticket-list-toolbar select,
+.app-shell .search-field input,
+.app-shell .ticket-search input,
+.app-shell .finance-report-control-panel select,
+.app-shell .finance-report-control-panel input {
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid var(--nk-border-strong);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--nk-text);
+  font-family: inherit;
+  font-size: var(--nk-fs-md);
+  outline: none;
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .filter-panel input:focus,
+.app-shell .filter-panel select:focus,
+.app-shell .activity-filter-panel input:focus,
+.app-shell .activity-filter-panel select:focus,
+.app-shell .table-toolbar input:focus,
+.app-shell .table-toolbar select:focus,
+.app-shell .ticket-list-toolbar input:focus,
+.app-shell .ticket-list-toolbar select:focus,
+.app-shell .search-field input:focus,
+.app-shell .ticket-search input:focus,
+.app-shell .finance-report-control-panel select:focus,
+.app-shell .finance-report-control-panel input:focus {
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .search-field,
+.app-shell .ticket-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  padding: 0 12px;
+  border: 1px solid var(--nk-border-strong);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--nk-text-muted);
+}
+
+.app-shell .search-field:focus-within,
+.app-shell .ticket-search:focus-within {
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .search-field input,
+.app-shell .ticket-search input {
+  border: 0 !important;
+  box-shadow: none !important;
+  padding-left: 0;
+  background: transparent;
+}
+
+/* --- Tables: zebra + raised hover (hover rules re-stated to win) --- */
+.app-shell .operations-table tbody tr:nth-child(even),
+.app-shell .finance-table tbody tr:nth-child(even),
+.app-shell .travel-km-table tbody tr:nth-child(even),
+.app-shell .asset-table tbody tr:nth-child(even),
+.app-shell .reporting-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--dept-accent) 3%, #fff);
+}
+
+.app-shell .operations-table tbody tr:hover,
+.app-shell .finance-table tbody tr:hover,
+.app-shell .travel-km-table tbody tr:hover,
+.app-shell .asset-table tbody tr:hover,
+.app-shell .reporting-table tbody tr:hover {
+  background: color-mix(in srgb, var(--dept-accent) 7%, #fff);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--dept-accent) 65%, transparent);
+}
+
+.app-shell .finance-table th,
+.app-shell .reporting-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, #f6fafd, #f1f6fb);
+  border-bottom: 1px solid var(--nk-border-strong);
+  color: var(--nk-navy-700);
+  font-size: var(--nk-fs-xs);
+  font-weight: 840;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* --- Forms: one premium field language everywhere --- */
+.app-shell .data-form label,
+.app-shell .activity-form-grid > label,
+.app-shell .asset-full-page-form > label,
+.app-shell .asset-full-page-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-xs);
+  font-weight: 810;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.app-shell .data-form input,
+.app-shell .data-form select,
+.app-shell .data-form textarea,
+.app-shell .activity-form-grid input,
+.app-shell .activity-form-grid select,
+.app-shell .activity-form-grid textarea,
+.app-shell .asset-full-page-form input,
+.app-shell .asset-full-page-form select,
+.app-shell .asset-full-page-form textarea {
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--nk-border-strong);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--nk-text);
+  font-family: inherit;
+  font-size: var(--nk-fs-md);
+  text-transform: none;
+  letter-spacing: normal;
+  outline: none;
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .data-form textarea,
+.app-shell .activity-form-grid textarea,
+.app-shell .asset-full-page-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.app-shell .data-form input:focus,
+.app-shell .data-form select:focus,
+.app-shell .data-form textarea:focus,
+.app-shell .activity-form-grid input:focus,
+.app-shell .activity-form-grid select:focus,
+.app-shell .activity-form-grid textarea:focus,
+.app-shell .asset-full-page-form input:focus,
+.app-shell .asset-full-page-form select:focus,
+.app-shell .asset-full-page-form textarea:focus {
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .form-guidance {
+  padding: 11px 14px;
+  border-left: 3px solid var(--dept-accent);
+  border-radius: 0 var(--nk-radius-sm) var(--nk-radius-sm) 0;
+  background: color-mix(in srgb, var(--dept-accent) 6%, #fff);
+  color: var(--nk-text-secondary);
+  font-size: var(--nk-fs-sm);
+  line-height: 1.55;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Department identity also carries through panel labels and visual accents. */
+.app-shell .section-kicker,
+.app-shell .operations-kicker,
+.app-shell .finance-panel-kicker,
+.app-shell .sr-panel-heading > div > span,
+.app-shell .sr-target-heading > div > span,
+.app-shell .sr-viz-toolbar > div > span {
+  color: var(--dept-accent);
+}
+
+.app-shell .bar-track div,
+.app-shell .operations-progress > span,
+.app-shell .sr-bar-track i,
+.app-shell .sr-target-progress i,
+.app-shell .sr-target-dept-track i {
+  background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .stat-card::after,
+  .app-shell .finance-kpi-card,
+  .app-shell .travel-km-stat {
+    transition: none;
+  }
+}
+
+/* ========================================================================== 
+   20. DASHBOARD KPI PARITY — Sales / Revenue is the sizing reference
+   ========================================================================== */
+.app-shell .stat-card,
+.app-shell .sr-kpi-grid article,
+.app-shell .finance-kpi-card[data-kpi] {
+  min-width: 0;
+  min-height: 122px;
+  padding: 18px;
+  border-radius: var(--nk-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--nk-tone, var(--kpi-accent, var(--dept-kpi-primary))) 26%, var(--nk-border));
+  background:
+    radial-gradient(circle at 96% -14%, color-mix(in srgb, var(--nk-tone, var(--kpi-accent, var(--dept-kpi-primary))) 16%, transparent), transparent 50%),
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: var(--nk-shadow-sm);
+  transition:
+    transform var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .stat-card { --nk-tone: var(--dept-kpi-primary); gap: 12px; }
+.app-shell .stat-card.tone-blue,
+.app-shell .stat-card.tone-navy { --nk-tone: var(--dept-kpi-primary); }
+.app-shell .stat-card.tone-cyan,
+.app-shell .stat-card.tone-teal { --nk-tone: var(--dept-kpi-secondary); }
+.app-shell .stat-card.tone-purple { --nk-tone: var(--dept-kpi-tertiary); }
+.app-shell .stat-card.tone-green { --nk-tone: var(--dept-kpi-positive); }
+.app-shell .stat-card.tone-orange { --nk-tone: var(--dept-kpi-warning); }
+.app-shell .stat-card.tone-red { --nk-tone: var(--dept-kpi-danger); }
+
+.app-shell .sr-kpi-grid article[data-kpi],
+.app-shell .finance-kpi-card[data-kpi] { --nk-tone: var(--kpi-accent); }
+
+.app-shell .stat-card:hover,
+.app-shell .sr-kpi-grid article:hover,
+.app-shell .finance-kpi-card[data-kpi]:hover {
+  transform: translateY(-3px) scale(1.01);
+  border-color: color-mix(in srgb, var(--nk-tone) 50%, var(--nk-border));
+  box-shadow:
+    var(--nk-shadow-md),
+    0 10px 28px color-mix(in srgb, var(--nk-tone) 20%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--nk-tone) 18%, transparent);
+}
+
+.app-shell .stat-icon,
+.app-shell .sr-kpi-grid article[data-kpi] > svg,
+.app-shell .finance-kpi-card[data-kpi] > span svg {
+  box-sizing: border-box;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 0;
+  background: color-mix(in srgb, var(--nk-tone) 13%, #fff);
+  color: var(--nk-tone);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--nk-tone) 25%, transparent),
+    0 7px 18px color-mix(in srgb, var(--nk-tone) 12%, transparent);
+}
+
+.app-shell .stat-card > div:last-child { min-width: 0; }
+
+.app-shell .stat-card p,
+.app-shell .sr-kpi-grid article > span,
+.app-shell .finance-kpi-card[data-kpi] > span {
+  margin: 0 0 4px;
+  color: var(--nk-tone);
+  font-size: 0.72rem;
+  font-weight: 820;
+  line-height: 1.35;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.app-shell .stat-card strong,
+.app-shell .sr-kpi-grid article strong,
+.app-shell .finance-kpi-card[data-kpi] strong {
+  display: block;
+  color: var(--nk-text);
+  font-size: 1.62rem;
+  font-weight: 830;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .stat-card small,
+.app-shell .sr-kpi-grid article small,
+.app-shell .finance-kpi-card[data-kpi] small {
+  display: block;
+  margin-top: 4px;
+  color: var(--nk-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+/* Summary KPIs use the same physical card rather than a smaller derivative. */
+.nk-ops-summary .stat-card,
+.nk-wb-summary .stat-card {
+  min-height: 122px;
+  padding: 18px;
+  gap: 12px;
+}
+
+.nk-ops-summary .stat-icon,
+.nk-wb-summary .stat-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.nk-ops-summary .stat-icon svg,
+.nk-wb-summary .stat-icon svg { width: 22px; height: 22px; }
+
+.nk-ops-summary .stat-card p,
+.nk-wb-summary .stat-card p { font-size: 0.72rem; }
+
+.nk-ops-summary .stat-card strong,
+.nk-wb-summary .stat-card strong { font-size: 1.62rem; }
+
+.nk-ops-summary .stat-card small,
+.nk-wb-summary .stat-card small { font-size: 0.72rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .stat-card,
+  .app-shell .sr-kpi-grid article,
+  .app-shell .finance-kpi-card[data-kpi] { transition: none; }
+
+  .app-shell .stat-card:hover,
+  .app-shell .sr-kpi-grid article:hover,
+  .app-shell .finance-kpi-card[data-kpi]:hover { transform: none; }
+}
+
+/* ==========================================================================
+   20. FEATURE-LOCAL FAMILIES — Commercial · Data Quality · Copilot
+   Mapped onto the shared design-system language. Selectors only; the legacy
+   feature CSS keeps its original cascade and no behaviour changes.
+   ========================================================================== */
+
+/* --- Commercial: panels share the glass language --- */
+.app-shell .commercial-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(249, 252, 255, 0.99));
+  backdrop-filter: blur(14px) saturate(1.08);
+  -webkit-backdrop-filter: blur(14px) saturate(1.08);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 16%, var(--nk-border));
+  box-shadow:
+    var(--nk-shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .commercial-panel:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 32%, var(--nk-border));
+  box-shadow:
+    var(--nk-shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .commercial-panel h2,
+.app-shell .commercial-panel h3 {
+  color: var(--nk-text);
+  font-weight: 820;
+  letter-spacing: -0.018em;
+}
+
+/* Commercial KPI boxes adopt the unified KPI card: accent rail, glow, lift */
+.app-shell .commercial-kpi {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--nk-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 22%, var(--nk-border));
+  background: linear-gradient(180deg, #ffffff, #f8fcff);
+  box-shadow: var(--nk-shadow-xs);
+  transition:
+    transform var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .commercial-kpi::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--dept-accent), transparent 72%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.app-shell .commercial-kpi::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  bottom: -34px;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--dept-accent) 14%, transparent), transparent 70%);
+  opacity: 0;
+  transition: opacity var(--nk-dur) var(--nk-ease);
+  pointer-events: none;
+}
+
+.app-shell .commercial-kpi:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--dept-accent) 42%, var(--nk-border));
+  box-shadow: var(--nk-shadow-md);
+}
+
+.app-shell .commercial-kpi:hover::after { opacity: 1; }
+.app-shell .commercial-kpi span,
+.app-shell .commercial-kpi strong { position: relative; z-index: 1; }
+.app-shell .commercial-kpi span { color: var(--nk-text-muted); letter-spacing: 0.07em; }
+.app-shell .commercial-kpi strong { color: var(--nk-text); font-weight: 830; letter-spacing: -0.02em; }
+
+/* Commercial buttons/fields/tables join the unified control language */
+.app-shell .commercial-button {
+  border-radius: 11px;
+  font-weight: 780;
+  letter-spacing: 0.01em;
+  box-shadow: var(--nk-shadow-xs);
+  transition:
+    transform var(--nk-dur-fast) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .commercial-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--dept-accent) 24%, rgba(7, 37, 74, 0.12));
+}
+
+.app-shell .commercial-field input,
+.app-shell .commercial-field select,
+.app-shell .commercial-field textarea {
+  border-radius: 11px;
+  border-color: var(--nk-border-strong);
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .commercial-field input:focus,
+.app-shell .commercial-field select:focus,
+.app-shell .commercial-field textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .commercial-table th {
+  color: var(--nk-navy-700);
+  font-weight: 840;
+  letter-spacing: 0.07em;
+  border-bottom: 1px solid var(--nk-border-strong);
+}
+
+.app-shell .commercial-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--dept-accent) 3%, #fff); }
+
+.app-shell .commercial-table tbody tr:hover {
+  background: color-mix(in srgb, var(--dept-accent) 7%, #fff);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--dept-accent) 65%, transparent);
+}
+
+.app-shell .commercial-project-button {
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease);
+}
+
+.app-shell .commercial-project-button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .commercial-project-button.active {
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dept-accent) 15%, transparent);
+}
+
+.app-shell .commercial-kicker { color: var(--nk-text-muted); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.app-shell .commercial-note { border-left-color: var(--dept-accent); }
+.app-shell .commercial-bar-track i { background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2)); }
+.app-shell .commercial-empty { border-color: color-mix(in srgb, var(--dept-accent) 32%, var(--nk-border-strong)); }
+
+/* --- Data Quality Centre: findings + controls join the system --- */
+.app-shell .data-quality-controls {
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 14%, var(--nk-border));
+  border-radius: var(--nk-radius-lg);
+  background: linear-gradient(180deg, rgba(247, 251, 255, 0.94), rgba(255, 255, 255, 0.98));
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .data-quality-controls input,
+.app-shell .data-quality-controls select {
+  border-radius: 11px;
+  border-color: var(--nk-border-strong);
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .data-quality-controls input:focus,
+.app-shell .data-quality-controls select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+.app-shell .data-quality-issue {
+  border-radius: var(--nk-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 18%, var(--nk-border));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 253, 255, 0.99));
+  box-shadow: var(--nk-shadow-xs);
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .data-quality-issue:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--dept-accent) 36%, var(--nk-border));
+  box-shadow: var(--nk-shadow-md);
+}
+
+.app-shell .data-quality-safety-banner {
+  border-radius: var(--nk-radius-lg);
+}
+
+.app-shell .data-quality-refresh {
+  border-radius: 11px;
+}
+
+/* --- Naksha Copilot: cards + compose field on the shared surface --- */
+.app-shell .copilot-card {
+  border-radius: var(--nk-radius-xl);
+  border: 1px solid color-mix(in srgb, var(--dept-accent) 16%, var(--nk-border));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(249, 252, 255, 0.99));
+  box-shadow:
+    var(--nk-shadow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.app-shell .copilot-card-heading span { color: var(--nk-text); font-weight: 820; }
+.app-shell .copilot-card-heading small { color: var(--nk-text-muted); }
+
+.app-shell .copilot-month-trigger,
+.app-shell .copilot-compose textarea {
+  transition:
+    border-color var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .copilot-month-trigger:focus-within,
+.app-shell .copilot-compose textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--dept-accent) 65%, var(--nk-border-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dept-accent) 14%, transparent);
+}
+
+/* --- Reduced motion: feature-local hovers settle instantly --- */
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .commercial-kpi,
+  .app-shell .commercial-button,
+  .app-shell .commercial-project-button,
+  .app-shell .data-quality-issue { transition: none; }
+
+  .app-shell .commercial-kpi:hover,
+  .app-shell .commercial-button:hover:not(:disabled),
+  .app-shell .commercial-project-button:hover,
+  .app-shell .data-quality-issue:hover { transform: none; }
+}

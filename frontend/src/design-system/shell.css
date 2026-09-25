@@ -1,0 +1,254 @@
+/* ==========================================================================
+   NakshaTech Design System — Shell (Sidebar + Top Header)
+   Visual redesign only. Navigation structure, roles and routes unchanged.
+   ========================================================================== */
+
+/* Deep navy sidebar surface */
+.app-shell .sidebar {
+  background:
+    radial-gradient(circle at 30% 0%, rgba(8, 184, 217, 0.18), transparent 28%),
+    radial-gradient(circle at 100% 80%, rgba(18, 106, 232, 0.14), transparent 35%),
+    linear-gradient(180deg, var(--nk-navy-850) 0%, var(--nk-navy-900) 48%, var(--nk-navy-950) 100%);
+  border-right: 1px solid rgba(120, 175, 215, 0.14);
+  box-shadow: 8px 0 28px rgba(3, 18, 38, 0.22);
+}
+
+.app-shell .sidebar::before {
+  opacity: 0.05;
+  background-size: 40px 40px;
+}
+
+/* Atmospheric geospatial / terrain treatment at the sidebar base */
+.app-shell .sidebar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 50% 130%, rgba(8, 184, 217, 0.35), transparent 60%),
+    url("/welcome-terrain-relief-reference.webp") center bottom / cover no-repeat;
+  opacity: 0.16;
+  mask-image: linear-gradient(to top, #000 10%, transparent 92%);
+}
+
+/* Brand block */
+.app-shell .sidebar .logo-lockup {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.app-shell .sidebar .logo-lockup.compact img {
+  filter: drop-shadow(0 4px 14px rgba(8, 184, 217, 0.35));
+}
+
+.app-shell .sidebar-title strong {
+  letter-spacing: 0.02em;
+  font-weight: 780;
+  background: linear-gradient(90deg, #ffffff, #b9ecf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.app-shell .sidebar-title span {
+  color: var(--nk-text-on-dark-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.6rem;
+  font-weight: 750;
+}
+
+.app-shell .sidebar-section-label {
+  color: rgba(140, 175, 205, 0.85);
+  letter-spacing: 0.18em;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Nav groups */
+.app-shell .sidebar-group-toggle {
+  color: rgba(170, 200, 225, 0.92);
+  border-radius: var(--nk-radius-sm);
+  letter-spacing: 0.04em;
+  font-weight: 750;
+  transition: color var(--nk-dur) var(--nk-ease), background var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .sidebar-group-toggle:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Nav items — premium active indicator */
+.app-shell .sidebar nav a {
+  color: #c5d7e8;
+  border: 1px solid transparent;
+  border-radius: var(--nk-radius-md);
+  transition:
+    background var(--nk-dur) var(--nk-ease),
+    color var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease);
+}
+
+.app-shell .sidebar nav a svg {
+  color: #8fadc7;
+  transition: color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .sidebar nav a:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(160, 210, 240, 0.14);
+  transform: translateX(2px);
+}
+
+.app-shell .sidebar nav a:hover svg { color: #b9ecf8; }
+
+.app-shell .sidebar nav a.active {
+  color: #fff;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(8, 184, 217, 0.28), transparent 70%),
+    linear-gradient(90deg, rgba(8, 184, 217, 0.24), rgba(18, 106, 232, 0.18));
+  border-color: rgba(8, 184, 217, 0.42);
+  box-shadow:
+    inset 3px 0 0 var(--nk-cyan),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 20px rgba(2, 16, 31, 0.32),
+    0 0 18px rgba(8, 184, 217, 0.18);
+  transform: translateX(2px);
+}
+
+.app-shell .sidebar nav a.active svg { color: #5ce0f5; }
+
+/* Account card */
+.app-shell .sidebar-footer-toggle {
+  color: rgba(160, 190, 215, 0.9);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.app-shell .sidebar-department-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: background var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .sidebar-department-card:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(8, 184, 217, 0.08));
+  border-color: rgba(8, 184, 217, 0.45);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(2, 16, 31, 0.3);
+}
+
+.app-shell .user-avatar {
+  background: linear-gradient(135deg, var(--nk-cyan), var(--nk-blue));
+  border-color: rgba(140, 230, 248, 0.4);
+  box-shadow: 0 4px 14px rgba(8, 184, 217, 0.35);
+}
+
+/* Premium logout treatment */
+.app-shell .sidebar .ghost-button {
+  border: 1px solid rgba(217, 83, 95, 0.35);
+  background: linear-gradient(135deg, rgba(217, 83, 95, 0.16), rgba(217, 83, 95, 0.06));
+  color: #ffb9c1;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  transition: background var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease),
+    color var(--nk-dur) var(--nk-ease), transform var(--nk-dur-fast) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .sidebar .ghost-button:hover {
+  color: #fff;
+  border-color: rgba(217, 83, 95, 0.65);
+  background: linear-gradient(135deg, rgba(217, 83, 95, 0.34), rgba(217, 83, 95, 0.16));
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(217, 83, 95, 0.22);
+}
+
+/* Translucent top header */
+.app-shell .topbar {
+  background: rgba(252, 254, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid rgba(216, 228, 239, 0.85);
+  box-shadow: 0 6px 22px rgba(6, 32, 66, 0.05);
+}
+
+.app-shell .topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(8, 184, 217, 0.35), rgba(18, 106, 232, 0.25), transparent);
+  pointer-events: none;
+}
+
+.app-shell .topbar-back {
+  min-height: 36px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--nk-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--nk-navy-700);
+  font-weight: 700;
+  font-size: var(--nk-fs-sm);
+  box-shadow: var(--nk-shadow-xs);
+  transition: border-color var(--nk-dur) var(--nk-ease), background var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .topbar-back:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .topbar-status {
+  padding: 6px 12px;
+  border: 1px solid rgba(22, 166, 106, 0.22);
+  border-radius: 999px;
+  background: rgba(22, 166, 106, 0.07);
+  color: #12663c;
+  font-weight: 750;
+}
+
+.app-shell .system-indicator {
+  background: var(--nk-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--nk-success) 16%, transparent);
+  animation: nk-online-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes nk-online-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(22, 166, 106, 0.18); }
+  50% { box-shadow: 0 0 0 6px rgba(22, 166, 106, 0.06); }
+}
+
+/* Content backdrop — subtle geospatial depth (ice blue + radial washes) */
+.app-shell .main-content {
+  background:
+    radial-gradient(ellipse at 85% -5%, color-mix(in srgb, var(--dept-accent) 10%, transparent), transparent 42%),
+    radial-gradient(ellipse at 0% 100%, color-mix(in srgb, var(--dept-accent-2) 7%, transparent), transparent 45%),
+    linear-gradient(180deg, #f4f9fd 0%, #ecf3fa 55%, #e9f1f8 100%);
+}
+
+/* Enable true window-level scrolling so sticky elements (topbar, compressed
+   command hero) behave against the viewport. Content boxes are auto-height so
+   nothing is clipped — presentation only. */
+.app-shell .main-content {
+  overflow: clip;
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, CalendarRange, ChevronDown, Send, ShieldCheck, Sparkles, TriangleAlert } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
 import { useITMonth } from '../../context/ITMonthContext'
+import { DashboardHeader } from '../../components/DashboardHeader'
 import './naksha-copilot.css'
 
 type PeriodType = 'month' | 'selected_months' | 'calendar_year' | 'financial_year'
@@ -140,18 +141,19 @@ export function NakshaCopilotPage() {
 
   return (
     <section className="copilot-page">
-      <header className="copilot-hero">
-        <div className="copilot-hero-icon"><Sparkles size={24} /></div>
-        <div>
-          <span className="copilot-eyebrow">Read-only AI reporting assistant</span>
-          <h1>Naksha Copilot</h1>
-          <p>Ask management-level questions using approved aggregate IT asset and activity statistics.</p>
-        </div>
-        <div className={`copilot-status ${ready ? 'ready' : 'offline'}`}>
-          <span />
-          {ready ? `Ready · ${status?.model}` : status?.enabled ? 'API key not configured' : 'Disabled'}
-        </div>
-      </header>
+      <DashboardHeader
+        eyebrow="READ-ONLY AI REPORTING ASSISTANT"
+        title="Naksha Copilot"
+        description="Ask management-level questions using approved aggregate IT asset and activity statistics."
+        meta={<>
+          <span className={`nk-meta-chip nk-meta-chip-${ready ? 'ok' : 'warn'}`}>
+            <Sparkles size={14} />
+            {ready ? `Ready · ${status?.model}` : status?.enabled ? 'API key not configured' : 'Disabled'}
+          </span>
+          <span className="nk-meta-chip"><ShieldCheck size={14} /> Strict privacy mode active</span>
+          <span className="nk-meta-chip"><CalendarRange size={14} /> {status?.requests_per_hour ?? 20} requests per user/hour</span>
+        </>}
+      />
 
       <div className="copilot-privacy-banner">
         <ShieldCheck size={22} />

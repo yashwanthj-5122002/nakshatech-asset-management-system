@@ -64,6 +64,10 @@ export function openSalesCategoriesForProject(row: CommandCenterProjectKpiSource
   return categories
 }
 
+export function openSalesForProject(row: CommandCenterProjectKpiSource): number {
+  return Object.values(openSalesCategoriesForProject(row)).reduce((sum, value) => sum + value, 0)
+}
+
 export function aggregateFinanceCommandCenterKpis(
   projects: CommandCenterProjectKpiSource[],
   revenueEvents: CommandCenterRevenueKpiSource[],
@@ -78,7 +82,7 @@ export function aggregateFinanceCommandCenterKpis(
     other_open_inr: sumCategories('other_open_inr'),
   }
   const categoriesSum = Object.values(categories).reduce((sum, value) => sum + value, 0)
-  const openSales = categoriesSum
+  const openSales = projects.reduce((sum, row) => sum + openSalesForProject(row), 0)
   const received = projects.reduce((sum, row) => sum + row.received_against_open_sales_inr, 0)
   // Overdue invoices retain their payment-pending or partial-payment category,
   // so this sums every unpaid receivable once without including unbilled sales.

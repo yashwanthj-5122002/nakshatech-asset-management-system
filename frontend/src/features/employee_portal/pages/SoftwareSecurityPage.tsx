@@ -89,6 +89,11 @@ export function SoftwareSecurityPage() {
       description={managementView
         ? 'Read-only oversight of user accounts, login and logout activity, module visits, ticket actions, and other recorded system events. Passwords, OTP values, secrets, and tokens are never displayed.'
         : 'Review verified employees, one-time Authenticator activation status, password sign-ins, branch selections, password-reset events, and important CRM actions. Passwords, OTP values, secrets, and tokens are never displayed.'}
+      meta={<>
+        <span className="nk-meta-chip"><ShieldCheck size={14} /> {managementView ? 'Read-only access oversight' : 'Security & audit monitor'}</span>
+        <span className="nk-meta-chip"><Users size={14} /> Verified employees and Authenticator status</span>
+        <span className="nk-meta-chip"><Activity size={14} /> Passwords, OTPs, secrets and tokens never displayed</span>
+      </>}
     />
     <section className="panel-card software-security-panel">
       <div className="software-security-toolbar">

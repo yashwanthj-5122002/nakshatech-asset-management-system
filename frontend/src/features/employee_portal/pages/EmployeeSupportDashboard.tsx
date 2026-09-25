@@ -42,7 +42,7 @@ export function EmployeeSupportDashboard() {
 
   return (
     <>
-      <DashboardHeader eyebrow="EMPLOYEE SUPPORT" title="Support & Project Expense Workspace" description={`Raise support tickets and project-linked expense requests. Current branch: ${user?.selected_branch_name || user?.branch || 'Not selected'}.`} />
+      <DashboardHeader eyebrow="EMPLOYEE SUPPORT" title="Support & Project Expense Workspace" description={`Raise support tickets and project-linked expense requests. Current branch: ${user?.selected_branch_name || user?.branch || 'Not selected'}.`} meta={<><span className="nk-meta-chip"><LifeBuoy size={14}/> Support tickets and project expense requests</span><span className="nk-meta-chip"><Bell size={14}/> {unread} unread updates</span><span className="nk-meta-chip"><ReceiptIndianRupee size={14}/> Branch: {user?.selected_branch_name || user?.branch || 'Not selected'}</span></>} />
       <section className="stats-grid">
         <StatCard icon={TicketCheck} label="My Tickets" value={tickets.length} />
         <StatCard icon={Clock3} label="Open" value={open} tone="orange" />

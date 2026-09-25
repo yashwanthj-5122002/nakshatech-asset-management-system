@@ -1,4 +1,4 @@
-import { CheckCircle2, ClipboardList, RefreshCcw, Send, ShieldCheck, Truck, UserRoundCog, Users } from 'lucide-react'
+import { CheckCircle2, ClipboardList, RefreshCcw, Send, ShieldCheck, Truck, UserRoundCog, Users, Workflow } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -164,12 +164,29 @@ export function OrthoDashboardPage(){
   const departmentLabel=user?.role&&DEPARTMENT_ROLE_LABELS[user.role]||'Ortho'
   const title=user?.role==='employee'?'My Assigned Work':`${departmentLabel} Project Operations`
   const tlProduction=selected?uniqMembers(selected.members,'production'):[];const tlQc=selected?uniqMembers(selected.members,'qc'):[];const tlQa=selected?uniqMembers(selected.members,'qa'):[]
+  const portfolio=useMemo(()=>{
+    const seed={projects:0,packages:0,production:0,qc:0,qa:0,delivery_ready:0,delivered:0}
+    return (data?.projects??[]).reduce((acc,p)=>({
+      projects:acc.projects+1,
+      packages:acc.packages+(p.summary?.packages||0),
+      production:acc.production+(p.summary?.production||0),
+      qc:acc.qc+(p.summary?.qc||0),
+      qa:acc.qa+(p.summary?.qa||0),
+      delivery_ready:acc.delivery_ready+(p.summary?.delivery_ready||0),
+      delivered:acc.delivered+(p.summary?.delivered||0),
+    }),seed)
+  },[data])
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow={`${departmentLabel.toUpperCase()} · ASSIGNMENT-BASED OPERATIONS`} title={title} description="Operations users see Client ID + Project ID only. PM selects the project team; Team Lead allocates exact work; employees see only the tasks assigned to them." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}/>
+    <DashboardHeader variant="ops" icon={Workflow} eyebrow={`${departmentLabel.toUpperCase()} · ASSIGNMENT-BASED OPERATIONS`} title={title} description="Operations users see Client ID + Project ID only. PM selects the project team; Team Lead allocates exact work; employees see only the tasks assigned to them." actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>} summary={<>
+      <StatCard icon={ClipboardList} label="Assigned Projects" value={portfolio.projects} note="Projects allocated to this login"/>
+      <StatCard icon={Users} label="Work Packages" value={portfolio.packages} tone="blue" note={`${portfolio.production} in production`}/>
+      <StatCard icon={ShieldCheck} label="QC / QA Queue" value={portfolio.qc+portfolio.qa} tone="purple" note={`${portfolio.qc} in QC · ${portfolio.qa} in QA`}/>
+      <StatCard icon={Truck} label="Delivered" value={portfolio.delivered} tone="green" note={`${portfolio.delivery_ready} ready for delivery`}/>
+    </>} meta={<><span className="nk-meta-chip"><Users size={14}/> {departmentLabel} department</span><span className="nk-meta-chip"><Workflow size={14}/> Assignment-based operations</span><span className="nk-meta-chip"><CheckCircle2 size={14}/> Production → QC → QA → Delivery</span></>}/>
     {notice&&<div className="operations-alert success">{notice}</div>}{error&&<div className="operations-alert error">{error}</div>}
 
-    {!data?.projects.length?<section className="operations-panel"><div className="operations-empty">No assigned project/work is available for this login.</div></section>:<>
+    {!data?.projects.length?<section className="operations-panel"><div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work assigned yet</h3><p>Nothing has been allocated to this login yet — Team Lead allocations and saved project teams appear here as soon as they are made.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div></section>:<>
       <section className="operations-panel operations-current-project"><div className="operations-current-project-row"><label className="operations-field"><span>Project</span><select value={selectedId??''} onChange={e=>setSelectedId(Number(e.target.value))}>{data.projects.map(p=><option key={p.project_id} value={p.project_id}>{p.project_code} · Client ID {p.client_code||'—'}</option>)}</select></label>{selected&&<div className="operations-current-project-meta"><strong>{selected.project_code}</strong><span>Client ID: {selected.client_code||'—'}</span><span>{selected.start_date||'—'} → {selected.end_date||'—'}</span><span>My Role: {selected.my_roles.map(label).join(', ')||'Read only'}</span><span>Status: {label(selected.workflow_status)}</span>{(selected.can_manage_team||user?.role==='management'||user?.role==='admin')&&<Link className="operations-button secondary" to={`/ortho/project-360/${selected.project_id}`}>Project 360 · Feedback &amp; Chat</Link>}</div>}</div></section>
 
       {selected&&<section className="stats-grid">
@@ -220,7 +237,7 @@ export function OrthoDashboardPage(){
       {selected&&selected.my_roles?.includes('project_manager')&&<PMBillingBasisPanel projectId={selected.project_id} projectCode={selected.project_code}/>}
 
       {selected&&<section className="operations-panel"><header><div><span className="operations-kicker">ASSIGNMENT TRACKER</span><h2>{selected.can_manage_team||selected.can_allocate_work?'Project Work Packages':'My Exact Assigned Work'}</h2><p>Daily progress is calculated from activity entries. Cumulative quantity and progress percentage cannot be manually overwritten.</p></div>{selected.can_complete_project&&<button className="operations-button success" disabled={busy} onClick={()=>completeProject(selected)}><CheckCircle2 size={15}/> Complete Project</button>}</header>
-        {!selected.packages.length?<div className="operations-empty">No work package is visible for this assignment yet.</div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{const d=daily[pkg.id]??emptyDaily;return <article className="operations-daily-card" key={pkg.id}>
+        {!selected.packages.length?<div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work packages allocated yet</h3><p>This project has no assigned work packages yet — the Team Lead's Area / Code / Quantity allocations appear here.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{const d=daily[pkg.id]??emptyDaily;return <article className="operations-daily-card" key={pkg.id}>
           <div className="operations-daily-heading"><div><span className="operations-kicker">{pkg.package_code}</span><h3>{pkg.area_name}</h3><div className="operations-project-meta"><span>Project: {selected.project_code}</span><span>Client ID: {selected.client_code||'—'}</span><span>My Role: {pkg.my_roles.map(label).join(', ')||'Monitoring'}</span><span>Target: {pkg.target_date||'—'}</span></div></div><div>{pkg.rework_cycle_id&&<span className="operations-status warning">Rework Cycle #{pkg.rework_cycle_number}{pkg.rework_of_package_code?` · of ${pkg.rework_of_package_code}`:''}</span>} <span className="operations-status">{label(pkg.current_stage)}</span></div></div>
           {pkg.instructions&&<div className="operations-instructions"><strong>Instructions:</strong> {pkg.instructions}</div>}
           <div className="operations-progress"><span style={{width:`${Math.min(100,pkg.progress_percent)}%`}}/></div><div className="operations-project-meta"><span>Assigned: {pkg.quantity??'—'} {pkg.quantity_unit}</span><span>Completed: {pkg.cumulative_completed} {pkg.quantity_unit}</span><span>Remaining: {pkg.remaining_quantity} {pkg.quantity_unit}</span><span>Progress: {pkg.progress_percent}%</span><span>Files: {pkg.files_completed}</span></div>

@@ -508,6 +508,11 @@ export function ClientManagementPage() {
         {!readOnly && <label className="finance-secondary-button" style={{cursor: 'pointer'}}><Upload size={16}/> {busy === 'import' ? 'Importing...' : 'Import Client Excel'}<input type="file" accept=".xlsx" hidden disabled={busy === 'import'} onChange={event => { const file = event.target.files?.[0]; if (file) void importClientWorkbook(file); event.currentTarget.value = '' }} /></label>}
         {!readOnly && <button className="finance-primary-button" onClick={startAddClient}><Plus size={16} /> Add Client</button>}
       </div>}
+      meta={<>
+        <span className="nk-meta-chip"><Building2 size={14} /> Central CRM client & project master</span>
+        <span className="nk-meta-chip"><FolderKanban size={14} /> Finance-controlled Client / Project IDs</span>
+        <span className="nk-meta-chip"><Download size={14} /> Excel import & export supported</span>
+      </>}
     />
 
     {error && <div className="finance-error">{error}</div>}

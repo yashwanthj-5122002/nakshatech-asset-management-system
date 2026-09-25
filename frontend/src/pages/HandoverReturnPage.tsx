@@ -1,4 +1,4 @@
-import { ArrowRightLeft, FileUp, Laptop, Monitor, PlusCircle, Search } from 'lucide-react'
+import { ArrowRightLeft, CalendarDays, FileUp, Laptop, Monitor, PlusCircle, Search } from 'lucide-react'
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
@@ -271,7 +271,7 @@ export function HandoverReturnPage() {
   const currentCustodyActionAllowed = custodyActionAllowed(selectedAsset, form.action_type)
 
   return <>
-    <DashboardHeader eyebrow="CUSTODY & ASSIGNMENT CONTROL" title="Laptop & Desktop Handover / Return" description={`Records saved now are reported in ${monthLabel(selectedMonth)}. Handover, Transfer and Return are custody movements only; repair and component work remain in their dedicated IT workflows.`} />
+    <DashboardHeader eyebrow="CUSTODY & ASSIGNMENT CONTROL" title="Laptop & Desktop Handover / Return" description={`Records saved now are reported in ${monthLabel(selectedMonth)}. Handover, Transfer and Return are custody movements only; repair and component work remain in their dedicated IT workflows.`} meta={<><span className="nk-meta-chip"><CalendarDays size={14} /> Reported in {monthLabel(selectedMonth)}</span><span className="nk-meta-chip"><ArrowRightLeft size={14} /> Handover · Transfer · Return are custody movements</span><span className="nk-meta-chip"><Laptop size={14} /> {canEdit ? 'Custody actions enabled for your role' : 'Read-only custody view'}</span></>} />
     {message && <div className="success-message">{message}</div>}{error && <div className="error-message">{error}</div>}
 
     {canEdit && <section className="panel activity-entry-panel">

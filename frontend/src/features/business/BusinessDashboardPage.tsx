@@ -243,12 +243,19 @@ export function BusinessDashboardPage() {
   return (
     <div className="finance-page">
       <DashboardHeader
+        variant="ops"
+        icon={TrendingUp}
         eyebrow="BUSINESS · TOTAL SELL"
         title={data ? businessViewerLabel(data.viewer) : 'Business & Total Sell'}
         description={isPrivileged
           ? 'Figures come from Billing & Invoices for the month. Verify them, save, and every change is kept in history.'
           : 'Track how much business your projects have done and how much the client has paid.'}
         actions={headerActions}
+        meta={<>
+          <span className="nk-meta-chip"><TrendingUp size={14} /> Business done vs client paid</span>
+          <span className="nk-meta-chip"><IndianRupee size={14} /> Reporting month {monthLabel(month)}</span>
+          <span className="nk-meta-chip"><CheckCircle2 size={14} /> Figures come from Billing & Invoices</span>
+        </>}
       />
 
       <section className="business-month-bar">

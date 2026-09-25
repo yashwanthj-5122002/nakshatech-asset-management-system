@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FileText, RefreshCcw, Wallet } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileText, Inbox, RefreshCcw, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { StatCard } from '../../../components/StatCard'
@@ -149,6 +149,10 @@ export function FinanceBillingPage() {
       title="Billing, Invoices &amp; Payments"
       description="Draft and raise invoices once a project reaches Ready For Billing, record partial/full payments and close invoices toward Finance Closure."
       actions={<button className="operations-button secondary" onClick={loadDashboard}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><FileText size={14}/> Ready For Billing → Invoice → Payment → Closure</span>
+        <span className="nk-meta-chip"><CheckCircle2 size={14}/> Partial and full payments supported</span>
+      </>}
     />
     {error && <div className="operations-alert error">{error}</div>}
     {notice && <div className="operations-alert success">{notice}</div>}
@@ -170,12 +174,36 @@ export function FinanceBillingPage() {
             <span className="operations-workflow-step-number">{row.project_code.slice(-2)}</span>
             <span><strong>{row.project_code}</strong><small>{row.client_name || row.client_id || 'Client not recorded'}</small><small className={`operations-status ${lifecycleStatusTone(row.workflow_status)}`}>{lifecycleStatusLabel(row.workflow_status)}</small></span>
           </button>)}
-          {!loading && !projects.length && <div className="operations-empty">No matching projects.</div>}
+          {!loading && !projects.length && (!dashboard ? (
+            <div className="nk-empty">
+              <span className="nk-empty-icon"><AlertTriangle size={22}/></span>
+              <h3>Billing pipeline unavailable</h3>
+              <p>The project register could not be loaded. Use Refresh in the page header to try again.</p>
+            </div>
+          ) : dashboard.projects.length === 0 ? (
+            <div className="nk-empty">
+              <span className="nk-empty-icon"><Inbox size={22}/></span>
+              <h3>No billable projects</h3>
+              <p>Projects appear in the Billing Pipeline once operations moves them toward Ready For Billing. Refresh to check for new work.</p>
+              <div className="nk-empty-action"><button className="operations-button" onClick={loadDashboard}><RefreshCcw size={16}/> Refresh</button></div>
+            </div>
+          ) : (
+            <div className="nk-empty">
+              <span className="nk-empty-icon"><Inbox size={22}/></span>
+              <h3>No projects match this search</h3>
+              <p>{dashboard.projects.length} project(s) are in the pipeline. Clear the search box to see the full list.</p>
+              <div className="nk-empty-action"><button className="operations-button secondary" onClick={() => setSearch('')}><RefreshCcw size={16}/> Clear search</button></div>
+            </div>
+          ))}
         </div>
       </section>
 
       <section className="operations-panel">
-        {!detail && <div className="operations-empty">Select a project to manage billing.</div>}
+        {!detail && <div className="nk-empty">
+          <span className="nk-empty-icon"><FileText size={22}/></span>
+          <h3>{projects.length ? 'No project selected' : 'No billable project selected'}</h3>
+          <p>{projects.length ? 'Select a project from the Billing Pipeline to review its invoices, record payments and move it toward Finance Closure.' : 'Nothing to invoice yet. Once a project enters the Billing Pipeline, select it here to draft its first invoice.'}</p>
+        </div>}
         {detail && <>
           <header><div><span className="operations-kicker">{detail.project_code} · {detail.client_name || detail.client_id || 'Client not recorded'}</span><h2>{detail.project_name}</h2></div><span className={`operations-status ${lifecycleStatusTone(detail.workflow_status)}`}>{lifecycleStatusLabel(detail.workflow_status)}</span></header>
 
@@ -223,7 +251,11 @@ export function FinanceBillingPage() {
               {!!invoice.payments.length && <div className="operations-table-wrap"><table className="operations-table"><thead><tr><th>Reference</th><th>Date</th><th>Amount</th><th>Realization FX</th><th>INR Realized</th><th>FX Gain / Loss</th><th>Mode</th></tr></thead><tbody>{invoice.payments.map(p => <tr key={p.id}><td>{p.payment_reference}</td><td>{formatDate(p.payment_date)}</td><td>{formatMoney(p.amount, p.payment_currency || invoice.currency)}</td><td>{p.fx_rate_to_inr == null ? '—' : `₹${p.fx_rate_to_inr.toLocaleString('en-IN',{maximumFractionDigits:8})}`}<br/><small>{p.fx_rate_date || ''} {p.fx_rate_source ? `· ${p.fx_rate_source}` : ''}</small></td><td>{p.inr_equivalent == null ? '—' : formatMoney(p.inr_equivalent)}</td><td>{p.fx_gain_loss_inr == null ? '—' : formatMoney(p.fx_gain_loss_inr)}</td><td>{p.payment_mode}</td></tr>)}</tbody></table></div>}
             </div>
           })}
-          {!detail.invoices.length && <div className="operations-empty">No invoices yet for this project.</div>}
+          {!detail.invoices.length && <div className="nk-empty">
+            <span className="nk-empty-icon"><FileText size={22}/></span>
+            <h3>No invoices yet for this project</h3>
+            <p>{DRAFTABLE.has(detail.workflow_status) ? 'Create the first invoice draft from the billing form above — it will appear here for raising and payment tracking.' : 'Invoices appear here once this project reaches Ready For Billing and Finance drafts the first invoice.'}</p>
+          </div>}
         </>}
       </section>
     </div>

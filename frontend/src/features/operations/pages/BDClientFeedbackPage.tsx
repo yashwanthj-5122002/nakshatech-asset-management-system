@@ -148,6 +148,11 @@ export function BDClientFeedbackPage() {
       title="Client Feedback"
       description="Send secure post-delivery feedback requests, confirm client classification and drive Ready For Billing hand-off to Finance."
       actions={<button className="operations-button secondary" onClick={loadDashboard}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><MailCheck size={14}/> Secure post-delivery feedback links</span>
+        <span className="nk-meta-chip"><Wallet size={14}/> Approved feedback drives Ready For Billing</span>
+        <span className="nk-meta-chip"><Clock3 size={14}/> Link validity tracked per request</span>
+      </>}
     />
     {error && <div className="operations-alert error">{error}</div>}
     {notice && <div className="operations-alert success">{notice}</div>}

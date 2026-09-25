@@ -15,7 +15,7 @@ export function DroneDashboard() {
   const first = drones[0]
   return (
     <>
-      <DashboardHeader eyebrow="AERIAL OPERATIONS" title="Drone Dashboard" description="Fleet deployment, project allocation, pilot records and current or last-known GNSS location." />
+      <DashboardHeader variant="ops" icon={Drone} eyebrow="AERIAL OPERATIONS" title="Drone Dashboard" description="Fleet deployment, project allocation, pilot records and current or last-known GNSS location." />
       {error && <div className="error-message">{error}</div>}
       <section className="stats-grid">
         <StatCard icon={Drone} label="Total Drones" value={drones.length} />

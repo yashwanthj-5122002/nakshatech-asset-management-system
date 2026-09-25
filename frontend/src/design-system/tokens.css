@@ -1,0 +1,218 @@
+/* ==========================================================================
+   NakshaTech Design System — Global Tokens
+   Visual DNA: Premium Enterprise SaaS + Geospatial Intelligence.
+   Loaded after styles.css so these tokens cascade over legacy values.
+   Presentation only — no behavior changes.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --nk-bg: #eef4fa;
+  --nk-bg-deep: #e6eef7;
+  --nk-surface: #ffffff;
+  --nk-surface-soft: #f7fafd;
+  --nk-surface-raised: #ffffff;
+  --nk-surface-glass: rgba(255, 255, 255, 0.78);
+
+  /* Brand navy scale */
+  --nk-navy-950: #02101f;
+  --nk-navy-900: #04182f;
+  --nk-navy-850: #05213f;
+  --nk-navy-800: #072a52;
+  --nk-navy-700: #0a376e;
+  --nk-navy-600: #0d4588;
+  --nk-navy-500: #1257a8;
+
+  /* Accents (controlled) */
+  --nk-cyan: #08b8d9;
+  --nk-cyan-soft: rgba(8, 184, 217, 0.14);
+  --nk-ice: #dff4fb;
+  --nk-blue: #126ae8;
+  --nk-purple: #7c5cfc;
+  --nk-green: #16a66a;
+  --nk-orange: #e8890c;
+  --nk-pink: #e05a8a;
+  --nk-rose: #e05a7a;
+
+  /* Semantic */
+  --nk-success: #16a66a;
+  --nk-warning: #e49a18;
+  --nk-danger: #d9535f;
+  --nk-info: #2678e8;
+
+  /* Text */
+  --nk-text: #0a2852;
+  --nk-text-secondary: #5a7089;
+  --nk-text-muted: #8a9caf;
+  --nk-text-on-dark: #e8f1fa;
+  --nk-text-on-dark-muted: #9db4cc;
+
+  /* Lines & shadows */
+  --nk-border: #d8e4ef;
+  --nk-border-strong: #bfd2e2;
+  --nk-border-soft: rgba(15, 40, 80, 0.08);
+  --nk-shadow-xs: 0 1px 2px rgba(6, 32, 66, 0.05);
+  --nk-shadow-sm: 0 4px 14px rgba(6, 32, 66, 0.06);
+  --nk-shadow-md: 0 10px 28px rgba(6, 32, 66, 0.08);
+  --nk-shadow-lg: 0 18px 48px rgba(6, 32, 66, 0.12);
+  --nk-shadow-glow: 0 0 0 1px rgba(8, 184, 217, 0.18), 0 8px 24px rgba(8, 184, 217, 0.10);
+
+  /* Radius */
+  --nk-radius-sm: 8px;
+  --nk-radius-md: 12px;
+  --nk-radius-lg: 16px;
+  --nk-radius-xl: 20px;
+  --nk-radius-2xl: 24px;
+
+  /* Type */
+  --nk-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --nk-fs-xs: 0.68rem;
+  --nk-fs-sm: 0.78rem;
+  --nk-fs-md: 0.88rem;
+  --nk-fs-lg: 1.05rem;
+  --nk-fs-xl: 1.35rem;
+  --nk-fs-2xl: clamp(1.5rem, 2vw, 2rem);
+  --nk-fs-hero: clamp(1.75rem, 2.6vw, 2.5rem);
+
+  /* Spacing */
+  --nk-space-1: 4px;
+  --nk-space-2: 8px;
+  --nk-space-3: 12px;
+  --nk-space-4: 16px;
+  --nk-space-5: 20px;
+  --nk-space-6: 24px;
+  --nk-space-7: 32px;
+  --nk-space-8: 40px;
+
+  /* Motion */
+  --nk-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --nk-dur-fast: 140ms;
+  --nk-dur: 220ms;
+  --nk-dur-slow: 380ms;
+  --nk-hero-dur: 420ms;
+
+  /* Department accents (visual only) */
+  --dept-accent: var(--nk-cyan);
+  --dept-accent-2: var(--nk-blue);
+  --dept-accent-soft: var(--nk-cyan-soft);
+  --dept-glow: rgba(8, 184, 217, 0.24);
+  --dept-hero-start: #0b3f7c;
+  --dept-hero-mid: #072a52;
+  --dept-hero-end: #031426;
+  --dept-kpi-primary: var(--dept-accent);
+  --dept-kpi-secondary: var(--dept-accent-2);
+  --dept-kpi-tertiary: #7c5cfc;
+  --dept-kpi-positive: #16a66a;
+  --dept-kpi-warning: #e8890c;
+  --dept-kpi-danger: #d9535f;
+
+  /* Layout */
+  --nk-sidebar-w: 256px;
+  --nk-topbar-h: 66px;
+  --nk-content-max: 1680px;
+
+  /* KPI semantic accents (visual only — values never change) */
+  --kpi-open-sales: #126ae8;
+  --kpi-open-sales-2: #08b8d9;
+  --kpi-revenue: #16a66a;
+  --kpi-revenue-2: #14b8a6;
+  --kpi-target: #7c5cfc;
+  --kpi-target-2: #4f7df7;
+  --kpi-outstanding: #e8890c;
+  --kpi-outstanding-2: #f0a92e;
+  --kpi-pending: #e05a8a;
+  --kpi-pending-2: #e05a7a;
+  --kpi-partial: #08b8d9;
+  --kpi-partial-2: #126ae8;
+  --kpi-not-raised: #14b8a6;
+  --kpi-not-raised-2: #16a66a;
+}
+
+@media (max-width: 900px) {
+  :root { --nk-topbar-h: 60px; }
+}
+
+@media (max-width: 620px) {
+  :root { --nk-topbar-h: 58px; }
+}
+
+/* Department accent map — applied when shell carries data-dept */
+[data-dept="finance"] { --dept-accent: #126ae8; --dept-accent-2: #16a66a; --dept-accent-soft: rgba(18, 106, 232, 0.12); }
+[data-dept="ortho"] { --dept-accent: #4f7df7; --dept-accent-2: #7c5cfc; --dept-accent-soft: rgba(79, 125, 247, 0.12); }
+[data-dept="lidar"] { --dept-accent: #08b8d9; --dept-accent-2: #14b8a6; --dept-accent-soft: rgba(8, 184, 217, 0.12); }
+[data-dept="mobile_mapping"] { --dept-accent: #4f6ef7; --dept-accent-2: #126ae8; --dept-accent-soft: rgba(79, 110, 247, 0.12); }
+[data-dept="laser_scanning"] { --dept-accent: #22d3ee; --dept-accent-2: #08b8d9; --dept-accent-soft: rgba(34, 211, 238, 0.12); }
+[data-dept="civil"] { --dept-accent: #e8890c; --dept-accent-2: #126ae8; --dept-accent-soft: rgba(232, 137, 12, 0.12); }
+[data-dept="hr"] { --dept-accent: #e05a7a; --dept-accent-2: #7c5cfc; --dept-accent-soft: rgba(224, 90, 122, 0.12); }
+[data-dept="it"] { --dept-accent: #06b6d4; --dept-accent-2: #7c5cfc; --dept-accent-soft: rgba(6, 182, 212, 0.12); }
+[data-dept="drone"] { --dept-accent: #0ea5e9; --dept-accent-2: #08b8d9; --dept-accent-soft: rgba(14, 165, 233, 0.12); }
+[data-dept="management"] { --dept-accent: #0d4588; --dept-accent-2: #08b8d9; --dept-accent-soft: rgba(13, 69, 136, 0.12); }
+[data-dept="bd"] { --dept-accent: #126ae8; --dept-accent-2: #06b6d4; --dept-accent-soft: rgba(18, 106, 232, 0.12); }
+[data-dept="bim"] { --dept-accent: #3b6ef6; --dept-accent-2: #7c5cfc; --dept-accent-soft: rgba(59, 110, 246, 0.12); }
+[data-dept="employee"] { --dept-accent: #2563eb; --dept-accent-2: #4f6ef7; --dept-accent-soft: rgba(37, 99, 235, 0.12); }
+[data-dept="admin"] { --dept-accent: #0d4588; --dept-accent-2: #08b8d9; --dept-accent-soft: rgba(13, 69, 136, 0.12); }
+[data-dept="software_team"] { --dept-accent: #6d5df6; --dept-accent-2: #06b6d4; --dept-accent-soft: rgba(109, 93, 246, 0.12); }
+
+/* Complete workspace palettes: hero atmosphere, glow and KPI family. */
+[data-dept="finance"] {
+  --dept-accent: #1687f8; --dept-accent-2: #19bed8; --dept-accent-soft: rgba(22, 135, 248, 0.12);
+  --dept-glow: rgba(25, 190, 216, 0.24); --dept-hero-start: #0a4383; --dept-hero-mid: #062d5c; --dept-hero-end: #03162d;
+  --dept-kpi-primary: #1687f8; --dept-kpi-secondary: #19bed8; --dept-kpi-tertiary: #7067e8;
+}
+[data-dept="sales"] {
+  --dept-accent: #18a873; --dept-accent-2: #32c99a; --dept-accent-soft: rgba(24, 168, 115, 0.12);
+  --dept-glow: rgba(50, 201, 154, 0.24); --dept-hero-start: #075c4a; --dept-hero-mid: #064036; --dept-hero-end: #031f23;
+  --dept-kpi-primary: #18a873; --dept-kpi-secondary: #32c99a; --dept-kpi-tertiary: #4387e8;
+  --kpi-open-sales: #18a873; --kpi-open-sales-2: #32c99a; --kpi-outstanding: #d88719; --kpi-outstanding-2: #efb24a;
+}
+[data-dept="revenue"] {
+  --dept-accent: #0f9f75; --dept-accent-2: #d6a33a; --dept-accent-soft: rgba(15, 159, 117, 0.12);
+  --dept-glow: rgba(39, 186, 137, 0.24); --dept-hero-start: #075743; --dept-hero-mid: #073d38; --dept-hero-end: #061d27;
+  --dept-kpi-primary: #0f9f75; --dept-kpi-secondary: #d6a33a; --dept-kpi-tertiary: #4c79d8;
+  --kpi-revenue: #0f9f75; --kpi-revenue-2: #2bc493; --kpi-target: #c68d20; --kpi-target-2: #e2b44f;
+}
+[data-dept="bd"] {
+  --dept-accent: #d98a16; --dept-accent-2: #6966df; --dept-accent-soft: rgba(217, 138, 22, 0.12);
+  --dept-glow: rgba(217, 138, 22, 0.22); --dept-hero-start: #704711; --dept-hero-mid: #273b66; --dept-hero-end: #111c38;
+  --dept-kpi-primary: #d98a16; --dept-kpi-secondary: #6966df; --dept-kpi-tertiary: #b65aa5;
+}
+[data-dept="lidar"] {
+  --dept-accent: #00aeca; --dept-accent-2: #18b99c; --dept-accent-soft: rgba(0, 174, 202, 0.12);
+  --dept-glow: rgba(0, 174, 202, 0.24); --dept-hero-start: #07536b; --dept-hero-mid: #064250; --dept-hero-end: #03242e;
+  --dept-kpi-primary: #00aeca; --dept-kpi-secondary: #18b99c; --dept-kpi-tertiary: #4f77dd;
+}
+[data-dept="ortho"] {
+  --dept-accent: #0d9f91; --dept-accent-2: #2a82e6; --dept-accent-soft: rgba(13, 159, 145, 0.12);
+  --dept-glow: rgba(13, 159, 145, 0.24); --dept-hero-start: #07574f; --dept-hero-mid: #0a4160; --dept-hero-end: #052238;
+  --dept-kpi-primary: #0d9f91; --dept-kpi-secondary: #2a82e6; --dept-kpi-tertiary: #7067df;
+}
+[data-dept="drone"] {
+  --dept-accent: #159ee4; --dept-accent-2: #646be0; --dept-accent-soft: rgba(21, 158, 228, 0.12);
+  --dept-glow: rgba(21, 158, 228, 0.24); --dept-hero-start: #075a88; --dept-hero-mid: #173d74; --dept-hero-end: #101d3c;
+  --dept-kpi-primary: #159ee4; --dept-kpi-secondary: #43bfd6; --dept-kpi-tertiary: #646be0;
+}
+[data-dept="it"] {
+  --dept-accent: #6069df; --dept-accent-2: #08acc9; --dept-accent-soft: rgba(96, 105, 223, 0.12);
+  --dept-glow: rgba(96, 105, 223, 0.24); --dept-hero-start: #35429a; --dept-hero-mid: #24366f; --dept-hero-end: #111d3b;
+  --dept-kpi-primary: #6069df; --dept-kpi-secondary: #08acc9; --dept-kpi-tertiary: #945fc5;
+}
+[data-dept="management"] {
+  --dept-accent: #3b4fa5; --dept-accent-2: #c79732; --dept-accent-soft: rgba(59, 79, 165, 0.12);
+  --dept-glow: rgba(199, 151, 50, 0.2); --dept-hero-start: #344689; --dept-hero-mid: #222f61; --dept-hero-end: #121a35;
+  --dept-kpi-primary: #3b4fa5; --dept-kpi-secondary: #c79732; --dept-kpi-tertiary: #755aa8;
+}
+[data-dept="admin"] {
+  --dept-accent: #315d82; --dept-accent-2: #17a5c0; --dept-accent-soft: rgba(49, 93, 130, 0.12);
+  --dept-glow: rgba(23, 165, 192, 0.22); --dept-hero-start: #244d70; --dept-hero-mid: #183852; --dept-hero-end: #0b2132;
+  --dept-kpi-primary: #315d82; --dept-kpi-secondary: #17a5c0; --dept-kpi-tertiary: #586cb4;
+}
+[data-dept="mobile_mapping"] { --dept-accent: #4f6ef7; --dept-accent-2: #12a5cf; --dept-accent-soft: rgba(79, 110, 247, 0.12); --dept-glow: rgba(79, 110, 247, 0.22); --dept-hero-start: #3047a0; --dept-hero-mid: #253b79; --dept-hero-end: #111e3d; --dept-kpi-primary: #4f6ef7; --dept-kpi-secondary: #12a5cf; }
+[data-dept="laser_scanning"] { --dept-accent: #13b9d3; --dept-accent-2: #4485e8; --dept-accent-soft: rgba(19, 185, 211, 0.12); --dept-glow: rgba(19, 185, 211, 0.24); --dept-hero-start: #075b70; --dept-hero-mid: #10466a; --dept-hero-end: #09263e; --dept-kpi-primary: #13b9d3; --dept-kpi-secondary: #4485e8; }
+[data-dept="civil"] { --dept-accent: #d88616; --dept-accent-2: #327fd4; --dept-accent-soft: rgba(216, 134, 22, 0.12); --dept-glow: rgba(216, 134, 22, 0.22); --dept-hero-start: #70440c; --dept-hero-mid: #3f3c3f; --dept-hero-end: #17243a; --dept-kpi-primary: #d88616; --dept-kpi-secondary: #327fd4; }
+[data-dept="hr"] { --dept-accent: #d85578; --dept-accent-2: #8164d8; --dept-accent-soft: rgba(216, 85, 120, 0.12); --dept-glow: rgba(216, 85, 120, 0.22); --dept-hero-start: #7b304b; --dept-hero-mid: #55345f; --dept-hero-end: #281d3d; --dept-kpi-primary: #d85578; --dept-kpi-secondary: #8164d8; }
+[data-dept="bim"] { --dept-accent: #3b6ef6; --dept-accent-2: #7c5cfc; --dept-accent-soft: rgba(59, 110, 246, 0.12); --dept-glow: rgba(59, 110, 246, 0.22); --dept-hero-start: #294ca8; --dept-hero-mid: #303b7a; --dept-hero-end: #171e42; --dept-kpi-primary: #3b6ef6; --dept-kpi-secondary: #7c5cfc; }
+[data-dept="employee"] { --dept-accent: #2563eb; --dept-accent-2: #4f6ef7; --dept-accent-soft: rgba(37, 99, 235, 0.12); --dept-glow: rgba(37, 99, 235, 0.22); --dept-kpi-primary: #2563eb; --dept-kpi-secondary: #4f6ef7; }
+[data-dept="software_team"] { --dept-accent: #6d5df6; --dept-accent-2: #06b6d4; --dept-accent-soft: rgba(109, 93, 246, 0.12); --dept-glow: rgba(109, 93, 246, 0.22); --dept-hero-start: #493ba9; --dept-hero-mid: #30356f; --dept-hero-end: #171c3b; --dept-kpi-primary: #6d5df6; --dept-kpi-secondary: #06b6d4; }
+
+/* Commercial intelligence — BD revisions, employee project costs, vendor/margin */
+[data-dept="commercial"] { --dept-accent: #0f766e; --dept-accent-2: #0d9488; --dept-accent-soft: rgba(15, 118, 110, 0.12); --dept-glow: rgba(15, 118, 110, 0.22); --dept-hero-start: #0b4f47; --dept-hero-mid: #0c3d43; --dept-hero-end: #07222b; --dept-kpi-primary: #0f766e; --dept-kpi-secondary: #0d9488; }

@@ -10,7 +10,7 @@ export function DroneKitsPage() {
   const [error, setError] = useState('')
   useEffect(() => { void apiFetch<DroneKit[]>('/drone/kits').then(setKits).catch(err => setError(err.message)) }, [])
   return <>
-    <DashboardHeader eyebrow="KIT READINESS" title="Drone Kits & Components" description="Trinity units and future kits are parent records. Every battery, controller, camera and accessory remains an individually traceable component." />
+    <DashboardHeader eyebrow="KIT READINESS" title="Drone Kits & Components" description="Trinity units and future kits are parent records. Every battery, controller, camera and accessory remains an individually traceable component." meta={<><span className="nk-meta-chip"><Boxes size={14} /> Trinity units are parent kit records</span><span className="nk-meta-chip"><BatteryCharging size={14} /> Every component individually traceable</span><span className="nk-meta-chip"><CheckCircle2 size={14} /> Readiness computed from components</span></>} />
     {error && <div className="error-message">{error}</div>}
     <section className="kit-grid">
       {kits.map(kit => <article className="panel kit-card" key={kit.id}>

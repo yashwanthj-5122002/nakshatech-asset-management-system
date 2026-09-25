@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   CalendarDays,
@@ -261,6 +262,8 @@ export function ITDashboard() {
   return (
     <>
       <DashboardHeader
+        variant="ops"
+        icon={HardDrive}
         eyebrow="IT DEPARTMENT"
         title="IT Asset Dashboard"
         description={`${data.month.label} reporting context — inventory snapshot plus all activities assigned to this month. Actual server entry time remains separately recorded.`}
@@ -282,6 +285,11 @@ export function ITDashboard() {
           <button className="secondary-button" onClick={() => void download('printers')} disabled={!!downloading}><Printer size={17} /> {downloading === 'printers' ? 'Preparing...' : 'Printer Excel'}</button>
           <button className="secondary-button" onClick={() => void download('external-hdds')} disabled={!!downloading}><Database size={17} /> {downloading === 'external-hdds' ? 'Preparing...' : 'External HDD Excel'}</button>
           <button className="primary-button" onClick={() => void download('assets')} disabled={!!downloading}><FileDown size={17} /> {downloading === 'assets' ? 'Preparing...' : 'Download Asset Excel'}</button>
+        </>}
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> {data.month.label} · {data.month.is_live ? 'Live / present' : 'Effective reporting month'}</span>
+          <span className="nk-meta-chip"><Activity size={14} /> {data.monthly_activity.work_records} work records · {data.monthly_activity.assets_edited} assets edited this month</span>
+          <span className="nk-meta-chip"><HardDrive size={14} /> {k.total} assets under management</span>
         </>}
       />
       {error && <div className="error-message">{error}</div>}

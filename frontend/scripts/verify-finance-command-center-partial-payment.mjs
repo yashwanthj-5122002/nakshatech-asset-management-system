@@ -14,7 +14,7 @@ const compiled = ts.transpileModule(helperSource, {
   fileName: helperPath,
 }).outputText
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`
-const { aggregateFinanceCommandCenterKpis } = await import(moduleUrl)
+const { aggregateFinanceCommandCenterKpis, openSalesForProject } = await import(moduleUrl)
 
 assert.ok(
   commandCenterSource.includes("const [period, setPeriod] = useState<Period>('monthly')"),
@@ -23,6 +23,10 @@ assert.ok(
 assert.ok(
   commandCenterSource.includes("setPeriod('monthly')"),
   'Clear filters must restore the current-month period',
+)
+assert.ok(
+  commandCenterSource.includes('inr(calc.commandCenterOpenSalesInr)'),
+  'Open Sales drill-down must display the balance-based Command Center value',
 )
 
 const projectedPaymentDate = '2026-09-30'
@@ -94,14 +98,14 @@ assert.equal(closed.outstanding, 0)
 assert.equal(closed.closedRevenue, 10000)
 assert.equal(closed.openSales, 0)
 
-const liveExample = aggregateFinanceCommandCenterKpis([
-  projectFixture({ total: 1180, paid: 1000, status: 'PARTIALLY_PAID', category: 'partial_payment_inr', salesStatus: 'Partially Paid' }),
-], [])
+const liveProject = projectFixture({ total: 1180, paid: 1000, status: 'PARTIALLY_PAID', category: 'partial_payment_inr', salesStatus: 'Partially Paid' })
+const liveExample = aggregateFinanceCommandCenterKpis([liveProject], [])
 assert.equal(liveExample.openInvoiced, 1180)
 assert.equal(liveExample.received, 1000)
 assert.equal(liveExample.partialAmount, 180)
 assert.equal(liveExample.outstanding, 180)
 assert.equal(liveExample.openSales, 180)
+assert.equal(openSalesForProject(liveProject), 180)
 
 const multiplePartials = aggregateFinanceCommandCenterKpis([
   projectFixture({ total: 1180, paid: 1000, status: 'PARTIALLY_PAID', category: 'partial_payment_inr', salesStatus: 'Partially Paid' }),
@@ -134,6 +138,6 @@ console.log('FINANCE COMMAND CENTER PARTIAL PAYMENT REGRESSION PASSED')
 console.log('- Payment pending: INR 10,000; partial: INR 0; outstanding: INR 10,000')
 console.log('- Partial balance: INR 6,000; outstanding: INR 6,000')
 console.log('- Fully paid/closed revenue: INR 10,000; partial/outstanding: INR 0')
-console.log('- Live example partial/outstanding: INR 180')
-console.log('- Multiple partial balances sum to INR 34,180')
+console.log('- Live example partial/outstanding/open sales: INR 180')
+console.log('- Multiple partial balances and open sales sum to INR 34,180')
 console.log('- Overdue pending/partial balances contribute once to Outstanding')

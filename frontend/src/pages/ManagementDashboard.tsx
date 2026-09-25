@@ -2,14 +2,17 @@ import {
   AlertTriangle,
   ArrowRight,
   Boxes,
+  CalendarDays,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
+  Eye,
   FileBarChart,
   HardDrive,
   History,
   IndianRupee,
   KeyRound,
+  RefreshCcw,
   RotateCcw,
   Repeat2,
   ShieldCheck,
@@ -63,18 +66,31 @@ export function ManagementDashboard() {
   const [passwordError, setPasswordError] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
 
-  useEffect(() => {
+  function loadSummary() {
     setSummaryError('')
     void apiFetch<ManagementControlSummary>(`/management/control-center?month=${encodeURIComponent(selectedMonth)}`)
       .then(setSummary)
       .catch(err => setSummaryError(err instanceof Error ? err.message : 'Unable to load executive control summary'))
-  }, [selectedMonth])
+  }
 
-  useEffect(() => {
+  function loadLifecycle() {
     void apiFetch<{ summary: LifecycleDashboardSummary }>('/operations/lifecycle/dashboard')
       .then(data => setLifecycle(data.summary))
       .catch(() => setLifecycle(null))
+  }
+
+  useEffect(() => {
+    loadSummary()
+  }, [selectedMonth])
+
+  useEffect(() => {
+    loadLifecycle()
   }, [])
+
+  function loadDashboard() {
+    loadSummary()
+    loadLifecycle()
+  }
 
   function closePasswordDialog() {
     if (changingPassword) return
@@ -113,28 +129,44 @@ export function ManagementDashboard() {
   return (
     <>
       <DashboardHeader
+        variant="ops"
+        icon={ShieldCheck}
         eyebrow="READ · MONITOR · APPROVE PURCHASES"
         title="Management Dashboard"
         description={`Executive oversight for ${monthLabel(selectedMonth)}. Management can inspect IT assets and operations in read-only mode; only Purchase Requests require a Management decision.`}
-        actions={user?.role === 'management' ? (
-          <button className="management-change-password-button" type="button" onClick={() => setShowPasswordDialog(true)}>
-            <KeyRound size={18} />
-            <span>Change Password</span>
-          </button>
-        ) : undefined}
+        actions={<>
+          <button className="secondary-button" type="button" onClick={loadDashboard}><RefreshCcw size={17} /> Refresh</button>
+          {user?.role === 'management' && (
+            <button className="management-change-password-button" type="button" onClick={() => setShowPasswordDialog(true)}>
+              <KeyRound size={18} />
+              <span>Change Password</span>
+            </button>
+          )}
+        </>}
+        summary={(
+          <>
+            <StatCard icon={ClipboardCheck} label="Pending Purchase Approvals" value={executive?.pending_purchase_requests ?? '—'} tone="purple" note="Waiting on a Management decision" />
+            <StatCard icon={AlertTriangle} label="SLA Breaches" value={executive?.sla_breaches ?? '—'} tone="red" note="Service commitments missed" />
+            <StatCard icon={ShieldCheck} label="Critical Tickets" value={executive?.open_critical_tickets ?? '—'} tone="red" note="Open P1 employee tickets" />
+          </>
+        )}
+        meta={(
+          <>
+            <span className="nk-meta-chip"><ShieldCheck size={14} /> Read · monitor · approve purchases</span>
+            <span className="nk-meta-chip"><CalendarDays size={14} /> {monthLabel(selectedMonth)}</span>
+            <span className="nk-meta-chip"><Eye size={14} /> Read-only outside IT</span>
+          </>
+        )}
       />
       {summaryError && <div className="error-message">{summaryError}</div>}
       <div className="approval-note"><ShieldCheck size={16} /> Management can see the complete IT picture, but operational edits remain with IT. Purchase approval is the only Management permission gate.</div>
 
       <section className="stats-grid management-control-kpis">
-        <StatCard icon={ClipboardCheck} label="Pending Purchase Approvals" value={executive?.pending_purchase_requests ?? '—'} tone="purple" />
         <StatCard icon={HardDrive} label="Primary IT Assets" value={executive?.primary_assets ?? '—'} />
         <StatCard icon={Boxes} label="Assigned Assets" value={executive?.assigned_assets ?? '—'} tone="blue" />
         <StatCard icon={Boxes} label="Available Assets" value={executive?.available_assets ?? '—'} tone="green" />
         <StatCard icon={Wrench} label="Under Repair" value={executive?.repair_assets ?? '—'} tone="orange" />
         <StatCard icon={Repeat2} label="Replacement Pending" value={executive?.replacement_pending_assets ?? '—'} tone="orange" />
-        <StatCard icon={AlertTriangle} label="SLA Breaches" value={executive?.sla_breaches ?? '—'} tone="red" />
-        <StatCard icon={ShieldCheck} label="Critical Tickets" value={executive?.open_critical_tickets ?? '—'} tone="red" />
         <StatCard icon={IndianRupee} label="Approved Purchase Value" value={executive ? `₹${executive.approved_purchase_value.toLocaleString('en-IN')}` : '—'} tone="green" />
       </section>
 

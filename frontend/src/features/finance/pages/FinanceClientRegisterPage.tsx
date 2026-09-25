@@ -1,4 +1,4 @@
-import { RefreshCcw } from 'lucide-react'
+import { Building2, RefreshCcw, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
@@ -49,9 +49,10 @@ export function FinanceClientRegisterPage() {
 
   return <div className="operations-page">
     <DashboardHeader
-      eyebrow="FINANCE · VIEW ONLY"
+      eyebrow="FINANCE · CLIENT INTELLIGENCE"
       title="Client Register"
-      description="Find any client and review its details and project history. This register is view-only."
+      description="Find any client, review its profile and complete project history. View-only register — no create or edit."
+      meta={<><span className="nk-meta-chip"><Building2 size={14} /> {clients.length} clients</span><span className="nk-meta-chip"><Search size={14} /> {register.filteredCount} matching</span></>}
       actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16} /> Refresh</button>}
     />
     {error && <div className="operations-alert error">{error}</div>}

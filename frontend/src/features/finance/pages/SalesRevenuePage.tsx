@@ -1,6 +1,6 @@
 import { BarChart3, CalendarDays, CircleDollarSign, Eye, EyeOff, FileText, RefreshCcw, TrendingUp, WalletCards, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { DashboardHeader } from '../../../components/DashboardHeader'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { CommandCenterHero, useNkReveal } from '../../../components/CommandCenterHero'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
 import './sales-revenue.css'
@@ -368,6 +368,8 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const [revenueTargets, setRevenueTargets] = useState<RevenueTarget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  useNkReveal(rootRef, !loading && !error)
   const [period, setPeriod] = useState<Period>('monthly')
   const [day, setDay] = useState(currentDate)
   const [week, setWeek] = useState(currentWeek)
@@ -720,18 +722,31 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
 
   const periodLabel = `${range[0]} to ${range[1]}`
 
-  return <div className="sr-page">
-    <DashboardHeader
-      eyebrow={mode === 'sales' ? 'FINANCE · SALES PIPELINE' : 'FINANCE · REALIZED REVENUE'}
+  return <div className="sr-page nk-arch-command" ref={rootRef}>
+    <CommandCenterHero
+      kicker={mode === 'sales' ? 'Finance · Sales Pipeline' : 'Finance · Realized Revenue'}
       title={mode === 'sales' ? 'Sales' : 'Revenue'}
       description={mode === 'sales'
         ? 'BD commercial value and every still-open collection remain here, including pending, partial, overdue and fully paid invoices awaiting Finance closure.'
         : 'Only Finance invoices that are fully paid and closed appear here. Revenue is actual realized money, never a forecast.'}
-      actions={<button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      icon={mode === 'sales' ? TrendingUp : BarChart3}
+      liveTitle={mode === 'sales' ? 'Live Sales Data' : 'Live Revenue Data'}
+      liveNote="From live Sales / Revenue APIs"
+      actions={
+        <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
+      }
     />
 
-    <section className="sr-filter-panel">
+    <section className="sr-filter-panel" data-nk-reveal>
       <div className="sr-filter-title"><CalendarDays size={18}/><div><strong>Analytics filters</strong><span>Every KPI, table and chart below follows the same selection.</span></div></div>
+      <div className="nk-range-chips" role="group" aria-label="Quick date range">
+        <span className="nk-range-chips-label">Quick range</span>
+        <button type="button" className={period === 'today' ? 'is-active' : ''} onClick={() => setPeriod('today')}>Today</button>
+        <button type="button" className={period === 'weekly' ? 'is-active' : ''} onClick={() => setPeriod('weekly')}>This Week</button>
+        <button type="button" className={period === 'monthly' ? 'is-active' : ''} onClick={() => setPeriod('monthly')}>This Month</button>
+        <button type="button" className={period === 'quarterly' ? 'is-active' : ''} onClick={() => setPeriod('quarterly')}>This Quarter</button>
+        <button type="button" className={period === 'yearly' ? 'is-active' : ''} onClick={() => setPeriod('yearly')}>This Year</button>
+      </div>
       <div className="sr-filter-grid">
         <label><span>Period</span><select value={period} onChange={e => setPeriod(e.target.value as Period)}>
           <option value="today">Today</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="custom">Custom Range</option>
@@ -761,19 +776,19 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
 
     {!loading && !error && <>
 
-      {mode === 'sales' ? <section className="sr-kpi-grid">
-        <article><TrendingUp/><span>Open Sales Pipeline</span><strong>{inr(salesKpis.openSales)}</strong><small>{salesRows.length} project(s) in selected period</small></article>
-        <article><FileText/><span>Open Invoiced</span><strong>{inr(salesKpis.invoiced)}</strong><small>Finance invoices not yet closed</small></article>
-        <article><WalletCards/><span>Received on Open Sales</span><strong>{inr(salesKpis.received)}</strong><small>Still stays in Sales until invoice closure</small></article>
-        <article><CircleDollarSign/><span>Outstanding</span><strong>{inr(salesKpis.outstanding)}</strong><small>{salesKpis.partial} partial · {salesKpis.overdue} overdue</small></article>
-      </section> : <section className="sr-kpi-grid">
-        <article><CircleDollarSign/><span>Realized Revenue</span><strong>{inr(revenueKpis.total)}</strong><small>Fully received + invoice closed only</small></article>
-        <article><FileText/><span>Closed Invoices</span><strong>{revenueKpis.invoices}</strong><small>In selected period</small></article>
-        <article><TrendingUp/><span>Revenue Projects</span><strong>{revenueKpis.projects}</strong><small>Distinct projects realized</small></article>
-        <article><WalletCards/><span>Average Closed Invoice</span><strong>{inr(revenueKpis.average)}</strong><small>Realized average in selected period</small></article>
+      {mode === 'sales' ? <section className="sr-kpi-grid" data-nk-reveal="stagger">
+        <article data-kpi="open_sales"><TrendingUp/><span>Open Sales Pipeline</span><strong>{inr(salesKpis.openSales)}</strong><small>{salesRows.length} project(s) in selected period</small></article>
+        <article data-kpi="open_sales"><FileText/><span>Open Invoiced</span><strong>{inr(salesKpis.invoiced)}</strong><small>Finance invoices not yet closed</small></article>
+        <article data-kpi="partial_payment"><WalletCards/><span>Received on Open Sales</span><strong>{inr(salesKpis.received)}</strong><small>Still stays in Sales until invoice closure</small></article>
+        <article data-kpi="outstanding"><CircleDollarSign/><span>Outstanding</span><strong>{inr(salesKpis.outstanding)}</strong><small>{salesKpis.partial} partial · {salesKpis.overdue} overdue</small></article>
+      </section> : <section className="sr-kpi-grid" data-nk-reveal="stagger">
+        <article data-kpi="revenue"><CircleDollarSign/><span>Realized Revenue</span><strong>{inr(revenueKpis.total)}</strong><small>Fully received + invoice closed only</small></article>
+        <article data-kpi="revenue"><FileText/><span>Closed Invoices</span><strong>{revenueKpis.invoices}</strong><small>In selected period</small></article>
+        <article data-kpi="revenue"><TrendingUp/><span>Revenue Projects</span><strong>{revenueKpis.projects}</strong><small>Distinct projects realized</small></article>
+        <article data-kpi="target"><WalletCards/><span>Average Closed Invoice</span><strong>{inr(revenueKpis.average)}</strong><small>Realized average in selected period</small></article>
       </section>}
 
-      {mode === 'revenue' && <section className="sr-target-panel">
+      {mode === 'revenue' && <section className="sr-target-panel" data-nk-reveal>
         <div className="sr-target-heading">
           <div><span>MONTHLY REVENUE TARGET</span><h3>{monthLabel(targetMonth)} Department Performance</h3><p>Finance sets the target. Actual Revenue is calculated only from fully paid + closed Finance invoices.</p></div>
           <div className="sr-target-actions">
@@ -798,7 +813,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
         </div>
       </section>}
 
-      <section className="sr-viz-toolbar">
+      <section className="sr-viz-toolbar" data-nk-reveal>
         <div><span>VISUALIZATIONS</span><strong>Choose the analysis you want to view</strong><small>Keep the page compact and open only the chart you need.</small></div>
         <label><span>Visualization</span><select value={visualizationKey} onChange={e => setVisualizationKey(e.target.value as VisualizationKey)}>{visualizationOptions.map(option => <option value={option.key} key={option.key}>{option.label}</option>)}</select></label>
         <button className="finance-secondary-button" type="button" onClick={() => setVisualizationVisible(value => !value)}>
@@ -807,7 +822,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
       </section>
       {visualizationVisible && <section className="sr-visual-stage">{renderVisualization()}</section>}
 
-      <section className="sr-panel">
+      <section className="sr-panel" data-nk-reveal>
         <div className="sr-panel-heading"><div><span>{mode === 'sales' ? 'LIVE MONEY PIPELINE' : 'CLOSED & REALIZED MONEY'}</span><h3>{mode === 'sales' ? 'Sales Projects' : 'Revenue Register'}</h3><p>{mode === 'sales' ? 'A project remains here until the relevant invoice is fully paid and Finance closes it.' : 'Every row below is backed by a closed Finance invoice and completed payment.'}</p></div><strong>{activeRows.length}</strong></div>
         {activeRows.length === 0 ? <div className="sr-empty">No {mode} records match the selected filters.</div> :
           <div className="sr-table-wrap"><table className="sr-table"><thead><tr>

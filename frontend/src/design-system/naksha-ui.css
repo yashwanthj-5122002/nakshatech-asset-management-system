@@ -1,0 +1,690 @@
+/* ==========================================================================
+   NakshaTech Design System — Shared Components
+   Enhances existing shared classes (buttons, cards, tables, forms, badges).
+   Presentation only. Does not alter DOM structure or behavior.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Typography helpers
+   -------------------------------------------------------------------------- */
+.nk-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dept-accent);
+  font-size: var(--nk-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nk-muted { color: var(--nk-text-secondary); }
+
+/* --------------------------------------------------------------------------
+   Cards / panels
+   -------------------------------------------------------------------------- */
+.app-shell .panel,
+.app-shell .finance-panel,
+.app-shell .sr-panel {
+  background: var(--nk-surface);
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  box-shadow: var(--nk-shadow-sm);
+  transition: box-shadow var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .panel:hover,
+.app-shell .finance-panel:hover {
+  box-shadow: var(--nk-shadow-md);
+}
+
+/* KPI / stat cards */
+.app-shell .stat-card,
+.app-shell .sr-kpi-grid article {
+  --nk-tone: var(--dept-accent);
+  position: relative;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  box-shadow: var(--nk-shadow-sm);
+  transition: transform var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .stat-card.tone-navy { --nk-tone: var(--nk-blue); }
+.app-shell .stat-card.tone-cyan { --nk-tone: var(--nk-cyan); }
+.app-shell .stat-card.tone-green { --nk-tone: var(--nk-green); }
+.app-shell .stat-card.tone-orange { --nk-tone: var(--nk-orange); }
+.app-shell .stat-card.tone-purple { --nk-tone: var(--nk-purple); }
+.app-shell .stat-card.tone-red { --nk-tone: var(--nk-danger); }
+
+.app-shell .stat-card:hover,
+.app-shell .sr-kpi-grid article:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: var(--nk-shadow-md), 0 0 0 1px color-mix(in srgb, var(--nk-tone) 22%, transparent);
+  border-color: color-mix(in srgb, var(--nk-tone) 40%, var(--nk-border));
+}
+
+.app-shell .stat-icon {
+  border-radius: var(--nk-radius-md);
+  background: color-mix(in srgb, var(--nk-tone) 13%, #fff);
+  color: var(--nk-tone);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nk-tone) 22%, transparent);
+}
+
+.app-shell .stat-card strong { color: var(--nk-text); letter-spacing: -0.02em; }
+.app-shell .stat-card p { color: var(--nk-text-secondary); font-weight: 650; }
+
+/* --------------------------------------------------------------------------
+   Finance KPI cards — semantic accent system (visual only)
+   -------------------------------------------------------------------------- */
+.app-shell .finance-kpi-card { --kpi-accent: var(--dept-accent); --kpi-accent-2: var(--dept-accent-2); }
+
+.app-shell .finance-kpi-card[data-kpi="open_sales"],
+.app-shell .finance-kpi-card[data-kpi="partial_payment"],
+.app-shell .sr-kpi-grid article[data-kpi="open_sales"],
+.app-shell .sr-kpi-grid article[data-kpi="partial_payment"] {
+  --kpi-accent: var(--kpi-open-sales);
+  --kpi-accent-2: var(--kpi-open-sales-2);
+}
+
+.app-shell .finance-kpi-card[data-kpi="revenue"],
+.app-shell .finance-kpi-card[data-kpi="invoice_not_raised"],
+.app-shell .sr-kpi-grid article[data-kpi="revenue"] {
+  --kpi-accent: var(--kpi-revenue);
+  --kpi-accent-2: var(--kpi-revenue-2);
+}
+
+.app-shell .finance-kpi-card[data-kpi="target"],
+.app-shell .finance-kpi-card[data-kpi="target_remaining"],
+.app-shell .sr-kpi-grid article[data-kpi="target"] {
+  --kpi-accent: var(--kpi-target);
+  --kpi-accent-2: var(--kpi-target-2);
+}
+
+.app-shell .finance-kpi-card[data-kpi="outstanding"],
+.app-shell .sr-kpi-grid article[data-kpi="outstanding"] {
+  --kpi-accent: var(--kpi-outstanding);
+  --kpi-accent-2: var(--kpi-outstanding-2);
+}
+
+.app-shell .finance-kpi-card[data-kpi="payment_pending"],
+.app-shell .sr-kpi-grid article[data-kpi="payment_pending"] {
+  --kpi-accent: var(--kpi-pending);
+  --kpi-accent-2: var(--kpi-pending-2);
+}
+
+.app-shell .finance-kpi-card[data-kpi] {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--nk-radius-lg);
+  border-color: color-mix(in srgb, var(--kpi-accent) 26%, var(--nk-border));
+  background:
+    radial-gradient(circle at 94% -12%, color-mix(in srgb, var(--kpi-accent) 18%, transparent), transparent 48%),
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: var(--nk-shadow-sm);
+  transition:
+    transform var(--nk-dur) var(--nk-ease),
+    box-shadow var(--nk-dur) var(--nk-ease),
+    border-color var(--nk-dur) var(--nk-ease);
+}
+
+/* Semantic accent edge + glow */
+.app-shell .finance-kpi-card[data-kpi]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--kpi-accent), var(--kpi-accent-2));
+  opacity: 0.9;
+}
+
+.app-shell .finance-kpi-card[data-kpi]::after {
+  background: radial-gradient(circle, color-mix(in srgb, var(--kpi-accent) 24%, transparent), transparent 70%);
+}
+
+.app-shell .finance-kpi-card[data-kpi] > span {
+  color: var(--kpi-accent);
+  position: relative;
+  z-index: 1;
+}
+
+.app-shell .finance-kpi-card[data-kpi] > span svg {
+  box-sizing: content-box;
+  padding: 5px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--kpi-accent) 13%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kpi-accent) 26%, transparent);
+  color: var(--kpi-accent);
+}
+
+.app-shell .finance-kpi-card[data-kpi] strong,
+.app-shell .finance-kpi-card[data-kpi] small,
+.app-shell .finance-kpi-card[data-kpi] em {
+  position: relative;
+  z-index: 1;
+}
+
+.app-shell .finance-kpi-card[data-kpi] strong {
+  color: var(--nk-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell .finance-kpi-card[data-kpi] .kpi-drilldown-hint {
+  color: var(--kpi-accent);
+}
+
+.app-shell button.finance-kpi-card.kpi-drilldown:hover,
+.app-shell button.finance-kpi-card.kpi-drilldown:focus-visible {
+  transform: translateY(-3px) scale(1.01);
+  border-color: color-mix(in srgb, var(--kpi-accent) 55%, var(--nk-border));
+  box-shadow:
+    var(--nk-shadow-md),
+    0 10px 28px color-mix(in srgb, var(--kpi-accent) 22%, transparent);
+  outline: none;
+}
+
+/* Sales / Revenue KPI grid cards — same semantic accents */
+.app-shell .sr-kpi-grid article[data-kpi] {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--kpi-accent) 26%, var(--nk-border));
+  background:
+    radial-gradient(circle at 96% -14%, color-mix(in srgb, var(--kpi-accent) 16%, transparent), transparent 50%),
+    linear-gradient(180deg, #ffffff, #fbfdff);
+}
+
+.app-shell .sr-kpi-grid article[data-kpi] svg { color: var(--kpi-accent); }
+
+.app-shell .sr-kpi-grid article[data-kpi] strong { color: var(--nk-text); }
+
+.app-shell .sr-kpi-grid article[data-kpi]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--kpi-accent), var(--kpi-accent-2, var(--kpi-accent)));
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+.app-shell .primary-button,
+.app-shell .secondary-button,
+.app-shell .danger-button,
+.app-shell .text-button,
+.app-shell .icon-button,
+.app-shell .sr-reset,
+.app-shell .finance-primary-button,
+.app-shell .finance-secondary-button {
+  border-radius: var(--nk-radius-md);
+  font-weight: 750;
+  transition: transform var(--nk-dur-fast) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease),
+    background var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease), color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .primary-button,
+.app-shell .finance-primary-button {
+  background: linear-gradient(135deg, var(--nk-navy-700) 0%, #1257a8 55%, var(--nk-blue) 100%);
+  background-size: 160% 160%;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(18, 106, 232, 0.26);
+}
+
+.app-shell .primary-button:hover,
+.app-shell .finance-primary-button:hover {
+  transform: translateY(-1px);
+  background-position: 100% 0;
+  box-shadow: 0 12px 28px rgba(18, 106, 232, 0.32);
+}
+
+.app-shell .secondary-button,
+.app-shell .finance-secondary-button {
+  background: var(--nk-surface);
+  border: 1px solid var(--nk-border);
+  color: var(--nk-navy-700);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell .secondary-button:hover,
+.app-shell .finance-secondary-button:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  background: var(--nk-surface-soft);
+  transform: translateY(-1px);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+.app-shell .icon-button {
+  background: var(--nk-surface);
+  border-color: var(--nk-border);
+  color: var(--nk-navy-700);
+}
+
+.app-shell .icon-button:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 40%, var(--nk-border));
+  background: var(--nk-surface-soft);
+}
+
+/* Clear filters — clean secondary treatment */
+.app-shell .sr-reset {
+  align-self: end;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--nk-border-strong);
+  border-radius: var(--nk-radius-md);
+  background: linear-gradient(180deg, #fff, #f4f8fc);
+  color: var(--nk-navy-700);
+  font-family: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  box-shadow: var(--nk-shadow-xs);
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease), background var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .sr-reset:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 50%, var(--nk-border));
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Forms / inputs / selects / filters
+   -------------------------------------------------------------------------- */
+.app-shell input,
+.app-shell select,
+.app-shell textarea,
+.app-shell .search-shell,
+.app-shell .sr-filter-grid input,
+.app-shell .sr-filter-grid select {
+  border-radius: var(--nk-radius-md);
+  border-color: var(--nk-border);
+  background: var(--nk-surface);
+  color: var(--nk-text);
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell input:focus,
+.app-shell select:focus,
+.app-shell textarea:focus {
+  border-color: color-mix(in srgb, var(--dept-accent) 55%, var(--nk-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dept-accent) 16%, transparent);
+}
+
+/* Premium glass filter panel */
+.app-shell .filter-panel,
+.app-shell .sr-filter-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(247, 251, 255, 0.94)),
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--dept-accent) 7%, transparent), transparent 42%);
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  box-shadow: var(--nk-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.app-shell .filter-panel::before,
+.app-shell .sr-filter-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2), transparent 80%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Section icon chip in the filter heading */
+.app-shell .sr-filter-title > svg {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  box-sizing: content-box;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--dept-accent) 12%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dept-accent) 26%, transparent);
+  color: var(--dept-accent);
+}
+
+.app-shell .sr-filter-title strong {
+  color: var(--nk-text);
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .sr-filter-grid label > span,
+.app-shell .data-form label {
+  color: var(--nk-text-secondary);
+  letter-spacing: 0.03em;
+}
+
+.app-shell .sr-range-note {
+  border-top-color: var(--nk-border);
+  color: var(--nk-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Tables — premium rounded container, stronger header, hover rows
+   -------------------------------------------------------------------------- */
+.app-shell .sr-table-wrap,
+.app-shell .finance-table-wrap {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-lg);
+  overflow: auto;
+  background: var(--nk-surface);
+  box-shadow: var(--nk-shadow-xs);
+}
+
+.app-shell table { border-collapse: separate; border-spacing: 0; width: 100%; }
+
+.app-shell thead th {
+  background: linear-gradient(180deg, #f4f8fc, #edf3f9);
+  color: var(--nk-text-secondary);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--nk-border-strong);
+  white-space: nowrap;
+}
+
+.app-shell tbody td {
+  border-bottom: 1px solid rgba(216, 228, 239, 0.7);
+  color: var(--nk-text);
+  font-size: var(--nk-fs-sm);
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.app-shell tbody tr {
+  transition: background var(--nk-dur-fast) var(--nk-ease);
+}
+
+.app-shell tbody tr:hover {
+  background: color-mix(in srgb, var(--dept-accent) 5%, transparent);
+}
+
+.app-shell tbody tr:last-child td { border-bottom: 0; }
+
+/* Pagination */
+.app-shell .sr-pagination {
+  color: var(--nk-text-secondary);
+  font-weight: 650;
+}
+
+.app-shell .sr-pagination button {
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-sm);
+  background: var(--nk-surface);
+  color: var(--nk-navy-700);
+  font-weight: 750;
+  min-height: 34px;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease);
+}
+
+.app-shell .sr-pagination button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dept-accent) 50%, var(--nk-border));
+  box-shadow: var(--nk-shadow-sm);
+  transform: translateY(-1px);
+}
+
+/* Panels / section cards — layered elevation */
+.app-shell .sr-panel,
+.app-shell .sr-target-panel,
+.app-shell .sr-viz-toolbar {
+  position: relative;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  box-shadow: var(--nk-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: box-shadow var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .sr-panel:hover,
+.app-shell .sr-target-panel:hover {
+  box-shadow: var(--nk-shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  border-color: color-mix(in srgb, var(--dept-accent) 22%, var(--nk-border));
+}
+
+.app-shell .sr-panel-heading span,
+.app-shell .sr-viz-toolbar > div > span,
+.app-shell .sr-target-heading > div:first-child > span {
+  color: var(--dept-accent);
+}
+
+/* Chart containers */
+.app-shell .sr-chart-panel {
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  box-shadow: var(--nk-shadow-sm);
+}
+
+/* Chart internals — premium command-center palette (colors only) */
+.app-shell .sr-grid-line { stroke: #e7edf5; stroke-width: 1; }
+.app-shell .sr-area-fill { fill: rgba(18, 106, 232, 0.1); }
+.app-shell .sr-trend-line { stroke: var(--nk-navy-700); stroke-width: 3.5; }
+.app-shell .sr-trend-line.secondary { stroke: var(--nk-cyan); }
+.app-shell .sr-trend-dot { fill: var(--nk-navy-700); }
+.app-shell .sr-trend-dot.secondary { fill: var(--nk-cyan); }
+.app-shell .sr-axis-label { fill: var(--nk-text-secondary); font-weight: 600; }
+.app-shell .sr-column { fill: var(--nk-blue); }
+.app-shell .sr-column:hover { fill: var(--nk-navy-600); }
+.app-shell .sr-column-value { fill: var(--nk-text); }
+.app-shell .sr-chart-legend i.primary { background: linear-gradient(135deg, var(--nk-navy-600), var(--nk-blue)); }
+.app-shell .sr-chart-legend i.secondary { background: linear-gradient(135deg, var(--nk-cyan), #35d7ef); }
+.app-shell .sr-chart-legend span { color: var(--nk-text-secondary); }
+
+.app-shell .sr-donut { box-shadow: 0 16px 38px rgba(6, 32, 66, 0.1); }
+.app-shell .sr-donut::after {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #e8eef5;
+}
+.app-shell .sr-donut-legend > div { border-bottom-color: #eef3f8; }
+.app-shell .sr-donut-legend span { color: var(--nk-text); }
+.app-shell .sr-donut-legend strong { color: var(--nk-text); }
+.app-shell .sr-donut-legend small { color: var(--nk-text-secondary); }
+
+.app-shell .sr-ranking-index {
+  background: color-mix(in srgb, var(--dept-accent) 11%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dept-accent) 24%, transparent);
+  color: var(--dept-accent);
+}
+.app-shell .sr-ranking-main strong { color: var(--nk-text); }
+.app-shell .sr-ranking-main span { color: var(--nk-text-secondary); }
+.app-shell .sr-bar-track { background: #eef3f8; border-radius: 999px; overflow: hidden; }
+.app-shell .sr-bar-track i { background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2)); border-radius: 999px; }
+
+.app-shell .sr-panel-heading h3 { color: var(--nk-text); letter-spacing: -0.01em; }
+.app-shell .sr-panel-heading p { color: var(--nk-text-secondary); }
+
+/* Modals — premium glass */
+.app-shell .sr-modal {
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--nk-radius-2xl);
+  box-shadow: 0 34px 90px rgba(3, 20, 38, 0.4);
+}
+
+.app-shell .sr-modal-backdrop {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  background: rgba(4, 24, 47, 0.55);
+}
+
+.app-shell .sr-modal-header {
+  background: linear-gradient(180deg, #ffffff, #f8fbfe);
+}
+
+.app-shell .sr-modal-header span { color: var(--dept-accent); }
+
+.app-shell .sr-modal-close {
+  border: 1px solid var(--nk-border);
+  border-radius: 11px;
+  background: var(--nk-surface);
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease),
+    transform var(--nk-dur-fast) var(--nk-ease);
+}
+
+.app-shell .sr-modal-close:hover {
+  border-color: color-mix(in srgb, var(--dept-accent) 45%, var(--nk-border));
+  box-shadow: var(--nk-shadow-sm);
+  transform: translateY(-1px);
+}
+
+/* Forms — premium fields (Commercial Control, CRUD screens) */
+.app-shell .finance-form-card,
+.app-shell .finance-claim-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  box-shadow: var(--nk-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.app-shell .finance-form-card::before,
+.app-shell .finance-claim-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--dept-accent), var(--dept-accent-2), transparent 80%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.app-shell .finance-field input,
+.app-shell .finance-field select,
+.app-shell .finance-field textarea,
+.app-shell .data-form input,
+.app-shell .data-form select,
+.app-shell .data-form textarea {
+  border: 1px solid var(--nk-border-strong);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--nk-text);
+  transition: border-color var(--nk-dur) var(--nk-ease), box-shadow var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .finance-field input:focus,
+.app-shell .finance-field select:focus,
+.app-shell .finance-field textarea:focus,
+.app-shell .data-form input:focus,
+.app-shell .data-form select:focus,
+.app-shell .data-form textarea:focus {
+  border-color: color-mix(in srgb, var(--dept-accent) 60%, var(--nk-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dept-accent) 16%, transparent);
+}
+
+.app-shell .finance-form-section > header span { color: var(--dept-accent); }
+
+.app-shell .finance-panel-kicker { color: var(--dept-accent); }
+
+/* Finance panels — consistent premium elevation */
+.app-shell .finance-panel {
+  position: relative;
+  border: 1px solid var(--nk-border);
+  border-radius: var(--nk-radius-xl);
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  box-shadow: var(--nk-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: box-shadow var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell .finance-panel:hover {
+  box-shadow: var(--nk-shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* --------------------------------------------------------------------------
+   Badges / status pills
+   -------------------------------------------------------------------------- */
+.app-shell .status,
+.app-shell .priority,
+.app-shell .count-chip {
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* --------------------------------------------------------------------------
+   Tabs
+   -------------------------------------------------------------------------- */
+.app-shell .sr-tab,
+.app-shell [role="tab"] {
+  border-radius: var(--nk-radius-md);
+  font-weight: 700;
+  color: var(--nk-text-secondary);
+  transition: background var(--nk-dur) var(--nk-ease), color var(--nk-dur) var(--nk-ease);
+}
+
+.app-shell [role="tab"][aria-selected="true"],
+.app-shell .sr-tab.active {
+  background: var(--dept-accent-soft);
+  color: var(--dept-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Loading / empty / error states
+   -------------------------------------------------------------------------- */
+.app-shell .loading-state,
+.app-shell .finance-empty-state,
+.app-shell .sr-empty {
+  border-radius: var(--nk-radius-lg);
+  background: var(--nk-surface-soft);
+  border: 1px dashed var(--nk-border);
+  color: var(--nk-text-secondary);
+}
+
+.app-shell .error-message,
+.app-shell .finance-error {
+  border-radius: var(--nk-radius-md);
+  border: 1px solid color-mix(in srgb, var(--nk-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--nk-danger) 8%, #fff);
+  color: #9d2f2f;
+}
+
+.app-shell .success-message {
+  border-radius: var(--nk-radius-md);
+  border: 1px solid color-mix(in srgb, var(--nk-success) 35%, transparent);
+  background: color-mix(in srgb, var(--nk-success) 8%, #fff);
+  color: #12663c;
+}
+
+.app-shell .empty-state {
+  border-radius: var(--nk-radius-lg);
+  background: var(--nk-surface-soft);
+  border: 1px dashed var(--nk-border-strong);
+}
+
+/* --------------------------------------------------------------------------
+   Subtle entrance motion (opt-in, command-center / operational)
+   -------------------------------------------------------------------------- */
+@keyframes nk-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nk-anim-in { animation: nk-fade-up var(--nk-dur-slow) var(--nk-ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nk-anim-in { animation: none; }
+  .app-shell .stat-card:hover,
+  .app-shell .primary-button:hover { transform: none; }
+}

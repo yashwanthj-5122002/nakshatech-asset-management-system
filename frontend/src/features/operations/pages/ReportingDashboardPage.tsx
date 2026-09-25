@@ -129,10 +129,17 @@ export function ReportingDashboardPage(){
 
   return <div className="operations-page phase8-reporting-page">
     <DashboardHeader
+      variant="ops"
+      icon={BarChart3}
       eyebrow="PHASE 8 · OPERATIONAL & ANALYTICAL REPORTING"
       title={title}
       description={description}
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><BarChart3 size={14}/> Read-only operational & analytical reporting</span>
+        <span className="nk-meta-chip"><ShieldCheck size={14}/> {data?label(data.routing.routing_mode):'Routing mode'}</span>
+        <span className="nk-meta-chip"><UsersRound size={14}/> Scoped to your ERP role</span>
+      </>}
     />
 
     {data&&<div className={`reporting-routing-banner ${data.routing.live_technical_routing_enabled?'live':'locked'}`}>
@@ -202,7 +209,7 @@ export function ReportingDashboardPage(){
 
       <section className="operations-panel reporting-projects">
         <header><div><span className="operations-kicker">PROJECT PORTFOLIO</span><h2>Health & Closure Overview</h2><p>Read-only portfolio facts for the projects visible to your current ERP role.</p></div></header>
-        {data.projects.length===0?<div className="operations-empty">No project reporting rows are visible for this login.</div>
+        {data.projects.length===0?<div className="nk-empty"><span className="nk-empty-icon"><BarChart3 size={22}/></span><h3>No project reporting rows</h3><p>Projects appear here once they are visible to your ERP role — the portfolio table is read-only and mirrors the live Project Monitoring data.</p></div>
         :<div className="reporting-table-wrap"><table className="reporting-table"><thead><tr><th>Project</th><th>Client</th><th>Health</th><th>Progress</th><th>Teams</th><th>Open Handovers</th><th>Finance</th></tr></thead><tbody>{data.projects.map(row=><tr key={row.project_id}>
           <td><strong>{row.project_code||`#${row.project_id}`}</strong><small>{row.project_name||'Project'}</small></td>
           <td>{row.client_name||'—'}</td>

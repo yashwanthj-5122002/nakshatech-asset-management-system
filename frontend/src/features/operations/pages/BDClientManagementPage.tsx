@@ -1,4 +1,4 @@
-import { Plus, RefreshCcw, RefreshCw } from 'lucide-react'
+import { Building2, FolderKanban, Plus, RefreshCcw, RefreshCw, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -97,10 +97,10 @@ export function BDClientManagementPage(){
   }
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow="CLIENT MASTER" title="Client Management" description="Find an existing client before creating a new one. Project creation always starts from the selected Client ID." details={<>
+    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · CLIENT INTELLIGENCE" title="Client Management" description="Find an existing client before creating a new one — search the Client Register first. Project creation always starts from the selected Client ID." details={<>
       <div><span>Clients on record</span><strong>{data?.clients.length ?? 0}</strong></div>
       <div><span>Projects linked</span><strong>{data?.projects.length ?? 0}</strong></div>
-    </>} actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>}/>
+    </>} actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>} meta={<><span className="nk-meta-chip"><Building2 size={14}/> {data?.clients.length ?? 0} clients on record</span><span className="nk-meta-chip"><FolderKanban size={14}/> Project creation starts from a selected Client ID</span><span className="nk-meta-chip"><ShieldCheck size={14}/> Client ID entered manually · duplicates rejected</span></>}/>
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
 
     {showClientForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW CLIENT</span><h2>Client Details</h2><p>Client ID is manually entered and duplicate IDs are rejected by the backend.</p></div></header><form className="operations-form-grid" onSubmit={createClient}>
@@ -117,7 +117,7 @@ export function BDClientManagementPage(){
       <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy}>{busy?'Creating…':'Create Client'}</button><button type="button" className="operations-button secondary" onClick={()=>setShowClientForm(false)}>Cancel</button></div>
     </form></section>}
 
-    {!selected&&<ClientRegisterPanel register={register} loading={!data&&!error} onView={setSelectedId} onCreateProject={id=>{setSelectedId(id);setShowProjectForm(true)}}/>}
+    {!selected&&<ClientRegisterPanel register={register} loading={!data&&!error} onView={setSelectedId} onCreateClient={()=>setShowClientForm(true)} onCreateProject={id=>{setSelectedId(id);setShowProjectForm(true)}}/>}
 
     {selected&&<>
       <BackToClientsButton onClick={()=>{setSelectedId(null);setShowProjectForm(false)}}/>

@@ -126,6 +126,11 @@ export function ManagementProject360Page() {
       title="Project 360"
       description={isManagement ? 'Full lifecycle history including client identity, commercial impact, invoices and payments.' : 'Operational Project 360: stage, feedback/rework status, delivery versions and Management chat. Client identity and commercial data are restricted.'}
       actions={<button className="operations-button secondary" onClick={loadDashboard}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><ShieldCheck size={14}/> {isManagement ? 'Full lifecycle access' : 'Operational view · commercial data restricted'}</span>
+        <span className="nk-meta-chip"><MessageSquare size={14}/> Client feedback, rework and Management chat</span>
+        <span className="nk-meta-chip"><AlertTriangle size={14}/> Stage, delivery versions and closure state</span>
+      </>}
     />
     {error && <div className="operations-alert error">{error}</div>}
     {notice && <div className="operations-alert success">{notice}</div>}

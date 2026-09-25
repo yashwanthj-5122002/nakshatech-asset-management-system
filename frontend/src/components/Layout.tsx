@@ -180,6 +180,57 @@ function navigationLabelForItem(role: Role, item: NavItem): string {
   return role === 'management' && item.managementLabel ? item.managementLabel : item.label
 }
 
+/** Visual-only department accent key for the design system (no access changes). */
+function deptAccentForRole(role: Role): string {
+  switch (role) {
+    case 'finance': return 'finance'
+    case 'hr': return 'hr'
+    case 'it': return 'it'
+    case 'drone': return 'drone'
+    case 'ortho': return 'ortho'
+    case 'lidar': return 'lidar'
+    case 'mobile_mapping': return 'mobile_mapping'
+    case 'laser_scanning': return 'laser_scanning'
+    case 'civil': return 'civil'
+    case 'management': return 'management'
+    case 'bd': return 'bd'
+    case 'bim': return 'bim'
+    case 'employee': return 'employee'
+    case 'admin': return 'admin'
+    case 'software_team': return 'software_team'
+    default: return 'finance'
+  }
+}
+
+/**
+ * Visual workspace identity follows the page being viewed, not only the
+ * signed-in role. This keeps cross-department Admin/Management views themed
+ * like the department they are inspecting without changing access rules.
+ */
+function deptAccentForWorkspace(pathname: string, role: Role): string {
+  if (pathname === '/finance/sales') return 'sales'
+  if (pathname === '/finance/revenue') return 'revenue'
+  if (pathname === '/finance' || pathname.startsWith('/finance/')) return 'finance'
+  if (pathname === '/bd' || pathname.startsWith('/bd/')) return 'bd'
+  if (pathname === '/ortho' || pathname.startsWith('/ortho/')) {
+    return TECHNICAL_PM_ROLES.includes(role) ? deptAccentForRole(role) : 'ortho'
+  }
+  if (pathname === '/drone' || pathname.startsWith('/drone/')) return 'drone'
+  if (pathname === '/it' || pathname.startsWith('/it/')) return 'it'
+  // IT register + IT workbenches share the IT technology theme
+  if (['/assets', '/work', '/replacements', '/data-quality'].some(p => pathname === p || pathname.startsWith(`${p}/`))) return 'it'
+  if (['/it/handover-return', '/it/rental-returns', '/it/purchase-requests', '/it/purchases'].some(p => pathname === p || pathname.startsWith(`${p}/`))) return 'it'
+  if (pathname === '/management' || pathname.startsWith('/management/')) return 'management'
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin'
+  if (pathname === '/software-team' || pathname.startsWith('/software-team/')) return 'software_team'
+  // Management-owned intelligence pages keep the executive theme
+  if (pathname === '/reporting' || pathname.startsWith('/reporting/') || pathname === '/business' || pathname.startsWith('/business/')) return 'management'
+  // People / process theme for HR travel workspaces and the employee portal
+  if (pathname === '/travel-km' || pathname.startsWith('/travel-km/') || pathname.startsWith('/portal/') || pathname.startsWith('/agent-monitor')) return 'hr'
+  if (pathname.startsWith('/commercial') || pathname.endsWith('/commercial')) return 'commercial'
+  return deptAccentForRole(role)
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const { selectedMonth } = useITMonth()
@@ -266,14 +317,14 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-dept={deptAccentForWorkspace(location.pathname, currentUser.role)}>
       <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button>
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <button className="mobile-close" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X /></button>
         <Logo inverse compact />
         <div className="sidebar-title">
-          <strong>Asset Management</strong>
-          <span>Unified operations platform</span>
+          <strong>NakshaTech ERP</strong>
+          <span>Inspiring geospatial standards</span>
         </div>
         <span className="sidebar-section-label">Asset Operations</span>
         <nav className={groupedNavigation ? 'grouped-navigation' : ''}>

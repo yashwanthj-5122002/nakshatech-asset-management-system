@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, FolderPlus, LayoutGrid, MapPin, Search, Table2, UserRound, X } from 'lucide-react'
+import { ArrowLeft, Building2, FolderOpen, FolderPlus, LayoutGrid, MapPin, Search, Table2, UserRound, X } from 'lucide-react'
 import { useRef } from 'react'
 import { buildPageList, CLIENT_SORT_OPTIONS, isClientSortKey, isPageSize, PAGE_SIZE_OPTIONS } from './client-register-utils'
 import { label } from './register-utils'
@@ -26,15 +26,17 @@ export type RegisterClientProject = {
   start_date?: string | null; end_date?: string | null; status: string
 }
 
-export function ClientRegisterPanel({ register, onView, onCreateProject, readOnly = false, loading = false }: {
+export function ClientRegisterPanel({ register, onView, onCreateProject, onCreateClient, readOnly = false, loading = false }: {
   register: ClientRegisterState<RegisterClient>
   onView: (clientId: number) => void
   onCreateProject?: (clientId: number) => void
+  onCreateClient?: () => void
   readOnly?: boolean
   loading?: boolean
 }) {
   const panelRef = useRef<HTMLElement>(null)
   const createProject = !readOnly ? onCreateProject : undefined
+  const createClient = !readOnly ? onCreateClient : undefined
   const rows = register.pageRows
   const goToPage = (page: number) => { register.setPage(page); panelRef.current?.scrollIntoView({ block: 'start' }) }
   return <section ref={panelRef} className="operations-panel client-register"><header><div><span className="operations-kicker">CLIENT REGISTER</span><h2>Existing Clients</h2></div></header>
@@ -44,8 +46,8 @@ export function ClientRegisterPanel({ register, onView, onCreateProject, readOnl
       ? <ClientExcelView rows={rows} onView={onView} onCreateProject={createProject} />
       : <ClientCardView rows={rows} onView={onView} onCreateProject={createProject} />)}
     {!loading && !rows.length && (register.totalCount === 0
-      ? <div className="operations-empty">No clients found.</div>
-      : <div className="operations-empty">No clients match “{register.query}”. <button type="button" className="client-register-link" onClick={register.clearSearch}>Clear search</button></div>)}
+      ? <div className="nk-empty"><span className="nk-empty-icon"><Building2 size={22} /></span><h3>No clients registered yet</h3><p>Clients are the starting point for every project in this register. Register the first client to begin creating and tracking project work.</p>{createClient && <div className="nk-empty-action"><button className="operations-button" onClick={createClient}>New Client</button></div>}</div>
+      : <div className="nk-empty"><span className="nk-empty-icon"><Search size={22} /></span><h3>No matching clients</h3><p>Nothing matches “{register.query}”. Try another Client ID, name, country or contact, or clear the search to see the full Client Register.</p><div className="nk-empty-action"><button type="button" className="operations-button secondary" onClick={register.clearSearch}>Clear search</button></div></div>)}
     {!loading && register.pageCount > 1 && <ClientPagination page={register.page} pageCount={register.pageCount} onChange={goToPage} />}
   </section>
 }
@@ -135,7 +137,7 @@ export function ClientDetailPanel({ client, readOnly = false, onCreateProject }:
 export function ClientProjectsPanel({ clientCode, projects, loading = false }: { clientCode: string; projects: RegisterClientProject[]; loading?: boolean }) {
   return <section className="operations-panel"><header><div><span className="operations-kicker">CLIENT PROJECTS</span><h2>Projects for {clientCode}</h2></div></header>
     {loading ? <div className="operations-empty">Loading projects...</div>
-      : !projects.length ? <div className="operations-empty">No projects exist for this client.</div>
+      : !projects.length ? <div className="nk-empty"><span className="nk-empty-icon"><FolderOpen size={22} /></span><h3>No projects for this client yet</h3><p>This client has no project history in the register. Projects created for {clientCode} will be listed here with their ID, scope, dates and status.</p></div>
       : <div className="operations-table-wrap"><table className="operations-table"><thead><tr><th>Project ID</th><th>Name / Scope</th><th>Dates</th><th>Status</th></tr></thead><tbody>{projects.map(row => <tr key={row.id}><td><strong>{row.project_code}</strong></td><td>{row.project_name}<small>{row.scope_text}</small></td><td>{row.start_date || '—'} → {row.end_date || '—'}</td><td><span className="operations-status">{label(row.status)}</span></td></tr>)}</tbody></table></div>}
   </section>
 }

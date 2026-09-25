@@ -49,7 +49,7 @@ export function ProjectRegisterTable<T extends RegisterProject>({ rows, readOnly
     const editableManager = readOnly ? null : renderProjectManager?.(row) ?? null
     const tone = statusKey(row) === 'finance_returned' ? ' danger' : statusKey(row) ? ' warning' : ''
     return <tr key={row.id}><td><button className="operations-row-link" onClick={() => onDetails(row)}><strong>{row.project_code}</strong><small>{row.client_code} · {row.project_name}</small></button></td><td>{row.performing_department_label || 'Ortho'}</td><td><span className={`operations-status${tone}`}>{financeLabel(row)}</span></td><td>{operationalLabel(row)}</td><td>{editableManager ?? (row.project_manager_name || 'Not assigned')}</td><td><div className="operations-actions"><button className="operations-button secondary" onClick={() => onDetails(row)}><ChevronDown size={14} /> Details</button>{!readOnly && renderActions?.(row)}</div></td></tr>
-  })}{!rows.length && <tr><td colSpan={6}><div className="operations-empty">No projects match these filters.</div></td></tr>}</tbody></table></div>
+  })}{!rows.length && <tr><td colSpan={6}><div className="nk-empty"><span className="nk-empty-icon"><Search size={22} /></span><h3>No matching projects</h3><p>Adjust the Finance or Operational status filters, or clear the search to see the full portfolio.</p></div></td></tr>}</tbody></table></div>
 }
 
 export function ProjectDetailsPanel({ project }: { project: RegisterProject }) {
