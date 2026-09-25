@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../../lib/api'
 import { useAuth } from '../../../context/AuthContext'
 import { departmentCodeForRole, isTechnicalProjectManager } from '../../../lib/roles'
+import { aggregateFinanceCommandCenterKpis, openSalesCategoriesForProject } from './financeCommandCenterKpis'
 import '../finance-expenses.css'
 import './sales-revenue.css'
 
@@ -400,12 +401,8 @@ function computeProjectCalc(row: SalesProject): ProjectCalc {
   const openReceivedInr = openInvoices.reduce((sum, inv) => sum + inv.paid_inr, 0)
   const baselineOpenSalesInr = Math.max(row.sales_value_inr - closedSalesValueInr, 0)
   const unbilledOpenSalesInr = Math.max(baselineOpenSalesInr - openInvoiceTotalInr, 0)
-  let expectedOpenSalesInr = Math.max(baselineOpenSalesInr, openInvoiceTotalInr)
+  const expectedOpenSalesInr = unbilledOpenSalesInr + openInvoiceBalanceInr
   let expectedOutstandingInr = unbilledOpenSalesInr + openInvoiceBalanceInr
-  if (row.sales_value_inr === 0 && openInvoiceTotalInr > 0) {
-    expectedOpenSalesInr = openInvoiceTotalInr
-    expectedOutstandingInr = openInvoiceBalanceInr
-  }
   const tolerance = 0.01
   return {
     closedSalesValueInr,
@@ -621,7 +618,7 @@ export function FinanceCommandCenter() {
   const [drilldownError, setDrilldownError] = useState('')
   const [drilldownData, setDrilldownData] = useState<{ overview: Overview; targets: RevenueTarget[] } | null>(null)
   const [expandedCalcId, setExpandedCalcId] = useState<string | null>(null)
-  const [period, setPeriod] = useState<Period>('custom')
+  const [period, setPeriod] = useState<Period>('monthly')
   const [day, setDay] = useState(currentDate)
   const [week, setWeek] = useState(currentWeek)
   const [monthFilter, setMonthFilter] = useState(currentMonth)
@@ -736,7 +733,7 @@ export function FinanceCommandCenter() {
     setCurrency('all')
     setStatusFilter('all')
     setSalesDateBasis('projected')
-    setPeriod('custom')
+    setPeriod('monthly')
     setDay(currentDate)
     setWeek(currentWeek)
     setMonthFilter(currentMonth)
@@ -770,42 +767,7 @@ export function FinanceCommandCenter() {
   const serverKpiSummary = data?.kpi_summary ?? null
 
   const salesKpis = useMemo(() => {
-    const sumCategories = (key: keyof OpenSalesCategories) =>
-      activeProjects.reduce((sum, row) => sum + (row.open_sales_categories?.[key] ?? 0), 0)
-    const categories: OpenSalesCategories = {
-      invoice_not_raised_inr: sumCategories('invoice_not_raised_inr'),
-      payment_pending_inr: sumCategories('payment_pending_inr'),
-      partial_payment_inr: sumCategories('partial_payment_inr'),
-      payment_received_closure_pending_inr: sumCategories('payment_received_closure_pending_inr'),
-      other_open_inr: sumCategories('other_open_inr'),
-    }
-    const categoriesSum = Object.values(categories).reduce((sum, value) => sum + value, 0)
-    const openSales = activeProjects.reduce((sum, row) => sum + row.open_sales_inr, 0)
-    const received = activeProjects.reduce((sum, row) => sum + row.received_against_open_sales_inr, 0)
-    const outstanding = activeProjects.reduce((sum, row) => sum + row.outstanding_inr, 0)
-    const closedRevenue = activeRevenue.reduce((sum, row) => sum + row.revenue_amount_inr, 0)
-    const openInvoiced = activeProjects.reduce((sum, row) =>
-      sum + row.invoices.filter(inv => isOpenInvoice(inv) && inv.open_sales_category != null).reduce((s, inv) => s + inv.total_inr, 0), 0)
-    return {
-      openSales,
-      received,
-      outstanding,
-      closedRevenue,
-      openInvoiced,
-      categories,
-      categoriesSum,
-      reconciled: Math.abs(openSales - categoriesSum) <= 0.01,
-      salesCount: activeProjects.filter(row => row.sales_visible).length,
-      revenueCount: activeRevenue.length,
-      partial: activeProjects.filter(row => row.sales_status === 'Partially Paid').length,
-      overdue: activeProjects.filter(row => row.sales_status === 'Overdue').length,
-      paymentPendingCount: activeProjects.reduce((sum, row) => sum + (row.open_payment_pending_invoice_count || 0), 0),
-      paymentPendingAmount: categories.payment_pending_inr,
-      partialCount: activeProjects.reduce((sum, row) => sum + (row.open_partial_invoice_count || 0), 0),
-      partialAmount: activeProjects.reduce((sum, row) => sum + (row.partial_payment_balance_inr || 0), 0),
-      notRaisedCount: activeProjects.filter(row => isInvoicesNotRaised(row)).length,
-      notRaisedAmount: categories.invoice_not_raised_inr,
-    }
+    return aggregateFinanceCommandCenterKpis(activeProjects, activeRevenue)
   }, [activeProjects, activeRevenue])
 
   const targetMonthRows = useMemo(() => {
@@ -899,11 +861,11 @@ export function FinanceCommandCenter() {
       'Revenue Closed': 0,
     }
     for (const row of activeProjects) {
-      const categories = row.open_sales_categories
+      const categories = openSalesCategoriesForProject(row)
       buckets['Payment Pending'] += (categories?.payment_pending_inr ?? 0)
         + (categories?.payment_received_closure_pending_inr ?? 0)
         + (categories?.other_open_inr ?? 0)
-      buckets['Partial Payment'] += categories?.partial_payment_inr ?? 0
+      buckets['Partial Payment'] += row.partial_payment_balance_inr || 0
       buckets['Invoice Not Raised'] += categories?.invoice_not_raised_inr ?? 0
       buckets['Revenue Closed'] += row.closed_revenue_inr
     }
@@ -1481,7 +1443,7 @@ export function FinanceCommandCenter() {
                 } else if (drilldown === 'partial_payment') {
                   rows = ddProjects.flatMap(row => row.invoices.filter(isPartialPaymentInvoice).map(inv => ({ row, inv })))
                   headline = ddProjects.reduce((sum, row) => sum + (row.partial_payment_balance_inr || 0), 0)
-                  headlineLabel = 'Partial Payment (open balance INR)'
+                  headlineLabel = 'Partial Payment (remaining balance INR)'
                 } else {
                   rows = ddProjects.filter(isInvoicesNotRaised).map(row => ({ row, inv: null }))
                   headline = ddProjects.reduce((sum, row) => sum + (row.open_sales_categories?.invoice_not_raised_inr ?? 0), 0)
@@ -1623,12 +1585,15 @@ export function FinanceCommandCenter() {
                                             <div className="sr-calc-step"><span>Baseline sales value (commercial Revision) INR</span><strong>{inr(row.sales_value_inr)}</strong></div>
                                             <div className="sr-calc-step"><span>Less: fully paid + closed invoice totals INR</span><strong>− {inr(calc.closedSalesValueInr)}</strong></div>
                                             <div className="sr-calc-step"><span>Baseline open = max(sales − closed, 0)</span><strong>{inr(calc.baselineOpenSalesInr)}</strong></div>
-                                            <div className="sr-calc-step"><span>Open (not yet closed) invoice totals INR</span><strong>{inr(calc.openInvoiceTotalInr)}</strong></div>
-                                            <div className="sr-calc-step"><span>Recomputed open_sales_inr = max(baseline, open invoice total)</span><strong>{inr(calc.expectedOpenSalesInr)}</strong></div>
+                                             <div className="sr-calc-step"><span>Open invoice balances still to collect INR</span><strong>{inr(calc.openInvoiceBalanceInr)}</strong></div>
+                                             <div className="sr-calc-step"><span>Recomputed open_sales_inr = unbilled value + unpaid invoice balances</span><strong>{inr(calc.expectedOpenSalesInr)}</strong></div>
                                             <div className="sr-calc-step"><span>API open_sales_inr</span><strong>{inr(row.open_sales_inr)}</strong></div>
                                             <div className="sr-calc-step"><span>Open invoices received INR (still in Sales)</span><strong>{inr(calc.openReceivedInr)}</strong></div>
                                           </div>
                                           <p className="sr-calc-formula">
+                                            open_sales_inr = unbilled_open_sales_inr + unpaid invoice balances
+                                          </p>
+                                          <p className="sr-calc-formula" style={{ display: 'none' }}>
                                             open_sales_inr = max(max(sales_value_inr − closed_invoice_total_inr, 0), open_invoice_total_inr)
                                             {row.sales_value_inr === 0 && calc.openInvoiceTotalInr > 0 ? '; special case sales_value_inr = 0 → open_sales_inr = open_invoice_total_inr' : ''}
                                           </p>
