@@ -2,6 +2,7 @@ import { CircleDollarSign, RefreshCcw, Save, Send, ShieldCheck } from 'lucide-re
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
+import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
 import { uploadRevisionDocuments, type PendingDocument } from '../commercial-api'
 import { commercialFormFromRevision, commercialFormProblems, commercialFormToPayload, emptyCommercialForm, type CommercialFormState } from '../commercial-form'
@@ -24,6 +25,8 @@ const PROJECT_FLOW_STATES = ['draft', 'finance_returned', 'pending_finance_appro
  * rate changes are new revisions (R2, R3 …) that Finance approves; Revision 1 is never overwritten.
  */
 export function BDCommercialPage() {
+  const { user } = useAuth()
+  const canEdit = user?.role !== 'management'
   const [projects, setProjects] = useState<SimpleProject[]>([])
   const [currencies, setCurrencies] = useState<CurrencyPayload | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -119,6 +122,7 @@ export function BDCommercialPage() {
 
   return <div className="commercial-page">
     <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · COMMERCIAL REVISIONS" title="Commercial Estimates" description="Revision 1 is entered on the Create Project form and approved by Finance together with the project. After approval it is a locked baseline; scope, value or rate changes are created here as new revisions." actions={<button className="commercial-button secondary" onClick={loadProjects}><RefreshCcw size={15}/> Refresh</button>}/>
+    {!canEdit && <div className="commercial-note">Management has read-only visibility into commercial estimates and revision history. Creating or submitting revisions remains with Business Development.</div>}
     {error && <div className="commercial-alert error">{error}</div>}
     {notice && <div className="commercial-alert success">{notice}</div>}
     <div className="commercial-grid">
@@ -134,12 +138,15 @@ export function BDCommercialPage() {
             <p>{mode === 'revision' ? 'The approved baseline stays immutable. This form creates the next revision for Finance to decide.' : mode === 'project_flow' ? 'Revision 1 travels with the project to Finance and is locked as the baseline when Finance approves the project.' : 'This project was approved before commercial details existed. Save the baseline and submit it to Finance.'}</p></div>
             {baseline?.is_locked ? <span className="cw-locked"><ShieldCheck size={13}/> Revision 1 · Baseline locked</span> : baseline ? <span className="cw-pending">Revision 1 · {statusLabel(baseline.status)}</span> : null}</header>
 
-          {mode === 'project_flow' && <div style={{ display: 'grid', gap: 12 }}>
+            {canEdit && mode === 'project_flow' && <div style={{ display: 'grid', gap: 12 }}>
             {baseline ? <FinanceCommercialSummary projectId={selected.id} /> : <div className="commercial-note">No Commercial &amp; Billing Details (Revision 1) yet.</div>}
             <div className="commercial-note">Revision 1 is edited on the project form, so the project and its commercial terms are always submitted together. {status === 'pending_finance_approval' ? 'It is under Finance review right now and cannot be edited unless Finance returns it.' : <><Link to="/bd/projects">Open Project Management</Link> and choose <b>Edit</b> to add or correct it, then <b>Submit</b>.</>}</div>
           </div>}
+          {!canEdit && mode === 'project_flow' && <div style={{ display: 'grid', gap: 12 }}>
+            {baseline ? <FinanceCommercialSummary projectId={selected.id} /> : <div className="commercial-note">No Commercial &amp; Billing Details (Revision 1) yet.</div>}
+          </div>}
 
-          {mode !== 'project_flow' && (pendingRevision
+          {canEdit && mode !== 'project_flow' && (pendingRevision
             ? <div className="commercial-note">A commercial revision is already waiting for Finance approval. Wait for the decision before creating another.</div>
             : <form className="commercial-form" onSubmit={save}>
                 <div className="commercial-span-2"><CommercialDetailsSection form={form} onChange={setForm} currencies={currencies} disabled={busy}/></div>
@@ -148,6 +155,11 @@ export function BDCommercialPage() {
                 <div className="commercial-span-2"><PendingDocumentsPicker docs={docs} onChange={setDocs} disabled={busy}/></div>
                 <div className="commercial-actions commercial-span-2"><button className="commercial-button" disabled={busy}><Save size={15}/>{mode === 'revision' ? `Submit Revision ${nextRevision}` : 'Save Baseline'}</button>{mode === 'legacy_baseline' && baseline && !baseline.is_locked && baseline.status !== 'PENDING_APPROVAL' && <button type="button" className="commercial-button secondary" disabled={busy} onClick={()=>void submitBaseline()}><Send size={15}/> Submit to Finance</button>}</div>
               </form>)}
+          {!canEdit && mode !== 'project_flow' && (
+            <div className="commercial-note">
+              {baseline ? <>Baseline R{baseline.revision_no} · {statusLabel(baseline.status)}. Management is read-only here.</> : 'No commercial baseline recorded for this project yet.'}
+            </div>
+          )}
         </>}
       </main>
     </div>

@@ -1,8 +1,10 @@
 import { AlertTriangle, CheckCircle2, FileText, RefreshCcw, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
+import { PaginationBar } from '../../../components/PaginationBar'
 import { StatCard } from '../../../components/StatCard'
 import { apiFetch } from '../../../lib/api'
+import { useClientPagination } from '../../../hooks/useClientPagination'
 import type { CurrencyPayload } from '../../commercial/types'
 import { FinanceBillingBasis, type InvoiceLinks, type RecommendationApply } from '../../commercial/components/FinanceBillingBasis'
 import {
@@ -63,6 +65,12 @@ export function FinanceBillingPage() {
     if (!term) return rows
     return rows.filter(row => row.project_code.toLowerCase().includes(term) || (row.client_name || '').toLowerCase().includes(term) || (row.client_id || '').toLowerCase().includes(term))
   }, [dashboard, search])
+
+  const billingPagination = useClientPagination(projects, 25)
+
+  useEffect(() => {
+    billingPagination.setPage(1)
+  }, [search, billingPagination.setPage])
 
   async function run(key: string, action: () => Promise<unknown>, successMessage: string) {
     setBusy(key)
@@ -166,12 +174,21 @@ export function FinanceBillingPage() {
         <div className="operations-field operations-span-2"><input placeholder="Search Project ID or Client" value={search} onChange={e => setSearch(e.target.value)} /></div>
         {loading && <div className="operations-empty">Loading...</div>}
         <div className="operations-workflow-tree">
-          {projects.map(row => <button key={row.id} type="button" className={row.id === selectedId ? 'active' : ''} onClick={() => setSelectedId(row.id)}>
+          {billingPagination.pageRows.map(row => <button key={row.id} type="button" className={row.id === selectedId ? 'active' : ''} onClick={() => setSelectedId(row.id)}>
             <span className="operations-workflow-step-number">{row.project_code.slice(-2)}</span>
             <span><strong>{row.project_code}</strong><small>{row.client_name || row.client_id || 'Client not recorded'}</small><small className={`operations-status ${lifecycleStatusTone(row.workflow_status)}`}>{lifecycleStatusLabel(row.workflow_status)}</small></span>
           </button>)}
           {!loading && !projects.length && <div className="operations-empty">No matching projects.</div>}
         </div>
+        <PaginationBar
+          page={billingPagination.page}
+          pageCount={billingPagination.pageCount}
+          total={billingPagination.total}
+          rangeStart={billingPagination.rangeStart}
+          rangeEnd={billingPagination.rangeEnd}
+          onPageChange={billingPagination.setPage}
+          label="Projects"
+        />
       </section>
 
       <section className="operations-panel">

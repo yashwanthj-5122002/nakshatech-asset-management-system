@@ -1,5 +1,7 @@
 import { CheckCircle2, ChevronDown, Search, X } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { PaginationBar } from '../../../components/PaginationBar'
+import { useClientPagination } from '../../../hooks/useClientPagination'
 import { FINANCE_STATUS_OPTIONS, OPERATIONAL_STATUS_OPTIONS, financeLabel, label, operationalLabel, statusKey, type ProjectFilterFields, type StatusOption } from './register-utils'
 import '../operations.css'
 
@@ -45,11 +47,15 @@ export function ProjectRegisterTable<T extends RegisterProject>({ rows, readOnly
   /** Extra row actions shown after Details. Ignored when readOnly. */
   renderActions?: (row: T) => ReactNode
 }) {
-  return <div className="operations-table-wrap"><table className="operations-table"><thead><tr><th>Project / Client</th><th>Department</th><th>Finance Status</th><th>Operational Status</th><th>Project Manager</th><th>Actions</th></tr></thead><tbody>{rows.map(row => {
+  const { page, setPage, pageCount, pageRows, total, rangeStart, rangeEnd } = useClientPagination(rows, 25)
+  return <>
+  <div className="operations-table-wrap"><table className="operations-table"><thead><tr><th>Project / Client</th><th>Department</th><th>Finance Status</th><th>Operational Status</th><th>Project Manager</th><th>Actions</th></tr></thead><tbody>{pageRows.map(row => {
     const editableManager = readOnly ? null : renderProjectManager?.(row) ?? null
     const tone = statusKey(row) === 'finance_returned' ? ' danger' : statusKey(row) ? ' warning' : ''
     return <tr key={row.id}><td><button className="operations-row-link" onClick={() => onDetails(row)}><strong>{row.project_code}</strong><small>{row.client_code} · {row.project_name}</small></button></td><td>{row.performing_department_label || 'Ortho'}</td><td><span className={`operations-status${tone}`}>{financeLabel(row)}</span></td><td>{operationalLabel(row)}</td><td>{editableManager ?? (row.project_manager_name || 'Not assigned')}</td><td><div className="operations-actions"><button className="operations-button secondary" onClick={() => onDetails(row)}><ChevronDown size={14} /> Details</button>{!readOnly && renderActions?.(row)}</div></td></tr>
   })}{!rows.length && <tr><td colSpan={6}><div className="operations-empty">No projects match these filters.</div></td></tr>}</tbody></table></div>
+  <PaginationBar page={page} pageCount={pageCount} total={total} rangeStart={rangeStart} rangeEnd={rangeEnd} onPageChange={setPage} label="Projects" />
+  </>
 }
 
 export function ProjectDetailsPanel({ project }: { project: RegisterProject }) {

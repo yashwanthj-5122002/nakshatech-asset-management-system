@@ -1,18 +1,25 @@
 import {
+  AlertCircle,
+  Building2,
+  Calendar,
   CheckCircle2,
+  Clock,
   Download,
   ExternalLink,
   FileCheck2,
   IndianRupee,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
   ThumbsDown,
+  User,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { StatCard } from '../components/StatCard'
 import { useITMonthUrl } from '../context/ITMonthContext'
+import { useAuth } from '../context/AuthContext'
 import { apiFetch, downloadFile } from '../lib/api'
 import { monthLabel } from '../lib/itMonth'
 import '../management-control.css'
@@ -73,12 +80,12 @@ type ManagementControlData = {
 }
 
 const statusFilters: Array<{ value: StatusFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'pending_approval', label: 'Pending' },
+  { value: 'all', label: 'All Requests' },
+  { value: 'pending_approval', label: 'Pending Approval' },
   { value: 'approved', label: 'Approved' },
   { value: 'sent_back', label: 'Sent Back' },
   { value: 'rejected', label: 'Rejected' },
-  { value: 'purchase_completed', label: 'Purchase Completed' },
+  { value: 'purchase_completed', label: 'Completed Purchases' },
 ]
 
 function formatMoney(value?: number) {
@@ -100,6 +107,8 @@ function statusLabel(status: PurchaseStatus) {
 }
 
 export function ManagementApprovalCenter() {
+  const { user } = useAuth()
+  const canDecide = user?.role === 'management'
   const { selectedMonth } = useITMonthUrl()
   const [data, setData] = useState<ManagementControlData | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -186,95 +195,211 @@ export function ManagementApprovalCenter() {
   return (
     <>
       <DashboardHeader
-        eyebrow="PURCHASE GOVERNANCE"
+        eyebrow="MANAGEMENT · EXPENDITURE & PROCUREMENT GOVERNANCE"
         title="Purchase Approval Centre"
-        description={`Management purchase governance for ${monthLabel(selectedMonth)}. Every Purchase Request remains visible through Pending, Approved, Sent Back, Rejected and Purchase Completed states.`}
-        actions={<button className="secondary-button" onClick={() => void exportWorkbook()} disabled={busy === 'excel'}><Download size={17} /> {busy === 'excel' ? 'Preparing…' : 'Purchase Excel'}</button>}
+        description={`Executive procurement oversight and expenditure authorizations for ${monthLabel(selectedMonth)}. Authorize, send back for revision, or review closed purchase logs.`}
+        actions={
+          <button className="secondary-button" onClick={() => void exportWorkbook()} disabled={busy === 'excel'}>
+            <Download size={16} /> {busy === 'excel' ? 'Preparing…' : 'Export Excel Audit'}
+          </button>
+        }
       />
+
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
 
-      <div className="approval-note"><ShieldCheck size={16} /> Management can Approve, Send Back or Reject only Pending Purchase Requests. Approved, Sent Back, Rejected and Purchase Completed requests stay visible as read-only trace records.</div>
-
-      <section className="stats-grid management-control-kpis">
-        <StatCard icon={FileCheck2} label="Pending" value={summary?.pending_approval ?? '—'} tone="purple" />
-        <StatCard icon={CheckCircle2} label="Approved" value={summary?.approved ?? '—'} tone="green" />
-        <StatCard icon={RotateCcw} label="Sent Back" value={summary?.sent_back ?? '—'} tone="orange" />
-        <StatCard icon={ThumbsDown} label="Rejected" value={summary?.rejected ?? '—'} tone="red" />
-        <StatCard icon={FileCheck2} label="Purchase Completed" value={summary?.purchase_completed ?? '—'} tone="blue" />
-        <StatCard icon={IndianRupee} label="Approved Purchase Value" value={summary ? formatMoney(summary.approved_purchase_value) : '—'} tone="green" />
+      {/* Executive Outlay Hero Banner */}
+      <section className="approval-outlay-hero">
+        <div className="approval-outlay-metric">
+          <span>Approved Capital & Operational Outlay ({monthLabel(selectedMonth)})</span>
+          <strong>{summary ? formatMoney(summary.approved_purchase_value) : '—'}</strong>
+          <small style={{ color: '#64748b', fontSize: '0.78rem' }}>
+            Cumulative authorized expenditure across all department workflows this cycle.
+          </small>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {(summary?.pending_approval ?? 0) > 0 ? (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '12px 18px', textAlign: 'right' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b45309', fontWeight: 800, fontSize: '0.85rem' }}>
+                <Clock size={16} /> Pending Decision
+              </div>
+              <strong style={{ fontSize: '1.4rem', color: '#b45309' }}>{summary?.pending_approval}</strong>
+            </div>
+          ) : (
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px 18px', textAlign: 'right' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#166534', fontWeight: 800, fontSize: '0.85rem' }}>
+                <CheckCircle2 size={16} /> Up to Date
+              </div>
+              <small style={{ color: '#166534', fontWeight: 600 }}>0 pending actions</small>
+            </div>
+          )}
+        </div>
       </section>
 
-      <section className="panel management-approval-queue">
-        <div className="panel-title-row">
-          <div><span className="section-kicker">PURCHASE REQUEST LIFECYCLE</span><h2>Purchase Requests</h2></div>
-          <span className="count-chip">{filteredRequests.length}</span>
-        </div>
+      {/* 4-Card Status Quad */}
+      <section className="stats-grid" style={{ marginBottom: '20px' }}>
+        <StatCard icon={AlertCircle} label="Pending Review" value={summary?.pending_approval ?? '—'} tone="purple" />
+        <StatCard icon={CheckCircle2} label="Approved & Active" value={summary?.approved ?? '—'} tone="green" />
+        <StatCard icon={RotateCcw} label="Sent Back" value={summary?.sent_back ?? '—'} tone="orange" />
+        <StatCard icon={ThumbsDown} label="Rejected" value={summary?.rejected ?? '—'} tone="red" />
+      </section>
 
-        <div className="management-decision-actions">
-          {statusFilters.map(filter => (
+      {/* Filter Chips Toolbar */}
+      <div className="approval-status-chips-wrap">
+        {statusFilters.map(filter => {
+          let count = summary?.total ?? 0
+          if (filter.value === 'pending_approval') count = summary?.pending_approval ?? 0
+          else if (filter.value === 'approved') count = summary?.approved ?? 0
+          else if (filter.value === 'sent_back') count = summary?.sent_back ?? 0
+          else if (filter.value === 'rejected') count = summary?.rejected ?? 0
+          else if (filter.value === 'purchase_completed') count = summary?.purchase_completed ?? 0
+
+          return (
             <button
               type="button"
               key={filter.value}
-              className={statusFilter === filter.value ? 'primary-button' : 'secondary-button'}
+              className={`approval-status-chip ${statusFilter === filter.value ? 'active' : ''}`}
               onClick={() => setStatusFilter(filter.value)}
             >
-              {filter.label}
+              {filter.label} <span style={{ opacity: 0.7, fontSize: '0.72rem' }}>({count})</span>
             </button>
-          ))}
-        </div>
+          )
+        })}
+      </div>
 
-        <div className="management-approval-list">
-          {filteredRequests.map(item => {
-            const isPending = item.status === 'pending_approval'
-            return (
-              <article className="management-approval-card" key={item.id}>
-                <header>
-                  <div><span>Purchase Request</span><h3>{item.code} · {item.title}</h3></div>
-                  <div>
-                    <strong className={`priority ${item.priority || 'medium'}`}>{item.priority || 'normal'}</strong>
-                    <span className={`status ${item.status}`}>{statusLabel(item.status)}</span>
-                  </div>
-                </header>
-                <div className="management-approval-meta">
-                  <span>Submitted by <b>{item.submitted_by || 'Not recorded'}</b></span>
-                  <span>{formatDate(item.submitted_at)}</span>
-                  <span>{item.department || 'No department'}</span>
-                  {item.amount != null && <span>Estimated {formatMoney(item.amount)}</span>}
-                  {item.metadata.requested_employee && <span>For {item.metadata.requested_employee}</span>}
+      {/* Purchase Requests List */}
+      <section className="management-approval-list">
+        {filteredRequests.map(item => {
+          const isPending = item.status === 'pending_approval'
+          return (
+            <article className="approval-card-refined" key={item.id}>
+              <div className="approval-card-header">
+                <div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#0284c7' }}>
+                    {item.code}
+                  </span>
+                  <h3>{item.title}</h3>
                 </div>
-                <p>{item.reason || 'No business reason recorded.'}</p>
-                {item.metadata.it_remarks && <div className="approval-note">IT Remarks · {item.metadata.it_remarks}</div>}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span className={`operations-status ${item.priority === 'urgent' ? 'danger' : 'neutral'}`} style={{ textTransform: 'capitalize' }}>
+                    {item.priority || 'Normal'} Priority
+                  </span>
+                  <span className={`status ${item.status}`}>{statusLabel(item.status)}</span>
+                </div>
+              </div>
 
-                {isPending ? <>
-                  <label className="management-approved-amount"><span>Approved Amount (INR)</span><input type="number" min="0" step="0.01" value={approvedAmounts[item.id] ?? (item.amount == null ? '' : String(item.amount))} onChange={event => setApprovedAmounts(current => ({ ...current, [item.id]: event.target.value }))} /></label>
-                  <label className="management-decision-remarks"><span>Management Remarks</span><textarea rows={2} value={remarks[item.id] || ''} onChange={event => setRemarks(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Required for Send Back / Reject; optional for approval" /></label>
-                  <div className="management-decision-actions">
-                    <button className="primary-button" onClick={() => void decide(item, 'approve')} disabled={busy.startsWith(`${item.id}-`)}><CheckCircle2 size={16} /> Approve Purchase</button>
-                    <button className="secondary-button" onClick={() => void decide(item, 'send_back')} disabled={busy.startsWith(`${item.id}-`)}><RotateCcw size={16} /> Send Back</button>
-                    <button className="danger-button" onClick={() => void decide(item, 'reject')} disabled={busy.startsWith(`${item.id}-`)}><ThumbsDown size={16} /> Reject</button>
-                    <Link className="ghost-link" to={item.target_url}><ExternalLink size={15} /> Open Full Request</Link>
+              <div className="approval-meta-grid">
+                <span><User size={13} /> Submitted by: <strong>{item.submitted_by || 'Not recorded'}</strong></span>
+                <span><Calendar size={13} /> {formatDate(item.submitted_at)}</span>
+                <span><Building2 size={13} /> Department: <strong>{item.department || 'General'}</strong></span>
+                {item.amount != null && (
+                  <span style={{ color: '#0f766e' }}>
+                    Estimated Outlay: <strong>{formatMoney(item.amount)}</strong>
+                  </span>
+                )}
+                {item.metadata.requested_employee && (
+                  <span>For: <strong>{item.metadata.requested_employee}</strong></span>
+                )}
+              </div>
+
+              <div className="approval-reason-text">
+                <strong>Business Justification:</strong> {item.reason || 'No specific business justification provided.'}
+                {item.metadata.it_remarks && (
+                  <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#475569' }}>
+                    <em>IT Technical Remarks:</em> {item.metadata.it_remarks}
                   </div>
-                </> : <>
-                  <div className="approval-note">
-                    <strong>{statusLabel(item.status)}</strong>
-                    {item.approved_amount != null && <> · Approved Amount {formatMoney(item.approved_amount)}</>}
-                    {item.decided_by && <> · Decision by {item.decided_by}</>}
-                    {item.decided_at && <> · {formatDate(item.decided_at)}</>}
-                    {item.management_remarks && <> · {item.management_remarks}</>}
+                )}
+              </div>
+
+              {isPending ? (
+                canDecide ? (
+                <>
+                  <div className="approval-form-row">
+                    <label className="operations-field">
+                      <span style={{ fontWeight: 700, fontSize: '0.75rem' }}>Approved Amount (INR)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={approvedAmounts[item.id] ?? (item.amount == null ? '' : String(item.amount))}
+                        onChange={event => setApprovedAmounts(current => ({ ...current, [item.id]: event.target.value }))}
+                      />
+                    </label>
+                    <label className="operations-field">
+                      <span style={{ fontWeight: 700, fontSize: '0.75rem' }}>Management Executive Remarks</span>
+                      <textarea
+                        rows={1}
+                        value={remarks[item.id] || ''}
+                        onChange={event => setRemarks(current => ({ ...current, [item.id]: event.target.value }))}
+                        placeholder="Required for Send Back / Reject; optional for Approval…"
+                      />
+                    </label>
                   </div>
-                  {item.status === 'purchase_completed' && <div className="approval-note">
-                    Purchase {item.purchase_code || 'record'} completed{item.purchase_date ? ` on ${item.purchase_date}` : ''}{item.actual_purchase_amount != null ? ` · Actual ${formatMoney(item.actual_purchase_amount)}` : ''}.
-                  </div>}
-                  <div className="management-decision-actions">
-                    <Link className="ghost-link" to={item.target_url}><ExternalLink size={15} /> Open Full Request</Link>
+                  <div className="approval-btn-group">
+                    <button
+                      className="btn-approve"
+                      onClick={() => void decide(item, 'approve')}
+                      disabled={busy.startsWith(`${item.id}-`)}
+                    >
+                      <CheckCircle2 size={15} /> Authorize & Approve
+                    </button>
+                    <button
+                      className="btn-sendback"
+                      onClick={() => void decide(item, 'send_back')}
+                      disabled={busy.startsWith(`${item.id}-`)}
+                    >
+                      <RotateCcw size={15} /> Send Back For Revision
+                    </button>
+                    <button
+                      className="btn-reject"
+                      onClick={() => void decide(item, 'reject')}
+                      disabled={busy.startsWith(`${item.id}-`)}
+                    >
+                      <ThumbsDown size={15} /> Reject Request
+                    </button>
+                    <Link className="ghost-link" to={item.target_url}>
+                      <ExternalLink size={14} /> Full Dossier
+                    </Link>
                   </div>
-                </>}
-              </article>
-            )
-          })}
-          {!filteredRequests.length && <div className="empty-state"><ShieldCheck size={28} /><strong>No Purchase Requests in this view</strong><span>Change the status filter or reporting month to review another part of the purchase lifecycle.</span></div>}
-        </div>
+                </>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8rem', color: '#475569' }}>
+                    <div>
+                      <strong>Pending Management decision.</strong> Admin has read-only visibility; only Management can authorize.
+                      {item.amount != null && <> · Requested: {formatMoney(item.amount)}</>}
+                    </div>
+                    <Link className="ghost-link" to={item.target_url}>
+                      <ExternalLink size={14} /> Full Dossier
+                    </Link>
+                  </div>
+                )
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8rem', color: '#475569' }}>
+                  <div>
+                    <strong>{statusLabel(item.status)}:</strong>
+                    {item.approved_amount != null && <> Authorized amount: {formatMoney(item.approved_amount)}</>}
+                    {item.decided_by && <> by {item.decided_by}</>}
+                    {item.decided_at && <> on {formatDate(item.decided_at)}</>}
+                    {item.management_remarks && <> · &quot;{item.management_remarks}&quot;</>}
+                    {item.status === 'purchase_completed' && item.actual_purchase_amount != null && (
+                      <> · Actual procured: {formatMoney(item.actual_purchase_amount)}</>
+                    )}
+                  </div>
+                  <Link className="ghost-link" to={item.target_url}>
+                    <ExternalLink size={14} /> View Dossier
+                  </Link>
+                </div>
+              )}
+            </article>
+          )
+        })}
+        {!filteredRequests.length && (
+          <div className="empty-state">
+            <ShieldCheck size={32} />
+            <strong>No Purchase Requests in this view</strong>
+            <span>Select another filter chip or reporting month above to review other stages.</span>
+          </div>
+        )}
       </section>
     </>
   )

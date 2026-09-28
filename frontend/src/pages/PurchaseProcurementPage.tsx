@@ -2,8 +2,10 @@ import { FileCheck2, FileUp, PlusCircle, ReceiptIndianRupee, Search, ShoppingCar
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
+import { PaginationBar } from '../components/PaginationBar'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
+import { useClientPagination } from '../hooks/useClientPagination'
 import { apiFetch, uploadExcel } from '../lib/api'
 import { monthLabel } from '../lib/itMonth'
 import { isFullAccessRole } from '../lib/roles'
@@ -48,6 +50,11 @@ export function PurchaseProcurementPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const requestSequence = useRef(0)
+  const purchasePagination = useClientPagination(records, 50)
+
+  useEffect(() => {
+    purchasePagination.setPage(1)
+  }, [selectedMonth, purchasePagination.setPage])
 
   async function loadRecords(clearExisting = false) {
     const requestedMonth = selectedMonth
@@ -291,7 +298,7 @@ export function PurchaseProcurementPage() {
           <table className="activity-table">
             <thead><tr><th>Date</th><th>Purchase / PO</th><th>Approval Request</th><th>Supplier</th><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Inspection</th><th>Department</th><th>Recorded By</th><th>Source</th></tr></thead>
             <tbody>
-              {records.map(record => (
+              {purchasePagination.pageRows.map(record => (
                 <tr key={record.id}>
                   <td>{record.purchase_date}</td>
                   <td>{record.purchase_code}<small>{record.po_number || record.asset_number}</small></td>
@@ -310,6 +317,15 @@ export function PurchaseProcurementPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={purchasePagination.page}
+          pageCount={purchasePagination.pageCount}
+          total={purchasePagination.total}
+          rangeStart={purchasePagination.rangeStart}
+          rangeEnd={purchasePagination.rangeEnd}
+          onPageChange={purchasePagination.setPage}
+          label="Purchases"
+        />
       </section>
     </>
   )

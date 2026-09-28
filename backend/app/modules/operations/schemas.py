@@ -338,31 +338,3 @@ class WorkflowOperationalCompletion(BaseModel):
 
 class WorkflowFinanceClosure(BaseModel):
     remarks: str = Field(min_length=2, max_length=5000)
-
-
-TechnicalDepartmentCode = Literal["ortho", "lidar", "civil", "laser_scanning", "bim", "mobile_mapping"]
-ProjectWorkstreamStatus = Literal["planned", "ready", "in_progress", "blocked", "completed"]
-
-
-class ProjectWorkstreamInput(BaseModel):
-    department_code: TechnicalDepartmentCode
-    project_manager_user_id: int = Field(gt=0)
-    sequence_order: int = Field(default=1, ge=1, le=50)
-    notes: str | None = Field(default=None, max_length=5000)
-
-
-class ProjectWorkstreamConfig(BaseModel):
-    workstreams: list[ProjectWorkstreamInput] = Field(min_length=1, max_length=6)
-
-    @field_validator("workstreams")
-    @classmethod
-    def unique_departments(cls, value):
-        codes = [item.department_code for item in value]
-        if len(codes) != len(set(codes)):
-            raise ValueError("Each technical department can appear only once in a project")
-        return value
-
-
-class ProjectWorkstreamStatusUpdate(BaseModel):
-    status: ProjectWorkstreamStatus
-    notes: str | None = Field(default=None, max_length=5000)

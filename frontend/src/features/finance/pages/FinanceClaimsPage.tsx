@@ -2,8 +2,10 @@ import { AlertTriangle, Search, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
+import { PaginationBar } from '../../../components/PaginationBar'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
+import { useClientPagination } from '../../../hooks/useClientPagination'
 import type { ExpenseClaim, FinanceClaimStatus, FinanceClaimType } from '../../../types'
 import { financeClaimTypeLabels, financeStatusLabels, financeStatusTone, formatInr } from '../finance-utils'
 import '../finance-expenses.css'
@@ -39,6 +41,12 @@ export function FinanceClaimsPage() {
     })
   }, [claims, query, statusFilter, typeFilter])
 
+  const claimPagination = useClientPagination(visible, 50)
+
+  useEffect(() => {
+    claimPagination.setPage(1)
+  }, [query, statusFilter, typeFilter, claimPagination.setPage])
+
   const actionLabel = user?.role === 'management' ? 'Management read-only review' : user?.role === 'admin' ? 'Admin verification queue' : 'Finance verification, payment & settlement queue'
   const emptyMessage = user?.role === 'admin' && statusFilter === 'submitted' ? 'No new claims are waiting for Admin verification.' : user?.role === 'finance' && statusFilter === 'admin_approved' ? 'No new claims are waiting for Finance verification.' : 'No claims match the selected filters.'
   const reviewLabel = user?.role === 'admin' ? 'Review / Approve' : user?.role === 'finance' ? 'Finance Review' : 'View Claim'
@@ -53,7 +61,16 @@ export function FinanceClaimsPage() {
 
     <section className="finance-panel"><div className="finance-toolbar finance-filter-toolbar"><label className="finance-search"><Search size={16}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search claim, employee, Project ID..."/></label><div className="finance-filter-group"><SlidersHorizontal size={15}/><select value={statusFilter} onChange={event=>setStatusFilter(event.target.value as 'all'|FinanceClaimStatus)}><option value="all">All statuses</option>{Object.entries(financeStatusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><select value={typeFilter} onChange={event=>setTypeFilter(event.target.value as 'all'|FinanceClaimType)}><option value="all">All request types</option>{Object.entries(financeClaimTypeLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div></div>
       {error && <div className="finance-error">{error} <button type="button" className="finance-inline-link" onClick={load}>Retry</button></div>}
-      {loading ? <div className="finance-empty-state">Loading claims...</div> : visible.length===0 ? <div className="finance-empty-state">{emptyMessage}</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Claim</th><th>Employee</th><th>Project</th><th>Request Type</th><th>Amount</th><th>Status</th><th>Settlement</th><th>Proof</th><th>Action</th></tr></thead><tbody>{visible.map(claim=><tr key={claim.id}><td><Link to={`/finance/claims/${claim.id}`}>{claim.claim_code}</Link></td><td><strong>{claim.requester_name}</strong><br/><small>{claim.requester_email}</small></td><td><strong>{claim.project.project_code}</strong><br/><small>{claim.project.project_name}</small></td><td>{financeClaimTypeLabels[claim.claim_type]}</td><td><strong>{formatInr(claim.total_amount)}</strong></td><td><span className={`finance-status tone-${financeStatusTone(claim.status)}`}>{financeStatusLabels[claim.status]}</span></td><td>{claim.claim_type === 'advance' ? claim.settlement_status.replaceAll('_',' ') : '—'}</td><td>{claim.attachments.length + (claim.settlement?.attachments.length || 0)} file(s)</td><td><Link className="finance-secondary-button" to={`/finance/claims/${claim.id}`}>{reviewLabel}</Link></td></tr>)}</tbody></table></div>}
+      {loading ? <div className="finance-empty-state">Loading claims...</div> : visible.length===0 ? <div className="finance-empty-state">{emptyMessage}</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Claim</th><th>Employee</th><th>Project</th><th>Request Type</th><th>Amount</th><th>Status</th><th>Settlement</th><th>Proof</th><th>Action</th></tr></thead><tbody>{claimPagination.pageRows.map(claim=><tr key={claim.id}><td><Link to={`/finance/claims/${claim.id}`}>{claim.claim_code}</Link></td><td><strong>{claim.requester_name}</strong><br/><small>{claim.requester_email}</small></td><td><strong>{claim.project.project_code}</strong><br/><small>{claim.project.project_name}</small></td><td>{financeClaimTypeLabels[claim.claim_type]}</td><td><strong>{formatInr(claim.total_amount)}</strong></td><td><span className={`finance-status tone-${financeStatusTone(claim.status)}`}>{financeStatusLabels[claim.status]}</span></td><td>{claim.claim_type === 'advance' ? claim.settlement_status.replaceAll('_',' ') : '—'}</td><td>{claim.attachments.length + (claim.settlement?.attachments.length || 0)} file(s)</td><td><Link className="finance-secondary-button" to={`/finance/claims/${claim.id}`}>{reviewLabel}</Link></td></tr>)}</tbody></table></div>}
+      <PaginationBar
+        page={claimPagination.page}
+        pageCount={claimPagination.pageCount}
+        total={claimPagination.total}
+        rangeStart={claimPagination.rangeStart}
+        rangeEnd={claimPagination.rangeEnd}
+        onPageChange={claimPagination.setPage}
+        label="Claims"
+      />
     </section>
   </div>
 }

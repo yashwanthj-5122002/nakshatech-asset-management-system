@@ -17,8 +17,10 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
+import { PaginationBar } from '../components/PaginationBar'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
+import { useClientPagination } from '../hooks/useClientPagination'
 import { apiFetch, downloadFile } from '../lib/api'
 import { formatIndiaDateTime, isCurrentIndiaMonth } from '../lib/date'
 import { isFullAccessRole } from '../lib/roles'
@@ -156,6 +158,7 @@ export function AssetsPage() {
   const [busy, setBusy] = useState(false)
   const monthInfo = months.find(item => item.key === selectedMonth)
   const historicalReporting = selectedMonth !== presentMonth
+  const assetPagination = useClientPagination(assets, 50)
 
   async function loadMonths() {
     try { setMonths(await apiFetch<ReportMonth[]>('/reports/months')) }
@@ -178,6 +181,7 @@ export function AssetsPage() {
 
   useEffect(() => { void loadMonths() }, [])
   useEffect(() => { setSelected(null); void load() }, [status, device, selectedMonth, qualityFilter, qualityValuesParam])
+  useEffect(() => { assetPagination.setPage(1) }, [search, status, device, selectedMonth, qualityFilter, qualityValuesParam, assetPagination.setPage])
   useEffect(() => {
     const state = location.state as { message?: string; openAssetId?: number } | null
     if (!state) return
@@ -327,9 +331,18 @@ export function AssetsPage() {
           <div className="table-wrap">
             <table className="asset-table">
               <thead><tr><th>CPU / Asset Tag</th><th>Workstation</th><th>Used By</th><th>Department</th><th>Device</th><th>System / Model</th><th>Location</th><th>Status</th><th>Last Change</th><th /></tr></thead>
-              <tbody>{assets.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>Internal: {asset.asset_code}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.device_type === 'Printer' ? (asset.model || asset.system_name || '—') : (asset.system_name || '—')}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td className="asset-last-change">{asset.last_change_at ? <><strong>{formatAuditDate(asset.last_change_at)}</strong><small>{asset.last_changed_by || 'System'}{changedThisMonth(asset.last_change_at) ? ' · Updated this month' : ''}</small></> : <span className="muted">No system edit</span>}</td><td><ChevronRight size={17} /></td></tr>)}</tbody>
+              <tbody>{assetPagination.pageRows.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>Internal: {asset.asset_code}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.device_type === 'Printer' ? (asset.model || asset.system_name || '—') : (asset.system_name || '—')}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td className="asset-last-change">{asset.last_change_at ? <><strong>{formatAuditDate(asset.last_change_at)}</strong><small>{asset.last_changed_by || 'System'}{changedThisMonth(asset.last_change_at) ? ' · Updated this month' : ''}</small></> : <span className="muted">No system edit</span>}</td><td><ChevronRight size={17} /></td></tr>)}</tbody>
             </table>
           </div>
+          <PaginationBar
+            page={assetPagination.page}
+            pageCount={assetPagination.pageCount}
+            total={assetPagination.total}
+            rangeStart={assetPagination.rangeStart}
+            rangeEnd={assetPagination.rangeEnd}
+            onPageChange={assetPagination.setPage}
+            label="Assets"
+          />
         </article>
 
         {selected && <aside className="asset-detail panel">

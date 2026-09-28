@@ -19,9 +19,11 @@ import {
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
+import { PaginationBar } from '../components/PaginationBar'
 import { StatCard } from '../components/StatCard'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
+import { useClientPagination } from '../hooks/useClientPagination'
 import { apiFetch, downloadFile } from '../lib/api'
 import { monthLabel } from '../lib/itMonth'
 import { isFullAccessRole } from '../lib/roles'
@@ -137,6 +139,11 @@ export function PurchaseRequestsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const requestPagination = useClientPagination(records, 50)
+
+  useEffect(() => {
+    requestPagination.setPage(1)
+  }, [statusFilter, departmentFilter, priorityFilter, search, selectedMonth, requestPagination.setPage])
 
   function buildQuery(includeStatus = true) {
     const params = new URLSearchParams({ month: selectedMonth })
@@ -534,7 +541,7 @@ export function PurchaseRequestsPage() {
               </tr>
             </thead>
             <tbody>
-              {records.map(record => (
+              {requestPagination.pageRows.map(record => (
                 <tr key={record.id}>
                   <td><strong>{record.request_code}</strong><small>{record.reporting_month}</small></td>
                   <td>{record.requesting_department}<small>{record.requested_employee}</small></td>
@@ -574,6 +581,15 @@ export function PurchaseRequestsPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={requestPagination.page}
+          pageCount={requestPagination.pageCount}
+          total={requestPagination.total}
+          rangeStart={requestPagination.rangeStart}
+          rangeEnd={requestPagination.rangeEnd}
+          onPageChange={requestPagination.setPage}
+          label="Purchase requests"
+        />
       </section>
 
       {selected && (

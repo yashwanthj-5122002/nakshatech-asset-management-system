@@ -66,14 +66,6 @@ import { BDClientManagementPage } from './features/operations/pages/BDClientMana
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
 import { NotificationsPage } from './features/operations/pages/NotificationsPage'
 import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPage'
-import { ProjectWorkstreamsPage } from './features/operations/pages/ProjectWorkstreamsPage'
-import { SampleRequestsPage } from './features/operations/pages/SampleRequestsPage'
-import { ProjectHandoversPage } from './features/operations/pages/ProjectHandoversPage'
-import { ProjectMonitoringPage } from './features/operations/pages/ProjectMonitoringPage'
-import { ProjectCompletionPage } from './features/operations/pages/ProjectCompletionPage'
-import { TechnicalTeamDirectoryPage } from './features/operations/pages/TechnicalTeamDirectoryPage'
-import { ReportingDashboardPage } from './features/operations/pages/ReportingDashboardPage'
-import { ProductionReadinessPage } from './features/operations/pages/ProductionReadinessPage'
 import { ClientFeedbackPage } from './features/operations/pages/ClientFeedbackPage'
 import { BDClientFeedbackPage } from './features/operations/pages/BDClientFeedbackPage'
 import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
@@ -155,18 +147,10 @@ export default function App() {
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/feedback" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientFeedbackPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin', 'management']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin', 'software_team']}><WithLayout><NotificationsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/ortho" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><OrthoDashboardPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/ortho/project-360/:projectId" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-workstreams" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectWorkstreamsPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/sample-requests" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><SampleRequestsPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-handovers" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectHandoversPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-monitoring" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectMonitoringPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-completion" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectCompletionPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/technical-team-directory" element={<StrictProtectedRoute roles={['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><TechnicalTeamDirectoryPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/reporting" element={<StrictProtectedRoute roles={['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><ReportingDashboardPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/production-readiness" element={<StrictProtectedRoute roles={['admin', 'management', 'software_team']}><WithLayout><ProductionReadinessPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/finance" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/reports" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceReportsPage /></WithLayout></ProtectedRoute>} />
@@ -177,11 +161,11 @@ export default function App() {
       <Route path="/finance/revenue" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="revenue" /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/uat-2026" element={<ProtectedRoute roles={['finance']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/admin/client-master" element={<ProtectedRoute roles={['admin']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims/:id" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementDashboard /></WithLayout></ProtectedRoute>} />
-      <Route path="/management/approvals" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/approvals" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />
       <Route path="/management/project-360" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
       <Route path="/management/commercial" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/project-360/:projectId" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />

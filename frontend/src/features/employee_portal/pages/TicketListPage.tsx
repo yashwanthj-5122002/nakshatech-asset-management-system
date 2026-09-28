@@ -2,8 +2,10 @@ import { Filter, Search, TicketCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
+import { PaginationBar } from '../../../components/PaginationBar'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
+import { useClientPagination } from '../../../hooks/useClientPagination'
 import { formatDuration, formatStandardDateTime } from '../../../lib/dateTime'
 import { ticketSlaDisplay } from '../../../lib/ticketSla'
 import type { SupportTicketSummary, TicketDepartment, TicketPriority } from '../../../types'
@@ -75,6 +77,12 @@ export function TicketListPage() {
     })
   }, [departmentFilter, priorityFilter, progressFilter, query, tickets])
 
+  const ticketPagination = useClientPagination(filtered, 50)
+
+  useEffect(() => {
+    ticketPagination.setPage(1)
+  }, [query, progressFilter, departmentFilter, priorityFilter, ticketPagination.setPage])
+
   const softwareView = user?.role === 'software_team'
   const managementView = user?.role === 'management'
   const oversightView = softwareView || managementView
@@ -99,7 +107,7 @@ export function TicketListPage() {
         {employeeView && <Link className="primary-button" to="/support/new">Raise Ticket</Link>}
       </div>
       {error && <div className="error-message">{error}</div>}
-      {filtered.length === 0 ? <div className="empty-state"><TicketCheck size={30} /><span>No tickets match the current filters.</span></div> : <div className="table-wrap"><table className="data-table ticket-table ticket-priority-queue ticket-progress-queue"><thead><tr>{!employeeView && <th>Queue #</th>}<th>Ticket</th>{!employeeView && <th>Raised By</th>}<th>Asset / Component</th><th>Priority</th><th>Work Status</th>{!employeeView && <th>SLA</th>}<th>Raised At</th><th>Waiting / Resolution</th><th>Branch</th><th>Updated At</th></tr></thead><tbody>{filtered.map(ticket => {
+      {filtered.length === 0 ? <div className="empty-state"><TicketCheck size={30} /><span>No tickets match the current filters.</span></div> : <div className="table-wrap"><table className="data-table ticket-table ticket-priority-queue ticket-progress-queue"><thead><tr>{!employeeView && <th>Queue #</th>}<th>Ticket</th>{!employeeView && <th>Raised By</th>}<th>Asset / Component</th><th>Priority</th><th>Work Status</th>{!employeeView && <th>SLA</th>}<th>Raised At</th><th>Waiting / Resolution</th><th>Branch</th><th>Updated At</th></tr></thead><tbody>{ticketPagination.pageRows.map(ticket => {
         const duration = durationState(ticket, nowMs)
         const sla = ticketSlaDisplay(ticket, nowMs)
         const progress = ticketProgressFromStatus(ticket.status)
@@ -117,6 +125,15 @@ export function TicketListPage() {
           <td className="ticket-time-cell"><strong>{formatStandardDateTime(ticket.updated_at)}</strong></td>
         </tr>
       })}</tbody></table></div>}
+      <PaginationBar
+        page={ticketPagination.page}
+        pageCount={ticketPagination.pageCount}
+        total={ticketPagination.total}
+        rangeStart={ticketPagination.rangeStart}
+        rangeEnd={ticketPagination.rangeEnd}
+        onPageChange={ticketPagination.setPage}
+        label="Tickets"
+      />
     </section>
   </>
 }

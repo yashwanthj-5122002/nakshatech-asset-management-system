@@ -1,8 +1,17 @@
 import type { ReactNode } from 'react'
 
-export function DashboardHeader({ eyebrow, title, description, actions, details }: { eyebrow?: string; title: string; description: string; actions?: ReactNode; details?: ReactNode }) {
+type DashboardHeaderProps = {
+  eyebrow?: string
+  title: string
+  description: string
+  actions?: ReactNode
+  details?: ReactNode
+  variant?: 'default' | 'compact'
+}
+
+export function DashboardHeader({ eyebrow, title, description, actions, details, variant = 'default' }: DashboardHeaderProps) {
   return (
-    <header className="page-header">
+    <header className={`page-header ${variant === 'compact' ? 'is-compact' : ''}`}>
       <div>
         {eyebrow && <span className="eyebrow">{eyebrow}</span>}
         <h1>{title}</h1>

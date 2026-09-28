@@ -7,7 +7,7 @@ from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
 from app.models.entities import User
 from app.modules.employee_portal.service import record_audit
-from app.modules.operations.models import BDOpportunity, OrthoProjectMember, OrthoProjectProfile, ProjectWorkstream
+from app.modules.operations.models import BDOpportunity, OrthoProjectMember, OrthoProjectProfile
 from app.modules.operations.schemas import (
     BDOpportunityCreate,
     BDProjectLink,
@@ -22,8 +22,6 @@ from app.modules.operations.schemas import (
     OrthoWorkActionRequest,
     OrthoWorkPackageAssignments,
     OrthoWorkPackageCreate,
-    ProjectWorkstreamConfig,
-    ProjectWorkstreamStatusUpdate,
 )
 from app.modules.operations.service import (
     ADMIN_ROLE,
@@ -44,13 +42,11 @@ from app.modules.operations.service import (
     corporate_summary_payload,
     create_bd_opportunity,
     configure_project_team,
-    configure_project_workstreams,
     create_finance_bd_opportunity_notifications,
     create_finance_project_completion_notifications,
     create_work_package,
     deliver_finance_bd_opportunity_emails,
     deliver_finance_project_completion_emails,
-    deliver_project_workstream_assignment_email,
     finalize_delivery,
     get_visible_work_package,
     is_effective_pm,
@@ -58,8 +54,6 @@ from app.modules.operations.service import (
     normalize_role,
     ortho_dashboard_payload,
     project_payload,
-    project_workstream_payload,
-    project_workstreams_dashboard_payload,
     record_daily_update,
     review_package,
     send_ortho_assignment_email,
@@ -67,7 +61,6 @@ from app.modules.operations.service import (
     sync_bd_progress_stage,
     update_bd_stage,
     update_package_assignments,
-    update_project_workstream_status,
     upsert_project_member,
     work_action,
 )
@@ -203,105 +196,6 @@ def bd_assign_project_manager(
         db.commit()
         db.refresh(row)
         return {"opportunity": bd_opportunity_payload(db, row), "project_manager": {"id": pm.id, "full_name": pm.full_name, "email": pm.email}}
-    except Exception as exc:
-        db.rollback()
-        raise _write_error(exc) from exc
-
-
-@router.get("/project-workstreams/dashboard")
-def project_workstreams_dashboard(
-    db: Session = Depends(get_db),
-    auth: CurrentAuth = Depends(get_current_auth),
-):
-    _exact_roles(
-        auth,
-        BD_ROLE,
-        ORTHO_ROLE,
-        LIDAR_ROLE,
-        CIVIL_ROLE,
-        LASER_SCANNING_ROLE,
-        BIM_ROLE,
-        MOBILE_MAPPING_ROLE,
-        MANAGEMENT_ROLE,
-        ADMIN_ROLE,
-    )
-    try:
-        return project_workstreams_dashboard_payload(db, actor=auth.user, effective_role=_role(auth))
-    except Exception as exc:
-        raise _write_error(exc) from exc
-
-
-@router.put("/bd/opportunities/{opportunity_id}/workstreams")
-def bd_configure_project_workstreams(
-    opportunity_id: int,
-    payload: ProjectWorkstreamConfig,
-    request: Request,
-    db: Session = Depends(get_db),
-    auth: CurrentAuth = Depends(get_current_auth),
-):
-    _exact_roles(auth, BD_ROLE)
-    opportunity = db.get(BDOpportunity, opportunity_id)
-    if opportunity is None or opportunity.owner_user_id != auth.user.id:
-        raise HTTPException(status_code=404, detail="BD opportunity not found")
-    try:
-        rows = configure_project_workstreams(db, opportunity=opportunity, actor=auth.user, payload=payload)
-        assignment_email_ids = [row.id for row in rows if getattr(row, "_phase7_manager_changed", False)]
-        _audit(
-            request,
-            db,
-            auth,
-            "BD_PROJECT_WORKSTREAMS_CONFIGURED",
-            "bd_opportunity",
-            opportunity.id,
-            {
-                "project_id": opportunity.linked_project_id,
-                "departments": [row.department_code for row in rows],
-                "project_manager_user_ids": [row.project_manager_user_id for row in rows],
-            },
-        )
-        db.commit()
-        assignment_email_sent = 0
-        assignment_email_failed = 0
-        for workstream_id in assignment_email_ids:
-            sent, failed = deliver_project_workstream_assignment_email(db, workstream_id=workstream_id)
-            assignment_email_sent += sent
-            assignment_email_failed += failed
-        return {
-            "message": "Project workstreams saved. Each selected department now has its own Project Manager and dashboard workstream.",
-            "workstreams": [project_workstream_payload(db, row) for row in rows],
-            "assignment_email_sent": assignment_email_sent,
-            "assignment_email_failed": assignment_email_failed,
-        }
-    except Exception as exc:
-        db.rollback()
-        raise _write_error(exc) from exc
-
-
-@router.patch("/project-workstreams/{workstream_id}/status")
-def department_update_workstream_status(
-    workstream_id: int,
-    payload: ProjectWorkstreamStatusUpdate,
-    request: Request,
-    db: Session = Depends(get_db),
-    auth: CurrentAuth = Depends(get_current_auth),
-):
-    _exact_roles(auth, ORTHO_ROLE, LIDAR_ROLE, CIVIL_ROLE, LASER_SCANNING_ROLE, BIM_ROLE, MOBILE_MAPPING_ROLE)
-    row = db.get(ProjectWorkstream, workstream_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Project workstream not found")
-    try:
-        row = update_project_workstream_status(db, row=row, actor=auth.user, effective_role=_role(auth), payload=payload)
-        _audit(
-            request,
-            db,
-            auth,
-            "PROJECT_WORKSTREAM_STATUS_UPDATED",
-            "project_workstream",
-            row.id,
-            {"project_id": row.project_id, "department_code": row.department_code, "status": row.status},
-        )
-        db.commit()
-        return project_workstream_payload(db, row)
     except Exception as exc:
         db.rollback()
         raise _write_error(exc) from exc
@@ -702,40 +596,9 @@ def corporate_summary(
     return corporate_summary_payload(db)
 
 
-# V7.0.16 Phase 2 - multi-team technical sample workflow.
-# Imported at the end to avoid circular imports while keeping /operations as the
-# single authoritative operational router.
-from app.modules.operations.sample_router import router as phase2_sample_router
-router.include_router(phase2_sample_router)
-
-# V7.0.17 Phase 3 - connected peer-department project data handovers.
-from app.modules.operations.handover_router import router as phase3_handover_router
-router.include_router(phase3_handover_router)
-
-# V7.0.18 Phase 4 - Master Project progress, bottleneck and handover monitoring.
-from app.modules.operations.monitoring_router import router as phase4_monitoring_router
-router.include_router(phase4_monitoring_router)
-
-# V7.0.19 Phase 5 - Master Project completion, final delivery and Finance closure handoff.
-from app.modules.operations.completion_router import router as phase5_completion_router
-router.include_router(phase5_completion_router)
-
-# V7.0.20 Phase 6 - real technical-team directory and go-live readiness; live routing remains UAT-locked.
-from app.modules.operations.technical_directory_router import router as phase6_technical_directory_router
-router.include_router(phase6_technical_directory_router)
-
 # V7.0.21 Phase 7 - explicit real technical-account cutover and production routing.
 from app.modules.operations.technical_routing_router import router as phase7_technical_routing_router
 router.include_router(phase7_technical_routing_router)
-
-# V7.0.22 Phase 8 - executive/manager reporting and Power BI-ready read-only feeds.
-from app.modules.operations.reporting_router import router as phase8_reporting_router
-router.include_router(phase8_reporting_router)
-
-
-# V7.0.23 Phase 9: Production hardening, audit/notification visibility and readiness diagnostics.
-from app.modules.operations.hardening_router import router as phase9_hardening_router
-router.include_router(phase9_hardening_router)
 
 # V8 authoritative project workflow. Legacy opportunity/workstream endpoints remain
 # registered for historical compatibility, but the frontend now uses this router.
