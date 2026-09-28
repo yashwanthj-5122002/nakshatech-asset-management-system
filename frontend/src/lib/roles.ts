@@ -52,7 +52,7 @@ export function roleHomePath(role: Role): string {
     civil: '/ortho',
     laser_scanning: '/ortho',
     mobile_mapping: '/ortho',
-    bim: '/project-workstreams',
+    bim: '/ortho',
     employee: '/support',
   }
   return paths[role]

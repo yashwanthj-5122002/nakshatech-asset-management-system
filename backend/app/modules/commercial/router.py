@@ -277,7 +277,8 @@ def estimate_revision_queue(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "finance", "admin")
+    # Management may inspect the queue (read-only oversight); only Finance/Admin decide.
+    _roles(auth, "finance", "admin", "management")
     allowed = {"PENDING_APPROVAL", "RETURNED", "APPROVED", "REJECTED"}
     normalized = queue_status.strip().upper()
     if normalized not in allowed:

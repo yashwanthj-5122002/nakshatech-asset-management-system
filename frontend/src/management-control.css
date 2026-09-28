@@ -164,3 +164,1539 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   MANAGEMENT DASHBOARD - GOOGLE EXECUTIVE GRADE UI & VISUAL ANALYTICS
+   ========================================================================== */
+
+/* Hero Priority / Permission Gate Banner */
+.management-hero-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 22px;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: #ffffff;
+  box-shadow: 0 4px 18px rgba(11, 44, 84, 0.04);
+}
+
+.management-hero-banner.has-attention {
+  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.8), rgba(245, 243, 255, 0.9));
+}
+
+.management-hero-banner.all-clear {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.8), rgba(236, 253, 245, 0.9));
+}
+
+.management-hero-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+}
+
+.management-hero-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.management-hero-banner.has-attention .management-hero-icon {
+  background: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.management-hero-banner.all-clear .management-hero-icon {
+  background: #10b981;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.management-hero-text h3 {
+  margin: 0 0 3px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.management-hero-text p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.management-hero-action {
+  flex-shrink: 0;
+}
+
+.management-hero-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 180ms ease;
+  white-space: nowrap;
+}
+
+.management-hero-banner.has-attention .management-hero-button {
+  background: #4f46e5;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+}
+
+.management-hero-banner.has-attention .management-hero-button:hover {
+  background: #4338ca;
+  transform: translateY(-1px);
+}
+
+.management-hero-banner.all-clear .management-hero-button {
+  background: #059669;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
+}
+
+.management-hero-banner.all-clear .management-hero-button:hover {
+  background: #047857;
+  transform: translateY(-1px);
+}
+
+/* Executive KPI 4-Card Grid */
+.management-kpi-quad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.management-kpi-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+}
+
+.management-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+  border-color: #cbd5e1;
+}
+
+.management-kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.management-kpi-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.management-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.management-kpi-card.tone-blue .management-kpi-icon { background: #eff6ff; color: #2563eb; }
+.management-kpi-card.tone-green .management-kpi-icon { background: #f0fdf4; color: #16a34a; }
+.management-kpi-card.tone-purple .management-kpi-icon { background: #faf5ff; color: #9333ea; }
+.management-kpi-card.tone-red .management-kpi-icon { background: #fef2f2; color: #dc2626; }
+.management-kpi-card.tone-orange .management-kpi-icon { background: #fffbeb; color: #d97706; }
+
+.management-kpi-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.management-kpi-subtext {
+  font-size: 0.74rem;
+  color: #64748b;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Stacked Utilization Bar */
+.management-stacked-bar {
+  display: flex;
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e2e8f0;
+  margin: 14px 0 10px;
+}
+
+.management-stacked-bar > span {
+  height: 100%;
+  transition: width 300ms ease;
+}
+
+/* Project Lifecycle Pipeline List */
+.management-pipeline-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.management-pipeline-stage {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.4fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  font-size: 0.78rem;
+  transition: background 150ms ease;
+}
+
+.management-pipeline-stage:hover {
+  background: #f1f5f9;
+}
+
+.management-pipeline-stage.is-alert {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.management-pipeline-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.management-pipeline-track {
+  height: 7px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.management-pipeline-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 300ms ease;
+}
+
+.management-pipeline-count {
+  font-weight: 750;
+  font-size: 0.85rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  min-width: 28px;
+  text-align: center;
+}
+
+.management-pipeline-stage.is-alert .management-pipeline-count {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
+/* SLA Health & Risk Radar */
+.management-sla-header-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.management-sla-header-card.healthy {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.management-sla-header-card.unhealthy {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.management-sla-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.management-sla-metric-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.management-sla-metric-item strong {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.management-sla-metric-item span {
+  display: block;
+  font-size: 0.68rem;
+  color: #64748b;
+  margin-top: 2px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* Procurement Status Pills */
+.management-purchase-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.management-purchase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.management-purchase-pill strong {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+/* Structured Executive Hubs */
+.management-hubs-container {
+  display: grid;
+  gap: 24px;
+  margin-top: 10px;
+}
+
+.management-hub-category-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.management-hub-category-header h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #1e293b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.management-hub-category-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.management-hub-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.management-hub-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 180ms ease;
+  min-height: 145px;
+}
+
+.management-hub-card:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.08);
+}
+
+.management-hub-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.management-hub-card-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #f0f9ff;
+  color: #0284c7;
+  flex-shrink: 0;
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.management-hub-card:hover .management-hub-card-icon {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.management-hub-card-arrow {
+  color: #94a3b8;
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.management-hub-card:hover .management-hub-card-arrow {
+  transform: translateX(3px);
+  color: #0284c7;
+}
+
+.management-hub-card-tag {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #0284c7;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.management-hub-card h4 {
+  margin: 0 0 5px;
+  font-size: 0.88rem;
+  font-weight: 750;
+  color: #0f172a;
+}
+
+.management-hub-card p {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+@media (max-width: 1200px) {
+  .management-kpi-quad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .management-hub-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .management-hero-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .management-kpi-quad {
+    grid-template-columns: 1fr;
+  }
+  .management-hub-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .management-pipeline-stage {
+    grid-template-columns: 1fr auto;
+  }
+  .management-pipeline-track {
+    display: none;
+  }
+  .management-sla-metric-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ==========================================================================
+   PURCHASE APPROVAL CENTER - GOOGLE EXECUTIVE SUITE UI
+   ========================================================================== */
+
+.approval-outlay-hero {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.approval-outlay-metric span {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.approval-outlay-metric strong {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 850;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.approval-status-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.approval-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.approval-status-chip:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.approval-status-chip.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.approval-card-refined {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 14px;
+  transition: all 180ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.approval-card-refined:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+}
+
+.approval-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.approval-card-header h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 4px 0 0;
+}
+
+.approval-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.approval-meta-grid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.approval-meta-grid strong {
+  color: #0f172a;
+}
+
+.approval-reason-text {
+  font-size: 0.84rem;
+  color: #334155;
+  line-height: 1.5;
+  margin: 0 0 14px;
+  background: #f8fafc;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border-left: 3px solid #0284c7;
+}
+
+.approval-form-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.approval-form-row input,
+.approval-form-row textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #0f172a;
+}
+
+.approval-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-approve {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.btn-approve:hover {
+  background: #15803d;
+}
+
+.btn-sendback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #d97706;
+  background: #fffbeb;
+  color: #b45309;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.btn-sendback:hover {
+  background: #fef3c7;
+}
+
+.btn-reject {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #ef4444;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.btn-reject:hover {
+  background: #fee2e2;
+}
+
+.management-month-field {
+  display: grid;
+  gap: 4px;
+  min-width: 148px;
+}
+
+.management-month-field span {
+  color: #6b8196;
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.management-month-field input {
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid #d5e1eb;
+  border-radius: 9px;
+  color: #173b5f;
+  background: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.management-refresh-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid #cbdce8;
+  border-radius: 9px;
+  color: #0b4f7d;
+  background: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.management-refresh-button:hover:not(:disabled) {
+  border-color: #6aa8cc;
+  background: #f5fbff;
+}
+
+.management-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.management-month-field input:focus-visible,
+.management-refresh-button:focus-visible,
+.management-attention-action:focus-visible,
+.management-company-kpi:focus-visible,
+.management-department-card:focus-visible,
+.management-workspace-link:focus-visible {
+  outline: 3px solid rgba(2, 132, 199, 0.22);
+  outline-offset: 2px;
+}
+
+.management-freshness-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin: 0 0 10px;
+  color: #708398;
+  font-size: 0.7rem;
+}
+
+.management-freshness-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.management-freshness-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #16a66a;
+  box-shadow: 0 0 0 3px rgba(22, 166, 106, 0.12);
+}
+
+.management-attention-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+  padding: 13px 16px;
+  border: 1px solid #d7e4ee;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(10, 53, 91, 0.04);
+}
+
+.management-attention-strip.has-attention {
+  border-color: #f2c47f;
+  background: #fffaf0;
+}
+
+.management-attention-strip.is-loading {
+  border-color: #c9dce9;
+  background: #f8fbfd;
+}
+
+.management-attention-strip.all-clear {
+  border-color: #b9dfca;
+  background: #f7fcf9;
+}
+
+.management-attention-copy {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.management-attention-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #0b6e91;
+  background: #e7f5f8;
+}
+
+.management-attention-strip.has-attention .management-attention-icon {
+  color: #b45309;
+  background: #ffedc7;
+}
+
+.management-attention-strip.all-clear .management-attention-icon {
+  color: #15803d;
+  background: #dcf7e7;
+}
+
+.management-attention-copy h2 {
+  margin: 0;
+  color: #173b5f;
+  font-size: 0.94rem;
+  line-height: 1.25;
+}
+
+.management-attention-copy p {
+  margin: 3px 0 0;
+  color: #6b7f92;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.management-attention-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid #b9d4e3;
+  border-radius: 9px;
+  color: #075b83;
+  background: #fff;
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.management-attention-action:hover {
+  border-color: #4f9abb;
+  background: #f4fbfe;
+}
+
+.management-company-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.management-company-kpi {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 14px 15px;
+  border: 1px solid #dce6ee;
+  border-radius: 12px;
+  color: inherit;
+  background: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 15px rgba(9, 45, 77, 0.035);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.management-company-kpi:hover {
+  transform: translateY(-1px);
+  border-color: #b7d0df;
+  box-shadow: 0 8px 20px rgba(9, 45, 77, 0.07);
+}
+
+.management-company-kpi-label {
+  color: #718499;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.management-company-kpi strong {
+  color: #14395e;
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.management-company-kpi small {
+  overflow: hidden;
+  color: #75889a;
+  font-size: 0.71rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-company-kpi.tone-purple strong { color: #6d4aa4; }
+.management-company-kpi.tone-orange strong { color: #b36b10; }
+.management-company-kpi.tone-red strong { color: #c24141; }
+.management-company-kpi.tone-green strong { color: #168054; }
+
+.management-department-section,
+.management-workspace-section {
+  margin-bottom: 20px;
+}
+
+.management-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.management-section-heading h2 {
+  margin: 3px 0 0;
+  color: #173b5f;
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.management-section-heading p {
+  margin: 4px 0 0;
+  color: #73869a;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.management-section-status {
+  flex: 0 0 auto;
+  color: #72869a;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.management-department-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.management-department-card {
+  min-width: 0;
+  min-height: 132px;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid #dce6ee;
+  border-radius: 12px;
+  color: inherit;
+  background: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 15px rgba(9, 45, 77, 0.03);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.management-department-card:hover {
+  transform: translateY(-1px);
+  border-color: #9cc4d8;
+  box-shadow: 0 7px 18px rgba(9, 45, 77, 0.07);
+}
+
+.management-department-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.management-department-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #0b6e91;
+  background: #e7f5f8;
+}
+
+.management-department-arrow {
+  color: #9aabba;
+}
+
+.management-department-card:hover .management-department-arrow {
+  color: #0b6e91;
+}
+
+.management-department-card > strong {
+  overflow: hidden;
+  color: #173b5f;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-department-metrics {
+  display: grid;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.management-department-metrics span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  color: #7a8b9d;
+  font-size: 0.66rem;
+}
+
+.management-department-metrics b {
+  color: #244b6e;
+  font-size: 0.84rem;
+}
+
+.management-department-unavailable {
+  color: #a06b17;
+  font-size: 0.63rem;
+}
+
+.management-workspace-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.management-workspace-group {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #dce6ee;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.management-workspace-group-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #edf2f6;
+  color: #0b6e91;
+  font-size: 0.75rem;
+}
+
+.management-workspace-group-title strong {
+  color: #345570;
+  font-size: 0.74rem;
+}
+
+.management-workspace-links {
+  display: grid;
+  gap: 2px;
+  margin-top: 5px;
+}
+
+.management-workspace-link {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 5px;
+  border-radius: 7px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.management-workspace-link:hover {
+  color: #0b6e91;
+  background: #f4f9fc;
+}
+
+.management-workspace-link > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.management-workspace-link strong {
+  overflow: hidden;
+  color: #244b6e;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-workspace-link small {
+  overflow: hidden;
+  color: #8291a0;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-workspace-link > svg {
+  flex: 0 0 auto;
+  color: #a0afbc;
+}
+
+.management-workspace-link:hover > svg {
+  color: #0b6e91;
+}
+
+.management-panel-state {
+  margin: 8px 0 0;
+  color: #718499;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.management-panel-state a {
+  color: #0b6e91;
+  font-weight: 700;
+}
+
+.management-sla-header-card.loading {
+  color: #416277;
+  background: #f4f9fc;
+  border: 1px solid #cfe0eb;
+}
+
+@media (max-width: 1250px) {
+  .management-department-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .management-company-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-department-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .management-workspace-groups {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .management-month-field {
+    min-width: 132px;
+  }
+
+  .management-freshness-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .management-attention-strip {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .management-attention-action {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .management-company-kpis,
+  .management-department-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .management-department-card {
+    min-height: 126px;
+  }
+}
+
+@media (max-width: 400px) {
+  .management-company-kpis,
+  .management-department-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.management-finance-section {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid #d7e5ef;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+}
+
+.management-section-links {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.management-section-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #c9dce9;
+  border-radius: 9px;
+  color: #0b5d84;
+  background: #fff;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.management-finance-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.management-finance-kpi {
+  display: grid;
+  gap: 5px;
+  padding: 14px 15px;
+  border: 1px solid #dce7ef;
+  border-left: 4px solid #0b6e91;
+  border-radius: 12px;
+  color: inherit;
+  background: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(9, 45, 77, 0.035);
+}
+
+.management-finance-kpi span {
+  color: #6b8196;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.management-finance-kpi strong {
+  color: #14395e;
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.management-finance-kpi small {
+  color: #74879a;
+  font-size: 0.71rem;
+}
+
+.management-finance-kpi.tone-green { border-left-color: #16a66a; }
+.management-finance-kpi.tone-blue { border-left-color: #126ae8; }
+.management-finance-kpi.tone-teal { border-left-color: #0891b2; }
+.management-finance-kpi.tone-orange { border-left-color: #d97706; }
+
+.management-finance-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.management-finance-trend-panel {
+  min-width: 0;
+}
+
+.management-finance-trend {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  min-height: 220px;
+  padding: 12px 4px 0;
+}
+
+.management-finance-trend-col {
+  display: grid;
+  grid-template-rows: auto minmax(120px, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+  min-width: 0;
+  text-align: center;
+}
+
+.management-finance-trend-value {
+  color: #345570;
+  font-size: 0.66rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.management-finance-trend-track {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+  min-height: 120px;
+  border-radius: 9px;
+  background: #f0f5f9;
+}
+
+.management-finance-trend-track i {
+  display: block;
+  width: 62%;
+  min-height: 2px;
+  border-radius: 7px 7px 2px 2px;
+  background: linear-gradient(180deg, #1d8fc0, #0b5d84);
+  transition: height 240ms ease;
+}
+
+.management-finance-trend-col small {
+  overflow: hidden;
+  color: #718499;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-finance-side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 1250px) {
+  .management-finance-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-finance-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .management-finance-section {
+    padding: 13px;
+  }
+
+  .management-finance-kpis,
+  .management-finance-trend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .management-finance-trend {
+    min-height: 0;
+  }
+
+  .management-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.management-finance-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #eef4f8;
+}
+
+.management-finance-tabs button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  color: #567089;
+  background: transparent;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.management-finance-tabs button.active {
+  color: #fff;
+  background: #0b5d84;
+  box-shadow: 0 3px 9px rgba(11, 93, 132, 0.22);
+}
+
+.management-finance-kpi.tone-purple { border-left-color: #7557b7; }
+.management-finance-kpi.tone-red { border-left-color: #d9535f; }
+
+.management-finance-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.management-compare-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #dce7ef;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.management-compare-card.sales { border-top: 4px solid #126ae8; }
+.management-compare-card.revenue { border-top: 4px solid #16a66a; }
+
+.management-compare-card > span {
+  color: #6b8196;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.management-compare-card > strong {
+  color: #14395e;
+  font-size: 1.75rem;
+  line-height: 1.1;
+}
+
+.management-compare-card > small {
+  color: #6d8194;
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.management-compare-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #5c7186;
+  font-size: 0.74rem;
+}
+
+.management-compare-panel {
+  margin-top: 4px;
+}
+
+.management-compare-bars {
+  display: grid;
+  gap: 14px;
+}
+
+.management-compare-bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #5c7186;
+  font-size: 0.78rem;
+}
+
+.management-compare-bar-label strong {
+  color: #173b5f;
+}
+
+.management-compare-bar-track {
+  height: 12px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: #eef3f7;
+  overflow: hidden;
+}
+
+.management-compare-bar-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.management-compare-bar-track i.sales { background: #126ae8; }
+.management-compare-bar-track i.revenue { background: #16a66a; }
+
+.management-compare-note {
+  margin: 14px 0 0;
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .management-finance-compare {
+    grid-template-columns: 1fr;
+  }
+}

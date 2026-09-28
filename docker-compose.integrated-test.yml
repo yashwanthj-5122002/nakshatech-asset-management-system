@@ -1,0 +1,175 @@
+﻿name: nakshatech_v81_integrated_test
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "35434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "36380:6379"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "49004:9000"
+      - "49005:9001"
+    volumes:
+      - minio_data:/data
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    environment:
+      ENVIRONMENT: development
+      APP_ENV: ${APP_ENV:-development}
+      API_PREFIX: /api
+      ROOT_PATH: ""
+      DOCS_ENABLED: "true"
+      ENABLE_BACKGROUND_WATCHER: "true"
+      SEED_DEFAULT_USERS: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_MINUTES: 480
+      CORS_ORIGINS: http://localhost:3100,http://localhost:8088
+      TRUSTED_HOSTS: localhost,127.0.0.1,backend
+      PURCHASE_APPROVAL_PUBLIC_URL: ${PURCHASE_APPROVAL_PUBLIC_URL:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@nakshatech.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_SOFTWARE_TEAM_EMAIL: ${SEED_SOFTWARE_TEAM_EMAIL:-software.team@nakshatech.com}
+      SEED_SOFTWARE_TEAM_PASSWORD: ${SEED_SOFTWARE_TEAM_PASSWORD}
+      SEED_ORGANIZATION_ADMIN_NAME: ${SEED_ORGANIZATION_ADMIN_NAME:-NakshaTech Administrator}
+      SEED_ORGANIZATION_ADMIN_EMAIL: ${SEED_ORGANIZATION_ADMIN_EMAIL:-}
+      SEED_ORGANIZATION_ADMIN_PASSWORD: ${SEED_ORGANIZATION_ADMIN_PASSWORD:-}
+      SEED_MANAGEMENT_EMAIL: ${SEED_MANAGEMENT_EMAIL:-vinod@nakshatech.com}
+      SEED_MANAGEMENT_PASSWORD: ${SEED_MANAGEMENT_PASSWORD}
+      SEED_MANAGEMENT_SECONDARY_EMAIL: ${SEED_MANAGEMENT_SECONDARY_EMAIL:-chethan@nakshatech.com}
+      SEED_MANAGEMENT_SECONDARY_PASSWORD: ${SEED_MANAGEMENT_SECONDARY_PASSWORD}
+      SEED_IT_EMAIL: ${SEED_IT_EMAIL:-it-support@nakshatech.com}
+      SEED_IT_PASSWORD: ${SEED_IT_PASSWORD}
+      SEED_FINANCE_PASSWORD: ${SEED_FINANCE_PASSWORD:-ChangeMeLocalFinance@2026!}
+      FINANCE_ADMIN_NOTIFICATION_EMAILS: ${FINANCE_ADMIN_NOTIFICATION_EMAILS:-admin@nakshatech.com}
+      FINANCE_TEAM_NOTIFICATION_EMAILS: ${FINANCE_TEAM_NOTIFICATION_EMAILS:-finance@nakshatech.com}
+      FINANCE_EMAIL_HEADING: ${FINANCE_EMAIL_HEADING:-NakshaTech Finance CRM}
+      SEED_DRONE_EMAIL: ${SEED_DRONE_EMAIL}
+      SEED_DRONE_PASSWORD: ${SEED_DRONE_PASSWORD}
+      SEED_OPERATIONS_TEST_USERS_ENABLED: ${SEED_OPERATIONS_TEST_USERS_ENABLED:-false}
+      SEED_BD_MANAGER_EMAIL: ${SEED_BD_MANAGER_EMAIL:-}
+      SEED_BD_MANAGER_PASSWORD: ${SEED_BD_MANAGER_PASSWORD:-}
+      SEED_ORTHO_PM_EMAIL: ${SEED_ORTHO_PM_EMAIL:-}
+      SEED_ORTHO_PM_PASSWORD: ${SEED_ORTHO_PM_PASSWORD:-}
+      SEED_EMPLOYEE_TEST_EMAIL: ${SEED_EMPLOYEE_TEST_EMAIL:-}
+      SEED_EMPLOYEE_TEST_PASSWORD: ${SEED_EMPLOYEE_TEST_PASSWORD:-}
+      ENABLE_TEST_EMPLOYEE_SEED: ${ENABLE_TEST_EMPLOYEE_SEED:-false}
+      TEST_EMPLOYEE_SEED_PASSWORD: ${TEST_EMPLOYEE_SEED_PASSWORD:-Naksha@Test2026}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: asset-files
+      REDIS_URL: redis://redis:6379/0
+      BACKUP_ROOT: /backups
+      BACKUP_TIMEZONE: Asia/Kolkata
+      BACKUP_DATABASE_ENABLED: "true"
+      BACKUP_MINIO_ENABLED: "false"
+      BACKUP_DAILY_RETENTION_DAYS: 90
+      BACKUP_DATABASE_RETENTION_DAYS: 30
+      BACKUP_COMMAND_TIMEOUT_SECONDS: 1800
+      PG_DUMP_BIN: pg_dump
+      LOCAL_BACKUP_AGENT_ENABLED: "false"
+      LOCAL_BACKUP_AGENT_TOKEN: ${LOCAL_BACKUP_AGENT_TOKEN}
+      NAKSHA_COPILOT_ENABLED: ${NAKSHA_COPILOT_ENABLED:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      NAKSHA_COPILOT_TIMEOUT_SECONDS: ${NAKSHA_COPILOT_TIMEOUT_SECONDS:-25}
+      NAKSHA_COPILOT_REQUESTS_PER_HOUR: ${NAKSHA_COPILOT_REQUESTS_PER_HOUR:-20}
+      NAKSHA_COPILOT_MAX_OUTPUT_TOKENS: ${NAKSHA_COPILOT_MAX_OUTPUT_TOKENS:-900}
+
+      AGENT_MONITOR_ENABLED: ${AGENT_MONITOR_ENABLED:-false}
+      # Local Asset Management runs in Docker while the authoritative v1.5
+      # System Manager backend is published on the Windows host at port 8000.
+      # Prefer that backend so the monitor and localhost:3001 System Manager UI
+      # always read the same live database. Set this explicitly to override.
+      AGENT_MONITOR_PREFERRED_BASE_URL: ${AGENT_MONITOR_PREFERRED_BASE_URL:-http://host.docker.internal:8000}
+      AGENT_MONITOR_BASE_URL: ${AGENT_MONITOR_BASE_URL:-}
+      AGENT_MONITOR_ADMIN_KEY: ${AGENT_MONITOR_ADMIN_KEY:-}
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "38100:8000"
+    volumes:
+      - ./backend:/app
+      - ./local-backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    command: uvicorn app.batch4_main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    init: true
+    ports:
+      - "33100:3100"
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: npm run dev -- --host 0.0.0.0 --port 3100
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "38088:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  node_modules:
+
+
