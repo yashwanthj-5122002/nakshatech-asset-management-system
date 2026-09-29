@@ -26,14 +26,13 @@
   pointer-events: none;
 }
 
-/* Full landing hero — sticky so it compresses into the command bar */
+/* Full landing hero — relative positioning so it scrolls naturally with zero flickering */
 .nk-arch-command .nk-hero {
-  position: sticky;
-  top: var(--nk-topbar-h);
-  z-index: 15;
+  position: relative;
+  z-index: 2;
   overflow: hidden;
   isolation: isolate;
-  padding: clamp(26px, 3vw, 44px) clamp(22px, 2.6vw, 38px);
+  padding: clamp(20px, 2.4vw, 30px) clamp(20px, 2.4vw, 30px);
   border-radius: var(--nk-radius-2xl);
   color: #fff;
   background:

@@ -1,0 +1,652 @@
+/* ═══════════════════════════════════════════════════════════════
+   FINANCE DASHBOARD V2 – Executive Financial & Operational Oversight
+   Light Enterprise Theme: Crisp Navy & Slate Typography on Clean White Surfaces
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Top Financial Metric Cards Grid ── */
+.fin-hero-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.fin-hero-kpi-card {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  box-shadow: 0 3px 10px rgba(8, 42, 82, 0.04);
+  transition: all 0.2s ease;
+}
+
+.fin-hero-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(8, 42, 82, 0.08);
+  border-color: #93c5fd;
+}
+
+.fin-kpi-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fin-kpi-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fin-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fin-kpi-icon.blue { background: #eff6ff; color: #1d4ed8; }
+.fin-kpi-icon.green { background: #f0fdf4; color: #15803d; }
+.fin-kpi-icon.orange { background: #fffbeb; color: #b45309; }
+.fin-kpi-icon.purple { background: #faf5ff; color: #6d28d9; }
+.fin-kpi-icon.cyan { background: #ecfeff; color: #0891b2; }
+
+.fin-kpi-value {
+  font-size: 1.55rem;
+  font-weight: 900;
+  color: #082a52;
+  line-height: 1.2;
+}
+
+.fin-kpi-sub {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Interactive Workflow Status Filter Cards ── */
+.fin-status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.fin-status-card {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  box-shadow: 0 2px 6px rgba(8, 42, 82, 0.03);
+}
+
+.fin-status-card:hover {
+  background: #f8fbfe;
+  border-color: #93c5fd;
+}
+
+.fin-status-card.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.fin-status-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.fin-status-badge.orange { background: #fffbeb; color: #b45309; }
+.fin-status-badge.red { background: #fef2f2; color: #b91c1c; }
+.fin-status-badge.blue { background: #eff6ff; color: #1d4ed8; }
+.fin-status-badge.green { background: #f0fdf4; color: #15803d; }
+.fin-status-badge.purple { background: #faf5ff; color: #6d28d9; }
+
+.fin-status-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.fin-status-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fin-status-count {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #082a52;
+  line-height: 1.2;
+}
+
+/* ── Analytics Visual Grid ── */
+.fin-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 960px) {
+  .fin-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fin-card {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 4px 14px rgba(8, 42, 82, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fin-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1.5px solid #eef4fa;
+  padding-bottom: 12px;
+}
+
+.fin-card-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #082a52;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.fin-card-subtitle {
+  font-size: 0.74rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* ── Progress & Collection Gauge ── */
+.fin-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.fin-progress-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #334155;
+  min-width: 140px;
+}
+
+.fin-progress-track {
+  flex: 1;
+  height: 9px;
+  background: #e2e8f0;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.fin-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s ease;
+}
+
+.fin-progress-pct {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #082a52;
+  min-width: 42px;
+  text-align: right;
+}
+
+/* ── Tabbed Navigation Bar ── */
+.fin-tabs-bar {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.fin-tab-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+  background: transparent;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.fin-tab-button:hover {
+  color: #082a52;
+  background: #f1f5f9;
+}
+
+.fin-tab-button.active {
+  color: #1d4ed8;
+  font-weight: 800;
+  border-bottom-color: #2563eb;
+  background: #eff6ff;
+}
+
+.fin-tab-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: #e2e8f0;
+  color: #1e293b;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.fin-tab-button.active .fin-tab-badge {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+/* ── Table Toolbar (Search + Quick Filter Pills) ── */
+.fin-table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.fin-search-box {
+  position: relative;
+  min-width: 280px;
+}
+
+.fin-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+}
+
+.fin-search-input {
+  width: 100%;
+  padding: 9px 12px 9px 38px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 9px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #082a52;
+  background: #ffffff;
+  outline: none;
+  transition: all 0.18s ease;
+}
+
+.fin-search-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.fin-filter-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fin-filter-pill {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fin-filter-pill:hover {
+  background: #e2e8f0;
+  color: #082a52;
+}
+
+.fin-filter-pill.active {
+  background: #082a52;
+  color: #ffffff;
+  border-color: #082a52;
+}
+
+/* ── Main Clean Table ── */
+.fin-table-card {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(8, 42, 82, 0.04);
+}
+
+.fin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fin-table th {
+  background: #eef4fa;
+  color: #082a52;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1.5px solid #d8e4ef;
+  white-space: nowrap;
+}
+
+.fin-table td {
+  padding: 13px 14px;
+  font-size: 0.82rem;
+  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.fin-table tr:hover td {
+  background: #f8fbfe;
+}
+
+.fin-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Table Specific Cell Helpers */
+.fin-cell-code {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: #082a52;
+  letter-spacing: 0.02em;
+}
+
+.fin-cell-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.fin-cell-client {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #1e3a5f;
+  margin-top: 3px;
+}
+
+.fin-cell-dept {
+  display: inline-flex;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.fin-cell-amount {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #082a52;
+}
+
+.fin-cell-powo {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.fin-cell-dates {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.fin-cell-expenses {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.72rem;
+}
+
+.fin-cell-expenses-paid {
+  font-weight: 700;
+  color: #15803d;
+}
+
+.fin-cell-expenses-out {
+  color: #b45309;
+}
+
+/* ── Status Pills ── */
+.fin-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.fin-status-pill.success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.fin-status-pill.warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.fin-status-pill.danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.fin-status-pill.info { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
+.fin-status-pill.neutral { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+/* ── Inline Action Buttons ── */
+.fin-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fin-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.fin-btn-secondary {
+  background: #f1f5f9;
+  color: #082a52;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.fin-btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+.fin-btn-success {
+  background: #15803d;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fin-btn-success:hover:not(:disabled) {
+  background: #166534;
+}
+
+/* ── Slide-over / Modal Details Panel ── */
+.fin-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 20, 38, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 99;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.fin-detail-drawer {
+  width: 100%;
+  max-width: 680px;
+  background: #ffffff;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 28px;
+  box-shadow: -8px 0 24px rgba(3, 20, 38, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: finDrawerIn 0.25s ease;
+}
+
+@keyframes finDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.fin-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #eef4fa;
+  padding-bottom: 16px;
+}
+
+.fin-drawer-title-group h2 {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #082a52;
+  margin: 4px 0 0;
+}
+
+.fin-drawer-close {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #475569;
+}
+
+.fin-drawer-close:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.fin-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.fin-fact-item {
+  background: #f8fbfe;
+  border: 1px solid #d8e4ef;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fin-fact-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.fin-fact-value {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #082a52;
+}
+
+/* ── Inline SVG Trend Chart ── */
+.fin-trend-wrap {
+  overflow-x: auto;
+  padding: 6px 0;
+}
+
+.fin-trend-svg text {
+  fill: #475569;
+  font-size: 10px;
+  font-weight: 600;
+}
