@@ -569,7 +569,7 @@ def commercial_analytics(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "management", "admin")
+    _roles(auth, "management", "admin", "finance")
     try:
         return management_analytics(
             db,

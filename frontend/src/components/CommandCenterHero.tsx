@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, type ReactNode, type RefObject } from 'react'
 import type { AppIcon } from './DroneIcon'
 
 /**
@@ -56,27 +56,11 @@ export function CommandCenterHero({
   actions?: ReactNode
   children?: ReactNode
 }) {
-  const [collapsed, setCollapsed] = useState(false)
-  const sentinelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(
-      ([entry]) => setCollapsed(!entry.isIntersecting),
-      { rootMargin: '-72px 0px 0px 0px', threshold: 0 },
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [])
-
   return (
-    <>
-      <div className="nk-command-sentinel" ref={sentinelRef} aria-hidden="true" />
-      <section
-        className={`nk-hero nk-anim-in${collapsed ? ' is-collapsed' : ''}`}
-        aria-label={`${typeof title === 'string' ? title : 'Page'} header`}
-      >
+    <section
+      className="nk-hero nk-anim-in"
+      aria-label={`${typeof title === 'string' ? title : 'Page'} header`}
+    >
         <div className="nk-hero-inner">
           <div className="nk-hero-copy">
             {kicker && (
@@ -113,6 +97,5 @@ export function CommandCenterHero({
         </div>
         {children}
       </section>
-    </>
   )
 }
