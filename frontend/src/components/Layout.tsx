@@ -175,6 +175,16 @@ function isPathInItem(pathname: string, item: NavItem): boolean {
   return pathname === item.to || pathname.startsWith(`${item.to}/`)
 }
 
+/** Exactly one sidebar link may be active: the most specific (longest path) match. */
+function findActiveNavItem(items: NavItem[], pathname: string): NavItem | undefined {
+  let best: NavItem | undefined
+  for (const item of items) {
+    if (!isPathInItem(pathname, item)) continue
+    if (!best || item.to.length > best.to.length) best = item
+  }
+  return best
+}
+
 function canViewItem(role: Role, item: NavItem): boolean {
   if (item.to === '/software-team') return role === 'software_team'
   if (item.to === '/admin') return role === 'admin'
@@ -284,7 +294,7 @@ export function Layout({ children }: { children: ReactNode }) {
     const targetGroups = currentRole === 'management' ? managementNavGroups : currentRole === 'admin' ? adminNavGroups : navGroups
     targetGroups.forEach(g => { initial[g.id] = false })
     if (currentRole) {
-      const activeItem = navItems.find(item => canShowInSidebar(currentRole, item) && isPathInItem(location.pathname, item))
+      const activeItem = findActiveNavItem(navItems.filter(item => canShowInSidebar(currentRole, item)), location.pathname)
       if (activeItem) {
         const activeGroup = navigationGroupForItem(currentRole, activeItem)
         initial[activeGroup] = true
@@ -297,7 +307,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user || (!isFullAccessRole(user.role) && user.role !== 'management')) return
-    const activeItem = navItems.find(item => canShowInSidebar(user.role, item) && isPathInItem(location.pathname, item))
+    const activeItem = findActiveNavItem(navItems.filter(item => canShowInSidebar(user.role, item)), location.pathname)
     if (activeItem) {
       const activeGroup = navigationGroupForItem(user.role, activeItem)
       setOpenGroups(current => ({ ...current, [activeGroup]: true }))
@@ -331,6 +341,7 @@ export function Layout({ children }: { children: ReactNode }) {
         ...visibleItems.filter(item => item.to === '/tickets'),
       ]
     : visibleItems
+  const activeNavItem = findActiveNavItem(available, location.pathname)
   const groupedNavigation = isFullAccessRole(currentUser.role) || isManagement
 
   // Only surface topbar context that is not already stated elsewhere on screen. The department
@@ -348,7 +359,7 @@ export function Layout({ children }: { children: ReactNode }) {
         key={item.to}
         to={item.group === 'it' ? withITMonth(item.to, selectedMonth) : item.to}
         onClick={() => setMobileOpen(false)}
-        className={() => isPathInItem(location.pathname, item) ? 'active' : ''}
+        className={() => item === activeNavItem ? 'active' : ''}
       >
         <Icon size={18} />
         <span>{navigationLabelForItem(currentUser.role, item)}</span>
@@ -379,7 +390,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 const items = available.filter(item => navigationGroupForItem(currentUser.role, item) === group.id)
                 if (items.length === 0) return null
                 const isOpen = openGroups[group.id]
-                const hasActive = items.some(item => isPathInItem(location.pathname, item))
+                const hasActive = Boolean(activeNavItem && items.includes(activeNavItem))
                 return (
                   <section className={`sidebar-nav-group ${isOpen ? 'open' : ''} ${hasActive ? 'has-active' : ''}`} key={group.id}>
                     <button
