@@ -16,10 +16,12 @@ from app.core.departments import (
     department_for_pm_role,
     department_label,
     is_technical_pm_role,
+    normalize_department_code,
     normalize_department_code_or_default,
     pm_role_for_department,
     user_department_matches,
 )
+from app.core.department_access import user_department_code
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import (
@@ -1980,6 +1982,19 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             OrthoProjectMember.member_role.in_(TEAM_ROLES),
             OrthoProjectMember.is_active.is_(True),
         )).all())
+        # Department isolation: a normal employee only ever sees projects performed by
+        # their own department (Employee Master scope), never cross-department work.
+        # Employees without a resolvable department keep membership-based visibility.
+        employee_department = user_department_code(db, actor)
+        if employee_department is not None:
+            department_projects = set(
+                db.scalars(
+                    select(ProjectWorkflow.project_id).where(
+                        ProjectWorkflow.performing_department_code == normalize_department_code(employee_department)
+                    )
+                ).all()
+            )
+            project_ids &= department_projects
     if role in {ADMIN_ROLE, MANAGEMENT_ROLE}:
         project_ids.update(int(v) for v in db.scalars(select(ProjectWorkflow.project_id)).all())
 

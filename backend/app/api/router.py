@@ -85,6 +85,7 @@ from app.modules.employee_portal.service import (
     record_audit,
 )
 from app.modules.employee_portal.models import Branch
+from app.modules.employee_portal.employee_master import employee_master_for_user
 
 router = APIRouter()
 IST = ZoneInfo("Asia/Kolkata")
@@ -556,6 +557,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         )
 
     effective_role = "employee" if employee_support_mode else user.role
+    master = employee_master_for_user(db, user)
     response_user = UserResponse(
         id=user.id,
         email=user.email,
@@ -564,6 +566,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         branch=user.branch,
         employee_id=user.employee_id,
         department=user.department,
+        department_code=master.department_code if master else None,
         designation=user.designation,
         email_verified=user.email_verified,
         mfa_enabled=get_confirmed_authenticator(db, user.id) is not None,
@@ -640,16 +643,21 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         user=response_user,
         branch_selection_required=effective_role == "employee",
     )
-
-
 def _user_response(auth: CurrentAuth, db: Session) -> UserResponse:
     branch_id = auth.claims.get("branch_id")
     branch = db.get(Branch, int(branch_id)) if branch_id is not None else None
     user = auth.user
+    master = employee_master_for_user(db, user)
     return UserResponse(
-        id=user.id, email=user.email, full_name=user.full_name, role=auth.effective_role,
-        branch=branch.name if branch else user.branch, employee_id=user.employee_id,
-        department=user.department, designation=user.designation,
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        role=auth.effective_role,
+        branch=branch.name if branch else user.branch,
+        employee_id=user.employee_id,
+        department=user.department,
+        department_code=master.department_code if master else None,
+        designation=user.designation,
         phone_number=user.phone_number,
         joining_date=user.joining_date,
         date_of_birth=user.date_of_birth,
@@ -659,7 +667,6 @@ def _user_response(auth: CurrentAuth, db: Session) -> UserResponse:
         email_verified=user.email_verified,
         mfa_enabled=get_confirmed_authenticator(db, user.id) is not None,
     )
-
 
 @router.get("/auth/me", response_model=UserResponse)
 def me(auth: CurrentAuth = Depends(get_current_auth), db: Session = Depends(get_db)) -> UserResponse:
@@ -680,10 +687,24 @@ def update_profile(
 ) -> UserResponse:
     user = auth.user
     changed: list[str] = []
+    # Identity fields (name, phone) are owned by Employee Master for linked accounts;
+    # client-supplied values are ignored so the frontend can never override HR data.
+    master = employee_master_for_user(db, user)
+    identity_locked = master is not None
     if payload.full_name is not None and payload.full_name.strip() != user.full_name:
+        if identity_locked:
+            raise HTTPException(
+                status_code=403,
+                detail="Your employee name is managed by Employee Master. Contact HR / Software Team to correct it.",
+            )
         user.full_name = payload.full_name.strip()
         changed.append("full_name")
     if payload.phone_number is not None and (payload.phone_number.strip() or None) != user.phone_number:
+        if identity_locked:
+            raise HTTPException(
+                status_code=403,
+                detail="Your phone number is managed by Employee Master. Contact HR / Software Team to correct it.",
+            )
         user.phone_number = payload.phone_number.strip() or None
         changed.append("phone_number")
     if payload.date_of_birth is not None and payload.date_of_birth != user.date_of_birth:

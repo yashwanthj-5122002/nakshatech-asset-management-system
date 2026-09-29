@@ -1,4 +1,4 @@
-import { Building2, KeyRound, Mail, QrCode, ShieldCheck, UserRound } from 'lucide-react'
+import { Building2, KeyRound, Mail, QrCode, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
@@ -10,11 +10,28 @@ type Step = 'email' | 'otp' | 'details' | 'authenticator'
 
 interface OTPResponse {
   message: string
-  expires_in_seconds?: number
-  development_otp?: string
+  expires_in_seconds: number | null
+  development_otp: string | null
 }
 
-interface RegistrationVerifyResponse { registration_token: string }
+interface EmployeeProfile {
+  id: number
+  employee_name: string
+  employee_number: string
+  access_card_no: string
+  phone: string
+  department: string
+  department_code: string
+  designation: string
+  email: string
+  employment_status: string
+  crm_account_status: string
+}
+
+interface RegistrationVerifyResponse {
+  registration_token: string
+  employee: EmployeeProfile
+}
 interface MFASetupResponse {
   mfa_setup_token: string
   otpauth_uri: string
@@ -32,14 +49,10 @@ export function RegisterPage() {
   const [otp, setOtp] = useState('')
   const [developmentOtp, setDevelopmentOtp] = useState('')
   const [registrationToken, setRegistrationToken] = useState('')
+  const [employee, setEmployee] = useState<EmployeeProfile | null>(null)
   const [mfaSetup, setMfaSetup] = useState<MFASetupResponse | null>(null)
   const [authenticatorCode, setAuthenticatorCode] = useState('')
   const [form, setForm] = useState({
-    full_name: '',
-    employee_id: '',
-    department: '',
-    designation: '',
-    phone_number: '',
     branch_id: '',
     password: '',
     confirm_password: '',
@@ -62,8 +75,11 @@ export function RegisterPage() {
       const result = await apiFetch<OTPResponse>('/auth/register/request-otp', {
         method: 'POST', body: JSON.stringify({ email: email.trim() }),
       })
-      setDevelopmentOtp(result.development_otp || '')
-      setNotice(result.message)
+      // The backend always includes the nullable development_otp field. Normalize
+      // it before changing views so a successful response cannot leave this form
+      // committed in its loading state while the OTP screen is being rendered.
+      setDevelopmentOtp(result.development_otp ?? '')
+      setNotice(result.message || 'A verification code has been sent to your organization email.')
       setStep('otp')
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not send OTP') }
     finally { setLoading(false) }
@@ -77,6 +93,7 @@ export function RegisterPage() {
         method: 'POST', body: JSON.stringify({ email: email.trim(), otp }),
       })
       setRegistrationToken(result.registration_token)
+      setEmployee(result.employee)
       setStep('details')
     } catch (err) { setError(err instanceof Error ? err.message : 'OTP verification failed') }
     finally { setLoading(false) }
@@ -104,13 +121,9 @@ export function RegisterPage() {
         method: 'POST',
         body: JSON.stringify({
           registration_token: registrationToken,
-          full_name: form.full_name,
-          employee_id: form.employee_id,
-          department: form.department,
-          designation: form.designation || undefined,
-          phone_number: form.phone_number || undefined,
           branch_id: Number(form.branch_id),
           password: form.password,
+          confirm_password: form.confirm_password,
         }),
       })
       setMfaSetup(result)
@@ -137,10 +150,12 @@ export function RegisterPage() {
   return (
     <AuthFlowShell
       eyebrow={`FIRST-TIME ACCOUNT · STEP ${step === 'email' ? 1 : step === 'otp' ? 2 : step === 'details' ? 3 : 4} OF 4`}
-      title={step === 'email' ? 'Create your account' : step === 'otp' ? 'Verify organization email' : step === 'details' ? 'Complete employee profile' : 'Secure your account'}
+      title={step === 'email' ? 'Create your account' : step === 'otp' ? 'Verify organization email' : step === 'details' ? 'Confirm employee profile' : 'Secure your account'}
       description={step === 'authenticator'
         ? 'Scan the QR code using a free Authenticator app, then enter the current six-digit code.'
-        : 'Use only your official @nakshatech.com email. No Software Team approval is required for employee support access.'}
+        : step === 'details'
+          ? 'Your employee details are confirmed from Employee Master. Choose a password to continue.'
+          : 'Use only your official @nakshatech.com email. No Software Team approval is required for employee support access.'}
     >
       {step === 'email' && (
         <form className="auth-flow-form" onSubmit={requestOtp}>
@@ -164,18 +179,32 @@ export function RegisterPage() {
       )}
 
       {step === 'details' && (
-        <form className="auth-flow-form auth-flow-grid-form" onSubmit={completeRegistration}>
-          <label className="final-login-field"><span>Full Name</span><div className="final-login-input-shell"><UserRound size={19} /><input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} required /></div></label>
-          <label className="final-login-field"><span>Employee ID</span><div className="final-login-input-shell"><ShieldCheck size={19} /><input value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} required /></div></label>
-          <label className="final-login-field"><span>Department</span><div className="final-login-input-shell"><Building2 size={19} /><input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="Operations / Survey / Accounts" required /></div></label>
-          <label className="final-login-field"><span>Designation (optional)</span><div className="final-login-input-shell"><UserRound size={19} /><input value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} /></div></label>
-          <label className="final-login-field"><span>Mobile Number (optional)</span><div className="final-login-input-shell"><UserRound size={19} /><input value={form.phone_number} onChange={e => setForm({ ...form, phone_number: e.target.value })} placeholder="+91..." /></div></label>
-          <label className="final-login-field"><span>Default Branch</span><div className="final-login-input-shell"><Building2 size={19} /><select value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })} required>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></div></label>
+        <form className="auth-flow-form" onSubmit={completeRegistration}>
+          <div className="auth-flow-profile-card">
+            <div className="auth-flow-profile-head">
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Verified Employee</strong>
+                <span>Your identity was confirmed from Employee Master. These fields are read-only.</span>
+              </div>
+            </div>
+            <div className="auth-flow-profile-grid">
+              <div><span>Employee Name</span><strong>{employee?.employee_name}</strong></div>
+              <div><span>Employee Number</span><strong>{employee?.employee_number}</strong></div>
+              <div><span>Access Card</span><strong>{employee?.access_card_no}</strong></div>
+              <div><span>Phone</span><strong>{employee?.phone}</strong></div>
+              <div><span>Department</span><strong>{employee?.department}</strong></div>
+              <div><span>Designation</span><strong>{employee?.designation}</strong></div>
+              <div className="auth-flow-span"><span>Official Email</span><strong>{employee?.email}</strong></div>
+            </div>
+            <p className="auth-flow-profile-note">Employee information incorrect? Contact HR / Software Team.</p>
+          </div>
+          <label className="final-login-field auth-flow-span"><span>Default Branch</span><div className="final-login-input-shell"><Building2 size={19} /><select value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })} required>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></div></label>
           <label className="final-login-field"><span>Create CRM Password</span><div className="final-login-input-shell"><KeyRound size={19} /><input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} autoComplete="new-password" required /></div></label>
           <label className="final-login-field"><span>Confirm Password</span><div className="final-login-input-shell"><KeyRound size={19} /><input type="password" value={form.confirm_password} onChange={e => setForm({ ...form, confirm_password: e.target.value })} autoComplete="new-password" required /></div></label>
           <p className="auth-flow-password-rule">Use at least 10 characters with uppercase, lowercase, number, and special character.</p>
           {error && <div className="error-message auth-flow-span" role="alert">{error}</div>}
-          <button className="final-login-submit auth-flow-span" disabled={loading}><span>{loading ? 'Creating account...' : 'Continue to Phone Authenticator'}</span><i>→</i></button>
+          <button className="final-login-submit auth-flow-span" disabled={loading || !employee}><span>{loading ? 'Creating account...' : 'Continue to Phone Authenticator'}</span><i>→</i></button>
         </form>
       )}
 

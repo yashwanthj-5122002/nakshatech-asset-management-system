@@ -1,4 +1,4 @@
-import { CheckCircle2, History, IndianRupee, RefreshCcw, Save, TrendingUp, Wand2, WalletCards } from 'lucide-react'
+import { CheckCircle2, FolderOpen, History, IndianRupee, RefreshCcw, Save, TrendingUp, Wand2, WalletCards } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../components/DashboardHeader'
 import { useAuth } from '../../context/AuthContext'
@@ -284,8 +284,10 @@ export function BusinessDashboardPage() {
       {loading && <div className="finance-panel finance-empty-state">Loading Business data…</div>}
 
       {!loading && data?.viewer === 'unavailable' && (
-        <div className="finance-panel finance-empty-state">
-          You are not currently assigned as a Project Manager on any project, so there is no business data to show.
+        <div className="nk-empty">
+          <span className="nk-empty-icon"><FolderOpen size={22} /></span>
+          <h3>No projects assigned to you</h3>
+          <p>You are not currently assigned as a Project Manager on any project, so there is no business data to show for {monthLabel(month)}. Projects appear here as soon as an assignment is made.</p>
         </div>
       )}
 
@@ -323,7 +325,12 @@ export function BusinessDashboardPage() {
               <div><span className="finance-panel-kicker">MY PROJECTS</span><h2>{monthLabel(data.month)} Business</h2><p>Business done and the amount the client has paid for each of your projects.</p></div>
             </div>
             {data.rows.length === 0
-              ? <div className="finance-empty-state">No business recorded for your projects this month.</div>
+              ? <div className="nk-empty">
+                  <span className="nk-empty-icon"><WalletCards size={22} /></span>
+                  <h3>No business recorded this month</h3>
+                  <p>No invoice or payment has been recorded for your projects in {monthLabel(data.month)} yet. Business done and client-paid figures appear here automatically as Billing & Invoices records them.</p>
+                  <div className="nk-empty-action"><button type="button" className="finance-secondary-button" onClick={load}><RefreshCcw size={16} /> Refresh</button></div>
+                </div>
               : <div className="finance-table-wrap">
                   <table className="finance-table">
                     <thead><tr><th>Project</th><th>Client</th><th>Business done</th><th>Client paid</th></tr></thead>
@@ -369,7 +376,14 @@ export function BusinessDashboardPage() {
               {isPrivileged && <small>{verifiedCount} of {enteredRows.length} record(s) verified</small>}
             </div>
 
-            {groups.length === 0 && <div className="finance-empty-state">No projects are available to record for this month yet.</div>}
+            {groups.length === 0 && (
+              <div className="nk-empty">
+                <span className="nk-empty-icon"><FolderOpen size={22} /></span>
+                <h3>No projects to record for this month</h3>
+                <p>No client projects are mapped for {monthLabel(month)} yet. Choose another reporting month above, or refresh once projects have billing activity.</p>
+                <div className="nk-empty-action"><button type="button" className="finance-secondary-button" onClick={load}><RefreshCcw size={16} /> Refresh</button></div>
+              </div>
+            )}
 
             {groups.map(([clientName, rows]) => (
               <div key={clientName} style={{ marginBottom: '1rem' }}>
@@ -479,7 +493,11 @@ function BreakdownPanel({ title, items }: { title: string; items: BusinessOvervi
         <div><span className="finance-panel-kicker">ANALYTICS</span><h2>{title}</h2><p>Business done in the selected month.</p></div>
       </div>
       {items.length === 0
-        ? <div className="finance-empty-state">No business recorded for this month.</div>
+        ? <div className="nk-empty">
+            <span className="nk-empty-icon"><IndianRupee size={22} /></span>
+            <h3>Nothing recorded yet</h3>
+            <p>No business has been recorded in this breakdown for the selected month. Figures appear as soon as Finance saves project entries.</p>
+          </div>
         : <div className="finance-breakdown-list">
             {items.slice(0, 8).map((item) => (
               <div className="finance-breakdown-row" key={item.key}>

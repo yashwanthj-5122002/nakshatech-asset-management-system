@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FileDown,
   Filter,
+  HardDrive,
   Pencil,
   Plus,
   Repeat2,
@@ -338,9 +339,9 @@ export function AssetsPage() {
 
       <section className={`asset-register-layout ${selected ? 'with-detail' : ''}`}>
         <article className="panel asset-table-panel">
-          {assets.length === 0 ? (
+          {!error && assets.length === 0 ? (
             <div className="nk-empty">
-              <span className="nk-empty-icon"><Search size={22} /></span>
+              <span className="nk-empty-icon"><HardDrive size={22} /></span>
               <h3>No assets match this view</h3>
               <p>Nothing in the register matches the current search, device type, status or alert filter. Reset them to see the full asset register again.</p>
               <div className="nk-empty-action"><button className="secondary-button" onClick={() => { setSearch(''); setStatus(''); setDevice(''); clearQualityFilter() }}>Reset filters</button></div>

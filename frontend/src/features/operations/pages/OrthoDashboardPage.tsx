@@ -34,6 +34,7 @@ type AllocationDraft={package_code:string;area_name:string;quantity:string;quant
 type DailyDraft={work_type:string;quantity_completed:string;files_completed:string;hours_spent:string;status:string;blockers:string;remarks:string}
 // One shared operational dashboard for every performing department; only the label changes per PM role.
 const DEPARTMENT_ROLE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
+const DEPARTMENT_CODE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
 const emptyAllocation:AllocationDraft={package_code:'',area_name:'',quantity:'',quantity_unit:'km',target_date:'',instructions:'',production_user_id:'',qc_user_id:'',qa_user_id:''}
 const emptyDaily:DailyDraft={work_type:'Production',quantity_completed:'',files_completed:'0',hours_spent:'',status:'on_track',blockers:'',remarks:''}
 const emptyReworkAllocation:ReworkAllocationDraft={...emptyAllocation,rework_of_package_id:'',correct:false,correction_reason:''}
@@ -161,7 +162,7 @@ export function OrthoDashboardPage(){
     await action(`/operations/workflow/ortho/projects/${project.project_id}/complete`,{completion_date,final_delivery_reference:final_delivery_reference||null,remarks:remarks||null},`${project.project_code}: Operational Completion recorded. BD and Finance notified for closure.`)
   }
 
-  const departmentLabel=user?.role&&DEPARTMENT_ROLE_LABELS[user.role]||'Ortho'
+  const departmentLabel=(user?.role&&DEPARTMENT_ROLE_LABELS[user.role])||DEPARTMENT_CODE_LABELS[user?.department_code||'']||'Ortho'
   const title=user?.role==='employee'?'My Assigned Work':`${departmentLabel} Project Operations`
   const tlProduction=selected?uniqMembers(selected.members,'production'):[];const tlQc=selected?uniqMembers(selected.members,'qc'):[];const tlQa=selected?uniqMembers(selected.members,'qa'):[]
   const portfolio=useMemo(()=>{
