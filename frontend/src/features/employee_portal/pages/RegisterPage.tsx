@@ -1,4 +1,4 @@
-import { Building2, KeyRound, Mail, QrCode, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Mail, QrCode, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
@@ -60,6 +60,11 @@ export function RegisterPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false)
+
+  // NakshaTech currently operates a single branch, so the verified card shows it read-only.
+  const activeBranchName = branches.find(branch => String(branch.id) === form.branch_id)?.name ?? ''
 
   useEffect(() => {
     void apiFetch<Branch[]>('/auth/branches').then(items => {
@@ -150,12 +155,13 @@ export function RegisterPage() {
   return (
     <AuthFlowShell
       eyebrow={`FIRST-TIME ACCOUNT · STEP ${step === 'email' ? 1 : step === 'otp' ? 2 : step === 'details' ? 3 : 4} OF 4`}
-      title={step === 'email' ? 'Create your account' : step === 'otp' ? 'Verify organization email' : step === 'details' ? 'Confirm employee profile' : 'Secure your account'}
+      title={step === 'email' ? 'Create your account' : step === 'otp' ? 'Verify organization email' : step === 'details' ? 'Create your account' : 'Secure your account'}
       description={step === 'authenticator'
         ? 'Scan the QR code using a free Authenticator app, then enter the current six-digit code.'
         : step === 'details'
           ? 'Your employee details are confirmed from Employee Master. Choose a password to continue.'
           : 'Use only your official @nakshatech.com email. No Software Team approval is required for employee support access.'}
+      compact={step === 'details'}
     >
       {step === 'email' && (
         <form className="auth-flow-form" onSubmit={requestOtp}>
@@ -179,7 +185,7 @@ export function RegisterPage() {
       )}
 
       {step === 'details' && (
-        <form className="auth-flow-form" onSubmit={completeRegistration}>
+        <form className="auth-flow-form auth-flow-registration-details" onSubmit={completeRegistration}>
           <div className="auth-flow-profile-card">
             <div className="auth-flow-profile-head">
               <ShieldCheck size={18} />
@@ -190,21 +196,22 @@ export function RegisterPage() {
             </div>
             <div className="auth-flow-profile-grid">
               <div><span>Employee Name</span><strong>{employee?.employee_name}</strong></div>
-              <div><span>Employee Number</span><strong>{employee?.employee_number}</strong></div>
-              <div><span>Access Card</span><strong>{employee?.access_card_no}</strong></div>
+              <div><span>NTID</span><strong>{employee?.access_card_no}</strong></div>
               <div><span>Phone</span><strong>{employee?.phone}</strong></div>
               <div><span>Department</span><strong>{employee?.department}</strong></div>
               <div><span>Designation</span><strong>{employee?.designation}</strong></div>
-              <div className="auth-flow-span"><span>Official Email</span><strong>{employee?.email}</strong></div>
+              <div>
+                <span>Official Email</span>
+                <strong>{employee ? <a href={`mailto:${employee.email}`}>{employee.email}</a> : '—'}</strong>
+              </div>
+              <div className="auth-flow-span"><span>Branch</span><strong>{activeBranchName || 'Head Office'}</strong></div>
             </div>
-            <p className="auth-flow-profile-note">Employee information incorrect? Contact HR / Software Team.</p>
           </div>
-          <label className="final-login-field auth-flow-span"><span>Default Branch</span><div className="final-login-input-shell"><Building2 size={19} /><select value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })} required>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></div></label>
-          <label className="final-login-field"><span>Create CRM Password</span><div className="final-login-input-shell"><KeyRound size={19} /><input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} autoComplete="new-password" required /></div></label>
-          <label className="final-login-field"><span>Confirm Password</span><div className="final-login-input-shell"><KeyRound size={19} /><input type="password" value={form.confirm_password} onChange={e => setForm({ ...form, confirm_password: e.target.value })} autoComplete="new-password" required /></div></label>
+          <label className="final-login-field"><span>Create CRM Password</span><div className="final-login-input-shell"><KeyRound size={19} /><input type={passwordVisible ? 'text' : 'password'} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} autoComplete="new-password" required /><button type="button" aria-label={passwordVisible ? 'Hide CRM password' : 'Show CRM password'} onClick={() => setPasswordVisible(current => !current)}>{passwordVisible ? <EyeOff size={19} /> : <Eye size={19} />}</button></div></label>
+          <label className="final-login-field"><span>Confirm Password</span><div className="final-login-input-shell"><KeyRound size={19} /><input type={confirmPasswordVisible ? 'text' : 'password'} value={form.confirm_password} onChange={e => setForm({ ...form, confirm_password: e.target.value })} autoComplete="new-password" required /><button type="button" aria-label={confirmPasswordVisible ? 'Hide confirmed password' : 'Show confirmed password'} onClick={() => setConfirmPasswordVisible(current => !current)}>{confirmPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}</button></div></label>
           <p className="auth-flow-password-rule">Use at least 10 characters with uppercase, lowercase, number, and special character.</p>
           {error && <div className="error-message auth-flow-span" role="alert">{error}</div>}
-          <button className="final-login-submit auth-flow-span" disabled={loading || !employee}><span>{loading ? 'Creating account...' : 'Continue to Phone Authenticator'}</span><i>→</i></button>
+          <button className="final-login-submit auth-flow-span" disabled={loading || !employee}><span>{loading ? 'Creating account...' : 'Continue'}</span><i>→</i></button>
         </form>
       )}
 
