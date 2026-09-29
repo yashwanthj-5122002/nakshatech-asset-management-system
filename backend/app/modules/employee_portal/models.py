@@ -97,6 +97,17 @@ class EmployeeMaster(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
 
+class EmployeeMasterPublication(Base):
+    """Management's global release switch for Excel-imported employee identities."""
+
+    __tablename__ = "employee_master_publication"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
 class EmployeeOnboardingRequest(Base):
     """Future new-joiner onboarding: HR draft -> IT official email -> Management final approval.
 

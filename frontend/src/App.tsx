@@ -49,6 +49,7 @@ import { TicketListPage } from './features/employee_portal/pages/TicketListPage'
 import { TicketDetailPage } from './features/employee_portal/pages/TicketDetailPage'
 import { SoftwareSecurityPage } from './features/employee_portal/pages/SoftwareSecurityPage'
 import { EmployeeMasterPage } from './features/employee_portal/pages/EmployeeMasterPage'
+import { ManagementEmployeeMasterPage } from './features/employee_portal/pages/ManagementEmployeeMasterPage'
 import { OnboardingPage } from './features/employee_portal/pages/OnboardingPage'
 import { AgentMonitorPage } from './features/agent_monitor/AgentMonitorPage'
 import { ExpenseClaimCreatePage } from './features/finance/pages/ExpenseClaimCreatePage'
@@ -123,6 +124,7 @@ export default function App() {
       <Route path="/tickets/:id" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/security" element={<ProtectedRoute roles={['software_team']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/employee-master" element={<ProtectedRoute roles={['software_team', 'admin']}><WithLayout><EmployeeMasterPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/employee-master" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementEmployeeMasterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/onboarding" element={<ProtectedRoute roles={['hr', 'it', 'management', 'software_team', 'admin']}><WithLayout><OnboardingPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/agents" element={<ProtectedRoute roles={['software_team']}><WithLayout><AgentMonitorPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/activity" element={<ProtectedRoute roles={['management']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 import re
 from typing import Any
@@ -12,7 +13,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import User, utc_now
-from app.modules.employee_portal.models import EmployeeMaster
+from app.modules.employee_portal.models import EmployeeMaster, EmployeeMasterPublication
 
 
 EXPECTED_COLUMNS = (
@@ -147,19 +148,49 @@ def authenticated_department_code(db: Session, user: User) -> str | None:
     return normalize_department(user.department or "")
 
 
-def inspect_workbook(path: str | Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    source = Path(path)
+def is_imported_master(master: EmployeeMaster) -> bool:
+    return not master.source_batch_id.startswith("new-joiner-")
+
+
+def imported_master_is_published(db: Session) -> bool:
+    control = db.get(EmployeeMasterPublication, 1)
+    return bool(control and control.is_published)
+
+
+def set_imported_master_publication(db: Session, published: bool, *, actor_id: int | None = None) -> None:
+    control = db.get(EmployeeMasterPublication, 1)
+    if control is None:
+        control = EmployeeMasterPublication(id=1)
+        db.add(control)
+    control.is_published = published
+    control.updated_by_user_id = actor_id
+    control.updated_at = utc_now()
+    db.flush()
+
+
+def has_blocking_errors(report: dict[str, Any]) -> bool:
+    return any(report[key] for key in (
+        "duplicate_emails", "duplicate_employee_numbers", "duplicate_access_cards",
+        "missing_mandatory", "unknown_departments", "invalid_email_rows", "invalid_phones",
+    ))
+
+
+def inspect_workbook(path: str | Path | BytesIO, *, source_name: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    source = Path(path) if not isinstance(path, BytesIO) else path
     workbook = load_workbook(source, read_only=True, data_only=True)
     if len(workbook.sheetnames) != 1:
+        workbook.close()
         raise ValueError(f"Expected one worksheet, found {len(workbook.sheetnames)}")
     sheet = workbook[workbook.sheetnames[0]]
     iterator = sheet.iter_rows(values_only=True)
     try:
         first_row = next(iterator)
     except StopIteration as exc:
+        workbook.close()
         raise ValueError("Employee Master workbook is empty") from exc
     headers = tuple(text_value(value) for value in first_row)
     if headers != EXPECTED_COLUMNS:
+        workbook.close()
         raise ValueError(
             "Employee Master columns do not match the required schema. "
             f"Expected {list(EXPECTED_COLUMNS)}, received {list(headers)}"
@@ -180,6 +211,9 @@ def inspect_workbook(path: str | Path) -> tuple[list[dict[str, Any]], dict[str, 
             department_code=normalize_department(record["Curr.Department"]),
         )
         records.append(record)
+        if len(records) > 20000:
+            workbook.close()
+            raise ValueError("Employee Master workbook exceeds the 20,000 row limit")
     workbook.close()
 
     duplicate_fields = {
@@ -231,7 +265,7 @@ def inspect_workbook(path: str | Path) -> tuple[list[dict[str, Any]], dict[str, 
         sorted(set(range(min(sl_numbers), max(sl_numbers) + 1)).difference(sl_numbers)) if sl_numbers else []
     )
     report = {
-        "file": source.name,
+        "file": source_name or (source.name if isinstance(source, Path) else "uploaded.xlsx"),
         "sheet": sheet.title,
         "headers": list(headers),
         "total_rows": len(records),
@@ -323,19 +357,15 @@ def _reconcile_user(db: Session, master: EmployeeMaster, warnings: list[dict[str
     master.review_reason = None
 
 
-def import_workbook(db: Session, path: str | Path, *, source_batch_id: str | None = None) -> dict[str, Any]:
-    records, report = inspect_workbook(path)
-    serious = (
-        report["duplicate_emails"]
-        or report["duplicate_employee_numbers"]
-        or report["duplicate_access_cards"]
-        or report["missing_mandatory"]
-        or report["unknown_departments"]
-        or report["invalid_email_rows"]
-        or report["invalid_phones"]
-    )
-    if serious:
+def import_workbook(db: Session, path: str | Path | BytesIO, *, source_batch_id: str | None = None, source_name: str | None = None, actor_id: int | None = None) -> dict[str, Any]:
+    if source_batch_id and source_batch_id.startswith("new-joiner-"):
+        raise ValueError("The new-joiner batch prefix is reserved for approved onboarding")
+    records, report = inspect_workbook(path, source_name=source_name)
+    if has_blocking_errors(report):
         raise ValueError("Employee Master validation contains blocking identity or format errors; run --dry-run for details")
+
+    # Every import returns the Excel directory to private review, even when it was published before.
+    set_imported_master_publication(db, False, actor_id=actor_id)
 
     batch_id = source_batch_id or f"employee-master-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
     now = utc_now()

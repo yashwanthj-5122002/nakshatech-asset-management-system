@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import secrets
+from io import BytesIO
 from urllib.parse import quote
+from zipfile import BadZipFile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
@@ -39,6 +41,9 @@ from app.modules.employee_portal.schemas import (
     BranchResponse,
     BranchSelectionRequest,
     EmployeeMasterDirectoryResponse,
+    EmployeeMasterManagementResponse,
+    EmployeeMasterPublicationRequest,
+    EmployeeMasterPurgeRequest,
     ForgotPasswordVerifyResponse,
     MFAConfirmRequest,
     MFALoginVerifyRequest,
@@ -134,6 +139,12 @@ from app.modules.employee_portal.employee_master import (
     NEEDS_REVIEW,
     employee_master_for_user,
     employee_profile,
+    has_blocking_errors,
+    import_workbook,
+    imported_master_is_published,
+    inspect_workbook,
+    is_imported_master,
+    set_imported_master_publication,
 )
 from app.modules.employee_portal.ticket_attachments import (
     TICKET_ATTACHMENT_MAX_BYTES,
@@ -203,6 +214,7 @@ def request_registration_otp(payload: OTPRequest, request: Request, db: Session 
         or master.employment_status != ACTIVE_EMPLOYMENT
         or master.crm_account_status in {NEEDS_REVIEW, "disabled"}
         or not master.department_code
+        or (is_imported_master(master) and not imported_master_is_published(db))
     ):
         record_audit(
             db,
@@ -251,7 +263,12 @@ def verify_registration_otp(payload: OTPVerifyRequest, request: Request, db: Ses
     email = ensure_allowed_email(str(payload.email))
     verify_email_otp(db, email=email, purpose=REGISTRATION_PURPOSE, code=payload.otp, request=request)
     master = db.scalar(select(EmployeeMaster).where(EmployeeMaster.email_normalized == email))
-    if master is None or master.employment_status != ACTIVE_EMPLOYMENT or master.crm_account_status == NEEDS_REVIEW:
+    if (
+        master is None
+        or master.employment_status != ACTIVE_EMPLOYMENT
+        or master.crm_account_status in {NEEDS_REVIEW, "disabled"}
+        or (is_imported_master(master) and not imported_master_is_published(db))
+    ):
         raise HTTPException(status_code=403, detail="This employee record is not eligible for self-registration")
     master.crm_account_status = EMAIL_VERIFIED
     db.commit()
@@ -279,6 +296,7 @@ def complete_registration(
         or master.email_normalized != email
         or master.employment_status != ACTIVE_EMPLOYMENT
         or master.crm_account_status not in {EMAIL_VERIFIED, ACCOUNT_SETUP_PENDING}
+        or (is_imported_master(master) and not imported_master_is_published(db))
     ):
         raise HTTPException(status_code=401, detail="The verified Employee Master registration session is invalid")
     if payload.password != payload.confirm_password:
@@ -1591,6 +1609,125 @@ def reject_onboarding_request(
         raise
 
 
+# =============================================================================================== Management control of the Excel Employee Master
+EMPLOYEE_MASTER_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
+
+
+async def _employee_workbook_bytes(file: UploadFile) -> bytes:
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Select an .xlsx Employee Master workbook")
+    raw = await file.read(EMPLOYEE_MASTER_UPLOAD_MAX_BYTES + 1)
+    if len(raw) > EMPLOYEE_MASTER_UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Employee Master workbook exceeds the 5 MB limit")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Employee Master workbook is empty")
+    return raw
+
+
+@router.get("/management/employee-master/status")
+def employee_master_status(
+    db: Session = Depends(get_db),
+    _manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    imported = EmployeeMaster.source_batch_id.not_like("new-joiner-%")
+    return {
+        "published": imported_master_is_published(db),
+        "record_count": int(db.scalar(select(func.count(EmployeeMaster.id)).where(imported)) or 0),
+        "linked_account_count": int(db.scalar(select(func.count(EmployeeMaster.id)).where(imported, EmployeeMaster.linked_user_id.is_not(None))) or 0),
+    }
+
+
+@router.get("/management/employee-master", response_model=list[EmployeeMasterManagementResponse])
+def management_employee_master(
+    db: Session = Depends(get_db),
+    _manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> list[EmployeeMaster]:
+    return list(db.scalars(
+        select(EmployeeMaster)
+        .where(EmployeeMaster.source_batch_id.not_like("new-joiner-%"))
+        .order_by(EmployeeMaster.employee_name.asc())
+    ).all())
+
+
+@router.post("/management/employee-master/preview")
+async def preview_employee_master(
+    file: UploadFile = File(...),
+    _manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    raw = await _employee_workbook_bytes(file)
+    try:
+        records, report = inspect_workbook(BytesIO(raw), source_name=file.filename)
+    except (ValueError, BadZipFile, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Employee Master workbook: {exc}") from exc
+    return {
+        "report": report,
+        "can_import": not has_blocking_errors(report),
+        "sample": [{"row": row["excel_row"], "employee_number": row["Employee Number"],
+                    "employee_name": row["Employee Name"], "department": row["Curr.Department"],
+                    "email": row["Email"]} for row in records[:25]],
+    }
+
+
+@router.post("/management/employee-master/import")
+async def upload_employee_master(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    raw = await _employee_workbook_bytes(file)
+    try:
+        result = import_workbook(db, BytesIO(raw), source_name=file.filename, actor_id=manager.id)
+        record_audit(db, event_type="EMPLOYEE_MASTER_IMPORTED", request=request, user=manager,
+                     module="employee_portal", target_type="employee_master",
+                     details={"created": result["created"], "updated": result["updated"], "published": False})
+        db.commit()
+        return result
+    except (ValueError, BadZipFile, OSError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Employee Master import failed: {exc}") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.put("/management/employee-master/publication")
+def update_employee_master_publication(
+    payload: EmployeeMasterPublicationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    if payload.published and not db.scalar(select(EmployeeMaster.id).where(EmployeeMaster.source_batch_id.not_like("new-joiner-%")).limit(1)):
+        raise HTTPException(status_code=409, detail="Import Employee Master records before publishing")
+    set_imported_master_publication(db, payload.published, actor_id=manager.id)
+    record_audit(db, event_type="EMPLOYEE_MASTER_PUBLICATION_CHANGED", request=request, user=manager,
+                 module="employee_portal", target_type="employee_master",
+                 details={"published": payload.published})
+    db.commit()
+    return {"published": payload.published}
+
+
+@router.delete("/management/employee-master/imported")
+def purge_imported_employee_master(
+    payload: EmployeeMasterPurgeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    if payload.confirmation != "DELETE EMPLOYEE MASTER":
+        raise HTTPException(status_code=400, detail="Type DELETE EMPLOYEE MASTER to confirm")
+    imported = EmployeeMaster.source_batch_id.not_like("new-joiner-%")
+    retained_accounts = int(db.scalar(select(func.count(EmployeeMaster.id)).where(imported, EmployeeMaster.linked_user_id.is_not(None))) or 0)
+    set_imported_master_publication(db, False, actor_id=manager.id)
+    removed = db.execute(delete(EmployeeMaster).where(imported)).rowcount or 0
+    record_audit(db, event_type="EMPLOYEE_MASTER_IMPORTED_PURGED", request=request, user=manager,
+                 module="employee_portal", target_type="employee_master",
+                 details={"removed": removed, "existing_accounts_retained": retained_accounts})
+    db.commit()
+    return {"removed": removed, "existing_accounts_retained": retained_accounts, "published": False}
+
+
 # =============================================================================================== Employee Master directory (Software Team / Admin)
 @router.get("/software/employee-master", response_model=list[EmployeeMasterDirectoryResponse])
 def list_employee_master(
@@ -1601,6 +1738,8 @@ def list_employee_master(
     staff: User = Depends(require_roles(SOFTWARE_TEAM_ROLE, ADMIN_ROLE)),
 ) -> list[EmployeeMaster]:
     query = select(EmployeeMaster)
+    if not imported_master_is_published(db):
+        query = query.where(EmployeeMaster.source_batch_id.like("new-joiner-%"))
     if status:
         query = query.where(EmployeeMaster.crm_account_status == status)
     if department:

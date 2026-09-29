@@ -24,6 +24,7 @@ from app.modules.employee_portal.employee_master import (  # noqa: E402
     ACTIVE_EMPLOYMENT,
     NOT_REGISTERED,
     NEEDS_REVIEW,
+    set_imported_master_publication,
 )
 from app.modules.employee_portal.models import Branch, EmployeeMaster  # noqa: E402
 from app.modules.employee_portal.service import decrypt_totp_secret, totp_code  # noqa: E402
@@ -65,6 +66,7 @@ def _make_master(**overrides) -> None:
         for key, value in overrides.items():
             setattr(master, key, value)
         db.add(master)
+        set_imported_master_publication(db, True)
         db.commit()
 
 

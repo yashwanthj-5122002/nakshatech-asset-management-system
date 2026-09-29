@@ -320,6 +320,20 @@ class EmployeeMasterDirectoryResponse(BaseModel):
     imported_at: datetime
 
 
+class EmployeeMasterManagementResponse(EmployeeMasterDirectoryResponse):
+    source_sl_no: str | None = None
+    phone: str
+    source_batch_id: str
+
+
+class EmployeeMasterPublicationRequest(BaseModel):
+    published: bool
+
+
+class EmployeeMasterPurgeRequest(BaseModel):
+    confirmation: str
+
+
 class OnboardingCreateRequest(BaseModel):
     employee_name: str = Field(min_length=2, max_length=255)
     personal_email: EmailStr

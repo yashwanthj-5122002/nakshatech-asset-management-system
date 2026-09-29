@@ -113,6 +113,7 @@ const navItems: NavItem[] = [
   { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview', managementLabel: 'Admin Overview' },
   { to: '/software-team/security', label: 'Software Security', icon: ShieldCheck, roles: ['software_team'], group: 'overview' },
   { to: '/software-team/employee-master', label: 'Employee Master', icon: Users, roles: ['software_team', 'admin'], group: 'overview' },
+  { to: '/management/employee-master', label: 'Employee Data Control', icon: Users, roles: ['management'], group: 'management', managementGroup: 'governance', managementLabel: 'Employee Data Control' },
   { to: '/onboarding', label: 'New Joiner Onboarding', icon: UserRound, roles: ['hr', 'it', 'management', 'software_team', 'admin'], group: 'overview', managementGroup: 'executive', managementLabel: 'New Joiner Onboarding' },
   { to: '/admin/client-master', label: 'Client Master (Admin Edit)', icon: Building2, roles: ['admin'], group: 'overview', managementLabel: 'Client Master' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Dashboard' },
