@@ -48,6 +48,8 @@ import { TicketCreatePage } from './features/employee_portal/pages/TicketCreateP
 import { TicketListPage } from './features/employee_portal/pages/TicketListPage'
 import { TicketDetailPage } from './features/employee_portal/pages/TicketDetailPage'
 import { SoftwareSecurityPage } from './features/employee_portal/pages/SoftwareSecurityPage'
+import { EmployeeMasterPage } from './features/employee_portal/pages/EmployeeMasterPage'
+import { OnboardingPage } from './features/employee_portal/pages/OnboardingPage'
 import { AgentMonitorPage } from './features/agent_monitor/AgentMonitorPage'
 import { ExpenseClaimCreatePage } from './features/finance/pages/ExpenseClaimCreatePage'
 import { ExpenseClaimsPage } from './features/finance/pages/ExpenseClaimsPage'
@@ -120,6 +122,8 @@ export default function App() {
       <Route path="/tickets" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketListPage /></WithLayout></ProtectedRoute>} />
       <Route path="/tickets/:id" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/security" element={<ProtectedRoute roles={['software_team']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/software-team/employee-master" element={<ProtectedRoute roles={['software_team', 'admin']}><WithLayout><EmployeeMasterPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/onboarding" element={<ProtectedRoute roles={['hr', 'it', 'management', 'software_team', 'admin']}><WithLayout><OnboardingPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/agents" element={<ProtectedRoute roles={['software_team']}><WithLayout><AgentMonitorPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/activity" element={<ProtectedRoute roles={['management']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ITDashboard /></WithLayout></ProtectedRoute>} />

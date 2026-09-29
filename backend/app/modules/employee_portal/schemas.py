@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class OTPRequest(BaseModel):
@@ -20,27 +20,27 @@ class OTPVerifyRequest(BaseModel):
     otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
+class EmployeeMasterProfileResponse(BaseModel):
+    employee_name: str
+    employee_number: str
+    access_card_no: str
+    phone: str
+    department: str
+    department_code: str
+    designation: str
+    email: EmailStr
+
+
 class RegistrationOTPVerifyResponse(BaseModel):
     registration_token: str
+    employee: EmployeeMasterProfileResponse
 
 
 class RegistrationCompleteRequest(BaseModel):
     registration_token: str
-    full_name: str = Field(min_length=2, max_length=255)
-    employee_id: str = Field(min_length=2, max_length=80)
-    department: str = Field(min_length=2, max_length=120)
-    designation: str | None = Field(default=None, max_length=160)
-    phone_number: str | None = Field(default=None, max_length=40)
     branch_id: int
     password: str = Field(min_length=10, max_length=128)
-
-    @field_validator("full_name", "employee_id", "department", "designation", "phone_number")
-    @classmethod
-    def strip_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        cleaned = value.strip()
-        return cleaned or None
+    confirm_password: str = Field(min_length=10, max_length=128)
 
 
 class MFASetupResponse(BaseModel):
@@ -299,6 +299,72 @@ class SoftwareUserResponse(BaseModel):
     is_active: bool
     last_login_at: datetime | None
     last_logout_at: datetime | None
+    created_at: datetime
+
+
+class EmployeeMasterDirectoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_name: str
+    employee_number: str
+    access_card_no: str
+    department: str = Field(validation_alias=AliasChoices("department", "department_raw"))
+    department_code: str
+    designation: str = Field(validation_alias=AliasChoices("designation", "designation_raw"))
+    email: EmailStr
+    employment_status: str
+    crm_account_status: str
+    linked_user_id: int | None = None
+    review_reason: str | None = None
+    imported_at: datetime
+
+
+class OnboardingCreateRequest(BaseModel):
+    employee_name: str = Field(min_length=2, max_length=255)
+    personal_email: EmailStr
+    phone: str = Field(min_length=6, max_length=40)
+    employee_number: str = Field(min_length=1, max_length=120)
+    access_card_no: str = Field(min_length=1, max_length=120)
+    department_code: str = Field(min_length=2, max_length=80)
+    designation: str = Field(min_length=2, max_length=200)
+    joining_date: datetime | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class OnboardingItApproveRequest(BaseModel):
+    official_email: EmailStr
+
+
+class OnboardingRejectRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class OnboardingRequestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_name: str
+    personal_email: str
+    phone: str
+    employee_number: str
+    access_card_no: str
+    department_code: str
+    designation: str
+    joining_date: datetime | None = None
+    notes: str | None = None
+    status: str
+    official_email: str | None = None
+    decided_by: str | None = None
+    created_by_user_id: int
+    submitted_to_it_at: datetime | None = None
+    it_approved_by_user_id: int | None = None
+    it_approved_at: datetime | None = None
+    management_approved_at: datetime | None = None
+    rejected_by_user_id: int | None = None
+    rejected_reason: str | None = None
+    rejected_at: datetime | None = None
+    employee_master_id: int | None = None
     created_at: datetime
 
 

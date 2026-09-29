@@ -55,7 +55,16 @@ def _normalize_token(value: str | None) -> str:
 def normalize_department_code(value: str | None) -> str | None:
     """Return the canonical code for a value, or None if it is not a supported department."""
     token = _normalize_token(value)
-    return token if token in DEPARTMENT_PM_ROLE else None
+    aliases = {
+        "orthophoto": DEPARTMENT_ORTHO,
+        "lidar": DEPARTMENT_LIDAR,
+        "mobile_mapping_&_gis": DEPARTMENT_MOBILE_MAPPING,
+        "gis_/_mobile_mapping": DEPARTMENT_MOBILE_MAPPING,
+        "laser_scanning": DEPARTMENT_LASER_SCANNING,
+        "civil": DEPARTMENT_CIVIL,
+    }
+    canonical = aliases.get(token, token)
+    return canonical if canonical in DEPARTMENT_PM_ROLE else None
 
 
 def normalize_department_code_or_default(value: str | None) -> str:

@@ -33,6 +33,8 @@ import {
   ShieldCheck,
   TrendingUp,
   UploadCloud,
+  UserRound,
+  Users,
   X,
 } from 'lucide-react'
 import { DroneIcon as Drone, type AppIcon } from './DroneIcon'
@@ -109,6 +111,9 @@ const navItems: NavItem[] = [
   { to: '/management/activity', label: 'Users & Activity', icon: Activity, roles: ['management'], group: 'system', managementGroup: 'governance', managementLabel: 'Users & Audit Trail' },
   { to: '/software-team', label: 'Software Team Overview', icon: Code2, roles: ['software_team'], group: 'overview' },
   { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview', managementLabel: 'Admin Overview' },
+  { to: '/software-team/security', label: 'Software Security', icon: ShieldCheck, roles: ['software_team'], group: 'overview' },
+  { to: '/software-team/employee-master', label: 'Employee Master', icon: Users, roles: ['software_team', 'admin'], group: 'overview' },
+  { to: '/onboarding', label: 'New Joiner Onboarding', icon: UserRound, roles: ['hr', 'it', 'management', 'software_team', 'admin'], group: 'overview', managementGroup: 'executive', managementLabel: 'New Joiner Onboarding' },
   { to: '/admin/client-master', label: 'Client Master (Admin Edit)', icon: Building2, roles: ['admin'], group: 'overview', managementLabel: 'Client Master' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Dashboard' },
   { to: '/management/approvals', label: 'Purchase Approval Centre', icon: ClipboardCheck, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Purchase Approvals' },
@@ -176,7 +181,7 @@ function canViewItem(role: Role, item: NavItem): boolean {
   return canAccessRole(role, item.roles)
 }
 
-const ADMIN_SIDEBAR_PATHS = ['/admin', '/admin/client-master', '/future']
+const ADMIN_SIDEBAR_PATHS = ['/admin', '/admin/client-master', '/future', '/software-team/employee-master']
 
 /** Sidebar must never advertise a link the route guard will bounce back to the role home. */
 function canShowInSidebar(role: Role, item: NavItem): boolean {

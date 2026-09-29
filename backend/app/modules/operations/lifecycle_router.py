@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
 from app.core.departments import TECHNICAL_PM_ROLES
+from app.core.department_access import ensure_project_department_access
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.attachments import (
@@ -17,7 +18,7 @@ from app.modules.finance.attachments import (
     store_finance_attachment,
     validate_finance_attachment_bytes,
 )
-from app.modules.operations.lifecycle_models import ProjectFeedbackAttachment
+from app.modules.operations.lifecycle_models import ProjectFeedbackAttachment, ProjectReworkCycle
 from app.modules.operations.lifecycle_schemas import (
     ChangeRequestDecision,
     DeemedAcceptanceCreate,
@@ -303,6 +304,10 @@ def rework_stage_update(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, *TECHNICAL_PM_ROLES, "employee", "admin")
+    cycle = db.get(ProjectReworkCycle, cycle_id)
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="Rework cycle not found")
+    ensure_project_department_access(db, auth.user, _role(auth), cycle.project_id)
     try:
         row = advance_rework(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "REWORK_STAGE_UPDATED", "project_rework_cycle", row.id, {
@@ -324,6 +329,10 @@ def rework_cycle_sync(
 ):
     """Idempotent: move the rework cycle to the status its work packages already justify (no rows are duplicated)."""
     _roles(auth, *TECHNICAL_PM_ROLES, "employee", "bd", "admin")
+    cycle = db.get(ProjectReworkCycle, cycle_id)
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="Rework cycle not found")
+    ensure_project_department_access(db, auth.user, _role(auth), cycle.project_id)
     try:
         cycle, before, after = reconcile_rework_cycle(db, actor=auth.user, cycle_id=cycle_id)
         _audit(request, db, auth, "REWORK_CYCLE_RECONCILED", "project_rework_cycle", cycle.id, {

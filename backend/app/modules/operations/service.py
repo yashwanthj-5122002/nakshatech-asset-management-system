@@ -10,6 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import normalize_department_code
+from app.core.department_access import ensure_project_department_access, user_department_code
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
@@ -25,6 +27,7 @@ from app.modules.operations.models import (
     OrthoReview,
     OrthoWorkPackage,
     OrthoWorkSession,
+    ProjectWorkflow,
     ProjectWorkstream,
 )
 from app.modules.operations.schemas import (
@@ -1325,13 +1328,30 @@ def visible_ortho_profiles(db: Session, *, actor: User, effective_role: str) -> 
             )
         ]
     if role == EMPLOYEE_ROLE:
+        employee_department = user_department_code(db, actor)
         candidates = db.scalars(query).unique().all()
         visible_ids = set(filter_visible_project_ids(db, (profile.project_id for profile in candidates)))
+        if employee_department is None:
+            # Legacy user without a resolvable department: membership-based visibility.
+            return [
+                profile
+                for profile in candidates
+                if profile.project_id in visible_ids
+                and bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)
+            ]
+        department_by_project = dict(
+            db.execute(
+                select(OrthoProjectProfile.project_id, ProjectWorkflow.performing_department_code).join(
+                    ProjectWorkflow, ProjectWorkflow.project_id == OrthoProjectProfile.project_id
+                )
+            ).all()
+        )
         return [
             profile
             for profile in candidates
             if profile.project_id in visible_ids
             and bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)
+            and normalize_department_code(employee_department) == department_by_project.get(profile.project_id)
         ]
     if role in OVERSIGHT_ROLES:
         candidates = db.scalars(query).unique().all()
@@ -1424,6 +1444,8 @@ def get_visible_work_package(db: Session, *, work_package_id: int, actor: User, 
     if is_effective_pm(db, project_id=row.project_id, user_id=actor.id):
         return row
     if actor.id in {row.team_leader_user_id, row.production_user_id, row.qc_user_id, row.qa_user_id}:
+        if role == EMPLOYEE_ROLE:
+            ensure_project_department_access(db, actor, role, row.project_id)
         return row
     # V8 least privilege: project membership alone never grants access to every
     # work package. Normal operations users must be the exact TL/Production/QC/QA

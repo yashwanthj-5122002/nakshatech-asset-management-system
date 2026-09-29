@@ -15,6 +15,7 @@ import {
   Repeat2,
   RotateCcw,
   Smartphone,
+  Users,
   Wrench,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
@@ -288,8 +289,9 @@ export function ITDashboard() {
         </>}
         meta={<>
           <span className="nk-meta-chip"><CalendarDays size={14} /> {data.month.label} · {data.month.is_live ? 'Live / present' : 'Effective reporting month'}</span>
+          <span className="nk-meta-chip"><Users size={14} /> {data.department_distribution.length} departments · {k.total} assets under management</span>
+          <span className="nk-meta-chip"><AlertTriangle size={14} /> {data.alerts.length} open alerts</span>
           <span className="nk-meta-chip"><Activity size={14} /> {data.monthly_activity.work_records} work records · {data.monthly_activity.assets_edited} assets edited this month</span>
-          <span className="nk-meta-chip"><HardDrive size={14} /> {k.total} assets under management</span>
         </>}
       />
       {error && <div className="error-message">{error}</div>}
@@ -361,7 +363,14 @@ export function ITDashboard() {
         <article className="panel alerts-panel">
           <div className="panel-heading"><div><span className="section-kicker">ACTION REQUIRED</span><h2>Alerts & Data Quality</h2></div></div>
           <div className="alert-list">
-            {data.alerts.length === 0 && <div className="empty-state">No active alerts for this month.</div>}
+            {data.alerts.length === 0 && (
+              <div className="nk-empty">
+                <span className="nk-empty-icon"><CheckCircle2 size={22} /></span>
+                <h3>No active alerts this month</h3>
+                <p>Every data-quality check passed for {data.month.label}. Duplicate IPs, missing assignments, repairs and replacements appear here as soon as they are detected.</p>
+                <div className="nk-empty-action"><Link className="secondary-button" to={withITMonth('/assets', selectedMonth)}>Open Asset Register <ArrowRight size={15} /></Link></div>
+              </div>
+            )}
             {data.alerts.map(alert => (
               <Link to={alertRegisterUrl(alert, selectedMonth)} key={alert.title} className={`alert-row severity-${alert.severity}`}>
                 <AlertTriangle size={19} /><div><strong>{alert.title}</strong>{alert.details?.length ? <small>{alert.details.join(', ')}</small> : <small>Open affected records in the selected month register</small>}</div><b>{alert.count}</b>
@@ -398,13 +407,27 @@ export function ITDashboard() {
               <thead><tr><th>Work ID</th><th>Asset</th><th>Work</th><th>Technician</th><th>Priority</th><th>Status</th></tr></thead>
               <tbody>{data.recent_work.map(work => <tr key={work.id}><td><strong>{work.work_code}</strong></td><td>{work.asset_code || '—'}</td><td>{work.title}</td><td>{work.technician || 'Unassigned'}</td><td><span className={`priority ${work.priority}`}>{work.priority}</span></td><td><span className={`status ${work.status}`}>{work.status.replace('_', ' ')}</span></td></tr>)}</tbody>
             </table>
-            {!data.recent_work.length && <div className="empty-state">No system work record is available for this month.</div>}
+            {!data.recent_work.length && (
+              <div className="nk-empty">
+                <span className="nk-empty-icon"><Wrench size={22} /></span>
+                <h3>No work records this month</h3>
+                <p>No repair, maintenance or component work has been logged for {data.month.label}. Raise a work record from the IT work module and it will appear here with its technician and status.</p>
+                <div className="nk-empty-action"><Link className="secondary-button" to={withITMonth('/work', selectedMonth)}>Manage work <ArrowRight size={15} /></Link></div>
+              </div>
+            )}
           </div>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><span className="section-kicker">LIFECYCLE CONTROL</span><h2>Replacement Requests in {data.month.label}</h2></div><Link to={withITMonth('/replacements', selectedMonth)}>Open workflow <ArrowRight size={15} /></Link></div>
           <div className="replacement-list">
-            {data.recent_replacements.length === 0 && <div className="empty-state">No complete-asset replacement request for this month.</div>}
+            {data.recent_replacements.length === 0 && (
+              <div className="nk-empty">
+                <span className="nk-empty-icon"><Repeat2 size={22} /></span>
+                <h3>No replacement requests this month</h3>
+                <p>No complete-asset replacement workflow has been raised for {data.month.label}. Start one from the replacement workflow when a device needs to be swapped.</p>
+                <div className="nk-empty-action"><Link className="secondary-button" to={withITMonth('/replacements', selectedMonth)}>Open workflow <ArrowRight size={15} /></Link></div>
+              </div>
+            )}
             {data.recent_replacements.map(item => <article key={item.id}><div><strong>{item.replacement_code}</strong><span className={`status ${item.approval_status}`}>{item.approval_status}</span></div><p><b>{item.old_asset_code}</b> · {item.reason}</p><small>{item.damage_category.replaceAll('_', ' ')} · {item.final_action.replaceAll('_', ' ')}</small></article>)}
           </div>
         </article>
