@@ -4691,11 +4691,156 @@ td strong { color: #173960; }
 .auth-flow-profile-grid div { display: grid; gap: 3px; min-width: 0; }
 .auth-flow-profile-grid span { color: rgba(180, 205, 222, .6); font-size: .62rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .auth-flow-profile-grid strong { color: rgba(235, 246, 252, .94); font-size: .78rem; font-weight: 700; overflow-wrap: anywhere; }
+.auth-flow-profile-grid strong a {
+  color: #75ddeb;
+  text-decoration: none;
+  transition: color .17s ease;
+}
+.auth-flow-profile-grid strong a:hover { color: #c4f8ff; text-decoration: underline; }
 .auth-flow-profile-note {
   margin: 0;
   color: rgba(204, 225, 238, .62);
   font-size: .68rem;
   line-height: 1.5;
+}
+/* Step 3 registration mirrors the approved split-screen composition while the
+   card remains fully visible at the supported desktop viewport sizes.
+   Layout-only: explicit rows keep the ambient canvas in its top strip, give the
+   logo a stable header row, and let the hero + card share one content row that
+   is optically centered in the viewport via --flow-vertical-bleed. */
+.auth-flow-shell-compact {
+  --flow-top-row: clamp(72px, 9.5vh, 88px);
+  --flow-header-row: clamp(104px, 14vh, 132px);
+  --flow-bottom-pad: clamp(14px, 2vh, 22px);
+  --flow-vertical-bleed: calc(var(--flow-top-row) + var(--flow-header-row) - var(--flow-bottom-pad));
+  display: grid;
+  grid-template-columns: minmax(370px, .83fr) minmax(590px, 1.05fr);
+  grid-template-rows: var(--flow-top-row) var(--flow-header-row) minmax(0, 1fr);
+  column-gap: clamp(34px, 3.4vw, 54px);
+  row-gap: 0;
+  padding: 0 clamp(34px, 3.4vw, 58px) var(--flow-bottom-pad);
+}
+
+/* Pin the canvas so auto-placement can never push it into the content rows. */
+.auth-flow-shell-compact > canvas.login-network-motion-canvas {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.auth-flow-shell-compact .final-login-header {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  padding-top: clamp(44px, 6vh, 54px);
+}
+
+.auth-flow-shell-compact > .final-login-header .final-login-brand img {
+  width: clamp(220px, 20vw, 300px);
+}
+
+.auth-flow-shell-compact .final-login-copy {
+  grid-row: 3;
+  grid-column: 1;
+  width: min(100%, 560px);
+  margin-top: calc(-1 * var(--flow-vertical-bleed));
+  padding: 0 0 0 clamp(4px, .5vw, 8px);
+}
+
+.auth-flow-shell-compact .final-login-copy h1 {
+  gap: 9px;
+  font-size: clamp(3rem, 4.15vw, 4.45rem);
+}
+
+.auth-flow-shell-compact .final-login-copy-rule {
+  margin: clamp(26px, 3.6vh, 38px) 0 clamp(24px, 3.2vh, 34px);
+}
+
+.auth-flow-shell-compact .final-login-copy p {
+  max-width: 510px;
+  font-size: clamp(.9rem, 1.05vw, 1.08rem);
+}
+
+.auth-flow-compact-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(133, 196, 222, .14);
+}
+
+.auth-flow-compact-header .final-login-brand { margin-left: auto; }
+
+.auth-flow-compact-header .final-login-brand img {
+  width: clamp(168px, 14vw, 205px);
+  max-height: 38px;
+}
+
+.auth-flow-compact-header .final-login-brand-divider,
+.auth-flow-compact-header .final-login-product-name { display: none; }
+
+.auth-flow-shell-compact .final-login-panel-zone {
+  grid-row: 3;
+  grid-column: 2;
+  width: auto;
+  align-self: center;
+  justify-content: flex-end;
+  margin-top: calc(-1 * var(--flow-vertical-bleed));
+  padding-bottom: 0;
+}
+
+.auth-flow-shell-compact .auth-flow-panel {
+  width: min(100%, 760px);
+  padding: clamp(15px, 1.9vh, 19px) clamp(22px, 2.3vw, 34px) 14px;
+  gap: 10px;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.auth-flow-shell-compact .final-login-heading { margin: 1px 0 2px; }
+.auth-flow-shell-compact .final-login-heading h2 { margin: 8px 0 4px; font-size: clamp(1.75rem, 2.15vw, 2.25rem); }
+.auth-flow-shell-compact .final-login-heading p { max-width: 660px; font-size: .82rem; line-height: 1.45; }
+.auth-flow-shell-compact .auth-flow-form { gap: 10px; }
+.auth-flow-shell-compact .auth-flow-profile-card { gap: 10px; padding: 12px 15px; }
+.auth-flow-shell-compact .auth-flow-profile-grid { row-gap: 8px; column-gap: clamp(20px, 3vw, 54px); }
+.auth-flow-shell-compact .auth-flow-profile-grid strong { font-size: .8rem; }
+.auth-flow-shell-compact .final-login-field > span { margin-bottom: 6px; }
+.auth-flow-shell-compact .final-login-input-shell { min-height: 46px; }
+.auth-flow-shell-compact .final-login-submit { min-height: 50px; font-size: 1rem; }
+.auth-flow-shell-compact .final-login-submit i { width: 30px; height: 30px; }
+.auth-flow-shell-compact .final-login-panel footer { padding-top: 1px; }
+
+.auth-flow-registration-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: clamp(18px, 2.4vw, 30px);
+}
+
+.auth-flow-registration-details .auth-flow-profile-card,
+.auth-flow-registration-details .auth-flow-password-rule,
+.auth-flow-registration-details .error-message,
+.auth-flow-registration-details .final-login-submit { grid-column: 1 / -1; }
+
+@media (max-width: 860px) {
+  .auth-flow-shell-compact {
+    display: block;
+    padding: 0 24px max(28px, env(safe-area-inset-bottom));
+  }
+
+  .auth-flow-shell-compact .final-login-copy {
+    width: 100%;
+    padding: 0;
+    margin-top: 0;
+  }
+
+  .auth-flow-shell-compact .final-login-panel-zone { justify-content: center; margin-top: 0; }
+
+  .auth-flow-compact-header {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
+
+  .auth-flow-registration-details { grid-template-columns: minmax(0, 1fr); }
+  .auth-flow-registration-details > * { grid-column: 1; }
 }
 .branch-selection-grid { display: grid; gap: 10px; max-height: 330px; overflow-y: auto; }
 .branch-selection-card {
