@@ -9,20 +9,27 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5434:5432"
+      # Loopback only: the database must never be reachable from the LAN.
+      - "127.0.0.1:5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      # -h/-p are required: without them pg_isready probes the Unix socket, which
+      # accepts connections before the container network interface is attached.
+      # Dependent services would then start while TCP connections are still
+      # refused, and the backend aborts on "connection refused".
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 30
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      # Loopback only: Redis runs without authentication.
+      - "127.0.0.1:6380:6379"
     volumes:
       - redis_data:/data
 
@@ -34,8 +41,9 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "9004:9000"
-      - "9005:9001"
+      # Loopback only: the MinIO console is an unauthenticated-by-default admin surface.
+      - "127.0.0.1:9004:9000"
+      - "127.0.0.1:9005:9001"
     volumes:
       - minio_data:/data
 
@@ -49,7 +57,10 @@ services:
       APP_ENV: ${APP_ENV:-development}
       API_PREFIX: /api
       ROOT_PATH: ""
-      DOCS_ENABLED: "true"
+      # Off by default: /docs, /redoc and /openapi.json publish every route,
+      # parameter and response model to anonymous callers. Set DOCS_ENABLED=true
+      # only for local debugging.
+      DOCS_ENABLED: "${DOCS_ENABLED:-false}"
       ENABLE_BACKGROUND_WATCHER: "true"
       SEED_DEFAULT_USERS: "true"
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -72,8 +83,11 @@ services:
       SEED_MANAGEMENT_SECONDARY_PASSWORD: ${SEED_MANAGEMENT_SECONDARY_PASSWORD}
       SEED_IT_EMAIL: ${SEED_IT_EMAIL:-it-support@nakshatech.com}
       SEED_IT_PASSWORD: ${SEED_IT_PASSWORD}
-      SEED_FINANCE_PASSWORD: ${SEED_FINANCE_PASSWORD:-ChangeMeLocalFinance@2026!}
-      SEED_HR_PASSWORD: ${SEED_HR_PASSWORD:-ChangeMeLocalHR@2026!}
+      # No :- fallback here on purpose: a baked-in default password would be a
+      # published credential for a live finance/HR account. If the variable is
+      # unset the account is simply not seeded.
+      SEED_FINANCE_PASSWORD: ${SEED_FINANCE_PASSWORD:-}
+      SEED_HR_PASSWORD: ${SEED_HR_PASSWORD:-}
       FINANCE_ADMIN_NOTIFICATION_EMAILS: ${FINANCE_ADMIN_NOTIFICATION_EMAILS:-admin@nakshatech.com}
       FINANCE_TEAM_NOTIFICATION_EMAILS: ${FINANCE_TEAM_NOTIFICATION_EMAILS:-finance@nakshatech.com}
       FINANCE_EMAIL_HEADING: ${FINANCE_EMAIL_HEADING:-NakshaTech Finance CRM}
@@ -132,7 +146,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8100:8000"
+      # Loopback-only: the API is reached through nginx (8088). Publishing it
+      # on every interface let anyone on the network bypass nginx's rate
+      # limiting and headers, and made the dev API reachable from other LAN
+      # machines. Compose writes the published port, the container still
+      # listens on 0.0.0.0 so nginx can proxy to it.
+      - "127.0.0.1:8100:8000"
     volumes:
       - ./backend:/app
       - ./local-backups:/backups
@@ -144,11 +163,15 @@ services:
       minio:
         condition: service_started
     command: uvicorn app.batch4_main:app --host 0.0.0.0 --port 8000 --reload
+    # NOTE: --reload keeps the supervising process alive even when the worker
+    # exits, so a failed startup leaves the container "unhealthy" rather than
+    # exiting and letting "restart: unless-stopped" (line 53) recycle it.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
       timeout: 5s
       retries: 30
+      start_period: 40s
 
 
   frontend:
@@ -157,7 +180,10 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "3100:3100"
+      # Loopback-only: the UI is reached through nginx (8088). The Vite dev
+      # server has no auth of its own, so publishing it on every interface
+      # handed any machine on the network a route into the development app.
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./frontend:/app
       - node_modules:/app/node_modules

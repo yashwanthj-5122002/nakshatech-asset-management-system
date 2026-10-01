@@ -12,6 +12,7 @@ from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
 from app.core.departments import department_for_pm_role, is_technical_pm_role, normalize_department_code_or_default
 from app.core.roles import SOFTWARE_TEAM_ROLE
+from app.core.uploads import read_upload_bytes
 from app.models.entities import utc_now
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.attachments import (
@@ -211,9 +212,10 @@ async def import_client_master_excel(
     filename = (file.filename or "client-master.xlsx").strip()
     if not filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=422, detail="Upload an .xlsx Client Master workbook")
-    raw = await file.read()
-    if len(raw) > 15 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Client Master Excel must be 15 MB or smaller")
+    raw = await read_upload_bytes(
+        file, max_bytes=15 * 1024 * 1024, status_code=413,
+        detail="Client Master Excel must be 15 MB or smaller",
+    )
     try:
         result = import_client_master_workbook(
             db, raw=raw, actor=auth.user, source_name=filename, overwrite_existing=overwrite_existing
@@ -1033,7 +1035,7 @@ def get_claim_attachment_content(
         stream,
         media_type=attachment.mime_type,
         headers={
-            "Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=UTF-8''{encoded_name}",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
         },
@@ -1214,7 +1216,7 @@ def get_settlement_attachment_content(
         stream,
         media_type=attachment.mime_type,
         headers={
-            "Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=UTF-8''{encoded_name}",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
         },

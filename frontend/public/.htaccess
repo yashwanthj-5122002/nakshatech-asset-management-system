@@ -22,6 +22,11 @@ DirectoryIndex index.html
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
+  Header always set X-Permitted-Cross-Domain-Policies "none"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  # Built bundle only: no inline scripts and no eval, unlike the local Vite dev
+  # server (see nginx/nginx.conf, which carries a relaxed development CSP).
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' https://tile.openstreetmap.org https://cdn.jsdelivr.net https://raw.githubusercontent.com"
 
   <FilesMatch "\.(js|css|svg|png|jpg|jpeg|webp|woff2?)$">
     Header set Cache-Control "public, max-age=604800, immutable"

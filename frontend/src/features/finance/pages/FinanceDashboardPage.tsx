@@ -31,6 +31,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
@@ -966,7 +967,7 @@ export function FinanceDashboardPage() {
       )}
 
       {/* ═══════════ SLIDE-OVER REVIEW DRAWER ═══════════ */}
-      {reviewProject && (
+      {reviewProject && createPortal(
         <div className="fin-detail-overlay" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setReviewId(null) }}>
           <aside className="fin-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="review-drawer-title">
             <div className="fin-drawer-header">
@@ -1136,7 +1137,8 @@ export function FinanceDashboardPage() {
               </div>
             )}
           </aside>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

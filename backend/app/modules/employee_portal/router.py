@@ -8,12 +8,14 @@ from zipfile import BadZipFile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.departments import DEPARTMENT_FOR_PM_ROLE, TECHNICAL_PM_ROLES, normalize_department_code
+from app.core.department_access import DEPARTMENT_ACCESS_PRIVILEGED_ROLES, user_department_code
 from app.core.roles import ADMIN_ROLE, EMPLOYEE_ROLE, HR_ROLE, IT_ROLE, SOFTWARE_TEAM_ROLE
 from app.core.management_access import (
     FIRST_LOGIN_PRIVILEGED_ROLES,
@@ -548,7 +550,10 @@ def change_management_password(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     user = auth.user
-    if user.role != MANAGEMENT_ROLE or not is_authorized_management_email(user.email):
+    # effective_role, not user.role: a Management account that signed in through
+    # Employee Login carries an "employee" downgrade for this session, and must
+    # not reach the privileged rotation path on the strength of the DB row.
+    if auth.effective_role != MANAGEMENT_ROLE or not is_authorized_management_email(user.email):
         raise HTTPException(status_code=403, detail="Only an authorized Management account can use this action")
     if not verify_password(payload.current_password, user.password_hash):
         record_audit(
@@ -749,28 +754,58 @@ def preview_ticket_priority(
     }
 
 
+def _ticket_asset_scope_filter(db: Session, auth: CurrentAuth):
+    """Restrict the ticket asset search to what the caller is allowed to see.
+
+    Privileged roles keep full register search. Every other caller is limited to
+    their own department, resolved server-side from the Employee Master link. When
+    no department can be resolved the search narrows further to assets recorded
+    against the caller's own name, which is the tightest safe fallback.
+    """
+    role = auth.effective_role
+    if role in DEPARTMENT_ACCESS_PRIVILEGED_ROLES:
+        return true()
+
+    department_code = user_department_code(db, auth.user)
+    if role in TECHNICAL_PM_ROLES:
+        department_code = DEPARTMENT_FOR_PM_ROLE.get(role, department_code)
+    if department_code:
+        return func.lower(func.coalesce(Asset.department, "")).like(
+            f"%{normalize_department_code(department_code)}%"
+        )
+    return func.lower(func.coalesce(Asset.used_by, "")) == auth.user.full_name.strip().lower()
+
+
 @router.get("/ticket-assets", response_model=list[TicketAssetResponse])
 def search_ticket_assets(
     query: str = Query(min_length=1, max_length=120),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
     """Search active Asset Register records for ticket creation.
 
     This intentionally searches the current Asset Register rather than employee
     assignment links. The selected asset is validated again during ticket creation.
+
+    The search is scoped server-side: a privileged role keeps the full register, and
+    every other caller only ever sees assets inside their own department (or, when
+    no department can be resolved, only the assets recorded against their own name).
+    Without this, any signed-in employee could enumerate every holder, workstation
+    number, department and specification in the estate.
     """
     search_text = query.strip()
     if not search_text:
         return []
     pattern = f"%{search_text.lower()}%"
     excluded_statuses = {"disposed", "retired", "replaced"}
+    scope = _ticket_asset_scope_filter(db, auth)
     rows = list(
         db.scalars(
             select(Asset)
             .where(
                 func.lower(Asset.status).notin_(excluded_statuses),
+                scope,
                 or_(
                     func.lower(func.coalesce(Asset.cpu_asset_tag, "")).like(pattern),
                     func.lower(Asset.asset_code).like(pattern),
@@ -1064,7 +1099,7 @@ def get_ticket_attachment_content(
         stream,
         media_type=attachment.mime_type,
         headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{encoded_name}",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
         },

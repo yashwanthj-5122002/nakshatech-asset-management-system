@@ -340,12 +340,20 @@ def _manager_payload(db: Session, *, actor: User, role: str) -> dict[str, Any]:
     restrict_department = TECHNICAL_ROLE_DEPARTMENT_MAP.get(role)
     sample_summary = _sample_summary(samples)
     handover_summary = _handover_summary(handovers)
-    department_facts = _department_scorecards(
-        monitoring,
-        samples,
-        handovers,
-        directory,
-        restrict_department=restrict_department,
+    # Only a technical department manager may see department scorecards. "bd" and
+    # "finance" are reporting roles with no department of their own, so
+    # restrict_department is None for them; an unrestricted call would hand a
+    # non-technical login every technical department's roster and readiness counts.
+    department_facts = (
+        _department_scorecards(
+            monitoring,
+            samples,
+            handovers,
+            directory,
+            restrict_department=restrict_department,
+        )
+        if restrict_department
+        else []
     )
     project_facts = _project_facts(monitoring, completion)
     mon = monitoring.get("summary", {})

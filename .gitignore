@@ -38,3 +38,11 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# --- Real employee / customer / asset data (PII) - never commit or ship ---
+# These workbooks carry named employees, workstation numbers, IP/MAC addresses,
+# prices, client contacts and drone hardware serials. Keep them local only.
+backend/app/data/CLIENT_CODES_MASTER.xlsx
+backend/app/data/nakshatech_asset_template.xlsx
+backend/app/data/drone_hardware_inventory_template.xlsx
+backend/app/data/it_activity_imports/

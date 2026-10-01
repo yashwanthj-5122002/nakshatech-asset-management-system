@@ -104,8 +104,14 @@ def _display_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_monthly_it_activity_workbook(db: Session, month_key: str) -> tuple[BytesIO, dict[str, int]]:
-    data = monthly_activity_data(db, month_key, limit=100000)
+def build_monthly_it_activity_workbook(
+    db: Session,
+    month_key: str,
+    department: str | None = None,
+) -> tuple[BytesIO, dict[str, int]]:
+    # department must be threaded through: the sibling /summary endpoint honours it, so
+    # dropping it here turned the workbook into an unfiltered company-wide dump.
+    data = monthly_activity_data(db, month_key, department=department, limit=100000)
     start_date, end_date, _utc_start, _utc_end = month_bounds(month_key)
     items = data["items"]
 

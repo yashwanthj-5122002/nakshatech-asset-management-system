@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import date, datetime, time, timedelta, timezone
 import json
+import math
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -693,6 +694,23 @@ def decide_purchase_request(
         approved_amount = payload.approved_amount
         if approved_amount is None:
             approved_amount = request.estimated_total_amount
+        # Both routes reach this function: the Management UI and the emailed
+        # approval link. A finite value no larger than what IT asked for is the
+        # whole point of a sanction - "nan", "inf" or a nine-figure figure must
+        # not be storable as an approved amount.
+        if approved_amount is not None:
+            if not math.isfinite(approved_amount):
+                raise HTTPException(status_code=400, detail="Approved amount must be a finite number")
+            if approved_amount < 0:
+                raise HTTPException(status_code=400, detail="Approved amount cannot be negative")
+            if request.estimated_total_amount is not None and approved_amount > request.estimated_total_amount:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Approved amount cannot exceed the estimated total of "
+                        f"{float(request.estimated_total_amount):.2f} for this Purchase Request"
+                    ),
+                )
 
     request.status = next_status
     request.approved_amount = approved_amount

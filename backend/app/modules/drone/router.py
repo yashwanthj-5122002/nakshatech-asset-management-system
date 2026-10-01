@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
 from app.core.database import get_db
+from app.core.uploads import read_upload_bytes
 from app.models.entities import User
 from app.modules.drone.import_service import ALL_ATTRIBUTE_GROUPS, load_template_bytes
 from app.modules.drone.models import (
@@ -279,9 +280,10 @@ async def import_preview(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Upload an .xlsx Drone hardware inventory workbook")
-    content = await file.read()
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Workbook exceeds the 25 MB pilot import limit")
+    content = await read_upload_bytes(
+        file, max_bytes=25 * 1024 * 1024, status_code=413,
+        detail="Workbook exceeds the 25 MB pilot import limit",
+    )
     try:
         batch = create_import_preview(db, content, file.filename, reporting_month, user)
     except ValueError as exc:

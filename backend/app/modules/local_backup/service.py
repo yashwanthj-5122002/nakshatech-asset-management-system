@@ -126,7 +126,9 @@ EXPORT_SPECS: tuple[ExportSpec, ...] = (
         User,
         "admin",
         master=True,
-        exclude=("password_hash",),
+        # password_hash / token_version are authentication controls and date_of_birth
+        # is personal data: none of them belong in a spreadsheet that leaves the API.
+        exclude=("password_hash", "token_version", "date_of_birth"),
         admin_only=True,
     ),
 )

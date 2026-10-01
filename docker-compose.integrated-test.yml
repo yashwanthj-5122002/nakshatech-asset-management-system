@@ -1,4 +1,4 @@
-﻿name: nakshatech_v81_integrated_test
+name: nakshatech_v81_integrated_test
 
 services:
   db:
@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "35434:5432"
+      - "127.0.0.1:35434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "36380:6379"
+      - "127.0.0.1:36380:6379"
     volumes:
       - redis_data:/data
 
@@ -34,8 +34,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "49004:9000"
-      - "49005:9001"
+      - "127.0.0.1:49004:9000"
+      - "127.0.0.1:49005:9001"
     volumes:
       - minio_data:/data
 
@@ -49,7 +49,7 @@ services:
       APP_ENV: ${APP_ENV:-development}
       API_PREFIX: /api
       ROOT_PATH: ""
-      DOCS_ENABLED: "true"
+      DOCS_ENABLED: "${DOCS_ENABLED:-false}"
       ENABLE_BACKGROUND_WATCHER: "true"
       SEED_DEFAULT_USERS: "true"
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -72,7 +72,9 @@ services:
       SEED_MANAGEMENT_SECONDARY_PASSWORD: ${SEED_MANAGEMENT_SECONDARY_PASSWORD}
       SEED_IT_EMAIL: ${SEED_IT_EMAIL:-it-support@nakshatech.com}
       SEED_IT_PASSWORD: ${SEED_IT_PASSWORD}
-      SEED_FINANCE_PASSWORD: ${SEED_FINANCE_PASSWORD:-ChangeMeLocalFinance@2026!}
+      # No baked-in default: an unset value seeds no finance account rather than
+      # a published credential.
+      SEED_FINANCE_PASSWORD: ${SEED_FINANCE_PASSWORD:-}
       FINANCE_ADMIN_NOTIFICATION_EMAILS: ${FINANCE_ADMIN_NOTIFICATION_EMAILS:-admin@nakshatech.com}
       FINANCE_TEAM_NOTIFICATION_EMAILS: ${FINANCE_TEAM_NOTIFICATION_EMAILS:-finance@nakshatech.com}
       FINANCE_EMAIL_HEADING: ${FINANCE_EMAIL_HEADING:-NakshaTech Finance CRM}
@@ -121,7 +123,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "38100:8000"
+      # Loopback-only: the test API is proxied by nginx (38088). Direct host
+      # access is kept for debugging only, never exposed to the network.
+      - "127.0.0.1:38100:8000"
     volumes:
       - ./backend:/app
       - ./local-backups:/backups
@@ -146,7 +150,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "33100:3100"
+      - "127.0.0.1:33100:3100"
     volumes:
       - ./frontend:/app
       - node_modules:/app/node_modules

@@ -4,6 +4,30 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# JWT secrets that are literally published in this repository (source, example
+# env files, git history). None of them may ever sign a token: whoever reads the
+# repository can sign for admin@nakshatech.com. Kept lowercase for comparison.
+_PUBLICLY_KNOWN_SECRETS = frozenset(
+    {
+        "change-this-secret-before-production",
+        "change-this-secret-before-production-with-at-least-32-characters",
+        "replace-with-a-long-random-production-secret",
+        "<generate-secure-secret>",
+        "secret",
+        "password",
+    }
+)
+
+# Prefixes that only ever appear in an unedited template. Accepted in
+# development so a fresh checkout boots, rejected in production.
+_TEMPLATE_PREFIXES = ("replace-", "<set-in-local-env>", "<change-me>", "<generate-")
+
+
+def _is_unedited_template(value: str) -> bool:
+    lowered = value.strip().lower()
+    return not lowered or lowered.startswith(_TEMPLATE_PREFIXES)
+
+
 class Settings(BaseSettings):
     app_name: str = "NakshaTech Asset Management System"
     app_version: str = "1.0.0"
@@ -15,17 +39,44 @@ class Settings(BaseSettings):
     # empty string in the cPanel environment.
     api_prefix: str = "/api"
     root_path: str = ""
-    docs_enabled: bool = True
+    # Interactive API documentation and the OpenAPI schema. Off by default: /docs and
+    # /openapi.json publish the complete route map to anonymous callers. Opt in
+    # explicitly for local development, and never in production.
+    docs_enabled: bool = False
     enable_background_watcher: bool = True
     seed_default_users: bool = True
+
+    # Brute-force protection for the credential surfaces (login, MFA, OTP and
+    # password reset). Two independent windows are enforced: a fast one for
+    # total request volume so a single host cannot flood the endpoints, and a
+    # slower one for repeated failures so legitimate users on shared NAT are
+    # not locked out by their own traffic. Set RATE_LIMIT_ENABLED=false only
+    # where a fronting proxy already enforces its own limiter.
+    rate_limit_enabled: bool = True
+    rate_limit_auth_per_minute: int = 60
+    rate_limit_auth_failures_per_minute: int = 10
+    # Comma-separated CIDRs (or IPs) whose X-Real-IP header may be trusted when
+    # resolving the client address. Defaults to the private/loopback ranges so
+    # that traffic arriving through the bundled nginx or a cPanel proxy is
+    # attributed to the real client instead of collapsing into one global
+    # bucket. Set to a single CIDR (or empty) on hosts where the API port is
+    # reachable directly from an untrusted network: only then can a caller
+    # spoof X-Real-IP to work around the limiter.
+    trusted_proxy_cidrs: str = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
 
     # Privileged department accounts are provisioned by NakshaTech and are not
     # available through public employee registration. Temporary first-login
     # passwords are stored only in protected environment configuration.
+    #
+    # These default to empty on purpose. A published default password is a
+    # public credential: the previous ChangeMe* values shipped in source, in
+    # docker-compose.yml and in git history, and an account created from one
+    # logs in without MFA. Empty means "not configured" - seeding skips the
+    # account entirely instead of creating one everyone can log into.
     seed_admin_email: str = "admin@nakshatech.com"
-    seed_admin_password: str = "ChangeMeLocalAdmin@2026!"
+    seed_admin_password: str = ""
     seed_software_team_email: str = "software.team@nakshatech.com"
-    seed_software_team_password: str = "ChangeMeLocalSoftwareTeam@2026!"
+    seed_software_team_password: str = ""
     # Optional additional organization Admin retained for backward compatibility.
     seed_organization_admin_name: str = "NakshaTech Administrator"
     seed_organization_admin_email: str = ""
@@ -34,15 +85,15 @@ class Settings(BaseSettings):
     # app.core.management_access. These settings contain only their temporary
     # first-login passwords; permanent passwords are stored as database hashes.
     seed_management_email: str = "vinod@nakshatech.com"
-    seed_management_password: str = "ChangeMeLocalVinod@2026!"
+    seed_management_password: str = ""
     seed_management_secondary_email: str = "chethan@nakshatech.com"
-    seed_management_secondary_password: str = "ChangeMeLocalChethan@2026!"
+    seed_management_secondary_password: str = ""
     seed_it_email: str = "it-support@nakshatech.com"
-    seed_it_password: str = "ChangeMeLocalITSupport@2026!"
-    seed_finance_password: str = "ChangeMeLocalFinance@2026!"
-    seed_hr_password: str = "ChangeMeLocalHR@2026!"
+    seed_it_password: str = ""
+    seed_finance_password: str = ""
+    seed_hr_password: str = ""
     seed_drone_email: str = "drone@nakshatech.com"
-    seed_drone_password: str = "ChangeMeLocalDrone@2026!"
+    seed_drone_password: str = ""
 
     # Local/UAT-only V7.0.7 workflow test logins. These accounts use the
     # existing unified authentication system; clear-text credentials come
@@ -149,6 +200,11 @@ class Settings(BaseSettings):
     # Local Windows backup-agent settings.
     local_backup_agent_enabled: bool = False
     local_backup_agent_token: str = ""
+    # The backup agent authenticates with one shared secret, so the export roles it
+    # may request are pinned server-side instead of being asserted by the caller.
+    # "admin" and "software_team" are deliberately absent: both resolve to the
+    # full-access export scope that includes the System Users sheet.
+    local_backup_agent_roles: str = "it,drone,management"
 
     # Naksha Copilot: backend-only, read-only Gemini integration.
     naksha_copilot_enabled: bool = False
@@ -196,6 +252,10 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.trusted_hosts.split(",") if item.strip()]
 
     @property
+    def local_backup_agent_role_list(self) -> list[str]:
+        return [item.strip().lower() for item in self.local_backup_agent_roles.split(",") if item.strip()]
+
+    @property
     def allowed_email_domain_list(self) -> list[str]:
         return [item.strip().lower().lstrip("@") for item in self.allowed_email_domains.split(",") if item.strip()]
 
@@ -211,9 +271,37 @@ class Settings(BaseSettings):
     def redoc_url(self) -> str | None:
         return "/redoc" if self.docs_enabled else None
 
+    @property
+    def openapi_url(self) -> str | None:
+        return "/openapi.json" if self.docs_enabled else None
+
+    def validate_baseline_settings(self) -> None:
+        """Reject secrets that are public knowledge, in ANY environment.
+
+        This runs unconditionally, unlike :meth:`validate_production_settings`,
+        because the strings rejected here are published in this repository
+        (source, example files and git history). Anyone who can read them can
+        mint a valid HS256 token for any identity, so accepting one is an
+        authentication bypass rather than a stylistic problem. Production-only
+        checks stay behind :attr:`is_production`.
+        """
+        secret = self.jwt_secret.strip()
+        if len(secret) < 32:
+            raise RuntimeError(
+                "JWT_SECRET must be at least 32 characters. Generate one with: "
+                "python -c \"import secrets,sys; sys.stdout.write(secrets.token_hex(32))\""
+            )
+        if secret.lower() in _PUBLICLY_KNOWN_SECRETS:
+            raise RuntimeError(
+                "JWT_SECRET is a placeholder published in this repository, which lets anyone "
+                "forge access tokens for any account. Generate a private secret with: "
+                "python -c \"import secrets,sys; sys.stdout.write(secrets.token_hex(32))\""
+            )
+
     def validate_production_settings(self) -> None:
         """Fail fast when an unsafe production configuration is detected."""
         if not self.is_production:
+            self.validate_baseline_settings()
             return
         # Test-only operational accounts must never be enabled in production.
         # Check this before unrelated production-secret validation so the guard
@@ -224,31 +312,50 @@ class Settings(BaseSettings):
             raise RuntimeError("ENABLE_TEST_EMPLOYEE_SEED must be false in production")
         if self.enable_uat_2026_controls:
             raise RuntimeError("ENABLE_UAT_2026_CONTROLS must be false in production")
-        weak_secrets = {
-            "change-this-secret-before-production",
-            "change-this-secret-before-production-with-at-least-32-characters",
-            "secret",
-            "password",
-        }
-        if len(self.jwt_secret.strip()) < 32 or self.jwt_secret.strip() in weak_secrets:
-            raise RuntimeError("JWT_SECRET must be a unique production secret of at least 32 characters")
+        if self.docs_enabled:
+            raise RuntimeError(
+                "DOCS_ENABLED must be false in production: /docs, /redoc and /openapi.json "
+                "publish the full route and schema map to anonymous callers"
+            )
+        self.validate_baseline_settings()
         if "asset_password@db" in self.database_url or "REPLACE_ME" in self.database_url:
             raise RuntimeError("DATABASE_URL still contains a development or placeholder value")
         if not self.cors_origin_list:
             raise RuntimeError("CORS_ORIGINS must include the production frontend origin")
         if self.local_backup_agent_enabled and len(self.local_backup_agent_token.strip()) < 32:
             raise RuntimeError("LOCAL_BACKUP_AGENT_TOKEN must be at least 32 characters when enabled")
-        privileged_temporary_passwords = (
-            self.seed_management_password.strip(),
-            self.seed_management_secondary_password.strip(),
-            self.seed_software_team_password.strip(),
-            self.seed_it_password.strip(),
-            self.seed_finance_password.strip(),
-            self.seed_hr_password.strip(),
+        if self.local_backup_agent_enabled:
+            forbidden = {"admin", "software_team"} & set(self.local_backup_agent_role_list)
+            if forbidden:
+                raise RuntimeError(
+                    "LOCAL_BACKUP_AGENT_ROLES must not grant the full-access export scope in production: "
+                    + ", ".join(sorted(forbidden))
+                )
+        # Admin and Drone are included deliberately: both are provisioned by
+        # _ensure_admin_role / the seed roster with no MFA and no forced password
+        # change, so a published default for either is a direct login.
+        privileged_temporary_passwords = {
+            "SEED_ADMIN_PASSWORD": self.seed_admin_password,
+            "SEED_DRONE_PASSWORD": self.seed_drone_password,
+            "SEED_MANAGEMENT_PASSWORD": self.seed_management_password,
+            "SEED_MANAGEMENT_SECONDARY_PASSWORD": self.seed_management_secondary_password,
+            "SEED_SOFTWARE_TEAM_PASSWORD": self.seed_software_team_password,
+            "SEED_IT_PASSWORD": self.seed_it_password,
+            "SEED_FINANCE_PASSWORD": self.seed_finance_password,
+            "SEED_HR_PASSWORD": self.seed_hr_password,
+        }
+        unsafe = sorted(
+            name
+            for name, value in privileged_temporary_passwords.items()
+            if len(value.strip()) < 10
+            or value.strip().startswith("ChangeMe")
+            or _is_unedited_template(value)
         )
-        if any(len(value) < 10 or value.startswith("ChangeMe") for value in privileged_temporary_passwords):
+        if unsafe:
             raise RuntimeError(
-                "Management, Software Team, IT, Finance, and HR temporary passwords must be replaced with strong private values"
+                "Production requires strong private values for: "
+                + ", ".join(unsafe)
+                + " (found a default, a placeholder, or a value shorter than 10 characters)"
             )
         if self.employee_portal_enabled:
             if not self.allowed_email_domain_list:

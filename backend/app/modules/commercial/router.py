@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from urllib.parse import quote
@@ -380,7 +380,7 @@ def create_expense(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     try:
-        row = create_project_expense(db, actor=auth.user, project_id=project_id, payload=payload)
+        row = create_project_expense(db, actor=auth.user, project_id=project_id, payload=payload, role=_service_role(auth))
         _audit(request, db, auth, "PROJECT_EXPENSE_CREATED", "project_expense", row.id, {"project_id": project_id, "amount_inr": float(row.amount)})
         db.commit()
         return next(item for item in list_project_expenses(db, actor=auth.user, role=_service_role(auth), project_id=project_id) if item["id"] == row.id)
@@ -398,7 +398,7 @@ def update_expense(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     try:
-        row = update_project_expense(db, actor=auth.user, expense_id=expense_id, payload=payload)
+        row = update_project_expense(db, actor=auth.user, expense_id=expense_id, payload=payload, role=_service_role(auth))
         _audit(request, db, auth, "PROJECT_EXPENSE_UPDATED", "project_expense", row.id, {"project_id": row.project_id, "amount_inr": float(row.amount)})
         db.commit()
         return next(item for item in list_project_expenses(db, actor=auth.user, role=_service_role(auth), project_id=row.project_id) if item["id"] == row.id)
@@ -471,7 +471,7 @@ def expense_declaration(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     try:
-        row = declare_project_expenses(db, actor=auth.user, project_id=project_id, payload=payload)
+        row = declare_project_expenses(db, actor=auth.user, project_id=project_id, payload=payload, role=_service_role(auth))
         _audit(request, db, auth, "PROJECT_EXPENSE_DECLARATION", "project_expense_declaration", row.id, {"project_id": project_id, "phase_key": row.phase_key, "status": row.declaration_status})
         db.commit()
         return {
@@ -686,7 +686,7 @@ def attachment_content(
             owner_id=row.owner_id,
             write=False,
         )
-        content_disposition = f"inline; filename*=UTF-8''{quote(row.original_filename)}"
+        content_disposition = f"attachment; filename*=UTF-8''{quote(row.original_filename)}"
         return StreamingResponse(
             stream_finance_attachment(row.storage_key),
             media_type=row.mime_type,

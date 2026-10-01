@@ -4,7 +4,7 @@ from pathlib import Path
 import threading
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import inspect, text
@@ -13,6 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.router import router
 from app.core.config import settings
+from app.core.ratelimit import RateLimiter, is_rate_limited_path, too_many_requests
 from app.core.database import Base, SessionLocal, engine
 from app.modules.backup import models as backup_models  # noqa: F401
 from app.modules.backup.router import router as backup_router
@@ -493,6 +494,9 @@ app = FastAPI(
     root_path=settings.root_path,
     docs_url=settings.docs_url,
     redoc_url=settings.redoc_url,
+    # The OpenAPI schema is a complete map of every route, parameter and response
+    # model. It is never anonymous, so it follows the same switch as /docs and /redoc.
+    openapi_url=settings.openapi_url,
     lifespan=lifespan,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -514,6 +518,70 @@ app.add_middleware(
 )
 if settings.is_production and settings.trusted_host_list and "*" not in settings.trusted_host_list:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
+
+
+# Credential-guessing protection. Registered before production_headers so the
+# shared response headers are applied to 429s as well. Every endpoint below can
+# be used to test a stolen password or harvest OTP codes without a session.
+_PROTECTED_AUTH_PATHS = tuple(
+    settings.api_prefix + suffix
+    for suffix in (
+        "/auth/login",
+        "/auth/mfa/verify-login",
+        "/auth/mfa/confirm",
+        "/auth/forgot-password/request-otp",
+        "/auth/forgot-password/verify-otp",
+        "/auth/forgot-password/reset",
+        "/auth/register/request-otp",
+        "/auth/register/verify-otp",
+        "/auth/register/complete",
+        "/auth/privileged/complete-setup",
+        "/auth/management/complete-setup",
+    )
+)
+
+_auth_volume_limiter = RateLimiter(
+    window_seconds=60.0,
+    max_hits=settings.rate_limit_auth_per_minute,
+    trusted_proxy_cidrs=settings.trusted_proxy_cidrs,
+)
+_auth_failure_limiter = RateLimiter(
+    window_seconds=60.0,
+    max_hits=settings.rate_limit_auth_failures_per_minute,
+    trusted_proxy_cidrs=settings.trusted_proxy_cidrs,
+)
+
+
+@app.middleware("http")
+async def auth_rate_limit(request: Request, call_next):
+    # The flag is read per request rather than at import so the limiter can be
+    # exercised by tests and disabled by an operator without a restart.
+    if (
+        not settings.rate_limit_enabled
+        or request.method != "POST"
+        or not is_rate_limited_path(request.url.path, _PROTECTED_AUTH_PATHS)
+    ):
+        return await call_next(request)
+
+    ip = _auth_volume_limiter.client_ip(request.scope)
+    allowed, retry_after = _auth_volume_limiter.hit(f"vol:{ip}")
+    if not allowed:
+        return too_many_requests(retry_after)
+
+    failure_key = f"fail:{ip}:{request.url.path}"
+    allowed, retry_after = _auth_failure_limiter.hit(failure_key)
+    if not allowed:
+        return too_many_requests(retry_after)
+
+    response = await call_next(request)
+    # The attempt was already counted before the handler ran. Keep that count
+    # when the handler rejects the credential, and clear it for every other
+    # outcome (success, an unrelated validation error, a 5xx) so a shared NAT
+    # or a 500 storm cannot lock a legitimate user out of their own account.
+    if response.status_code not in {400, 401, 403}:
+        _auth_failure_limiter.reset(failure_key)
+    return response
+
 
 app.include_router(router, prefix=settings.api_prefix)
 app.include_router(drone_router, prefix=f"{settings.api_prefix}/drone")
@@ -547,9 +615,6 @@ async def production_headers(request, call_next):
 
 @app.get("/")
 def root() -> dict:
-    return {
-        "message": settings.app_name,
-        "version": settings.app_version,
-        "environment": settings.environment,
-        "docs": f"{settings.root_path}/docs" if settings.docs_enabled else None,
-    }
+    # Unauthenticated liveness probe. It must not advertise the deployment mode or
+    # point at the API documentation, so it carries no version, environment or docs.
+    return {"status": "healthy", "service": settings.app_name}

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_roles
+from app.api.dependencies import CurrentAuth, get_current_auth, require_roles
 from app.core.database import get_db
+from app.core.roles import role_is_allowed
 from app.models.entities import Asset, ReplacementRecord, User
 from app.modules.asset_return.analytics_compat import install_asset_return_compatibility
 from app.modules.asset_return.mutation_guards import router as asset_return_guard_router
@@ -110,18 +111,26 @@ def management_control_center_excel(
 
 @router.get("/management/executive-dashboard")
 def management_executive_dashboard(
-    month: str | None = Query(default=None, description="Optional reporting month in YYYY-MM format"),
+    month: str = Query(default=None, description="Optional reporting month in YYYY-MM format"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("management", "admin")),
+    auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
     """Aggregated executive dashboard combining business, commercial, lifecycle,
     and operational data for the Management Dashboard redesign."""
+    user = auth.user
+    # Scope each sub-payload by the caller's real role. Hardcoding "management" made an
+    # admin caller indistinguishable from management and meant a management caller's own
+    # role was never actually evaluated.
+    role = auth.effective_role
+    if not role_is_allowed(role, {"management", "admin"}):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+
     # Existing control center data (purchases, tickets, SLA)
     control = _active_management_control_center(db, month)
 
     # Business revenue overview
     try:
-        biz = business_overview(db, actor=user, role="management", month=month)
+        biz = business_overview(db, actor=user, role=role, month=month)
         biz_data = biz.model_dump() if hasattr(biz, "model_dump") else biz.dict()
     except Exception:
         biz_data = None
@@ -134,15 +143,16 @@ def management_executive_dashboard(
 
     # Project lifecycle status
     try:
-        lifecycle = lifecycle_dashboard(db, actor=user, role="management")
+        lifecycle = lifecycle_dashboard(db, actor=user, role=role)
     except Exception:
         lifecycle = None
 
     # Finance expense claims
     try:
-        finance = finance_dashboard_payload(db, viewer=user, effective_role="management")
+        finance = finance_dashboard_payload(db, viewer=user, effective_role=role)
     except Exception:
         finance = None
+
 
     return {
         "month": month,

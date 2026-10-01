@@ -9,10 +9,12 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.roles import role_is_allowed
+from app.models.entities import User
 from app.modules.employee_portal.service import ensure_allowed_email, send_email
 from app.modules.it_activity.approval_email_models import (
     ITPurchaseApprovalChannel,
@@ -82,6 +84,43 @@ def normalize_approval_email(email: str, *, requester_email: str | None = None) 
             detail="Approval email must be different from the Purchase Request submitter email",
         )
     return normalized
+
+
+def approval_authority_user(db: Session, approver_email: str) -> User:
+    """Resolve the approval recipient to an account that may actually decide.
+
+    The email channel used to mint a synthetic ``role="management"`` user from
+    whatever address IT typed, so any mailbox inside the organization could
+    approve a purchase - a straight escalation from the IT role, which is
+    explicitly refused the same decision in the application. The recipient is
+    pinned to a real, active account holding Management authority, which is
+    exactly what ``require_roles("management")`` demands of the in-app route.
+    """
+    normalized = (approver_email or "").strip().lower()
+    user = db.scalar(select(User).where(func.lower(User.email) == normalized))
+    if user is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "The approval recipient must be an existing NakshaTech account with "
+                "Management permission. Create or activate that account, then resend "
+                "the approval email."
+            ),
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="The approval recipient account is inactive. Reactivate it, then resend the approval email.",
+        )
+    if not role_is_allowed(user.role or "", {"management"}):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "The approval recipient must hold the Management role to approve a "
+                "Purchase Request. Choose a Management account as the recipient."
+            ),
+        )
+    return user
 
 
 def channel_for_request(db: Session, request_id: int) -> ITPurchaseApprovalChannel | None:
@@ -321,6 +360,10 @@ def issue_purchase_approval_email(
     if not clean_name:
         raise HTTPException(status_code=400, detail="Approval recipient name is required")
     clean_email = normalize_approval_email(approver_email, requester_email=request.requested_by_email)
+    # Fail at issue time, not at click time: IT must see the authority problem
+    # while choosing a recipient instead of discovering it when Management
+    # reports that the link does nothing.
+    approval_authority_user(db, clean_email)
 
     raw_token = secrets.token_urlsafe(32)
     now = _utc_now()

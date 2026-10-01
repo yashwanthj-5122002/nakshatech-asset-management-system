@@ -100,4 +100,4 @@ def get_history(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[BusinessHistoryEntry]:
-    return record_history(db, record_id=record_id)
+    return record_history(db, record_id=record_id, viewer=auth.user, effective_role=auth.effective_role)

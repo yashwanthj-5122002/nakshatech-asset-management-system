@@ -311,7 +311,15 @@ def build_crm_workbook(db: Session, *, client_id: int | None = None, project_id:
         select(TravelKmClaim).where(TravelKmClaim.project_id.in_(project_ids)).order_by(TravelKmClaim.travel_date, TravelKmClaim.id)
     ).all())
     expenses = [] if not project_ids else list(db.scalars(
-        select(ExpenseClaim).where(ExpenseClaim.project_id.in_(project_ids)).order_by(ExpenseClaim.created_at, ExpenseClaim.id)
+        select(ExpenseClaim)
+        .where(
+            ExpenseClaim.project_id.in_(project_ids),
+            # Draft claims are deliberately hidden from every staff list
+            # (finance/service.py list_visible_claims). The workbook must not become
+            # a side channel that republishes un-submitted amounts and purposes.
+            ExpenseClaim.status != "draft",
+        )
+        .order_by(ExpenseClaim.created_at, ExpenseClaim.id)
     ).all())
 
     wb = Workbook()

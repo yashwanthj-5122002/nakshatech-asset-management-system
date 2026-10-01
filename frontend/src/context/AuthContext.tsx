@@ -1,5 +1,5 @@
-import { createContext, type ReactNode, useContext, useMemo, useState } from 'react'
-import { apiFetch } from '../lib/api'
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
+import { apiFetch, getToken } from '../lib/api'
 import type { AuthLoginResponse, AuthUser, Branch, Role } from '../types'
 
 interface PendingAuthenticatorSetup {
@@ -16,6 +16,7 @@ interface AuthContextValue {
   user: AuthUser | null
   needsBranchSelection: boolean
   pendingAuthenticatorSetup: PendingAuthenticatorSetup | null
+  identityChecked: boolean
   login: (role: Role | undefined, email: string, password: string, remember: boolean, accessMode?: 'employee_support') => Promise<AuthLoginResponse>
   acceptAuthResponse: (result: AuthLoginResponse, remember?: boolean) => void
   confirmRegistrationAuthenticator: (code: string) => Promise<AuthLoginResponse>
@@ -58,6 +59,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(readStoredUser)
   const [needsBranchSelection, setNeedsBranchSelection] = useState(readBranchSelectionRequired)
   const [pendingAuthenticatorSetup, setPendingAuthenticatorSetup] = useState<PendingAuthenticatorSetup | null>(readPendingAuthenticatorSetup)
+  const [identityChecked, setIdentityChecked] = useState(() => !getToken())
+
+  // The cached user in web storage is only a rendering hint. It is fully editable by
+  // anyone with devtools, so every route guard that reads user.role would otherwise
+  // trust a value the client chose. Re-read the identity from the server on boot and
+  // keep it in sync; the API enforces the real permissions regardless.
+  useEffect(() => {
+    if (!getToken()) {
+      setIdentityChecked(true)
+      return
+    }
+    let cancelled = false
+    void apiFetch<AuthUser>('/auth/me')
+      .then(server => {
+        if (cancelled) return
+        setUser(current => {
+          const merged = { ...server, ...(current?.selected_branch_id !== undefined && server.selected_branch_id === undefined ? { selected_branch_id: current.selected_branch_id, selected_branch_name: current.selected_branch_name } : {}) }
+          const storage = localStorage.getItem('asset_token') ? localStorage : sessionStorage
+          storage.setItem('asset_user', JSON.stringify(merged))
+          return merged
+        })
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Expired, revoked or ended session: drop the stale identity entirely.
+        clearAuthStorage()
+        setUser(null)
+        setNeedsBranchSelection(false)
+      })
+      .finally(() => {
+        if (!cancelled) setIdentityChecked(true)
+      })
+    return () => { cancelled = true }
+  }, [])
 
   function savePendingAuthenticatorSetup(pending: PendingAuthenticatorSetup | null) {
     setPendingAuthenticatorSetup(pending)
@@ -164,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setNeedsBranchSelection(false)
     setPendingAuthenticatorSetup(null)
+    setIdentityChecked(true)
   }
 
   const value = useMemo(
@@ -171,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       needsBranchSelection,
       pendingAuthenticatorSetup,
+      identityChecked,
       login,
       acceptAuthResponse,
       confirmRegistrationAuthenticator,
@@ -180,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateUser,
       logout,
     }),
-    [user, needsBranchSelection, pendingAuthenticatorSetup],
+    [user, needsBranchSelection, pendingAuthenticatorSetup, identityChecked],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

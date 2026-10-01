@@ -9,21 +9,22 @@ import re
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
-from app.core.roles import VALID_ROLES, role_display_name
+from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles, resolve_access_token
+from app.core.roles import VALID_ROLES, role_display_name, role_is_allowed
 from app.core.management_access import (
     FIRST_LOGIN_PRIVILEGED_ROLES,
     is_authorized_privileged_email,
     management_account_payload,
     privileged_account_payload,
 )
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.security import create_temporary_token, hash_password, verify_password
+from app.core.uploads import read_upload_bytes
 from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import (
     Asset, AssetHistory, ComponentReplacement, Drone, DroneLocation, MonthlySnapshotRun,
@@ -151,6 +152,10 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+# Live drone telemetry carries position, pilot and project data, so the socket is
+# restricted to the roles that already own the drone module.
+DRONE_TELEMETRY_ROLES = {"drone", "management", "it", "admin"}
 
 
 def _asset_response(asset: Asset) -> dict:
@@ -436,13 +441,22 @@ def health() -> dict:
 
 
 @router.get("/auth/management/accounts")
-def public_management_accounts() -> dict[str, list[dict[str, str]]]:
-    """Backward-compatible Management selector endpoint."""
+def public_management_accounts(
+    _: User = Depends(require_roles("admin", *FIRST_LOGIN_PRIVILEGED_ROLES)),
+) -> dict[str, list[dict[str, str]]]:
+    """Backward-compatible Management selector endpoint.
+
+    Authenticated and privileged-only: an anonymous caller must not be able to
+    enumerate the privileged identities that can be targeted for credential abuse.
+    """
     return {"accounts": management_account_payload()}
 
 
 @router.get("/auth/privileged/accounts")
-def public_privileged_accounts(role: str = Query(...)) -> dict[str, list[dict[str, str]]]:
+def public_privileged_accounts(
+    role: str = Query(...),
+    _: User = Depends(require_roles("admin", *FIRST_LOGIN_PRIVILEGED_ROLES)),
+) -> dict[str, list[dict[str, str]]]:
     """Return only the authoritative identities for a provisioned role selector."""
     normalized_role = role.strip().lower()
     if normalized_role not in FIRST_LOGIN_PRIVILEGED_ROLES:
@@ -770,7 +784,10 @@ def change_own_password(
 
 
 @router.get("/dashboard/summary")
-def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "management", "it", "drone"))) -> dict:
+def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "management", "it"))) -> dict:
+    # "drone" is intentionally not admitted: this summary aggregates the whole IT
+    # asset register, and the Drone role is not allowed to list assets. No frontend
+    # screen calls this endpoint as Drone.
     assets = list(db.scalars(select(Asset)).all())
     primary_assets = [asset for asset in assets if is_primary_device_type(asset.device_type)]
     primary_summary = inventory_summary(primary_assets)
@@ -2418,9 +2435,7 @@ async def import_assets_excel(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx file")
-    content = await file.read()
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Excel file is larger than 25 MB")
+    content = await read_upload_bytes(file, max_bytes=25 * 1024 * 1024, label="Excel file")
     return import_assets_workbook(db, content)
 
 
@@ -2432,9 +2447,7 @@ async def import_printers_excel(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx printer register")
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Printer Excel file is larger than 10 MB")
+    content = await read_upload_bytes(file, max_bytes=10 * 1024 * 1024, label="Printer Excel file")
     try:
         return import_printer_assets_workbook(db, content, performed_by=user.full_name)
     except ValueError as exc:
@@ -2449,9 +2462,7 @@ async def import_external_hdds_excel(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx External HDD register")
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="External HDD Excel file is larger than 10 MB")
+    content = await read_upload_bytes(file, max_bytes=10 * 1024 * 1024, label="External HDD Excel file")
     try:
         return import_external_hdd_assets_workbook(db, content, performed_by=user.full_name)
     except ValueError as exc:
@@ -2801,6 +2812,22 @@ async def create_drone_location(
 
 @router.websocket("/ws/drones/{drone_id}")
 async def drone_location_socket(websocket: WebSocket, drone_id: int) -> None:
+    # Live GNSS/asset telemetry. A WebSocket handshake cannot use HTTPBearer, so
+    # the caller must present the same access token as query parameter and it is
+    # validated with the identical checks as the HTTP dependency. Unauthenticated
+    # or wrong-role callers are refused before the socket is accepted, so the
+    # broadcast stream is never reachable anonymously.
+    token = (websocket.query_params.get("token") or "").strip()
+    with SessionLocal() as db:
+        try:
+            user, claims, _ = resolve_access_token(db, token)
+            role = str(claims.get("role") or "").strip().lower()
+            effective_role = role if role in VALID_ROLES else user.role
+            if not role_is_allowed(effective_role, DRONE_TELEMETRY_ROLES):
+                raise HTTPException(status_code=403, detail="Insufficient permission")
+        except HTTPException:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
     await manager.connect(drone_id, websocket)
     try:
         while True:

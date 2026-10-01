@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime
@@ -681,9 +681,12 @@ def _employee_has_project_access(db: Session, *, project_id: int, employee_id: i
     ).limit(1)) is not None
 
 
-def assert_employee_project_access(db: Session, *, project_id: int, actor: User) -> None:
+def assert_employee_project_access(db: Session, *, project_id: int, actor: User, role: str | None = None) -> None:
     _project(db, project_id)
-    if (actor.role or "").lower() in {"admin", "management", "finance", "bd", "software_team"}:
+    # role is the effective (request-scoped) role when the caller has one: an
+    # employee-support session must not inherit the row's department privileges.
+    effective = (role if role is not None else actor.role or "").lower()
+    if effective in {"admin", "management", "finance", "bd", "software_team"}:
         return
     if not _employee_has_project_access(db, project_id=project_id, employee_id=actor.id):
         raise PermissionError("You are not assigned to this project")
@@ -718,8 +721,10 @@ def _expense_payload(row: ProjectExpense) -> dict:
     }
 
 
-def create_project_expense(db: Session, *, actor: User, project_id: int, payload: ProjectExpenseInput) -> ProjectExpense:
-    assert_employee_project_access(db, project_id=project_id, actor=actor)
+def create_project_expense(
+    db: Session, *, actor: User, project_id: int, payload: ProjectExpenseInput, role: str | None = None
+) -> ProjectExpense:
+    assert_employee_project_access(db, project_id=project_id, actor=actor, role=role)
     if payload.linked_vendor_invoice_id is not None:
         invoice = _vendor_invoice(db, payload.linked_vendor_invoice_id)
         if invoice.project_id != project_id:
@@ -754,9 +759,19 @@ def create_project_expense(db: Session, *, actor: User, project_id: int, payload
     return row
 
 
-def update_project_expense(db: Session, *, actor: User, expense_id: int, payload: ProjectExpenseInput) -> ProjectExpense:
+def update_project_expense(
+    db: Session,
+    *,
+    actor: User,
+    expense_id: int,
+    payload: ProjectExpenseInput,
+    role: str | None = None,
+) -> ProjectExpense:
     row = _expense(db, expense_id)
-    if row.employee_id != actor.id and (actor.role or "").lower() not in {"admin", "software_team"}:
+    effective = (role if role is not None else actor.role or "").lower()
+    if effective == "software_team":
+        effective = "admin"
+    if row.employee_id != actor.id and effective != "admin":
         raise PermissionError("Only the employee who created the expense can edit it")
     if row.status not in EXPENSE_EDITABLE:
         raise ValueError("Expense can be edited only while Draft or Returned")
@@ -863,7 +878,7 @@ def list_project_expenses(db: Session, *, actor: User, role: str, project_id: in
         query = query.where(ProjectExpense.employee_id == actor.id)
     if project_id is not None:
         if normalized_role not in {"finance", "admin", "management", "bd"}:
-            assert_employee_project_access(db, project_id=project_id, actor=actor)
+            assert_employee_project_access(db, project_id=project_id, actor=actor, role=role)
         query = query.where(ProjectExpense.project_id == project_id)
     if status:
         query = query.where(ProjectExpense.status == status.strip().upper())
@@ -874,8 +889,10 @@ def list_project_expenses(db: Session, *, actor: User, role: str, project_id: in
     return [_expense_payload(row) for row in rows]
 
 
-def declare_project_expenses(db: Session, *, actor: User, project_id: int, payload: ProjectExpenseDeclarationInput) -> ProjectExpenseDeclaration:
-    assert_employee_project_access(db, project_id=project_id, actor=actor)
+def declare_project_expenses(
+    db: Session, *, actor: User, project_id: int, payload: ProjectExpenseDeclarationInput, role: str | None = None
+) -> ProjectExpenseDeclaration:
+    assert_employee_project_access(db, project_id=project_id, actor=actor, role=role)
     phase = payload.phase_key.upper()
     if payload.declaration_status == "NO_MORE_EXPENSES":
         unresolved = int(db.scalar(select(func.count(ProjectExpense.id)).where(

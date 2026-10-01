@@ -82,7 +82,9 @@ def list_active_assets(
 @router.get("/dashboard/summary")
 def active_dashboard_summary(
     db: Session = Depends(get_db),
-    user: User = Depends(require_roles("admin", "management", "it", "drone")),
+    # Matches base_list_assets above: this summary aggregates the whole IT asset
+    # register, so it must not be reachable by a role that cannot list assets.
+    user: User = Depends(require_roles("admin", "management", "it")),
 ) -> dict:
     result = base_dashboard_summary(db=db, user=user)
     assets = active_inventory_assets(list(db.scalars(select(Asset)).all()))

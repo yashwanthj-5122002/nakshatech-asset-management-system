@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -54,6 +55,15 @@ def _user(db, email: str, role: str, name: str) -> User:
     return user
 
 
+def _approver(db, email: str, name: str) -> User:
+    """Approval recipients must be real Management accounts (SEC-07).
+
+    The email channel refuses a recipient that is not an active Management
+    account, so every fixture that issues an approval email has to create one.
+    """
+    return _user(db, email, "management", name)
+
+
 def _purchase_request(db, it_user: User, *, item_name: str = "UAT Laptop") -> ITPurchaseRequest:
     return create_purchase_request(
         db,
@@ -79,6 +89,7 @@ def _purchase_request(db, it_user: User, *, item_name: str = "UAT Laptop") -> IT
 def test_email_approval_updates_single_purchase_request_and_is_idempotent(approval_email_settings):
     with SessionLocal() as db:
         it_user = _user(db, "approval-it@nakshatech.com", "it", "Approval IT")
+        _approver(db, "uat.approver@nakshatech.com", "UAT Approver")
         request = _purchase_request(db, it_user)
         issued = issue_purchase_approval_email(
             db,
@@ -139,6 +150,7 @@ def test_email_approval_updates_single_purchase_request_and_is_idempotent(approv
 def test_email_send_back_requires_remarks_and_resubmission_rotates_token(approval_email_settings):
     with SessionLocal() as db:
         it_user = _user(db, "resubmit-it@nakshatech.com", "it", "Resubmit IT")
+        _approver(db, "test.reviewer@nakshatech.com", "Test Reviewer")
         request = _purchase_request(db, it_user, item_name="UAT Software")
         first = issue_purchase_approval_email(
             db,
@@ -225,6 +237,7 @@ def test_asset_management_decision_consumes_email_link_and_records_source(approv
     with SessionLocal() as db:
         it_user = _user(db, "app-decision-it@nakshatech.com", "it", "App Decision IT")
         manager = _user(db, "app.manager@nakshatech.com", "management", "App Manager")
+        _approver(db, "email.recipient@nakshatech.com", "Email Recipient")
         request = _purchase_request(db, it_user, item_name="App Decision Laptop")
         issued = issue_purchase_approval_email(
             db,
@@ -262,6 +275,7 @@ def test_asset_management_decision_consumes_email_link_and_records_source(approv
 def test_replacement_procurement_creates_same_email_approval_channel(approval_email_settings):
     with SessionLocal() as db:
         it_user = _user(db, "replacement-it@nakshatech.com", "it", "Replacement IT")
+        _approver(db, "replacement.approver@nakshatech.com", "Replacement Approver")
         old_asset = Asset(
             asset_code="EMAIL-RPL-OLD-001",
             cpu_asset_tag="EMAIL-RPL-TAG-001",
@@ -296,3 +310,81 @@ def test_replacement_procurement_creates_same_email_approval_channel(approval_em
         assert channel.approver_name == "Replacement Approver"
         assert channel.approver_email == "replacement.approver@nakshatech.com"
         assert channel.email_status == "logged"
+
+
+def test_approval_email_refuses_recipient_without_management_authority(approval_email_settings):
+    """A mailbox inside the organization is not automatically an approver (SEC-07)."""
+    with SessionLocal() as db:
+        it_user = _user(db, "authority-it@nakshatech.com", "it", "Authority IT")
+        request = _purchase_request(db, it_user, item_name="Authority Laptop")
+
+        # No account at all.
+        with pytest.raises(HTTPException) as unknown:
+            issue_purchase_approval_email(db, request, "Unknown Approver", "unknown.approver@nakshatech.com")
+        assert unknown.value.status_code == 403
+
+        # An active account, but the wrong role: IT must not be able to route a
+        # purchase approval to a mailbox it controls and approve it there.
+        _user(db, "it.approver@nakshatech.com", "it", "IT Approver")
+        with pytest.raises(HTTPException) as wrong_role:
+            issue_purchase_approval_email(db, request, "IT Approver", "it.approver@nakshatech.com")
+        assert wrong_role.value.status_code == 403
+
+        # An inactive Management account must not work either.
+        inactive = _approver(db, "inactive.approver@nakshatech.com", "Inactive Approver")
+        inactive.is_active = False
+        db.commit()
+        with pytest.raises(HTTPException) as inactive_result:
+            issue_purchase_approval_email(db, request, "Inactive Approver", "inactive.approver@nakshatech.com")
+        assert inactive_result.value.status_code == 403
+
+        # Nothing was issued for any of the three rejected recipients.
+        assert channel_for_request(db, request.id) is None
+
+
+def test_email_approval_caps_amount_at_requested_estimate(approval_email_settings):
+    """The emailed decision carries the same sanctions as the in-app one (SEC-07)."""
+    with SessionLocal() as db:
+        it_user = _user(db, "cap-it@nakshatech.com", "it", "Cap IT")
+        _approver(db, "cap.approver@nakshatech.com", "Cap Approver")
+        request = _purchase_request(db, it_user, item_name="Cap Laptop")
+        token = issue_purchase_approval_email(
+            db,
+            request,
+            "Cap Approver",
+            "cap.approver@nakshatech.com",
+        ).raw_token
+        request_id = request.id
+        assert request.estimated_total_amount == 75000
+
+    client = TestClient(app)
+    decision_url = f"/api/it-activity/purchase-approval-email/{token}"
+
+    above_estimate = client.post(
+        decision_url,
+        data={"action": "approve", "approved_amount": "900000", "management_remarks": "No budget check"},
+    )
+    assert above_estimate.status_code == 400
+    assert "estimated total" in above_estimate.text.lower()
+
+    non_finite = client.post(
+        decision_url,
+        data={"action": "approve", "approved_amount": "nan", "management_remarks": "Poison the column"},
+    )
+    assert non_finite.status_code == 400
+
+    with SessionLocal() as db:
+        assert db.get(ITPurchaseRequest, request_id).status == "pending_approval"
+
+    within_budget = client.post(
+        decision_url,
+        data={"action": "approve", "approved_amount": "60000", "management_remarks": "Within budget"},
+    )
+    assert within_budget.status_code == 200
+    with SessionLocal() as db:
+        record = db.get(ITPurchaseRequest, request_id)
+        assert record.status == "approved"
+        assert record.approved_amount == 60000
+        # The decision is attributed to the pinned recipient's real account.
+        assert record.decided_by_email == "cap.approver@nakshatech.com"
+        assert record.decided_by_role == "management"

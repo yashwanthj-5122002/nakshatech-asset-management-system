@@ -41,7 +41,9 @@ def development_users() -> list[tuple[str, str, str, str]]:
                 ADMIN_ROLE,
             )
         )
-    return users
+    # An unconfigured (empty) password must never become an account: hashing ""
+    # would produce a record every caller can log into with a blank password.
+    return [(email, name, password, role) for email, name, password, role in users if password.strip()]
 
 
 def _temporary_passwords_by_role() -> dict[str, tuple[str, ...]]:
@@ -114,6 +116,11 @@ def ensure_privileged_accounts(db: Session) -> None:
 
         for account, temporary_password in zip(accounts, passwords, strict=True):
             email = account.email.lower()
+            # Unconfigured password: do not create the account and do not reset
+            # an existing one to a hash of "". Skipping is the only safe option
+            # for an empty secret, because argon2 happily hashes "".
+            if not temporary_password.strip():
+                continue
             user = db.scalar(select(User).where(func.lower(User.email) == email))
             created_or_converted = user is None or (user is not None and user.role != role)
             confirmed_authenticator = False

@@ -117,28 +117,15 @@ def _activate_privileged_account(
 
 def test_privileged_authentication_admin_correction_and_management_ticket_oversight() -> None:
     with TestClient(app) as client:
-        management_accounts = client.get("/api/auth/privileged/accounts?role=management")
-        assert management_accounts.status_code == 200, management_accounts.text
-        assert [item["email"] for item in management_accounts.json()["accounts"]] == [
-            "vinod@nakshatech.com",
-            "chethan@nakshatech.com",
-        ]
+        # Privileged identities must never be enumerable by an anonymous caller.
+        for probe_role in ("management", "software_team", "it"):
+            anonymous = client.get(f"/api/auth/privileged/accounts?role={probe_role}")
+            assert anonymous.status_code == 401, anonymous.text
+            assert "accounts" not in anonymous.json()
 
-        software_accounts = client.get("/api/auth/privileged/accounts?role=software_team")
-        assert software_accounts.status_code == 200, software_accounts.text
-        assert software_accounts.json()["accounts"] == [{
-            "display_name": "Software Team",
-            "full_name": "Software Team",
-            "email": "software.team@nakshatech.com",
-        }]
-
-        it_accounts = client.get("/api/auth/privileged/accounts?role=it")
-        assert it_accounts.status_code == 200, it_accounts.text
-        assert it_accounts.json()["accounts"] == [{
-            "display_name": "IT Support",
-            "full_name": "IT Department",
-            "email": "it-support@nakshatech.com",
-        }]
+        anonymous_management = client.get("/api/auth/management/accounts")
+        assert anonymous_management.status_code == 401, anonymous_management.text
+        assert "accounts" not in anonymous_management.json()
 
         with SessionLocal() as db:
             admin = db.scalar(select(User).where(User.email == "admin@nakshatech.com"))
@@ -396,4 +383,13 @@ def test_privileged_authentication_admin_correction_and_management_ticket_oversi
         )
         assert wrong_role.status_code == 403
 
-    TEST_DB.unlink(missing_ok=True)
+    from app.core.database import engine as application_engine
+
+    application_engine.dispose()
+    try:
+        TEST_DB.unlink(missing_ok=True)
+    except OSError:
+        # Windows keeps an exclusive lock on a SQLite file until every pooled
+        # connection is released. The file lives in the OS temp directory, so a
+        # leftover copy is harmless and must not fail the test.
+        pass

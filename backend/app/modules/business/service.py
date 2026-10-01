@@ -521,9 +521,28 @@ def record_row(db: Session, record: BusinessRecord) -> BusinessRecordRow:
     return _row_payload(project, attribution, record, billing)
 
 
-def record_history(db: Session, *, record_id: int) -> list[BusinessHistoryEntry]:
+def _can_view_record(db: Session, record: BusinessRecord, *, viewer: User, effective_role: str) -> bool:
+    """Mirror the row visibility business_overview gives this caller."""
+    role = (effective_role or "").strip().lower()
+    if role_is_allowed(role, TOTALS_ROLES):
+        return True
+    return bool(_is_project_manager(db, viewer.id)) and record.project_manager_user_id == viewer.id
+
+
+def record_history(
+    db: Session,
+    *,
+    record_id: int,
+    viewer: User | None = None,
+    effective_role: str = "",
+) -> list[BusinessHistoryEntry]:
     record = db.get(BusinessRecord, record_id)
     if record is None:
+        raise HTTPException(status_code=404, detail="Business record not found")
+    # The history carries actor identities and the JSON diff of every amount change.
+    # A caller who cannot see the record in the overview must not be able to read its
+    # change log by guessing the sequential record_id.
+    if viewer is not None and not _can_view_record(db, record, viewer=viewer, effective_role=effective_role):
         raise HTTPException(status_code=404, detail="Business record not found")
     entries = list(db.scalars(
         select(BusinessRecordHistory)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timezone
 from html import escape
 from urllib.parse import quote
@@ -11,8 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_roles
 from app.core.database import get_db
+from app.core.uploads import read_upload_bytes
 from app.models.entities import Asset, User
 from app.modules.it_activity.approval_email import (
+    approval_authority_user,
     approval_result_html,
     approval_review_html,
     channel_for_request,
@@ -494,20 +497,46 @@ def decide_purchase_approval_email(
                 status_code=400,
                 headers={"Cache-Control": "no-store"},
             )
+        # "nan" and "inf" parse as floats and slip past a plain negativity
+        # check; they would poison the stored amount.
+        if amount is not None and not math.isfinite(amount):
+            return HTMLResponse(
+                _public_error_page("Invalid approved amount", "Approved Amount must be a finite number."),
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
         if amount is not None and amount < 0:
             return HTMLResponse(
                 _public_error_page("Invalid approved amount", "Approved Amount cannot be negative."),
                 status_code=400,
                 headers={"Cache-Control": "no-store"},
             )
+        if (
+            amount is not None
+            and record.estimated_total_amount is not None
+            and amount > record.estimated_total_amount
+        ):
+            return HTMLResponse(
+                _public_error_page(
+                    "Approved amount exceeds the request",
+                    "Approved Amount cannot be higher than the estimated total for this Purchase Request. "
+                    f"Requested estimate: {record.estimated_total_amount}.",
+                ),
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
 
-    email_actor = User(
-        email=channel.approver_email,
-        full_name=channel.approver_name,
-        password_hash="email-approval-not-persisted",
-        role="management",
-        branch=record.branch or "Head Office",
-    )
+    try:
+        # Pinned to the recipient recorded on the channel, and re-checked for
+        # Management authority: a link issued before this control existed must
+        # not still be able to hand the decision to a non-Management mailbox.
+        email_actor = approval_authority_user(db, channel.approver_email)
+    except HTTPException as exc:
+        return HTMLResponse(
+            _public_error_page("Approval link unavailable", str(exc.detail)),
+            status_code=exc.status_code,
+            headers={"Cache-Control": "no-store"},
+        )
     mark_channel_for_email_decision(db, channel)
     try:
         record = decide_purchase_request(
@@ -601,7 +630,7 @@ async def import_handover_excel(
 ) -> dict:
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Upload an .xlsx workbook")
-    content = await file.read()
+    content = await read_upload_bytes(file, max_bytes=25 * 1024 * 1024, label="Workbook")
     return import_handover_workbook(db, content, file.filename or "handover.xlsx", device_category, user)
 
 
@@ -613,17 +642,18 @@ async def import_purchase_excel(
 ) -> dict:
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Upload an .xlsx workbook")
-    content = await file.read()
+    content = await read_upload_bytes(file, max_bytes=25 * 1024 * 1024, label="Workbook")
     return import_purchase_workbook(db, content, file.filename or "purchases.xlsx", user)
 
 
 @router.get("/monthly.xlsx")
 def download_monthly_activity(
     month: str = Query(..., description="YYYY-MM"),
+    department: str | None = Query(default=None, description="Optional department filter, same as /summary"),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "management", "it")),
 ):
-    stream, counts = build_monthly_it_activity_workbook(db, month)
+    stream, counts = build_monthly_it_activity_workbook(db, month, department=department)
     start, _end, _utc_start, _utc_end = month_bounds(month)
     filename = f"NakshaTech IT Monthly Activity - {start.strftime('%B %Y')}.xlsx"
     return StreamingResponse(

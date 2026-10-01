@@ -36,15 +36,47 @@ os.environ.setdefault("JWT_SECRET", "pytest-suite-secret-only-change-me-32-chara
 os.environ["EMAIL_DELIVERY_MODE"] = "console"
 os.environ.setdefault("NAKSHA_COPILOT_ENABLED", "false")
 os.environ.setdefault("LOCAL_BACKUP_AGENT_ENABLED", "false")
+# The auth rate limiter is per-IP and process-local. The suite logs in far more
+# often than any human would from a single address, so keep it off by default;
+# test_auth_rate_limiting.py turns it on for the requests it asserts on.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
-# Import the database module now, before test-module collection can import any
-# application router/service and bind the global engine to another DATABASE_URL.
-from app.core.database import Base, engine  # noqa: E402
-from app.modules.drone import models as drone_models  # noqa: E402,F401
+# NOTE: the application package must NOT be imported at module scope here.
+# ``app.core.config`` builds ``settings`` as a module-level singleton on first
+# import, and ``app.core.database`` imports it. Importing the app while this
+# file is being loaded would freeze ``settings`` *before* test modules are
+# collected, so any ``SEED_*`` environment variable a test module assigns at
+# import time would arrive too late to take effect. Test modules legitimately
+# disagree on those values (for example ``SEED_ADMIN_PASSWORD``), so freezing
+# them by collection order makes the suite order-dependent. Deferring the
+# import into a fixture lets collection finish first, so the values a test
+# module actually sets are the ones the application reads.
+
+
+@pytest.fixture(scope="session")
+def application_engine():
+    """Import the application once the test modules have been collected."""
+
+    from app.core.database import Base, engine
+    from app.modules.drone import models as drone_models  # noqa: F401
+
+    # Importing the application (not just its engine) is what registers every
+    # model mapper on Base.metadata. Without it, create_all only builds the
+    # tables a test module happened to import, and a request that touches any
+    # other table - the login flow writing audit_events, for example - fails
+    # with "no such table". This runs after collection, so settings stay
+    # unfrozen until every test module has set its own environment.
+    import app.main  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture(autouse=True)
-def isolated_application_database():
+def isolated_application_database(application_engine):
     """Give every backend test a clean application schema.
 
     Tests that create their own independent SQLAlchemy engine remain unaffected;
@@ -52,15 +84,16 @@ def isolated_application_database():
     engine used by runtime-level tests.
     """
 
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    from app.core.database import Base
+
+    Base.metadata.drop_all(bind=application_engine)
+    Base.metadata.create_all(bind=application_engine)
     try:
         yield
     finally:
-        Base.metadata.drop_all(bind=engine)
+        Base.metadata.drop_all(bind=application_engine)
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
-    engine.dispose()
     PYTEST_DB.unlink(missing_ok=True)
 

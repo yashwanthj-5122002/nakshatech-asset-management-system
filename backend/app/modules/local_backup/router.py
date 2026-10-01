@@ -45,6 +45,25 @@ def require_backup_agent_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid backup agent token")
 
 
+def _require_permitted_backup_role(role: str) -> str:
+    """Reject any export scope this shared agent secret is not configured for.
+
+    The agent proves who it is with one shared token, so the requested role must be
+    pinned server-side (LOCAL_BACKUP_AGENT_ROLES) instead of being taken from the
+    query string. Without this, a leaked agent token is enough to ask for the
+    full-access "admin" workbook, which includes the System Users sheet.
+    """
+    normalized_role = role.strip().lower()
+    if normalized_role not in VALID_BACKUP_ROLES:
+        raise HTTPException(status_code=400, detail="Role must be software_team, admin, management, it or drone")
+    if normalized_role not in settings.local_backup_agent_role_list:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This backup agent is not permitted to export the requested role scope",
+        )
+    return normalized_role
+
+
 @router.get("/health", dependencies=[Depends(require_backup_agent_token)])
 def local_backup_health(db: Session = Depends(get_db)) -> dict:
     # Force a real database round-trip so the Windows agent can distinguish an API
@@ -58,7 +77,7 @@ def local_backup_health(db: Session = Depends(get_db)) -> dict:
         "reporting_month": period.key,
         "it_assets": db.scalar(select(func.count(Asset.id))) or 0,
         "drone_assets": db.scalar(select(func.count(DroneSurveyAsset.id))) or 0,
-        "roles": sorted(VALID_BACKUP_ROLES),
+        "roles": sorted(set(settings.local_backup_agent_role_list) & VALID_BACKUP_ROLES),
         "schedule": {
             "health_check_minutes": 5,
             "current_excel_refresh": "hourly at minute 55",
@@ -72,9 +91,7 @@ def export_local_backup(
     role: str = Query(..., description="software_team, admin, management, it or drone"),
     db: Session = Depends(get_db),
 ) -> Response:
-    normalized_role = role.strip().lower()
-    if normalized_role not in VALID_BACKUP_ROLES:
-        raise HTTPException(status_code=400, detail="Role must be software_team, admin, management, it or drone")
+    normalized_role = _require_permitted_backup_role(role)
 
     data, period, row_counts = build_current_month_workbook(db, normalized_role)
     checksum = content_sha256(data)

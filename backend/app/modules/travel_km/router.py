@@ -11,14 +11,15 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.uploads import read_upload_bytes
 from app.models.entities import User, utc_now
 from app.modules.finance.service import all_projects, employee_project_payload
 from app.modules.employee_portal.service import record_audit
 from app.modules.notifications.service import create_global_notification
 from app.modules.travel_km.emailing import send_submission_email
 from app.modules.travel_km.attachments import (
-    TravelPhotoStorageError, TravelPhotoValidationError, delete_travel_photo, preview_data_url,
-    store_travel_photo, stream_travel_photo, validate_travel_photo,
+    TRAVEL_PHOTO_MAX_BYTES, TravelPhotoStorageError, TravelPhotoValidationError, delete_travel_photo,
+    preview_data_url, store_travel_photo, stream_travel_photo, validate_travel_photo,
 )
 from app.modules.travel_km.models import TravelKmAttachment, TravelKmClaim, TravelKmEvent, TravelKmTrackPoint
 from app.modules.travel_km.reporting import EXCEL_MIME, build_travel_km_workbook
@@ -496,7 +497,10 @@ async def upload_photo(
     row = _claim(db, auth, claim_id)
     if not row.requester_id == auth.user.id or row.status not in {"draft", "admin_sent_back", "hr_sent_back"}:
         raise HTTPException(status_code=409, detail="Odometer evidence is locked at the current workflow stage")
-    raw = await file.read()
+    raw = await read_upload_bytes(
+        file, max_bytes=TRAVEL_PHOTO_MAX_BYTES, status_code=413,
+        detail="Each odometer photo must be 15 MB or smaller.",
+    )
     try:
         photo = validate_travel_photo(filename=file.filename, declared_mime_type=file.content_type, data=raw)
     except TravelPhotoValidationError as exc:

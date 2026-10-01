@@ -12,6 +12,7 @@ from app.api.router import (
     create_asset as legacy_create_asset,
 )
 from app.core.database import get_db
+from app.core.uploads import read_upload_bytes
 from app.lib.reporting_month import normalize_reporting_month
 from app.models.entities import Asset, ReplacementRecord, User
 from app.modules.batch3.models import ReplacementWorkflowState
@@ -60,9 +61,7 @@ async def import_assets_batch3(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx file")
-    content = await file.read()
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Excel file is larger than 25 MB")
+    content = await read_upload_bytes(file, max_bytes=25 * 1024 * 1024, label="Excel file")
     acquire_asset_code_lock(db)
     before = snapshot_assets(db)
     result = import_assets_workbook(db, content)
@@ -85,9 +84,7 @@ async def import_printers_batch3(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx printer register")
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Printer Excel file is larger than 10 MB")
+    content = await read_upload_bytes(file, max_bytes=10 * 1024 * 1024, label="Printer Excel file")
     acquire_asset_code_lock(db)
     before = snapshot_assets(db)
     try:
@@ -113,9 +110,7 @@ async def import_external_hdds_batch3(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx External HDD register")
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="External HDD Excel file is larger than 10 MB")
+    content = await read_upload_bytes(file, max_bytes=10 * 1024 * 1024, label="External HDD Excel file")
     acquire_asset_code_lock(db)
     try:
         result = import_external_hdd_assets_workbook(db, content, performed_by=user.full_name)

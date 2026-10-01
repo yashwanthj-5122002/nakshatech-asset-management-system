@@ -16,6 +16,7 @@ os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{TEST_DB}"
 os.environ["JWT_SECRET"] = "test-secret-only-change-me-32-characters"
 os.environ["LOCAL_BACKUP_AGENT_ENABLED"] = "true"
 os.environ["LOCAL_BACKUP_AGENT_TOKEN"] = "test-local-backup-token-abcdefghijklmnopqrstuvwxyz-123456"
+os.environ["LOCAL_BACKUP_AGENT_ROLES"] = "it,drone,management"
 os.environ["BACKUP_TIMEZONE"] = "Asia/Kolkata"
 os.environ["EMAIL_DELIVERY_MODE"] = "console"
 os.environ["IT_SUPPORT_EMAIL"] = "software.team@nakshatech.com"
@@ -1971,7 +1972,21 @@ def test_drone_phase2_dispatch_partial_return_transfer_and_work_records(client: 
     assert after_it_total == before_it_total == 183
 
 
-def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> None:
+def test_local_backup_agent_health_and_role_workbooks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import settings
+
+    # conftest imports app.core.config before this module is collected, so the cached
+    # Settings object ignores import-time environment. Enable the agent on the live
+    # settings object instead of relying on module import order.
+    monkeypatch.setattr(settings, "local_backup_agent_enabled", True)
+    monkeypatch.setattr(
+        settings, "local_backup_agent_token",
+        "test-local-backup-token-abcdefghijklmnopqrstuvwxyz-123456",
+    )
+    monkeypatch.setattr(settings, "local_backup_agent_roles", "it,drone,management")
+
     agent_headers = {
         "X-Naksha-Backup-Token": "test-local-backup-token-abcdefghijklmnopqrstuvwxyz-123456"
     }
@@ -1981,7 +1996,15 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
     assert health.status_code == 200, health.text
     assert health.json()["status"] == "healthy"
     assert health.json()["reporting_month"].count("-") == 1
-    assert health.json()["roles"] == ["admin", "drone", "it", "management", "software_team"]
+    assert health.json()["roles"] == ["drone", "it", "management"]
+
+    # The agent proves itself with one shared secret, so the requested export scope is
+    # pinned server-side. Asking for the full-access admin/software_team workbook must
+    # fail even though the token itself is valid.
+    for escalated_role in ("admin", "software_team"):
+        escalated = client.get(f"/api/local-backup/export.xlsx?role={escalated_role}", headers=agent_headers)
+        assert escalated.status_code == 403, escalated.text
+        assert "X-Backup-Role" not in escalated.headers
 
     expected = {
         "it": {
@@ -1995,14 +2018,6 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
         "management": {
             "present": {"Backup Summary", "IT Asset Register", "Drone Asset Register"},
             "absent": {"System Users"},
-        },
-        "admin": {
-            "present": {"Backup Summary", "IT Asset Register", "Drone Asset Register", "System Users"},
-            "absent": set(),
-        },
-        "software_team": {
-            "present": {"Backup Summary", "IT Asset Register", "Drone Asset Register", "System Users"},
-            "absent": set(),
         },
     }
 
@@ -2025,19 +2040,40 @@ def test_local_backup_agent_health_and_role_workbooks(client: TestClient) -> Non
             summary.cell(row, 1).value: summary.cell(row, 2).value
             for row in range(1, min(summary.max_row, 30) + 1)
         }
-        expected_backup_role = "ADMIN" if role == "software_team" else role.upper()
-        assert summary_values["Backup Role"] == expected_backup_role
+        assert summary_values["Backup Role"] == role.upper()
         assert "Reporting Month" in summary_values
-
-        if role == "admin":
-            users = workbook["System Users"]
-            headers = [cell.value for cell in users[1]]
-            assert "Password Hash" not in headers
-            assert "Email" in headers
         workbook.close()
 
     invalid = client.get("/api/local-backup/export.xlsx?role=unknown", headers=agent_headers)
     assert invalid.status_code == 400
+
+
+def test_local_backup_admin_workbook_omits_authentication_controls(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The full-access workbook may be enabled explicitly, but must not carry auth secrets."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "local_backup_agent_enabled", True)
+    monkeypatch.setattr(
+        settings, "local_backup_agent_token",
+        "test-local-backup-token-abcdefghijklmnopqrstuvwxyz-123456",
+    )
+    monkeypatch.setattr(settings, "local_backup_agent_roles", "it,drone,management,admin,software_team")
+    agent_headers = {
+        "X-Naksha-Backup-Token": "test-local-backup-token-abcdefghijklmnopqrstuvwxyz-123456"
+    }
+
+    for role in ("admin", "software_team"):
+        response = client.get(f"/api/local-backup/export.xlsx?role={role}", headers=agent_headers)
+        assert response.status_code == 200, response.text
+        workbook = load_workbook(BytesIO(response.content), read_only=True, data_only=False)
+        assert "System Users" in set(workbook.sheetnames)
+        headers_row = [cell.value for cell in workbook["System Users"][1]]
+        assert "Email" in headers_row
+        for forbidden in ("Password Hash", "Token Version", "Date Of Birth"):
+            assert forbidden not in headers_row
+        workbook.close()
 
 
 
