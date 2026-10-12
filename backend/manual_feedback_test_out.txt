@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-8.4.2, pluggy-1.6.0 -- /usr/local/bin/python
+cachedir: .pytest_cache
+rootdir: /app
+plugins: anyio-4.15.1
+collecting ... collected 7 items
+
+tests/test_bd_manual_feedback_action_center.py::test_manual_positive_feedback_reaches_ready_for_billing PASSED [ 14%]
+tests/test_bd_manual_feedback_action_center.py::test_manual_negative_feedback_reuses_classification_and_rework PASSED [ 28%]
+tests/test_bd_manual_feedback_action_center.py::test_manual_feedback_requires_bd_owner_and_feedback_stage PASSED [ 42%]
+tests/test_bd_manual_feedback_action_center.py::test_manual_feedback_allowed_after_request_sent_and_does_not_close_request PASSED [ 57%]
+tests/test_bad_debt_lifecycle_v8_1.py::test_bad_debt_is_separate_from_payment_and_revenue_and_removes_collectible_outstanding PASSED [ 71%]
+tests/test_bad_debt_lifecycle_v8_1.py::test_bad_debt_requires_overdue_invoice_and_management_decision PASSED [ 85%]
+tests/test_bad_debt_lifecycle_v8_1.py::test_positive_feedback_waits_for_bd_confirmation_before_finance_billing_handoff PASSED [100%]
+
+========================= 7 passed in 72.67s (0:01:12) =========================
