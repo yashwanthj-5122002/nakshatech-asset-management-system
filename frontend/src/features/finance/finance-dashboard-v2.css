@@ -360,13 +360,37 @@
   background: #ffffff;
   border: 1px solid #d8e4ef;
   border-radius: 14px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
+  max-width: 100%;
   box-shadow: 0 4px 14px rgba(8, 42, 82, 0.04);
 }
 
 .fin-table {
   width: 100%;
-  border-collapse: collapse;
+  min-width: 1040px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.fin-table .fin-action-col {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #ffffff;
+  box-shadow: -8px 0 12px -10px rgba(8, 42, 82, 0.18);
+  white-space: nowrap;
+  min-width: 300px;
+}
+
+.fin-table th.fin-action-col {
+  background: #eef4fa;
+  z-index: 3;
+}
+
+.fin-table tr:hover td.fin-action-col {
+  background: #f8fbfe;
 }
 
 .fin-table th {

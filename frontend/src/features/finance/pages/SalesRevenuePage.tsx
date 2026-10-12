@@ -1,13 +1,17 @@
-import { BarChart3, CalendarDays, CircleDollarSign, Eye, EyeOff, FileText, RefreshCcw, TrendingUp, WalletCards, X } from 'lucide-react'
+import { AlertTriangle, BarChart3, CalendarDays, CircleDollarSign, Eye, EyeOff, FileText, RefreshCcw, TrendingUp, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CommandCenterHero, useNkReveal } from '../../../components/CommandCenterHero'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
+import { aggregateFinanceCommandCenterKpis } from './financeCommandCenterKpis'
 import './sales-revenue.css'
 
 type Mode = 'sales' | 'revenue'
 type Period = 'today' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
 type VisualizationKey = 'trend' | 'department' | 'status' | 'bd' | 'pm'
+type SalesKpiKey = 'open_sales' | 'open_invoiced' | 'received_open_sales' | 'outstanding' | 'bad_debt'
+type RevenueKpiKey = 'realized_revenue' | 'closed_invoices' | 'revenue_projects' | 'average_closed_invoice'
+type KpiDrilldownKey = SalesKpiKey | RevenueKpiKey
 
 interface PaymentRow {
   id: number
@@ -33,11 +37,19 @@ interface InvoiceRow {
   total_inr: number
   paid_amount: number
   paid_inr: number
+  cash_paid_amount?: number
+  advance_applied_amount?: number
+  advance_applied_inr?: number
   balance: number
   balance_inr: number
+  collectible_balance_inr?: number
+  bad_debt_amount?: number
+  bad_debt_inr?: number
+  bad_debt_status?: string | null
   raised_at: string | null
   closed_at: string | null
   notes: string | null
+  open_sales_category: string | null
   payments: PaymentRow[]
 }
 
@@ -76,7 +88,22 @@ interface SalesProject {
   open_sales_inr: number
   received_against_open_sales_inr: number
   outstanding_inr: number
+  bad_debt_inr: number
   closed_revenue_inr: number
+  open_sales_categories: {
+    invoice_not_raised_inr: number
+    payment_pending_inr: number
+    partial_payment_inr: number
+    payment_received_closure_pending_inr: number
+    other_open_inr: number
+  }
+  open_sales_reconciled?: boolean
+  open_sales_reconciliation_difference_inr?: number
+  unbilled_open_sales_inr: number
+  partial_payment_balance_inr: number
+  open_payment_pending_invoice_count: number
+  open_partial_invoice_count: number
+  invoice_not_raised: boolean
   sales_status: string
   sales_visible: boolean
   revenue_visible: boolean
@@ -238,6 +265,32 @@ function titleCase(value: string) {
   return value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 }
 
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+function sumMoney(values: number[]) {
+  return roundMoney(values.reduce((sum, value) => sum + Number(value || 0), 0))
+}
+
+function salesKpiAmount(row: SalesProject, key: SalesKpiKey) {
+  if (key === 'bad_debt') return Number(row.bad_debt_inr || 0)
+  const canonical = aggregateFinanceCommandCenterKpis([row], [])
+  if (key === 'open_sales') return canonical.openSales
+  if (key === 'open_invoiced') return canonical.openInvoiced
+  if (key === 'received_open_sales') return canonical.received
+  return canonical.outstanding
+}
+
+function paymentHistoryRows(invoice: InvoiceRow) {
+  let cumulativeInr = 0
+  return invoice.payments.map(payment => {
+    cumulativeInr = roundMoney(cumulativeInr + Number(payment.amount_inr || 0))
+    return { ...payment, cumulative_inr: cumulativeInr }
+  })
+}
+
 function ChartShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return <article className="sr-panel sr-chart-panel sr-selected-chart">
     <div className="sr-panel-heading"><div><span>VISUAL ANALYTICS</span><h3>{title}</h3><p>{subtitle}</p></div><BarChart3 size={19}/></div>
@@ -391,6 +444,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [selectedInvoiceNumber, setSelectedInvoiceNumber] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'sales' | 'finance' | 'payments'>('sales')
+  const [kpiDrilldown, setKpiDrilldown] = useState<KpiDrilldownKey | null>(null)
   const [salesPage, setSalesPage] = useState(1)
   const [revenuePage, setRevenuePage] = useState(1)
   const [targetEditorOpen, setTargetEditorOpen] = useState(false)
@@ -421,19 +475,25 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     setSelectedInvoiceNumber(null)
   }
 
+  function closeKpiDrilldown() {
+    setKpiDrilldown(null)
+  }
+
   useEffect(() => {
-    if (selectedProjectId == null) return
+    if (selectedProjectId == null && kpiDrilldown == null) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDetails()
+      if (event.key !== 'Escape') return
+      if (selectedProjectId != null) closeDetails()
+      else closeKpiDrilldown()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [selectedProjectId])
+  }, [selectedProjectId, kpiDrilldown])
 
   const range = useMemo(() => dateRange(period, { day, week, month, quarter, year, from, to }), [period, day, week, month, quarter, year, from, to])
   const allProjects = data?.projects ?? []
@@ -514,29 +574,112 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     ?? null
 
   const salesKpis = useMemo(() => {
-    const openSales = salesRows.reduce((sum, row) => sum + row.open_sales_inr, 0)
-    const received = salesRows.reduce((sum, row) => sum + row.received_against_open_sales_inr, 0)
-    const outstanding = salesRows.reduce((sum, row) => sum + row.outstanding_inr, 0)
-    const invoiced = salesRows.reduce((sum, row) => sum + row.invoices.filter(inv => inv.status !== 'INVOICE_CLOSED').reduce((s, inv) => s + inv.total_inr, 0), 0)
+    const canonical = aggregateFinanceCommandCenterKpis(salesRows, [])
     return {
-      openSales,
-      received,
-      outstanding,
-      invoiced,
-      partial: salesRows.filter(row => row.sales_status === 'Partially Paid').length,
-      overdue: salesRows.filter(row => row.sales_status === 'Overdue').length,
+      openSales: roundMoney(canonical.openSales),
+      invoiced: roundMoney(canonical.openInvoiced),
+      received: roundMoney(canonical.received),
+      outstanding: roundMoney(canonical.outstanding),
+      badDebt: sumMoney(salesRows.map(row => salesKpiAmount(row, 'bad_debt'))),
+      partial: canonical.partial,
+      overdue: canonical.overdue,
     }
   }, [salesRows])
 
   const revenueKpis = useMemo(() => {
-    const total = revenueRows.reduce((sum, row) => sum + row.revenue_amount_inr, 0)
+    const total = roundMoney(aggregateFinanceCommandCenterKpis([], revenueRows).closedRevenue)
     return {
       total,
       invoices: revenueRows.length,
       projects: new Set(revenueRows.map(row => row.project_id)).size,
-      average: revenueRows.length ? total / revenueRows.length : 0,
+      average: revenueRows.length ? roundMoney(total / revenueRows.length) : 0,
     }
   }, [revenueRows])
+
+  const revenueByProject = useMemo(() => {
+    const grouped = new Map<number, { sample: RevenueEvent; amount: number; invoiceCount: number }>()
+    for (const row of revenueRows) {
+      const existing = grouped.get(row.project_id)
+      if (existing) {
+        existing.amount = roundMoney(existing.amount + row.revenue_amount_inr)
+        existing.invoiceCount += 1
+      } else {
+        grouped.set(row.project_id, { sample: row, amount: roundMoney(row.revenue_amount_inr), invoiceCount: 1 })
+      }
+    }
+    return [...grouped.values()].sort((a, b) => b.amount - a.amount || a.sample.project_code.localeCompare(b.sample.project_code))
+  }, [revenueRows])
+
+  const kpiDrilldownData = useMemo(() => {
+    if (!kpiDrilldown) return null
+
+    if (kpiDrilldown === 'open_sales' || kpiDrilldown === 'open_invoiced' || kpiDrilldown === 'received_open_sales' || kpiDrilldown === 'outstanding' || kpiDrilldown === 'bad_debt') {
+      const labels: Record<SalesKpiKey, { kicker: string; title: string; subtitle: string }> = {
+        open_sales: { kicker: 'SALES KPI DRILL-DOWN', title: 'Open Sales Pipeline', subtitle: 'Every project contributing to the filtered Open Sales KPI.' },
+        open_invoiced: { kicker: 'SALES KPI DRILL-DOWN', title: 'Open Invoiced', subtitle: 'Open Finance invoice value only; closed invoices are excluded.' },
+        received_open_sales: { kicker: 'COLLECTION TRACE', title: 'Received on Open Sales', subtitle: 'Settlement already received/applied against invoices that are still open.' },
+        outstanding: { kicker: 'COLLECTION TRACE', title: 'Outstanding', subtitle: 'Current collectible balance only, after Management-approved unrecovered Bad Debt.' },
+        bad_debt: { kicker: 'BAD DEBT TRACE', title: 'Bad Debt', subtitle: 'Management-approved unrecovered write-off balance only. Bad Debt is never Revenue.' },
+      }
+      const key = kpiDrilldown as SalesKpiKey
+      const rows = salesRows
+        .map(row => ({ row, amount: roundMoney(salesKpiAmount(row, key)) }))
+        .filter(item => item.amount > 0)
+        .sort((a, b) => b.amount - a.amount || a.row.project_code.localeCompare(b.row.project_code))
+      const total = sumMoney(rows.map(item => item.amount))
+      const expected = key === 'open_sales' ? salesKpis.openSales
+        : key === 'open_invoiced' ? salesKpis.invoiced
+        : key === 'received_open_sales' ? salesKpis.received
+        : key === 'outstanding' ? salesKpis.outstanding
+        : salesKpis.badDebt
+      return {
+        ...labels[key],
+        kind: 'amount' as const,
+        expected,
+        traced: total,
+        difference: roundMoney(expected - total),
+        rows,
+        backendReconciled: key !== 'open_sales' || rows.every(item => item.row.open_sales_reconciled !== false),
+      }
+    }
+
+    if (kpiDrilldown === 'revenue_projects') {
+      return {
+        kicker: 'REVENUE KPI DRILL-DOWN',
+        title: 'Revenue Projects',
+        subtitle: 'Distinct projects with at least one fully settled and Finance-closed invoice in the current filters.',
+        kind: 'count' as const,
+        expected: revenueKpis.projects,
+        traced: revenueByProject.length,
+        difference: revenueKpis.projects - revenueByProject.length,
+        rows: revenueByProject,
+        backendReconciled: true,
+      }
+    }
+
+    const labels: Record<Exclude<RevenueKpiKey, 'revenue_projects'>, { kicker: string; title: string; subtitle: string }> = {
+      realized_revenue: { kicker: 'REVENUE KPI DRILL-DOWN', title: 'Realized Revenue', subtitle: 'Actual Revenue events backed by fully settled and Finance-closed invoices.' },
+      closed_invoices: { kicker: 'REVENUE KPI DRILL-DOWN', title: 'Closed Invoices', subtitle: 'Every closed Finance invoice included in the selected Revenue period.' },
+      average_closed_invoice: { kicker: 'REVENUE KPI DRILL-DOWN', title: 'Average Closed Invoice', subtitle: 'Average = exact filtered Realized Revenue divided by exact filtered closed-invoice count.' },
+    }
+    const key = kpiDrilldown as Exclude<RevenueKpiKey, 'revenue_projects'>
+    const tracedRevenue = sumMoney(revenueRows.map(row => row.revenue_amount_inr))
+    const expected = key === 'realized_revenue' ? revenueKpis.total
+      : key === 'closed_invoices' ? revenueKpis.invoices
+      : revenueKpis.average
+    const traced = key === 'realized_revenue' ? tracedRevenue
+      : key === 'closed_invoices' ? revenueRows.length
+      : (revenueRows.length ? roundMoney(tracedRevenue / revenueRows.length) : 0)
+    return {
+      ...labels[key],
+      kind: key === 'closed_invoices' ? 'count' as const : key === 'average_closed_invoice' ? 'average' as const : 'amount' as const,
+      expected,
+      traced,
+      difference: roundMoney(expected - traced),
+      rows: revenueRows,
+      backendReconciled: true,
+    }
+  }, [kpiDrilldown, salesRows, salesKpis, revenueRows, revenueKpis, revenueByProject])
 
   const targetMonthRows = useMemo(() => {
     const targetByDepartment = new Map(
@@ -720,7 +863,30 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     setDetailTab('finance')
   }
 
+  function openKpiDrilldown(key: KpiDrilldownKey) {
+    setKpiDrilldown(key)
+  }
+
+  function openContributorProject(projectId: number, invoiceNumber?: string | null) {
+    const row = allProjects.find(projectRow => projectRow.project_id === projectId)
+    if (!row) return
+    setKpiDrilldown(null)
+    setSelectedProjectId(projectId)
+    setSelectedInvoiceNumber(invoiceNumber || row.invoices[0]?.invoice_number || null)
+    setDetailTab(invoiceNumber || mode === 'revenue' ? 'finance' : 'sales')
+  }
+
   const periodLabel = `${range[0]} to ${range[1]}`
+  const filterTrace = [
+    `Period ${periodLabel}`,
+    department === 'all' ? 'All departments' : (DEPARTMENTS.find(([code]) => code === department)?.[1] || department),
+    client === 'all' ? 'All clients' : client,
+    project === 'all' ? 'All projects' : project,
+    bd === 'all' ? 'All BD' : `BD ${bd}`,
+    pm === 'all' ? 'All PMs' : `PM ${pm}`,
+    currency === 'all' ? 'All currencies' : currency,
+    ...(mode === 'sales' ? [statusFilter === 'all' ? 'All payment statuses' : statusFilter, salesDateBasis === 'projected' ? 'Projected payment date basis' : 'BD sales/commercial date basis'] : []),
+  ].join(' · ')
 
   return <div className="sr-page nk-arch-command" ref={rootRef}>
     <CommandCenterHero
@@ -777,15 +943,16 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
     {!loading && !error && <>
 
       {mode === 'sales' ? <section className="sr-kpi-grid" data-nk-reveal="stagger">
-        <article data-kpi="open_sales"><TrendingUp/><span>Open Sales Pipeline</span><strong>{inr(salesKpis.openSales)}</strong><small>{salesRows.length} project(s) in selected period</small></article>
-        <article data-kpi="open_sales"><FileText/><span>Open Invoiced</span><strong>{inr(salesKpis.invoiced)}</strong><small>Finance invoices not yet closed</small></article>
-        <article data-kpi="partial_payment"><WalletCards/><span>Received on Open Sales</span><strong>{inr(salesKpis.received)}</strong><small>Still stays in Sales until invoice closure</small></article>
-        <article data-kpi="outstanding"><CircleDollarSign/><span>Outstanding</span><strong>{inr(salesKpis.outstanding)}</strong><small>{salesKpis.partial} partial · {salesKpis.overdue} overdue</small></article>
+        <button className="sr-kpi-card" data-kpi="open_sales" type="button" onClick={() => openKpiDrilldown('open_sales')} aria-label="Open Sales Pipeline drill-down"><TrendingUp/><span>Open Sales Pipeline</span><strong>{inr(salesKpis.openSales)}</strong><small>{salesRows.length} project(s) in selected period</small><em>View exact contributing projects</em></button>
+        <button className="sr-kpi-card" data-kpi="open_invoiced" type="button" onClick={() => openKpiDrilldown('open_invoiced')} aria-label="Open Invoiced drill-down"><FileText/><span>Open Invoiced</span><strong>{inr(salesKpis.invoiced)}</strong><small>Finance invoices not yet closed</small><em>Trace the exact open invoice value</em></button>
+        <button className="sr-kpi-card" data-kpi="received_open_sales" type="button" onClick={() => openKpiDrilldown('received_open_sales')} aria-label="Received on Open Sales drill-down"><WalletCards/><span>Received on Open Sales</span><strong>{inr(salesKpis.received)}</strong><small>Still stays in Sales until invoice closure</small><em>Inspect the contributing collections</em></button>
+        <button className="sr-kpi-card" data-kpi="outstanding" type="button" onClick={() => openKpiDrilldown('outstanding')} aria-label="Outstanding drill-down"><CircleDollarSign/><span>Outstanding</span><strong>{inr(salesKpis.outstanding)}</strong><small>{salesKpis.partial} partial · {salesKpis.overdue} overdue</small><em>View exact collectible balances</em></button>
+        <button className="sr-kpi-card" data-kpi="bad_debt" type="button" onClick={() => openKpiDrilldown('bad_debt')} aria-label="Bad Debt drill-down"><AlertTriangle/><span>Bad Debt</span><strong>{inr(salesKpis.badDebt)}</strong><small>Management-approved write-offs · tracked separately · never Revenue</small><em>View approved unrecovered balances</em></button>
       </section> : <section className="sr-kpi-grid" data-nk-reveal="stagger">
-        <article data-kpi="revenue"><CircleDollarSign/><span>Realized Revenue</span><strong>{inr(revenueKpis.total)}</strong><small>Fully received + invoice closed only</small></article>
-        <article data-kpi="revenue"><FileText/><span>Closed Invoices</span><strong>{revenueKpis.invoices}</strong><small>In selected period</small></article>
-        <article data-kpi="revenue"><TrendingUp/><span>Revenue Projects</span><strong>{revenueKpis.projects}</strong><small>Distinct projects realized</small></article>
-        <article data-kpi="target"><WalletCards/><span>Average Closed Invoice</span><strong>{inr(revenueKpis.average)}</strong><small>Realized average in selected period</small></article>
+        <button className="sr-kpi-card" data-kpi="realized_revenue" type="button" onClick={() => openKpiDrilldown('realized_revenue')} aria-label="Realized Revenue drill-down"><CircleDollarSign/><span>Realized Revenue</span><strong>{inr(revenueKpis.total)}</strong><small>Fully received + invoice closed only</small><em>View exact contributing invoices</em></button>
+        <button className="sr-kpi-card" data-kpi="closed_invoices" type="button" onClick={() => openKpiDrilldown('closed_invoices')} aria-label="Closed Invoices drill-down"><FileText/><span>Closed Invoices</span><strong>{revenueKpis.invoices}</strong><small>In selected period</small><em>Inspect every counted invoice</em></button>
+        <button className="sr-kpi-card" data-kpi="revenue_projects" type="button" onClick={() => openKpiDrilldown('revenue_projects')} aria-label="Revenue Projects drill-down"><TrendingUp/><span>Revenue Projects</span><strong>{revenueKpis.projects}</strong><small>Distinct projects realized</small><em>View exact contributing projects</em></button>
+        <button className="sr-kpi-card" data-kpi="average_closed_invoice" type="button" onClick={() => openKpiDrilldown('average_closed_invoice')} aria-label="Average Closed Invoice drill-down"><WalletCards/><span>Average Closed Invoice</span><strong>{inr(revenueKpis.average)}</strong><small>Realized average in selected period</small><em>Inspect numerator and invoice count</em></button>
       </section>}
 
       {mode === 'revenue' && <section className="sr-target-panel" data-nk-reveal>
@@ -836,7 +1003,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
               <td>{row.currency}</td>
               <td><strong>{inr(row.open_sales_inr)}</strong><br/><small>{row.bd_sales_invoice.reference || 'Commercial Rev ' + (row.bd_sales_invoice.revision_no || 1)} · {row.invoice_count} Finance invoice(s)</small></td>
               <td>{row.projected_payment_date || '—'}</td>
-              <td><strong>{inr(row.received_against_open_sales_inr)}</strong><br/><small>Outstanding {inr(row.outstanding_inr)}</small></td>
+              <td><strong>{inr(row.received_against_open_sales_inr)}</strong><br/><small>Collectible Outstanding {inr(row.outstanding_inr)}</small>{row.bad_debt_inr > 0 && <><br/><small className="sr-status danger">Bad Debt {inr(row.bad_debt_inr)}</small></>}</td>
               <td><span className="sr-status">{row.sales_status}</span></td>
               <td><button className="finance-secondary-button" onClick={() => openSales(row)}>Project details</button></td>
             </tr>) : paginatedRevenueRows.map(row => <tr key={`${row.project_id}-${row.finance_invoice_number}`}>
@@ -867,6 +1034,30 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
           </div>
         </div>}
       </section>
+
+      {kpiDrilldown && kpiDrilldownData && <div className="sr-modal-backdrop" role="presentation" onMouseDown={closeKpiDrilldown}>
+        <section className="sr-modal sr-kpi-drilldown-modal" role="dialog" aria-modal="true" aria-label={`${kpiDrilldownData.title} details`} onMouseDown={event => event.stopPropagation()}>
+          <div className="sr-modal-header"><div><span>{kpiDrilldownData.kicker}</span><h3>{kpiDrilldownData.title}</h3><p>{kpiDrilldownData.subtitle}</p></div><button className="sr-modal-close" type="button" onClick={closeKpiDrilldown} aria-label="Close KPI details"><X size={20}/></button></div>
+          <div className="sr-filter-trace"><strong>Exact filter basis</strong><span>{filterTrace}</span></div>
+          <div className="sr-reconciliation-strip">
+            <div><span>KPI card</span><strong>{kpiDrilldownData.kind === 'count' ? kpiDrilldownData.expected.toLocaleString('en-IN') : inr(kpiDrilldownData.expected)}</strong></div>
+            <div><span>Drill-down trace</span><strong>{kpiDrilldownData.kind === 'count' ? kpiDrilldownData.traced.toLocaleString('en-IN') : inr(kpiDrilldownData.traced)}</strong></div>
+            {kpiDrilldownData.kind === 'average' && <div><span>Formula</span><strong>{inr(revenueKpis.total)} / {revenueKpis.invoices || 0}</strong></div>}
+            <div><span>Difference</span><strong>{kpiDrilldownData.kind === 'count' ? kpiDrilldownData.difference.toLocaleString('en-IN') : inr(kpiDrilldownData.difference)}</strong></div>
+            <div className={Math.abs(kpiDrilldownData.difference) <= 0.01 && kpiDrilldownData.backendReconciled ? 'sr-reconciled ok' : 'sr-reconciled warn'}><span>Reconciliation</span><strong>{Math.abs(kpiDrilldownData.difference) <= 0.01 && kpiDrilldownData.backendReconciled ? 'MATCHED' : 'CHECK REQUIRED'}</strong></div>
+          </div>
+
+          {kpiDrilldownData.rows.length === 0 ? <div className="sr-empty">No records contribute to this KPI under the current filters.</div> :
+            kpiDrilldown === 'revenue_projects' ? <div className="sr-table-wrap"><table className="sr-table sr-drilldown-table"><thead><tr><th>Project / Client</th><th>BD / Department / PM</th><th>Closed Invoices</th><th>Realized Revenue</th><th>Action</th></tr></thead><tbody>
+              {revenueByProject.map(item => <tr key={item.sample.project_id}><td><strong>{item.sample.project_code}</strong><br/><span>{item.sample.project_name}</span><br/><small>{item.sample.client_code || '—'} · {item.sample.client_name}</small></td><td><strong>{item.sample.bd_name}</strong><br/><span>{item.sample.department_label}</span><br/><small>PM: {item.sample.project_manager_name}</small></td><td>{item.invoiceCount}</td><td><strong>{inr(item.amount)}</strong></td><td><button className="finance-secondary-button" type="button" onClick={() => openContributorProject(item.sample.project_id, item.sample.finance_invoice_number)}>Project details</button></td></tr>)}
+            </tbody></table></div> :
+            kpiDrilldown === 'realized_revenue' || kpiDrilldown === 'closed_invoices' || kpiDrilldown === 'average_closed_invoice' ? <div className="sr-table-wrap"><table className="sr-table sr-drilldown-table"><thead><tr><th>Project / Client</th><th>Finance Invoice</th><th>Revenue Date</th><th>Realized Revenue</th><th>Payment Trace</th><th>Action</th></tr></thead><tbody>
+              {revenueRows.map(row => <tr key={`${kpiDrilldown}-${row.project_id}-${row.finance_invoice_number}`}><td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_name}</small></td><td><strong>{row.finance_invoice_number}</strong><br/><small>{row.finance_invoice_date} · {money(row.finance_invoice_amount, row.currency)}</small></td><td>{row.revenue_date}<br/><small>Closed {row.invoice_closed_at ? row.invoice_closed_at.slice(0, 10) : '—'}</small></td><td><strong>{inr(row.revenue_amount_inr)}</strong></td><td>{row.payment_references.length ? row.payment_references.join(', ') : '—'}</td><td><button className="finance-secondary-button" type="button" onClick={() => openContributorProject(row.project_id, row.finance_invoice_number)}>Project details</button></td></tr>)}
+            </tbody></table></div> : <div className="sr-table-wrap"><table className="sr-table sr-drilldown-table"><thead><tr><th>Project / Client</th><th>BD / Department / PM</th><th>Contributing Amount</th><th>Received</th><th>Collectible Outstanding</th><th>Bad Debt</th><th>Status</th><th>Action</th></tr></thead><tbody>
+              {(kpiDrilldownData.rows as Array<{ row: SalesProject; amount: number }>).map(item => <tr key={`${kpiDrilldown}-${item.row.project_id}`}><td><strong>{item.row.project_code}</strong><br/><span>{item.row.project_name}</span><br/><small>{item.row.client_code || '—'} · {item.row.client_name}</small></td><td><strong>{item.row.bd_name}</strong><br/><span>{item.row.department_label}</span><br/><small>PM: {item.row.project_manager_name}</small></td><td><strong>{inr(item.amount)}</strong>{kpiDrilldown === 'open_invoiced' && <><br/><small>{item.row.open_invoice_count} open invoice(s)</small></>}</td><td>{inr(item.row.received_against_open_sales_inr)}</td><td>{inr(item.row.outstanding_inr)}</td><td>{inr(item.row.bad_debt_inr || 0)}</td><td><span className="sr-status">{item.row.sales_status}</span>{kpiDrilldown === 'open_sales' && item.row.open_sales_reconciled === false && <><br/><small className="sr-recon-warning-text">Backend reconciliation difference {inr(item.row.open_sales_reconciliation_difference_inr || 0)}</small></>}</td><td><button className="finance-secondary-button" type="button" onClick={() => openContributorProject(item.row.project_id)}>Project details</button></td></tr>)}
+            </tbody></table></div>}
+        </section>
+      </div>}
 
       {targetEditorOpen && <div className="sr-modal-backdrop" role="presentation" onMouseDown={() => setTargetEditorOpen(false)}>
         <section className="sr-modal sr-target-modal" role="dialog" aria-modal="true" aria-label="Manage monthly revenue targets" onMouseDown={event => event.stopPropagation()}>
@@ -909,16 +1100,28 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
             <div><span>Finance Invoice</span><strong>{selectedInvoice.invoice_number}</strong></div><div><span>Status</span><strong>{titleCase(selectedInvoice.status)}</strong></div>
             <div><span>Invoice Date</span><strong>{selectedInvoice.invoice_date}</strong></div><div><span>Due Date</span><strong>{selectedInvoice.due_date}</strong></div>
             <div><span>Currency</span><strong>{selectedInvoice.currency}</strong></div><div><span>Invoice Total</span><strong>{money(selectedInvoice.total_amount, selectedInvoice.currency)}</strong></div>
-            <div><span>Invoice INR</span><strong>{inr(selectedInvoice.total_inr)}</strong></div><div><span>Paid INR</span><strong>{inr(selectedInvoice.paid_inr)}</strong></div>
-            <div><span>Outstanding INR</span><strong>{inr(selectedInvoice.balance_inr)}</strong></div><div><span>Closed At</span><strong>{selectedInvoice.closed_at ? selectedInvoice.closed_at.replace('T', ' ').slice(0, 19) : 'Not closed'}</strong></div>
+            <div><span>Invoice INR</span><strong>{inr(selectedInvoice.total_inr)}</strong></div><div><span>Total Settled INR</span><strong>{inr(selectedInvoice.paid_inr)}</strong></div>
+            <div><span>Invoice Balance INR</span><strong>{inr(selectedInvoice.balance_inr)}</strong></div><div><span>Collectible Outstanding INR</span><strong>{inr(selectedInvoice.collectible_balance_inr ?? selectedInvoice.balance_inr)}</strong></div>
+            <div><span>Bad Debt Remaining INR</span><strong>{inr(selectedInvoice.bad_debt_inr || 0)}</strong></div><div><span>Bad Debt Status</span><strong>{selectedInvoice.bad_debt_status ? titleCase(selectedInvoice.bad_debt_status) : 'None'}</strong></div>
+            <div><span>Closed At</span><strong>{selectedInvoice.closed_at ? selectedInvoice.closed_at.replace('T', ' ').slice(0, 19) : 'Not closed'}</strong></div>
             <div className="wide"><span>Finance Remarks</span><strong>{selectedInvoice.notes || '—'}</strong></div>
           </div>}
         </>}</>}
 
-        {detailTab === 'payments' && <>{selectedProject.invoices.length === 0 ? <div className="sr-empty">No Finance invoice or payment exists yet.</div> : selectedProject.invoices.map(inv => <div className="sr-payment-block" key={inv.id}>
-          <h4>{inv.invoice_number} <span>{titleCase(inv.status)}</span></h4>
-          {inv.payments.length === 0 ? <div className="sr-empty compact">No payment recorded.</div> : <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Date</th><th>Reference</th><th>Amount</th><th>INR Realized</th><th>Mode</th><th>Remarks</th></tr></thead><tbody>{inv.payments.map(payment => <tr key={payment.id}><td>{payment.payment_date}</td><td>{payment.payment_reference}</td><td>{money(payment.amount, payment.currency)}</td><td>{inr(payment.amount_inr)}</td><td>{titleCase(payment.payment_mode)}</td><td>{payment.comments || '—'}</td></tr>)}</tbody></table></div>}
-        </div>)}</>}
+        {detailTab === 'payments' && <>{selectedProject.invoices.length === 0 ? <div className="sr-empty">No Finance invoice or payment exists yet.</div> : selectedProject.invoices.map(inv => {
+          const cashReceivedInr = sumMoney(inv.payments.map(payment => payment.amount_inr))
+          const advanceAppliedInr = roundMoney(inv.advance_applied_inr ?? Math.max(inv.paid_inr - cashReceivedInr, 0))
+          return <div className="sr-payment-block" key={inv.id}>
+            <h4>{inv.invoice_number} <span>{titleCase(inv.status)}</span></h4>
+            <div className="sr-payment-summary">
+              <div><span>Invoice</span><strong>{inr(inv.total_inr)}</strong></div><div><span>Cash Received</span><strong>{inr(cashReceivedInr)}</strong></div>
+              <div><span>Advance Applied</span><strong>{inr(advanceAppliedInr)}</strong></div><div><span>Total Settled</span><strong>{inr(inv.paid_inr)}</strong></div>
+              <div><span>Invoice Balance</span><strong>{inr(inv.balance_inr)}</strong></div><div><span>Bad Debt</span><strong>{inr(inv.bad_debt_inr || 0)}</strong></div>
+              <div><span>Collectible Balance</span><strong>{inr(inv.collectible_balance_inr ?? inv.balance_inr)}</strong></div>
+            </div>
+            {inv.payments.length === 0 ? <div className="sr-empty compact">No cash payment recorded.</div> : <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Date</th><th>Reference</th><th>Payment</th><th>INR Realized</th><th>Cumulative Cash</th><th>Mode</th><th>Remarks</th></tr></thead><tbody>{paymentHistoryRows(inv).map(payment => <tr key={payment.id}><td>{payment.payment_date}</td><td>{payment.payment_reference}</td><td>{money(payment.amount, payment.currency)}</td><td>{inr(payment.amount_inr)}</td><td><strong>{inr(payment.cumulative_inr)}</strong></td><td>{titleCase(payment.payment_mode)}</td><td>{payment.comments || '—'}</td></tr>)}</tbody></table></div>}
+          </div>
+        })}</>}
         </section>
       </div>}
     </>}

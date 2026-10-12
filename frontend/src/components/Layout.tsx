@@ -12,6 +12,7 @@ import {
   Database,
   FileCheck2,
   FileDown,
+  FilePlus2,
   FolderKanban,
   HardDrive,
   History,
@@ -45,6 +46,8 @@ import { useITMonth } from '../context/ITMonthContext'
 import type { Role } from '../types'
 import { Logo } from './Logo'
 import { GlobalNotificationBell } from './GlobalNotificationBell'
+import { NotificationPopupHost } from '../features/notifications/NotificationPopupHost'
+import { NotificationPopupProvider } from '../features/notifications/NotificationPopupProvider'
 import { GlobalSearch } from './GlobalSearch'
 import { canAccessRole, isFullAccessRole, isTechnicalProjectManager, roleHomePath, TECHNICAL_PM_ROLES } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
@@ -132,12 +135,13 @@ const navItems: NavItem[] = [
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Project Register' },
   { to: '/finance/billing', label: 'Billing & Invoices', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Billing & Invoices' },
+  { to: '/finance/generate-invoice', label: 'Generate Invoice', icon: FilePlus2, roles: ['finance'], group: 'finance' },
   { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Commercial Control' },
   { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'bim', ...TECHNICAL_PM_ROLES], group: 'business', managementGroup: 'executive', managementLabel: 'Business & Total Sell' },
   { to: '/finance/sales', label: 'Sales', icon: TrendingUp, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Sales Pipeline' },
   { to: '/finance/revenue', label: 'Revenue', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Revenue' },
-  { to: '/finance/command-center', label: 'Finance Command Center', icon: BarChart3, roles: ['finance', 'admin', 'management', ...TECHNICAL_PM_ROLES], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Command Center' },
+  { to: '/finance/command-center', label: 'Finance Command Center', icon: BarChart3, roles: ['finance', 'admin', 'management', 'bd', ...TECHNICAL_PM_ROLES], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Command Center' },
   { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'operations', managementLabel: 'IT Infrastructure' },
   { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'operations', managementLabel: 'Asset Register' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
@@ -270,6 +274,15 @@ function deptAccentForWorkspace(pathname: string, role: Role): string {
 }
 
 export function Layout({ children }: { children: ReactNode }) {
+  return (
+    <NotificationPopupProvider>
+      <LayoutShell>{children}</LayoutShell>
+      <NotificationPopupHost />
+    </NotificationPopupProvider>
+  )
+}
+
+function LayoutShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const { selectedMonth } = useITMonth()
   const navigate = useNavigate()
@@ -446,7 +459,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <ArrowLeft size={17} aria-hidden="true" />
               <span>Back</span>
             </button>
-            <div className="topbar-status"><span className="system-indicator" /><span>System online</span></div>
+            <div className="topbar-status"><span className="system-indicator" /><span>System Online</span></div>
           </div>
           <div className="topbar-right">
             {['bd', 'management', 'admin'].includes(currentUser.role) && <GlobalSearch />}

@@ -108,6 +108,8 @@ from app.modules.finance.client_master_io import (
 )
 from app.modules.finance.sales_revenue_service import sales_revenue_overview
 from app.modules.finance.revenue_target_service import list_revenue_targets, upsert_revenue_target
+from app.modules.finance.advance_router import router as advance_payment_router
+from app.modules.finance.standalone_invoice_router import router as standalone_invoice_router
 
 router = APIRouter(prefix="/finance", tags=["Finance CRM"])
 
@@ -1340,3 +1342,7 @@ def download_complete_a4_pack(
     record_audit(db, event_type="FINANCE_A4_PACK_DOWNLOADED", request=request, user=auth.user, module="finance", target_type="expense_claim", target_id=claim.id, details={"claim_code": claim.claim_code})
     db.commit()
     return _document_response(output, filename=f"{claim.claim_code}_Complete_A4_Pack.pdf", media_type="application/pdf")
+
+
+router.include_router(advance_payment_router)
+router.include_router(standalone_invoice_router)

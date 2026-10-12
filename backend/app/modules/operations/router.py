@@ -702,11 +702,8 @@ def corporate_summary(
     return corporate_summary_payload(db)
 
 
-# V7.0.16 Phase 2 - multi-team technical sample workflow.
-# Imported at the end to avoid circular imports while keeping /operations as the
-# single authoritative operational router.
-from app.modules.operations.sample_router import router as phase2_sample_router
-router.include_router(phase2_sample_router)
+# The rejected V7.0.16 Sample Request API is intentionally not mounted. Its
+# tables and read model remain available for historical reporting only.
 
 # V7.0.17 Phase 3 - connected peer-department project data handovers.
 from app.modules.operations.handover_router import router as phase3_handover_router

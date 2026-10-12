@@ -56,6 +56,18 @@ def notify_ticket_created(
         target_url=_ticket_path(ticket_id),
         recipient_roles=[clean_department],
         dedupe_key=f"ticket:{ticket_id}:created:{_event_token(event_token)}",
+        # Popup experience (additive): the handling department must act on a new
+        # ticket. Closing the popup never resolves it - only the real ticket action does.
+        severity="danger" if clean_priority == "critical" else "warning",
+        requires_action=True,
+        metadata={
+            "ticket_id": ticket_id,
+            "ticket_code": ticket_code,
+            "department": clean_department,
+            "priority": clean_priority,
+            "requested_by": requester,
+            "issue": title,
+        },
     )
 
 
@@ -79,6 +91,10 @@ def notify_ticket_requester_reply(
         target_url=_ticket_path(ticket_id),
         recipient_roles=[str(department or "").strip().lower()],
         dedupe_key=f"ticket:{ticket_id}:message:{message_id}:requester_reply",
+        # Actionable: the handling department must read and respond.
+        severity="warning",
+        requires_action=True,
+        metadata={"ticket_id": ticket_id, "ticket_code": ticket_code, "event": "requester_reply"},
     )
 
 
@@ -124,6 +140,10 @@ def notify_ticket_reopened(
         target_url=_ticket_path(ticket_id),
         recipient_roles=[str(department or "").strip().lower()],
         dedupe_key=f"ticket:{ticket_id}:reopened:{_event_token(event_token)}",
+        # Actionable: the handling department must act on the reopened ticket.
+        severity="danger",
+        requires_action=True,
+        metadata={"ticket_id": ticket_id, "ticket_code": ticket_code, "event": "reopened"},
     )
 
 

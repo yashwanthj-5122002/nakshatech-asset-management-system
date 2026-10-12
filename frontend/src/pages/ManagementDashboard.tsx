@@ -38,6 +38,7 @@ import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
 import { monthLabel } from '../lib/itMonth'
 import type { LifecycleDashboardSummary } from '../features/operations/lifecycle-types'
+import { NotificationReminderSettings } from '../features/notifications/NotificationReminderSettings'
 import '../management-auth.css'
 import '../management-control.css'
 
@@ -726,6 +727,8 @@ export function ManagementDashboard() {
           </section>
         </div>
       )}
+
+      <NotificationReminderSettings />
     </>
   )
 }

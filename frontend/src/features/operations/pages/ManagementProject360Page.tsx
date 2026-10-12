@@ -26,11 +26,12 @@ import {
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
 import {
+  BadDebtRow,
   ChangeRequestRow,
   LifecycleDashboard,
   Project360,
@@ -83,6 +84,8 @@ export function ManagementProject360Page() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
+  const requestedInvoiceId = Number(searchParams.get('invoice') || 0) || null
   const isManagement = user?.role === 'management' || user?.role === 'admin'
   const canChat = user ? CHAT_ROLES.has(user.role) : false
 
@@ -96,6 +99,8 @@ export function ManagementProject360Page() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterCategory>('all')
   const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'deliveries' | 'actions' | 'timeline' | 'chat'>('overview')
+  const [badDebts, setBadDebts] = useState<BadDebtRow[]>([])
+  const [badDebtDecision, setBadDebtDecision] = useState<Record<number, { decision: 'approved' | 'rejected'; comments: string }>>({})
   const [chatText, setChatText] = useState('')
 
   const [deemedBasis, setDeemedBasis] = useState('')
@@ -132,8 +137,21 @@ export function ManagementProject360Page() {
     }
   }
 
-  useEffect(() => { loadDashboard() }, [])
+  useEffect(() => { loadDashboard(); if (isManagement) void apiFetch<BadDebtRow[]>('/operations/lifecycle/bad-debts').then(setBadDebts).catch(() => setBadDebts([])) }, [])
   useEffect(() => { if (selectedId) loadDetail(selectedId) }, [selectedId])
+  useEffect(() => { if (searchParams.get('tab') === 'actions') setActiveTab('actions') }, [searchParams])
+
+  // Deep link from the Bad Debt proposal notification:
+  // /management/project-360/<project_id>?tab=actions&invoice=<invoice_id>
+  useEffect(() => {
+    if (!requestedInvoiceId || activeTab !== 'actions') return
+    const target = document.getElementById(`p360-bad-debt-${requestedInvoiceId}`)
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    target.classList.add('nk-deeplink-focus')
+    const timer = window.setTimeout(() => target.classList.remove('nk-deeplink-focus'), 5000)
+    return () => window.clearTimeout(timer)
+  }, [requestedInvoiceId, activeTab, badDebts])
 
   // Filter projects by category and search keyword
   const filteredProjects = useMemo(() => {
@@ -185,6 +203,17 @@ export function ManagementProject360Page() {
     setDeemedBasis('')
   }
 
+  async function decideBadDebt(row: BadDebtRow) {
+    const form = badDebtDecision[row.id]
+    if (!form || row.invoice_id == null) return
+    await apiFetch(`/operations/lifecycle/invoices/${row.invoice_id}/bad-debt/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision: form.decision, comments: form.comments.trim() || 'Management decision recorded' }),
+    })
+    const refreshed = await apiFetch<BadDebtRow[]>('/operations/lifecycle/bad-debts')
+    setBadDebts(refreshed)
+  }
+
   async function decide(row: ChangeRequestRow) {
     const form = decisionForm[row.id]
     if (!form) return
@@ -211,7 +240,8 @@ export function ManagementProject360Page() {
 
   const closureRecommendedRequest = detail?.feedback_requests.find(row => row.status === 'closure_recommended') || null
   const pendingChangeRequests = detail?.change_requests.filter(row => row.status === 'pending') ?? []
-  const hasActionsNeeded = Boolean(closureRecommendedRequest || pendingChangeRequests.length > 0)
+  const pendingBadDebts = badDebts.filter(row => row.project_id === selectedId && row.status === 'PROPOSED')
+  const hasActionsNeeded = Boolean(closureRecommendedRequest || pendingChangeRequests.length > 0 || pendingBadDebts.length > 0)
 
   // Current project stage
   const currentStageInfo = detail ? getLifecycleStage(detail.workflow_status) : { stage: 1, label: 'Initiation' }
@@ -781,6 +811,29 @@ export function ManagementProject360Page() {
               {/* TAB 4: DECISIONS & SCOPE CHANGES */}
               {activeTab === 'actions' && isManagement && (
                 <div className="p360-tab-content">
+                  {pendingBadDebts.length > 0 && (
+                    <div className="p360-table-card">
+                      <div className="p360-table-title">Bad Debt Approval Required</div>
+                      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {pendingBadDebts.map(row => {
+                          const form = badDebtDecision[row.id] || { decision: 'approved' as const, comments: '' }
+                          return (
+                            <div key={row.id} id={row.invoice_id ? `p360-bad-debt-${row.invoice_id}` : undefined} className="operations-daily-card">
+                              <div className="operations-daily-heading">
+                                <div><h3>{row.invoice_number}</h3><p>{row.reason}</p><small>Proposed: {formatMoney(row.proposed_amount, row.currency || 'INR')} · Client: {row.client_name || '—'}</small></div>
+                                <span className="p360-status-pill warning">Finance Proposal</span>
+                              </div>
+                              <div className="operations-form-grid">
+                                <label className="operations-field"><span>Decision</span><select value={form.decision} onChange={e => setBadDebtDecision({ ...badDebtDecision, [row.id]: { ...form, decision: e.target.value as 'approved' | 'rejected' } })}><option value="approved">Approve Bad Debt</option><option value="rejected">Reject Proposal</option></select></label>
+                                <label className="operations-field operations-span-2"><span>Management Comments *</span><textarea rows={2} value={form.comments} onChange={e => setBadDebtDecision({ ...badDebtDecision, [row.id]: { ...form, comments: e.target.value } })}/></label>
+                              </div>
+                              <div className="operations-actions"><button className={form.decision === 'approved' ? 'operations-button warning' : 'operations-button secondary'} disabled={busy === `bad-debt-${row.id}` || form.comments.trim().length < 3} onClick={() => void run(`bad-debt-${row.id}`, () => decideBadDebt(row), form.decision === 'approved' ? 'Bad Debt approved' : 'Bad Debt proposal rejected')}>{form.decision === 'approved' ? 'Confirm Bad Debt' : 'Reject Proposal'}</button></div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {pendingChangeRequests.length > 0 && (
                     <div className="p360-table-card">
                       <div className="p360-table-title">Pending Scope Change Requests</div>

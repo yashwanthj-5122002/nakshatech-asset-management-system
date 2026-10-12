@@ -31,7 +31,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
@@ -247,6 +247,8 @@ function TrendChart({ data, height = 130 }: { data: { label: string; billing: nu
 
 export function FinanceDashboardPage() {
   const { user } = useAuth()
+  const [searchParams] = useSearchParams()
+  const requestedProjectId = Number(searchParams.get('project') || 0) || null
   const [data, setData] = useState<FinanceDashboard | null>(null)
   const [workflow, setWorkflow] = useState<WorkflowDashboard | null>(null)
   const [commercial, setCommercial] = useState<CommercialAnalytics | null>(null)
@@ -277,6 +279,10 @@ export function FinanceDashboardPage() {
         setData(finData)
         setWorkflow(wfData)
         setCommercial(commData)
+        if (requestedProjectId && wfData.projects.some(row => row.id === requestedProjectId)) {
+          setReviewId(requestedProjectId)
+          setActiveTab('queue')
+        }
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Could not load Finance dashboard'))
       .finally(() => setLoading(false))
@@ -650,7 +656,7 @@ export function FinanceDashboardPage() {
                   <th>Timeline</th>
                   <th>Expenses Exposure</th>
                   <th>Status</th>
-                  <th>Action</th>
+                  <th className="fin-action-col">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -757,7 +763,7 @@ export function FinanceDashboardPage() {
                       </td>
 
                       {/* 7. Action */}
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="fin-action-col" style={{ textAlign: 'right' }}>
                         {user?.role === 'finance' && isPending ? (
                           <button
                             className="fin-btn-primary"

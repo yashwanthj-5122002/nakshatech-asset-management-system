@@ -283,6 +283,21 @@ def _tax_values(payload: CommercialEstimateInput) -> tuple[Decimal, Decimal, Dec
     return base, tax, gross
 
 
+def _advance_values(payload: CommercialEstimateInput) -> dict:
+    """Client Advance Request terms (input only). Never projected into Sales/Revenue/Outstanding
+    and never applied to invoice commercial value; they only feed the Finance advance ledger."""
+    return {
+        "advance_required": payload.advance_required,
+        "advance_payment_type": payload.advance_payment_type,
+        "advance_percent": payload.advance_percent,
+        "advance_amount": money(payload.advance_amount) if payload.advance_amount is not None else None,
+        "advance_base_amount": money(payload.advance_base_amount) if payload.advance_base_amount is not None else None,
+        "advance_currency_code": payload.advance_currency_code,
+        "expected_advance_date": payload.expected_advance_date,
+        "final_advance_date": payload.final_advance_date,
+    }
+
+
 def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
     return {
         "id": row.id,
@@ -306,6 +321,14 @@ def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
         "expected_tax": float(row.expected_tax),
         "expected_gross": float(row.expected_gross),
         "estimated_direct_cost_inr": float(row.estimated_direct_cost_inr) if row.estimated_direct_cost_inr is not None else None,
+        "advance_required": row.advance_required,
+        "advance_payment_type": row.advance_payment_type,
+        "advance_percent": float(row.advance_percent) if row.advance_percent is not None else None,
+        "advance_amount": float(row.advance_amount) if row.advance_amount is not None else None,
+        "advance_base_amount": float(row.advance_base_amount) if row.advance_base_amount is not None else None,
+        "advance_currency_code": row.advance_currency_code,
+        "expected_advance_date": row.expected_advance_date.isoformat() if row.expected_advance_date else None,
+        "final_advance_date": row.final_advance_date.isoformat() if row.final_advance_date else None,
         "billing_type_label": BILLING_TYPES.get(row.billing_type, row.billing_type),
         "unit_rate": float(row.unit_rate) if row.unit_rate is not None else None,
         "estimated_quantity": float(row.estimated_quantity) if row.estimated_quantity is not None else None,
@@ -456,6 +479,9 @@ def upsert_baseline_estimate(db: Session, *, actor: User, project_id: int, paylo
     row.estimated_quantity = payload.estimated_quantity
     row.quantity_unit = payload.quantity_unit
     row.reason = payload.reason
+    # Client Advance Request terms (input only; commercial value / tax / FX above stay untouched).
+    for column, value in _advance_values(payload).items():
+        setattr(row, column, value)
     row.fx_snapshot_id = snapshot.id
     db.flush()
     snapshot.event_ref_id = row.id
@@ -614,6 +640,8 @@ def create_estimate_revision(db: Session, *, actor: User, project_id: int, paylo
         unit_rate=payload.unit_rate,
         estimated_quantity=payload.estimated_quantity,
         quantity_unit=payload.quantity_unit,
+        # Client Advance Request terms (input only; never projected into commercial value).
+        **_advance_values(payload),
         fx_snapshot_id=snapshot.id,
         fx_rate_to_inr=snapshot.fx_rate_to_inr,
         fx_rate_date=snapshot.fx_rate_date,

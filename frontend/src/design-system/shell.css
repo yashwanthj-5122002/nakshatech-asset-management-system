@@ -46,7 +46,7 @@
 
 .app-shell .sidebar-title strong {
   letter-spacing: 0.02em;
-  font-weight: 780;
+  font-weight: 700;
   background: linear-gradient(90deg, #ffffff, #b9ecf8);
   -webkit-background-clip: text;
   background-clip: text;
@@ -58,7 +58,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-size: 0.6rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .app-shell .sidebar-section-label {
@@ -73,7 +73,7 @@
   color: rgba(170, 200, 225, 0.92);
   border-radius: var(--nk-radius-sm);
   letter-spacing: 0.04em;
-  font-weight: 750;
+  font-weight: 600;
   transition: color var(--nk-dur) var(--nk-ease), background var(--nk-dur) var(--nk-ease);
 }
 
@@ -159,7 +159,7 @@
   border: 1px solid rgba(217, 83, 95, 0.35);
   background: linear-gradient(135deg, rgba(217, 83, 95, 0.16), rgba(217, 83, 95, 0.06));
   color: #ffb9c1;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.02em;
   transition: background var(--nk-dur) var(--nk-ease), border-color var(--nk-dur) var(--nk-ease),
     color var(--nk-dur) var(--nk-ease), transform var(--nk-dur-fast) var(--nk-ease),
@@ -224,7 +224,7 @@
   border-radius: 999px;
   background: rgba(22, 166, 106, 0.07);
   color: #12663c;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .app-shell .system-indicator {

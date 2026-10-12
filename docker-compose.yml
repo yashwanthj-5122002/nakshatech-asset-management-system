@@ -136,6 +136,9 @@ services:
     volumes:
       - ./backend:/app
       - ./local-backups:/backups
+      # ReportLab cannot resolve a browser URL. Mount the same official frontend
+      # brand asset read-only so generated A4 PDFs embed the real NakshaTech logo.
+      - ./frontend/public/nakshatech-logo.png:/app/app/nakshatech-logo.png:ro
     depends_on:
       db:
         condition: service_healthy

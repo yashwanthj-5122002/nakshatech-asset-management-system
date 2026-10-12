@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.models.entities import User, utc_now
 from app.modules.operations.handover_models import ProjectDataHandover
 from app.modules.operations.models import ProjectWorkstream
-from app.modules.operations.sample_models import TechnicalSampleRequest
 from app.modules.operations.service import (
     TECHNICAL_DEPARTMENT_LABELS,
     TECHNICAL_DEPARTMENT_ROLE_MAP,
@@ -156,9 +155,9 @@ def assert_department_live_integrity(db: Session, *, department_code: str) -> No
 
 
 def _open_cutover_blockers(db: Session) -> dict:
-    open_samples = int(db.scalar(select(func.count(TechnicalSampleRequest.id)).where(
-        TechnicalSampleRequest.status != "client_approved"
-    )) or 0)
+    # Sample Request is a retired historical workflow. Its preserved rows must
+    # not prevent activation of the current technical-routing workflow.
+    open_samples = 0
     open_workstreams = int(db.scalar(select(func.count(ProjectWorkstream.id)).where(
         ProjectWorkstream.is_active.is_(True),
         ProjectWorkstream.status != "completed",

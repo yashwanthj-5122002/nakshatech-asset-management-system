@@ -110,6 +110,27 @@ class Settings(BaseSettings):
     finance_email_heading: str = "NakshaTech Finance CRM"
     finance_admin_notification_emails: str = "admin@nakshatech.com"
     finance_team_notification_emails: str = "finance@nakshatech.com"
+    # Legal/remittance details used by the read-only ProjectInvoice A4 renderer.
+    # Production supplies these through environment configuration; blank values
+    # are omitted from the document rather than guessed in application code.
+    invoice_company_name: str = "NAKSHA TECH PRIVATE LIMITED"
+    invoice_company_address: str = ""
+    invoice_company_gstin: str = ""
+    invoice_company_pan: str = ""
+    invoice_company_phone: str = ""
+    invoice_company_email: str = "finance@nakshatech.com"
+    invoice_company_website: str = ""
+    invoice_company_hsn_sac: str = ""
+    invoice_bank_name: str = ""
+    invoice_bank_account_name: str = ""
+    invoice_bank_account_number: str = ""
+    invoice_bank_ifsc: str = ""
+    invoice_bank_swift: str = ""
+    invoice_bank_branch: str = ""
+    # Optional override for the ERP brand mark used on the A4 tax invoice. Blank means
+    # "auto-detect the existing frontend/public/nakshatech-logo.png asset"; the invoice
+    # still renders correctly (text-only header) when neither is available.
+    invoice_logo_path: str = ""
     app_public_url: str = "http://localhost:3100"
     email_otp_expiry_minutes: int = 10
     email_otp_resend_seconds: int = 60
@@ -180,6 +201,12 @@ class Settings(BaseSettings):
     # New (never-submitted) projects must carry Commercial Revision 1 when BD submits them to Finance.
     # Legacy projects that were already submitted/returned before the commercial layer stay resubmittable.
     commercial_revision1_required_on_submit: bool = True
+
+    # Client advance payment notifications (Finance V8 Phase 4). Pending advances
+    # above this amount raise a High Value Pending Advance alert for Management.
+    # Configurable so UAT and production can tune the escalation limit without a
+    # code change (env: ADVANCE_HIGH_VALUE_THRESHOLD_INR).
+    advance_high_value_threshold_inr: float = 1_000_000.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 

@@ -1,4 +1,4 @@
-import { CircleDollarSign, Plus, RefreshCcw, Trash2 } from 'lucide-react'
+import { CircleDollarSign, HandCoins, Plus, RefreshCcw, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../../lib/api'
 import type { CommercialFormState } from '../commercial-form'
@@ -34,6 +34,11 @@ export function CommercialDetailsSection({ form, onChange, currencies, disabled 
   const milestoneTotal = form.milestones.reduce((sum, m) => sum + (Number(m.percent) || 0), 0)
   const unitLabel = form.quantity_unit || DEFAULT_UNIT[form.billing_type] || 'unit'
   const currencyList = useMemo(() => currencies?.currencies ?? [{ code: 'INR', name: 'Indian Rupee' }], [currencies])
+  const advanceOn = form.advance_required === 'yes'
+  const advancePercent = Number(form.advance_percent) || 0
+  const advanceBase = base
+  const advanceFromPercent = Math.round(advanceBase * advancePercent) / 100
+  const advanceAmount = form.advance_amount.trim() ? Number(form.advance_amount) : advanceFromPercent
 
   useEffect(() => { setPreview(null); setFxError(''); if (!foreign) setManualFx(false) }, [form.currency_code, form.estimated_amount])
 
@@ -113,6 +118,38 @@ export function CommercialDetailsSection({ form, onChange, currencies, disabled 
           <div className="operations-actions"><button type="button" className="operations-button secondary" onClick={() => { set({ fx_rate_to_inr: '', fx_override_reason: '' }); setManualFx(false) }}>Use automatic rate</button></div>
         </div>}
       </div>}
-    </div>
+
+      <div className="cw-advance operations-span-2">
+        <div className="cw-advance-head"><strong><HandCoins size={14} /> CLIENT ADVANCE REQUEST</strong>
+          <span className="cw-muted">Advance is a collection term only — it never reduces the contract amount, project value or invoice value, and never counts as revenue.</span></div>
+        <div className="operations-form-grid">
+          <label className="operations-field"><span>Advance Required *</span><select value={form.advance_required} onChange={e => {
+            const value = e.target.value
+            if (value === 'no') set({ advance_required: 'no', advance_payment_type: 'no_advance', advance_percent: '', advance_amount: '', advance_currency_code: form.currency_code, expected_advance_date: '', final_advance_date: '' })
+            else if (value === 'yes') set({ advance_required: 'yes', advance_payment_type: form.advance_payment_type === 'no_advance' ? '' : form.advance_payment_type, advance_currency_code: form.advance_currency_code || form.currency_code })
+            else set({ advance_required: '' })
+          }}>
+            <option value="">Select</option><option value="yes">Yes</option><option value="no">No</option>
+          </select></label>
+          {advanceOn && <label className="operations-field"><span>Advance Payment Type *</span><select value={form.advance_payment_type} onChange={e => set({ advance_payment_type: e.target.value })}>
+            <option value="">Select</option>
+            <option value="full_advance">Full Advance</option>
+            <option value="percentage_advance">Percentage Advance</option>
+            <option value="fixed_advance">Fixed Advance</option>
+            <option value="milestone_advance">Milestone Payment</option>
+          </select></label>}
+          {advanceOn && <label className="operations-field"><span>Advance %</span><input type="number" min="0" max="100" step="0.01" value={form.advance_percent} onChange={e => set({ advance_percent: e.target.value })} placeholder="e.g. 25" /></label>}
+          {advanceOn && <label className="operations-field"><span>Advance Amount ({form.advance_currency_code || form.currency_code})</span><input type="number" min="0" step="0.01" value={form.advance_amount} onChange={e => set({ advance_amount: e.target.value })} placeholder="Calculated from % when left blank" /></label>}
+          {advanceOn && <label className="operations-field"><span>Advance Currency</span><select value={form.advance_currency_code || form.currency_code} onChange={e => set({ advance_currency_code: e.target.value })}>{currencyList.map(c => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}</select></label>}
+          {advanceOn && <label className="operations-field"><span>Expected Advance Date</span><input type="date" value={form.expected_advance_date} onChange={e => set({ expected_advance_date: e.target.value })} /></label>}
+          {advanceOn && <label className="operations-field"><span>Final Advance Date</span><input type="date" min={form.expected_advance_date || undefined} value={form.final_advance_date} onChange={e => set({ final_advance_date: e.target.value })} /></label>}
+          {advanceOn && <div className="operations-field operations-span-2"><span>Expected advance calculation</span><div className="cw-readout">
+            {money(advanceBase, form.currency_code)} × {advancePercent || 0}% = <b>{money(advanceAmount, form.advance_currency_code || form.currency_code)}</b>
+            {form.advance_amount.trim() && advanceFromPercent !== advanceAmount ? <small className="cw-muted"> (entered amount; {advancePercent || 0}% of {money(advanceBase, form.currency_code)} would be {money(advanceFromPercent, form.currency_code)})</small> : null}
+          </div></div>}
+          {!advanceOn && form.advance_required === 'no' && <div className="operations-field operations-span-2"><span>Advance status</span><div className="cw-readout">No advance requested — the project proceeds without a client advance collection term.</div></div>}
+        </div>
+      </div>
+</div>
   </fieldset>
 }

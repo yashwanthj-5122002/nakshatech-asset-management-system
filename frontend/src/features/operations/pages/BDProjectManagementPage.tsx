@@ -5,6 +5,7 @@ import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import { ProjectDetailsPanel, ProjectRegisterFilters, ProjectRegisterTable } from '../components/ProjectRegister'
 import { filterProjects } from '../components/register-utils'
+import { useNotificationPopup } from '../../notifications/NotificationPopupProvider'
 import { uploadRevisionDocuments, type PendingDocument } from '../../commercial/commercial-api'
 import { commercialFormFromRevision, commercialFormProblems, commercialFormToPayload, emptyCommercialForm, type CommercialFormState } from '../../commercial/commercial-form'
 import { CommercialDetailsSection } from '../../commercial/components/CommercialDetailsSection'
@@ -30,6 +31,8 @@ export function BDProjectManagementPage(){
   const [selectedId,setSelectedId]=useState<number|null>(null);const [editing,setEditing]=useState<Form|null>(null);const [pmChoice,setPmChoice]=useState<Record<number,string>>({})
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [loading,setLoading]=useState(true)
   const [commercial,setCommercial]=useState<CommercialFormState>(emptyCommercialForm);const [rev1,setRev1]=useState<CommercialEstimate|null>(null);const [docs,setDocs]=useState<PendingDocument[]>([]);const [currencies,setCurrencies]=useState<CurrencyPayload|null>(null);const [docTick,setDocTick]=useState(0)
+  // Centered success/error feedback popups for this important workflow submit.
+  const {showFeedback}=useNotificationPopup()
   useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
   function load(){setLoading(true);setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load projects')).finally(()=>setLoading(false))}
   useEffect(load,[])
@@ -55,7 +58,7 @@ export function BDProjectManagementPage(){
   async function saveEdit(event:FormEvent){
     event.preventDefault();if(!selected||!editing)return
     const wantsCommercial=commercial.estimated_amount.trim()!==''||commercial.payment_terms.trim()!==''||commercial.scope_description.trim()!==''
-    if(wantsCommercial){const problems=commercialFormProblems(commercial);if(problems.length){setError(problems[0]);return}}
+    if(wantsCommercial){const problems=commercialFormProblems(commercial);if(problems.length){setError(problems[0]);showFeedback({kind:'error',eyebrow:'Unable To Submit',title:'UNABLE TO SUBMIT',message:'Please correct the following:',issues:problems,firstIssueField:'commercial_estimated_amount'});return}}
     setBusy(true);setError('')
     try{
       const result=await apiFetch<{commercial?:{baseline?:{id:number}|null}}>(`/operations/workflow/bd/projects/${selected.id}`,{method:'PUT',body:JSON.stringify({...editing,quantity:editing.quantity===''?null:Number(editing.quantity),commercial_value:wantsCommercial?Number(commercial.estimated_amount):(editing.commercial_value===''?null:Number(editing.commercial_value)),currency:wantsCommercial?commercial.currency_code:editing.currency,po_wo_number:(wantsCommercial?commercial.po_wo_reference:editing.po_wo_number)||null,description:editing.description||null,attachment_references:editing.attachment_references.split('\n').map(value=>value.trim()).filter(Boolean),...(wantsCommercial?{commercial:commercialFormToPayload(commercial)}:{})})})
@@ -64,7 +67,7 @@ export function BDProjectManagementPage(){
       setNotice(`${selected.project_code} updated without creating a duplicate project or a second Revision 1.`);setEditing(null);setDocs([]);load()
     }catch(err){setError(err instanceof Error?err.message:'Unable to update project')}finally{setBusy(false)}
   }
-  async function submit(row:Project){if(!window.confirm(`Submit ${row.project_code} to Finance?`))return;setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/submit-finance`,{method:'POST'});setNotice(`${row.project_code} submitted to Finance.`);load()}catch(err){setError(err instanceof Error?err.message:'Unable to submit project')}finally{setBusy(false)}}
+  async function submit(row:Project){if(!window.confirm(`Submit ${row.project_code} to Finance?`))return;setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/submit-finance`,{method:'POST'});showFeedback({kind:'success',eyebrow:'Submitted',title:'SUBMITTED SUCCESSFULLY',message:`${row.project_code} was submitted to Finance.`,facts:[{label:'Project',value:row.project_code},{label:'Submitted To',value:'Finance'},{label:'Current Status',value:'Awaiting Finance Approval'}]});load()}catch(err){const message=err instanceof Error?err.message:'Unable to submit project';setError(message);showFeedback({kind:'error',eyebrow:'Unable To Submit',title:'UNABLE TO SUBMIT',message})}finally{setBusy(false)}}
   async function assignPm(row:Project){const value=pmChoice[row.id]??(row.project_manager_id?String(row.project_manager_id):'');if(!value){setError('Select exactly one Project Manager for this project\'s Performing Department.');return}setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/assign-pm`,{method:'POST',body:JSON.stringify({project_manager_id:Number(value)})});setNotice(`${row.project_code}: Project Manager assigned.`);load()}catch(err){setError(err instanceof Error?err.message:'Unable to assign Project Manager')}finally{setBusy(false)}}
 
   return <div className="operations-page">

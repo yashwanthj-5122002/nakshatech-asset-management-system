@@ -101,6 +101,25 @@ class ProjectCommercialEstimateRevision(Base):
     estimated_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     quantity_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
+    # --- Client advance terms (additive, Finance V8 Phase 1) --------------------------------
+    # Structured counterpart to the free-text ``payment_terms`` narrative above, so Finance can
+    # filter and compute without discarding BD's own wording.
+    #
+    # These columns are INPUT ONLY. They are never projected into any Sales, Revenue, Open Sales,
+    # Outstanding, Payment Pending or Partial Payment calculation, and they never modify invoice
+    # commercial value. Advance amounts are held in this revision's ORIGINAL currency; no INR
+    # commercial column is derived from them.
+    advance_required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    advance_payment_type: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    advance_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    advance_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    advance_base_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)  # base used for the %
+    advance_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # Expected date is Finance's collection forecast (the Dashboard "expected payment date").
+    expected_advance_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    # Final contractually allowed date for the advance; drives the Overdue rule.
+    final_advance_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+
     fx_snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("project_fx_snapshots.id", ondelete="SET NULL"), nullable=True)
     fx_rate_to_inr: Mapped[Decimal] = mapped_column(RATE)
     fx_rate_date: Mapped[date] = mapped_column(Date)

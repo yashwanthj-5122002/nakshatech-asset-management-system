@@ -72,6 +72,7 @@ import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPa
 import { ClientFeedbackPage } from './features/operations/pages/ClientFeedbackPage'
 import { BDClientFeedbackPage } from './features/operations/pages/BDClientFeedbackPage'
 import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
+import { GenerateInvoicePage } from './features/finance/pages/GenerateInvoicePage'
 import { SalesRevenuePage } from './features/finance/pages/SalesRevenuePage'
 import { FinanceCommandCenter } from './features/finance/pages/FinanceCommandCenter'
 import { ManagementProject360Page } from './features/operations/pages/ManagementProject360Page'
@@ -164,9 +165,10 @@ export default function App() {
       <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClientRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/projects" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceProjectRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/generate-invoice" element={<ProtectedRoute roles={['finance']}><WithLayout><GenerateInvoicePage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/sales" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="sales" /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/revenue" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="revenue" /></WithLayout></ProtectedRoute>} />
-      <Route path="/finance/command-center" element={<ProtectedRoute roles={['finance', 'admin', 'management', ...TECHNICAL_PM_ROLES]}><WithLayout><FinanceCommandCenter /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/command-center" element={<ProtectedRoute roles={['finance', 'admin', 'management', 'bd', ...TECHNICAL_PM_ROLES]}><WithLayout><FinanceCommandCenter /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/uat-2026" element={<ProtectedRoute roles={['finance']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />

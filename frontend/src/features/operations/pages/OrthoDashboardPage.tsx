@@ -1,6 +1,6 @@
 import { CheckCircle2, ClipboardList, RefreshCcw, Send, ShieldCheck, Truck, UserRoundCog, Users, Workflow } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { StatCard } from '../../../components/StatCard'
 import { useAuth } from '../../../context/AuthContext'
@@ -44,6 +44,8 @@ function localDate(){return new Date().toISOString().slice(0,10)}
 function uniqMembers(rows:Member[]|undefined,role:string){const seen=new Set<number>();return (rows??[]).filter(r=>r.member_role===role&&!seen.has(r.user_id)&&seen.add(r.user_id))}
 
 export function OrthoDashboardPage(){
+  const [searchParams] = useSearchParams()
+  const requestedProjectId = Number(searchParams.get('project') || 0) || null
   const { user }=useAuth()
   const [data,setData]=useState<OrthoDashboard|null>(null); const [selectedId,setSelectedId]=useState<number|null>(null)
   const [error,setError]=useState(''); const [notice,setNotice]=useState(''); const [busy,setBusy]=useState(false)
@@ -51,7 +53,7 @@ export function OrthoDashboardPage(){
   const [reworkMode,setReworkMode]=useState<Record<number,'reuse'|'adjust'>>({}); const [reworkRemarks,setReworkRemarks]=useState<Record<number,string>>({}); const [reworkAllocation,setReworkAllocation]=useState<ReworkAllocationDraft>(emptyReworkAllocation)
   const [daily,setDaily]=useState<Record<number,DailyDraft>>({})
 
-  function load(){setError('');void apiFetch<OrthoDashboard>('/operations/workflow/ortho/dashboard').then(v=>{setData(v);setSelectedId(current=>current&&v.projects.some(p=>p.project_id===current)?current:(v.projects[0]?.project_id??null))}).catch(e=>setError(e instanceof Error?e.message:'Unable to load Ortho workflow'))}
+  function load(){setError('');void apiFetch<OrthoDashboard>('/operations/workflow/ortho/dashboard').then(v=>{setData(v);setSelectedId(current=>current&&v.projects.some(p=>p.project_id===current)?current:((requestedProjectId&&v.projects.some(p=>p.project_id===requestedProjectId)?requestedProjectId:null)??v.projects[0]?.project_id??null))}).catch(e=>setError(e instanceof Error?e.message:'Unable to load Ortho workflow'))}
   useEffect(load,[])
   const selected=useMemo(()=>data?.projects.find(p=>p.project_id===selectedId)??null,[data,selectedId])
 

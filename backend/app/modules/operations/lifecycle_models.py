@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -39,7 +39,9 @@ class ProjectFeedbackResponse(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
-    feedback_request_id: Mapped[int] = mapped_column(
+    # Null when BD records an offline/manual client outcome that never arrived
+    # through a portal feedback request (V8.1 BD Feedback Action Center).
+    feedback_request_id: Mapped[int | None] = mapped_column(
         ForeignKey("project_feedback_requests.id", ondelete="CASCADE"), index=True
     )
     response_type: Mapped[str] = mapped_column(String(40), index=True)
@@ -48,6 +50,9 @@ class ProjectFeedbackResponse(Base):
     client_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     client_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     external_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # 'client_portal' (client submitted via the secure link) or 'bd_manual'
+    # (BD recorded an offline client response: call, email or letter).
+    source: Mapped[str | None] = mapped_column(String(20), default="client_portal")
     classification_status: Mapped[str] = mapped_column(String(40), default="pending_bd", index=True)
     classified_as: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     classified_by_id: Mapped[int | None] = mapped_column(
@@ -208,6 +213,63 @@ class ProjectInvoice(Base):
     billed_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     billed_milestone_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
+    # --- Invoice Generation V2 (additive) ------------------------------------------------
+    # GST breakdown. ``tax_amount`` above stays the single authoritative tax figure every
+    # existing Sales/Revenue/Outstanding/settlement reader already sums into the invoice
+    # total; these three pairs are a presentation breakdown of that same figure and must
+    # always reconcile to it (cgst_amount + sgst_amount + igst_amount == tax_amount).
+    # NULL on every legacy invoice, which keeps rendering the old single combined tax line.
+    cgst_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    cgst_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    sgst_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    sgst_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    igst_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    igst_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+
+    # Work order / dispatch / place-of-supply fields used by the A4 tax invoice header.
+    work_order_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    dispatch_details: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dispatch_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    place_of_supply: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+    # 'auto_fill' | 'manual' | NULL (legacy, predates Invoice Generation V2).
+    entry_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Point-in-time billing/company/bank snapshot captured when the invoice is created, so a
+    # later Client Master or company-configuration edit never silently changes an already
+    # issued document. Shape: {"billing": {...}, "company": {...}, "bank": {...}}. NULL on
+    # legacy invoices, which fall back to the live Client Master / app configuration exactly
+    # as they do today.
+    document_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class ProjectInvoiceLineItem(Base):
+    """Invoice Generation V2 line items (additive; ``ProjectInvoice.amount`` stays authoritative).
+
+    A legacy invoice (raised before this table existed) has zero rows here; the document
+    renderer falls back to one synthetic line built from ``ProjectInvoice.amount``, exactly
+    as it always has. Only once Finance enters 1..N real line items here does the rendered
+    document switch to showing them individually. ``sum(amount for each row) == invoice.amount``
+    is enforced by the service layer before the invoice is ever created.
+    """
+
+    __tablename__ = "project_invoice_line_items"
+    __table_args__ = (
+        UniqueConstraint("invoice_id", "sequence", name="uq_project_invoice_line_item_sequence"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("project_invoices.id", ondelete="CASCADE"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer, default=1)
+    description: Mapped[str] = mapped_column(Text)
+    hsn_sac: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    unit: Mapped[str] = mapped_column(String(30), default="Nos")
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
 
 class ProjectInvoicePayment(Base):
     __tablename__ = "project_invoice_payments"
@@ -237,6 +299,42 @@ class ProjectInvoicePayment(Base):
     inr_equivalent: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     invoice_inr_equivalent: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     fx_gain_loss_inr: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+
+
+class ProjectInvoiceBadDebt(Base):
+    """Auditable disposition for an unpaid invoice balance.
+
+    Payments remain actual cash/settlement rows in ``project_invoice_payments``.
+    A bad-debt approval never manufactures a payment and never turns the
+    written-off amount into realized Revenue. One current disposition row per
+    invoice is sufficient; a rejected proposal can be resubmitted by updating
+    the same audit record while preserving proposal/review timestamps.
+    """
+
+    __tablename__ = "project_invoice_bad_debts"
+    __table_args__ = (
+        UniqueConstraint("invoice_id", name="uq_project_invoice_bad_debt_invoice"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("project_invoices.id", ondelete="CASCADE"), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="PROPOSED", index=True)
+    proposed_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    approved_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    recovered_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=Decimal("0.00"))
+    currency: Mapped[str] = mapped_column(String(12), default="INR")
+    reason: Mapped[str] = mapped_column(Text)
+    collection_attempts: Mapped[str] = mapped_column(Text)
+    last_followup_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    finance_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    proposed_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
 
 
 class ProjectMessage(Base):

@@ -1505,7 +1505,7 @@
 .app-shell .panel-title-row h3,
 .app-shell .finance-panel-header h2 {
   color: var(--nk-text);
-  font-weight: 820;
+  font-weight: 700;
   letter-spacing: -0.018em;
 }
 

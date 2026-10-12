@@ -4,7 +4,23 @@ import { apiFetch } from '../../../lib/api'
 import { useAuth } from '../../../context/AuthContext'
 import { CommandCenterHero, useNkReveal } from '../../../components/CommandCenterHero'
 import { departmentCodeForRole, isTechnicalProjectManager } from '../../../lib/roles'
+import {
+  ADVANCE_STATUS_OPTIONS,
+  applyAdvanceToInvoice,
+  getAdvanceCollection,
+  getAdvanceProjectDetail,
+  getAdvanceProjects,
+  getAdvanceSummary,
+  recordAdvanceTransaction,
+  refreshAdvanceNotifications,
+  type AdvanceCollection,
+  type AdvanceProject,
+  type AdvanceProjectDetail,
+  type AdvanceStatus,
+  type AdvanceSummary,
+} from '../advancePaymentApi'
 import { aggregateFinanceCommandCenterKpis, openSalesCategoriesForProject, openSalesForProject } from './financeCommandCenterKpis'
+import { buildAdvanceAlerts, canViewAdvanceAlerts, formatAdvanceAlertDate, summarizeAdvanceAlerts } from './financeCommandCenterAlerts'
 import '../finance-expenses.css'
 import './sales-revenue.css'
 
@@ -182,7 +198,7 @@ interface RevenueTargetResponse {
 
 type VisualizationKey = 'monthly' | 'department' | 'status' | 'bd' | 'sales_revenue'
 
-type DrilldownKey = 'open_sales' | 'revenue' | 'outstanding' | 'target' | 'payment_pending' | 'partial_payment' | 'invoice_not_raised'
+type DrilldownKey = 'open_sales' | 'revenue' | 'outstanding' | 'target' | 'payment_pending' | 'partial_payment' | 'invoice_not_raised' | 'advance_pending' | 'advance_overdue' | 'advance_received'
 
 type Period = 'today' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
 
@@ -227,6 +243,21 @@ const drilldownMeta: Record<DrilldownKey, DrilldownMeta> = {
     kicker: 'KPI DRILL-DOWN',
     title: 'Invoice Not Raised — Commercial Value Without Finance Invoice',
     subtitle: 'Projects with commercial/sales value but zero Finance invoices, scoped to the selected department and filters.',
+  },
+  advance_pending: {
+    kicker: 'ADVANCE PAYMENT DRILL-DOWN',
+    title: 'Advance Pending — Collection Pipeline',
+    subtitle: 'Projects with an advance balance still pending under the current command center filters.',
+  },
+  advance_overdue: {
+    kicker: 'ADVANCE PAYMENT DRILL-DOWN',
+    title: 'Overdue Advance — Action Required',
+    subtitle: 'Projects whose derived advance status is Overdue, including final date and BD ownership.',
+  },
+  advance_received: {
+    kicker: 'ADVANCE PAYMENT DRILL-DOWN',
+    title: 'Advance Received — Collection Detail',
+    subtitle: 'Projects with advance receipts under the current command center filters.',
   },
 }
 
@@ -453,7 +484,7 @@ function ChartShell({ title, subtitle, children }: { title: string; subtitle: st
   )
 }
 
-function ColumnChart({ title, subtitle, rows }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }> }) {
+function ColumnChart({ title, subtitle, rows, formatValue = inr }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }>; formatValue?: (value: number) => string }) {
   if (rows.length === 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
   const width = 760
   const height = 300
@@ -481,7 +512,7 @@ function ColumnChart({ title, subtitle, rows }: { title: string; subtitle: strin
             return (
               <g key={row.label}>
                 <rect x={x} y={y} width={barWidth} height={h} rx="8" className="sr-column" />
-                <text x={x + barWidth / 2} y={Math.max(14, y - 8)} textAnchor="middle" className="sr-column-value">{inr(row.value)}</text>
+                <text x={x + barWidth / 2} y={Math.max(14, y - 8)} textAnchor="middle" className="sr-column-value">{formatValue(row.value)}</text>
                 <text x={x + barWidth / 2} y={height - 34} textAnchor="middle" className="sr-axis-label">{row.label}</text>
               </g>
             )
@@ -492,12 +523,15 @@ function ColumnChart({ title, subtitle, rows }: { title: string; subtitle: strin
   )
 }
 
-function TrendChart({ title, subtitle, rows, secondaryLabel, gapLabel }: {
+function TrendChart({ title, subtitle, rows, primaryLabel = 'Sales', secondaryLabel, gapLabel, showValues = false, formatValue = inr }: {
   title: string
   subtitle: string
   rows: Array<{ label: string; value: number; secondary?: number }>
+  primaryLabel?: string
   secondaryLabel?: string
   gapLabel?: string
+  showValues?: boolean
+  formatValue?: (value: number) => string
 }) {
   if (rows.length === 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
   const width = 760
@@ -539,15 +573,18 @@ function TrendChart({ title, subtitle, rows, secondaryLabel, gapLabel }: {
         </svg>
       </div>
       <div className="sr-chart-legend">
-        <span><i className="primary" /> {secondaryLabel ? 'Sales' : 'Sales'}</span>
+        <span><i className="primary" /> {primaryLabel}</span>
         {secondaryLabel && <span><i className="secondary" /> {secondaryLabel}</span>}
         {gapLabel && <span><i className="primary" style={{ background: '#ea580c' }} /> {gapLabel}</span>}
       </div>
+      {showValues && <div className="sr-chart-values">
+        {rows.map(row => <div key={row.label}><strong>{row.label}</strong><span>{primaryLabel}: {formatValue(row.value)}</span>{secondaryLabel && <span>{secondaryLabel}: {formatValue(row.secondary ?? 0)}</span>}</div>)}
+      </div>}
     </ChartShell>
   )
 }
 
-function DonutChart({ title, subtitle, rows }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }> }) {
+function DonutChart({ title, subtitle, rows, formatValue = inr }: { title: string; subtitle: string; rows: Array<{ label: string; value: number }>; formatValue?: (value: number) => string }) {
   const usable = rows.filter(row => row.value > 0)
   const total = usable.reduce((sum, row) => sum + row.value, 0)
   if (!usable.length || total <= 0) return <ChartShell title={title} subtitle={subtitle}><div className="sr-empty">No data for the selected filters.</div></ChartShell>
@@ -564,14 +601,14 @@ function DonutChart({ title, subtitle, rows }: { title: string; subtitle: string
     <ChartShell title={title} subtitle={subtitle}>
       <div className="sr-donut-layout">
         <div className="sr-donut" style={{ background: `conic-gradient(${stops})` }}>
-          <div><strong>{inr(total)}</strong><span>Total</span></div>
+          <div><strong>{formatValue(total)}</strong><span>Total</span></div>
         </div>
         <div className="sr-donut-legend">
           {usable.map((row, index) => (
             <div key={row.label}>
               <i style={{ background: palette[index % palette.length] }} />
               <span>{row.label}</span>
-              <strong>{inr(row.value)}</strong>
+              <strong>{formatValue(row.value)}</strong>
               <small>{((row.value / total) * 100).toFixed(1)}%</small>
             </div>
           ))}
@@ -606,9 +643,15 @@ function RankingChart({ title, subtitle, rows }: { title: string; subtitle: stri
 
 export function FinanceCommandCenter() {
   const { user } = useAuth()
+  const advanceOnlyView = user?.role === 'bd'
+  // Backend is the authority (resolve_advance_access): only Finance/Admin/Software Team can
+  // record an advance receipt or apply one to an invoice. This flag only hides the controls.
+  const canRecordAdvanceMoney = user?.role === 'finance' || user?.role === 'admin' || user?.role === 'software_team'
   const lockedDepartment = user && isTechnicalProjectManager(user.role) ? departmentCodeForRole(user.role) : null
   const [data, setData] = useState<Overview | null>(null)
   const [revenueTargets, setRevenueTargets] = useState<RevenueTarget[]>([])
+  const [advanceSummary, setAdvanceSummary] = useState<AdvanceSummary | null>(null)
+  const [advanceProjects, setAdvanceProjects] = useState<AdvanceProject[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -622,7 +665,7 @@ export function FinanceCommandCenter() {
   const [drilldown, setDrilldown] = useState<DrilldownKey | null>(null)
   const [drilldownLoading, setDrilldownLoading] = useState(false)
   const [drilldownError, setDrilldownError] = useState('')
-  const [drilldownData, setDrilldownData] = useState<{ overview: Overview; targets: RevenueTarget[] } | null>(null)
+  const [drilldownData, setDrilldownData] = useState<{ overview: Overview; targets: RevenueTarget[]; advanceProjects: AdvanceProject[] } | null>(null)
   const [expandedCalcId, setExpandedCalcId] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('monthly')
   const [day, setDay] = useState(currentDate)
@@ -639,7 +682,19 @@ export function FinanceCommandCenter() {
   const [pm, setPm] = useState('all')
   const [currency, setCurrency] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [advanceStatusFilter, setAdvanceStatusFilter] = useState<'all' | AdvanceStatus>('all')
   const [salesDateBasis, setSalesDateBasis] = useState<'projected' | 'booked'>('projected')
+  const [selectedAdvanceId, setSelectedAdvanceId] = useState<number | null>(null)
+  const [selectedAdvanceDetail, setSelectedAdvanceDetail] = useState<AdvanceProjectDetail | null>(null)
+  const [advanceDetailLoading, setAdvanceDetailLoading] = useState(false)
+  const [advanceDetailError, setAdvanceDetailError] = useState('')
+  const [advanceCollection, setAdvanceCollection] = useState<AdvanceCollection | null>(null)
+  const [advanceRecordBusy, setAdvanceRecordBusy] = useState(false)
+  const [advanceRecordError, setAdvanceRecordError] = useState('')
+  const [advanceRecordForm, setAdvanceRecordForm] = useState({ amount: '', currency: 'INR', payment_date: '', payment_mode: 'bank_transfer', reference_number: '', bank_reference: '', attachment: '' })
+  const [advanceApplyBusy, setAdvanceApplyBusy] = useState(false)
+  const [advanceApplyError, setAdvanceApplyError] = useState('')
+  const [advanceApplyForm, setAdvanceApplyForm] = useState({ invoice_id: '', amount: '' })
 
   useEffect(() => {
     if (lockedDepartment) setDepartment(lockedDepartment)
@@ -649,12 +704,23 @@ export function FinanceCommandCenter() {
     setLoading(true)
     setError('')
     void Promise.all([
-      apiFetch<Overview>('/finance/sales-revenue'),
-      apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
+      advanceOnlyView ? Promise.resolve<Overview>({ projects: [], revenue_events: [] }) : apiFetch<Overview>('/finance/sales-revenue'),
+      advanceOnlyView ? Promise.resolve<RevenueTargetResponse>({ targets: [] }) : apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
+      getAdvanceSummary(),
+      getAdvanceProjects(),
     ])
-      .then(([overview, targets]) => {
+      .then(([overview, targets, summary, projects]) => {
         setData(overview)
         setRevenueTargets(targets.targets)
+        setAdvanceSummary(summary)
+        setAdvanceProjects(projects)
+        // Best-effort notification refresh (Phase 4): deduped server-side per
+        // project/rule/day, and failures must never break the dashboard. Only
+        // roles with advance visibility call it, so operational roles never
+        // trigger a 403 audit entry.
+        if (canViewAdvanceAlerts(user?.role ?? null)) {
+          void refreshAdvanceNotifications().catch(() => undefined)
+        }
       })
       .catch(err => setError(err instanceof Error ? err.message : 'Unable to load finance data'))
       .finally(() => setLoading(false))
@@ -668,13 +734,15 @@ export function FinanceCommandCenter() {
     setExpandedCalcId(null)
     setSelectedProjectId(null)
     void Promise.all([
-      apiFetch<Overview>('/finance/sales-revenue'),
-      apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
+      advanceOnlyView ? Promise.resolve<Overview>({ projects: [], revenue_events: [] }) : apiFetch<Overview>('/finance/sales-revenue'),
+      advanceOnlyView ? Promise.resolve<RevenueTargetResponse>({ targets: [] }) : apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
+      getAdvanceProjects(),
     ])
-      .then(([overview, targets]) => {
-        setDrilldownData({ overview, targets: targets.targets })
+      .then(([overview, targets, projects]) => {
+        setDrilldownData({ overview, targets: targets.targets, advanceProjects: projects })
         setData(overview)
         setRevenueTargets(targets.targets)
+        setAdvanceProjects(projects)
       })
       .catch(err => setDrilldownError(err instanceof Error && err.message ? err.message : 'Request failed'))
       .finally(() => setDrilldownLoading(false))
@@ -696,21 +764,26 @@ export function FinanceCommandCenter() {
 
   const filterOptions = useMemo(() => {
     const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b))
+    const projectMap = new Map<number, string>()
+    allProjects.forEach(row => projectMap.set(row.project_id, `${row.project_code} · ${row.project_name}`))
+    advanceProjects.forEach(row => {
+      if (!projectMap.has(row.project_id)) projectMap.set(row.project_id, row.project_name)
+    })
     return {
-      clients: unique(allProjects.map(row => row.client_name)),
-      projects: unique(allProjects.map(row => row.project_code)),
-      bd: unique(allProjects.map(row => row.bd_name)),
-      pm: unique(allProjects.map(row => row.project_manager_name)),
-      currencies: unique(allProjects.map(row => row.currency)),
+      clients: unique([...allProjects.map(row => row.client_name), ...advanceProjects.map(row => row.client || '')]),
+      projects: [...projectMap.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value: String(value), label })),
+      bd: unique([...allProjects.map(row => row.bd_name), ...advanceProjects.map(row => row.bd_person || '')]),
+      pm: unique([...allProjects.map(row => row.project_manager_name), ...advanceProjects.map(row => row.project_manager || '')]),
+      currencies: unique([...allProjects.map(row => row.currency), ...advanceProjects.map(row => row.advance_currency || '')]),
       statuses: [...PAYMENT_STATUS_FILTERS],
     }
-  }, [allProjects])
+  }, [allProjects, advanceProjects])
 
-  function dimensionsMatch(row: { department_code: string; client_name: string; project_code: string; bd_name: string; project_manager_name: string; currency: string }) {
+  function dimensionsMatch(row: { project_id: number; department_code: string; client_name: string; bd_name: string; project_manager_name: string; currency: string }) {
     const departmentScope = lockedDepartment ?? department
     return (departmentScope === 'all' || row.department_code === departmentScope)
       && (client === 'all' || row.client_name === client)
-      && (projectFilter === 'all' || row.project_code === projectFilter)
+      && (projectFilter === 'all' || String(row.project_id) === projectFilter)
       && (bd === 'all' || row.bd_name === bd)
       && (pm === 'all' || row.project_manager_name === pm)
       && (currency === 'all' || row.currency === currency)
@@ -727,6 +800,20 @@ export function FinanceCommandCenter() {
     && dimensionsMatch(row)
   ), [allRevenue, range, department, client, projectFilter, bd, pm, currency])
 
+  const filteredAdvanceProjects = useMemo(() => advanceProjects.filter(row => {
+    const departmentScope = lockedDepartment ?? department
+    const dimensionMatches = (departmentScope === 'all' || row.department_code === departmentScope)
+      && (client === 'all' || row.client === client)
+      && (projectFilter === 'all' || String(row.project_id) === projectFilter)
+      && (bd === 'all' || row.bd_person === bd)
+      && (pm === 'all' || row.project_manager === pm)
+      && (currency === 'all' || row.advance_currency === currency)
+    const basisDate = row.expected_date || row.final_date
+    return dimensionMatches
+      && dateInside(basisDate, range)
+      && (advanceStatusFilter === 'all' || row.status === advanceStatusFilter)
+  }), [advanceProjects, range, department, lockedDepartment, client, projectFilter, bd, pm, currency, advanceStatusFilter])
+
   const activeProjects = filteredProjects
   const activeRevenue = filteredRevenue
 
@@ -738,6 +825,7 @@ export function FinanceCommandCenter() {
     setPm('all')
     setCurrency('all')
     setStatusFilter('all')
+    setAdvanceStatusFilter('all')
     setSalesDateBasis('projected')
     setPeriod('monthly')
     setDay(currentDate)
@@ -755,12 +843,13 @@ export function FinanceCommandCenter() {
     ?? null
 
   useEffect(() => {
-    if (selectedProjectId == null && drilldown == null) return
+    if (selectedProjectId == null && selectedAdvanceId == null && drilldown == null) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (drilldown != null) closeDrilldown()
+      else if (selectedAdvanceId != null) setSelectedAdvanceId(null)
       else setSelectedProjectId(null)
     }
     window.addEventListener('keydown', onKeyDown)
@@ -768,13 +857,157 @@ export function FinanceCommandCenter() {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [selectedProjectId, drilldown])
+  }, [selectedProjectId, selectedAdvanceId, drilldown])
 
   const serverKpiSummary = data?.kpi_summary ?? null
 
   const salesKpis = useMemo(() => {
     return aggregateFinanceCommandCenterKpis(activeProjects, activeRevenue)
   }, [activeProjects, activeRevenue])
+
+  const advanceAmountsVisible = advanceSummary?.financial_amounts_visible ?? false
+
+  // Advance Alerts (Phase 4): same four rules as the backend notification
+  // refresh. Management only sees high-value escalation rows; BD rows arrive
+  // already scoped to own projects; PM rows carry no amounts (server redacted).
+  const advanceAlerts = useMemo(() => {
+    if (!canViewAdvanceAlerts(user?.role ?? null)) return []
+    return buildAdvanceAlerts(advanceProjects, {
+      role: user?.role ?? null,
+      today: currentDate(),
+    })
+  }, [advanceProjects, user])
+  const advanceAlertCounts = useMemo(() => summarizeAdvanceAlerts(advanceAlerts), [advanceAlerts])
+
+  const advanceKpis = useMemo(() => ({
+    expected: filteredAdvanceProjects.reduce((sum, row) => sum + (row.advance_amount ?? 0), 0),
+    received: filteredAdvanceProjects.reduce((sum, row) => sum + (row.received_amount ?? 0), 0),
+    pending: filteredAdvanceProjects.reduce((sum, row) => sum + (row.pending_amount ?? 0), 0),
+    overdue: filteredAdvanceProjects.filter(row => row.status === 'overdue').reduce((sum, row) => sum + (row.pending_amount ?? 0), 0),
+    expectedCount: filteredAdvanceProjects.filter(row => row.advance_required).length,
+    receivedCount: filteredAdvanceProjects.filter(row => (row.received_amount ?? 0) > 0 || ['received', 'adjusted', 'closed'].includes(row.status)).length,
+    pendingCount: filteredAdvanceProjects.filter(row => (row.pending_amount ?? 0) > 0 || ['requested', 'pending', 'partial_received', 'overdue'].includes(row.status)).length,
+    overdueCount: filteredAdvanceProjects.filter(row => row.status === 'overdue').length,
+  }), [filteredAdvanceProjects])
+
+  const advanceStatusChart = useMemo(() => ADVANCE_STATUS_OPTIONS.map(([status, label]) => ({
+    label,
+    value: filteredAdvanceProjects.filter(row => row.status === status).length,
+  })), [filteredAdvanceProjects])
+
+  const advanceDepartmentChart = useMemo(() => {
+    const values = new Map<string, number>()
+    for (const row of filteredAdvanceProjects) {
+      const value = advanceAmountsVisible ? (row.advance_amount ?? 0) : 1
+      values.set(row.department, (values.get(row.department) ?? 0) + value)
+    }
+    return [...values.entries()].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }))
+  }, [filteredAdvanceProjects, advanceAmountsVisible])
+
+  const advanceTimeline = useMemo(() => {
+    const values = new Map<string, { value: number; secondary: number }>()
+    for (const row of filteredAdvanceProjects) {
+      const date = row.expected_date || row.final_date
+      if (!date) continue
+      const key = date.slice(0, 7)
+      const item = values.get(key) ?? { value: 0, secondary: 0 }
+      item.value += advanceAmountsVisible ? (row.advance_amount ?? 0) : 1
+      item.secondary += advanceAmountsVisible ? (row.received_amount ?? 0) : (['received', 'adjusted', 'closed'].includes(row.status) ? 1 : 0)
+      values.set(key, item)
+    }
+    return [...values.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => ({
+      label: monthLabel(key),
+      value: value.value,
+      secondary: value.secondary,
+    }))
+  }, [filteredAdvanceProjects, advanceAmountsVisible])
+
+  function displayAdvanceAmount(value: number | null) {
+    return advanceAmountsVisible && value != null ? inr(value) : 'Restricted'
+  }
+
+  function openAdvanceProject(projectId: number) {
+    setSelectedAdvanceId(projectId)
+    setSelectedAdvanceDetail(null)
+    setAdvanceDetailError('')
+    setAdvanceCollection(null)
+    setAdvanceRecordError('')
+    setAdvanceApplyError('')
+    setAdvanceDetailLoading(true)
+    void Promise.all([getAdvanceProjectDetail(projectId), getAdvanceCollection(projectId).catch(() => null)])
+      .then(([nextDetail, nextCollection]) => {
+        setSelectedAdvanceDetail(nextDetail)
+        setAdvanceCollection(nextCollection)
+      })
+      .catch(err => setAdvanceDetailError(err instanceof Error && err.message ? err.message : 'Unable to load advance payment detail'))
+      .finally(() => setAdvanceDetailLoading(false))
+  }
+
+  // Refresh every Finance view that the advance money touches.
+  function refreshAdvanceViews(projectId: number) {
+    return Promise.allSettled([
+      getAdvanceProjectDetail(projectId).then(setSelectedAdvanceDetail),
+      getAdvanceCollection(projectId).then(setAdvanceCollection),
+      getAdvanceSummary().then(setAdvanceSummary),
+      getAdvanceProjects().then(setAdvanceProjects),
+    ])
+  }
+
+  async function submitAdvanceReceived(projectId: number) {
+    const amount = Number(advanceRecordForm.amount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setAdvanceRecordError('Enter an amount greater than zero')
+      return
+    }
+    if (!advanceRecordForm.payment_date) {
+      setAdvanceRecordError('Payment date is required')
+      return
+    }
+    setAdvanceRecordBusy(true)
+    setAdvanceRecordError('')
+    try {
+      await recordAdvanceTransaction(projectId, {
+        amount,
+        currency: advanceRecordForm.currency,
+        payment_date: advanceRecordForm.payment_date,
+        payment_mode: advanceRecordForm.payment_mode,
+        reference_number: advanceRecordForm.reference_number || null,
+        bank_reference: advanceRecordForm.bank_reference || null,
+        attachment: advanceRecordForm.attachment || null,
+      })
+      setAdvanceRecordForm({ amount: '', currency: advanceRecordForm.currency, payment_date: '', payment_mode: 'bank_transfer', reference_number: '', bank_reference: '', attachment: '' })
+      await refreshAdvanceViews(projectId)
+    } catch (err) {
+      setAdvanceRecordError(err instanceof Error && err.message ? err.message : 'Unable to record the advance receipt')
+    } finally {
+      setAdvanceRecordBusy(false)
+    }
+  }
+
+  async function submitApplyAdvance(projectId: number) {
+    const invoiceId = Number(advanceApplyForm.invoice_id)
+    const amount = Number(advanceApplyForm.amount)
+    if (!invoiceId) {
+      setAdvanceApplyError('Select an invoice')
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setAdvanceApplyError('Enter an amount greater than zero')
+      return
+    }
+    setAdvanceApplyBusy(true)
+    setAdvanceApplyError('')
+    try {
+      const result = await applyAdvanceToInvoice(projectId, { invoice_id: invoiceId, amount })
+      setAdvanceCollection(result.collection)
+      setAdvanceApplyForm({ invoice_id: '', amount: '' })
+      await refreshAdvanceViews(projectId)
+    } catch (err) {
+      setAdvanceApplyError(err instanceof Error && err.message ? err.message : 'Unable to apply the advance to the invoice')
+    } finally {
+      setAdvanceApplyBusy(false)
+    }
+  }
 
   const targetMonthRows = useMemo(() => {
     const departmentScope = lockedDepartment ?? department
@@ -933,7 +1166,7 @@ export function FinanceCommandCenter() {
     setDetailTab('sales')
   }
 
-  const isEmpty = !loading && !error && allProjects.length === 0 && allRevenue.length === 0 && revenueTargets.length === 0
+  const isEmpty = !loading && !error && allProjects.length === 0 && allRevenue.length === 0 && revenueTargets.length === 0 && advanceProjects.length === 0
 
   if (loading) {
     return (
@@ -995,10 +1228,10 @@ export function FinanceCommandCenter() {
         id="finance-command-center-title"
         kicker="Phase 3 · Department Intelligence"
         title="Finance Command Center"
-        description="Real KPI, sales visualization, revenue/collection summary and monthly target achievement from live Sales/Revenue APIs. No forecast, no hard-coded values."
+        description="Real KPI, advance payment tracking, sales visualization, revenue/collection summary and target achievement from live Finance APIs. No forecast, no hard-coded values."
         icon={BarChart3}
         liveTitle="Live Financial Data"
-        liveNote="Streaming from Sales / Revenue APIs"
+        liveNote="Streaming from Finance APIs"
         actions={
           <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
         }
@@ -1033,17 +1266,19 @@ export function FinanceCommandCenter() {
             {lockedDepartment && <small style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}><Lock size={11}/> Your department only</small>}
           </label>
           <label><span>Client</span><select value={client} onChange={e => setClient(e.target.value)}><option value="all">All Clients</option>{filterOptions.clients.map(v => <option key={v}>{v}</option>)}</select></label>
-          <label><span>Project</span><select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}><option value="all">All Projects</option>{filterOptions.projects.map(v => <option key={v}>{v}</option>)}</select></label>
+          <label><span>Project</span><select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}><option value="all">All Projects</option>{filterOptions.projects.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}</select></label>
           <label><span>BD Person</span><select value={bd} onChange={e => setBd(e.target.value)}><option value="all">All BD</option>{filterOptions.bd.map(v => <option key={v}>{v}</option>)}</select></label>
           <label><span>Project Manager</span><select value={pm} onChange={e => setPm(e.target.value)}><option value="all">All PMs</option>{filterOptions.pm.map(v => <option key={v}>{v}</option>)}</select></label>
           <label><span>Currency</span><select value={currency} onChange={e => setCurrency(e.target.value)}><option value="all">All Currencies</option>{filterOptions.currencies.map(v => <option key={v}>{v}</option>)}</select></label>
-          <label><span>Sales Date Basis</span><select value={salesDateBasis} onChange={e => setSalesDateBasis(e.target.value as 'projected' | 'booked')}><option value="projected">Projected Payment Date</option><option value="booked">BD Sales / Commercial Date</option></select></label>
-          <label><span>Payment Status</span><select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">All Statuses</option>{PAYMENT_STATUS_FILTERS.map(v => <option key={v} value={v}>{v}</option>)}</select></label>
+          {!advanceOnlyView && <label><span>Sales Date Basis</span><select value={salesDateBasis} onChange={e => setSalesDateBasis(e.target.value as 'projected' | 'booked')}><option value="projected">Projected Payment Date</option><option value="booked">BD Sales / Commercial Date</option></select></label>}
+          {!advanceOnlyView && <label><span>Payment Status</span><select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">All Statuses</option>{PAYMENT_STATUS_FILTERS.map(v => <option key={v} value={v}>{v}</option>)}</select></label>}
+          <label><span>Advance Status</span><select value={advanceStatusFilter} onChange={e => setAdvanceStatusFilter(e.target.value as 'all' | AdvanceStatus)}><option value="all">All Advance Statuses</option>{ADVANCE_STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <button className="sr-reset" type="button" onClick={resetDimensionFilters}>Clear filters</button>
         </div>
-        <div className="sr-range-note">Showing Command Center data for <strong>{range[0]} to {range[1]}</strong>{(lockedDepartment ?? department) !== 'all' ? ` · ${DEPARTMENTS.find(([code]) => code === (lockedDepartment ?? department))?.[1] || department}` : ''}{currency !== 'all' ? ` · ${currency}` : ''}{statusFilter !== 'all' ? ` · ${statusFilter}` : ''}{serverKpiSummary ? ` · Backend KPI ${serverKpiSummary.reconciled ? 'reconciled' : 'mismatch ' + serverKpiSummary.reconciliation_difference_inr}` : ''}{salesKpis.reconciled ? '' : ' · Filtered KPI mismatch'}</div>
+        <div className="sr-range-note">Showing Command Center data for <strong>{range[0]} to {range[1]}</strong>{(lockedDepartment ?? department) !== 'all' ? ` · ${DEPARTMENTS.find(([code]) => code === (lockedDepartment ?? department))?.[1] || department}` : ''}{currency !== 'all' ? ` · ${currency}` : ''}{statusFilter !== 'all' ? ` · ${statusFilter}` : ''}{advanceStatusFilter !== 'all' ? ` · Advance: ${ADVANCE_STATUS_OPTIONS.find(([value]) => value === advanceStatusFilter)?.[1]}` : ''}{serverKpiSummary ? ` · Backend KPI ${serverKpiSummary.reconciled ? 'reconciled' : 'mismatch ' + serverKpiSummary.reconciliation_difference_inr}` : ''}{salesKpis.reconciled ? '' : ' · Filtered KPI mismatch'}</div>
       </section>
 
+      {!advanceOnlyView && <>
       <section className="finance-kpi-grid finance-kpi-grid-4" aria-label="Finance KPI summary" data-nk-reveal="stagger">
         <button className="finance-kpi-card kpi-drilldown" data-kpi="open_sales" type="button" onClick={() => openDrilldown('open_sales')} aria-label="Open Sales Pipeline details">
           <span><TrendingUp size={15}/> Open Sales Pipeline</span>
@@ -1096,7 +1331,111 @@ export function FinanceCommandCenter() {
           <small>Actual {inr(targetSummary.actual)} of {inr(targetSummary.target)}</small>
         </article>
       </section>
+      </>}
 
+      <section className="advance-section-heading" aria-labelledby="advance-payment-heading" data-nk-reveal>
+        <div>
+          <span>CLIENT ADVANCE PAYMENT</span>
+          <h3 id="advance-payment-heading">Advance Collection Intelligence</h3>
+          <p>A separate tracking layer for expected advances, receipts and collection status. Sales, Revenue and Outstanding calculations remain unchanged.</p>
+        </div>
+        <strong>{filteredAdvanceProjects.length} project(s)</strong>
+      </section>
+
+      <section className="finance-kpi-grid finance-kpi-grid-4 advance-kpi-grid" aria-label="Advance Payment KPI summary" data-nk-reveal="stagger">
+        <article className="finance-kpi-card" data-kpi="advance_expected">
+          <span><Target size={15}/> Advance Expected</span>
+          <strong>{advanceAmountsVisible ? inr(advanceKpis.expected) : 'Restricted'}</strong>
+          <small>{advanceKpis.expectedCount} project(s) require an advance</small>
+        </article>
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="advance_received" type="button" onClick={() => openDrilldown('advance_received')} aria-label="Advance Received details">
+          <span><WalletCards size={15}/> Advance Received</span>
+          <strong>{advanceAmountsVisible ? inr(advanceKpis.received) : 'Restricted'}</strong>
+          <small>{advanceKpis.receivedCount} project(s) with receipt activity</small>
+          <em className="kpi-drilldown-hint">View received advances</em>
+        </button>
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="advance_pending" type="button" onClick={() => openDrilldown('advance_pending')} aria-label="Advance Pending details">
+          <span><CircleDollarSign size={15}/> Advance Pending</span>
+          <strong>{advanceAmountsVisible ? inr(advanceKpis.pending) : 'Restricted'}</strong>
+          <small>{advanceKpis.pendingCount} project(s) awaiting collection</small>
+          <em className="kpi-drilldown-hint">View pending advances</em>
+        </button>
+        <button className="finance-kpi-card kpi-drilldown" data-kpi="advance_overdue" type="button" onClick={() => openDrilldown('advance_overdue')} aria-label="Overdue Advance details">
+          <span><FileText size={15}/> Overdue Advance</span>
+          <strong>{advanceAmountsVisible ? inr(advanceKpis.overdue) : 'Restricted'}</strong>
+          <small>{advanceKpis.overdueCount} overdue project(s)</small>
+          <em className="kpi-drilldown-hint">View overdue advances</em>
+        </button>
+      </section>
+
+      <section className="sr-panel advance-alerts-panel" aria-label="Advance Alerts" data-nk-reveal>
+        <div className="sr-panel-heading">
+          <div>
+            <span>ADVANCE ALERTS</span>
+            <h3>Advance Alerts</h3>
+            <p>Due today, overdue and pending follow-up advances. Same rules as the Finance/Management notification refresh; Sales, Revenue and Outstanding remain unchanged.</p>
+          </div>
+          <strong>{advanceAlertCounts.total} alert(s)</strong>
+        </div>
+        <div className="advance-alert-summary">
+          <article><span>Due Today</span><strong>{advanceAlertCounts.dueToday}</strong></article>
+          <article><span>Overdue</span><strong>{advanceAlertCounts.overdue}</strong></article>
+          <article><span>Pending Follow-ups</span><strong>{advanceAlertCounts.pendingFollowUps}</strong></article>
+        </div>
+        {advanceAlerts.length === 0 ? (
+          <div className="sr-empty">No advance alerts for your role right now</div>
+        ) : (
+          <div className="advance-alert-list">
+            {advanceAlerts.map(alert => (
+              <article
+                className="advance-alert-row"
+                key={`${alert.kind}-${alert.project_id}`}
+                data-kind={alert.kind}
+              >
+                <div><span>Project:</span><strong>{alert.project_name}</strong></div>
+                <div><span>Client:</span><strong>{alert.client || '—'}</strong></div>
+                <div><span>Pending:</span><strong>{alert.amounts_visible && alert.pending_amount != null ? inr(alert.pending_amount) : 'Restricted'}</strong></div>
+                <div><span>Due:</span><strong>{formatAdvanceAlertDate(alert.due_date)}</strong></div>
+                <div>
+                  <span>Status:</span>
+                  <strong>
+                    {alert.kind === 'overdue' && alert.days_overdue ? `Overdue · ${alert.days_overdue}d` : alert.status_label}
+                  </strong>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="sr-visual-stage" aria-label="Advance Payment visualizations" data-nk-reveal>
+        <div className="advance-chart-grid">
+          <DonutChart title="Advance Status Distribution" subtitle="Project count across all eight derived advance statuses." rows={advanceStatusChart} formatValue={value => `${value} project${value === 1 ? '' : 's'}`} />
+          <ColumnChart title="Department-wise Advance Tracking" subtitle={advanceAmountsVisible ? 'Expected advance amount by department.' : 'Project count by department; monetary values are restricted for your role.'} rows={advanceDepartmentChart} formatValue={advanceAmountsVisible ? inr : value => `${value}`} />
+          <TrendChart title="Advance Collection Timeline" subtitle={advanceAmountsVisible ? 'Expected amount vs received amount, grouped by expected payment month.' : 'Expected projects vs completed receipt statuses by expected payment month.'} rows={advanceTimeline} primaryLabel={advanceAmountsVisible ? 'Expected Amount' : 'Expected Projects'} secondaryLabel={advanceAmountsVisible ? 'Received Amount' : 'Received Projects'} showValues formatValue={advanceAmountsVisible ? inr : value => `${value}`} />
+        </div>
+      </section>
+
+      <section className="sr-panel advance-pipeline-panel" data-nk-reveal>
+        <div className="sr-panel-heading">
+          <div><span>ADVANCE PAYMENT PIPELINE</span><h3>Project-wise Advance Tracking</h3><p>Live derived status from payment terms and transactions. Open a row for payment terms, receipts, follow-ups and status history.</p></div>
+          <strong>{filteredAdvanceProjects.length}</strong>
+        </div>
+        {filteredAdvanceProjects.length === 0 ? <div className="sr-empty">No advance payment records match the selected filters.</div> : (
+          <div className="sr-table-wrap"><table className="sr-table advance-pipeline-table">
+            <thead><tr><th>Project</th><th>Client</th><th>Department</th><th>BD Person</th><th>Project Manager</th><th>Project Value</th><th>Advance Required</th><th>Advance Amount</th><th>Received</th><th>Pending</th><th>Expected Date</th><th>Final Date</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>{[...filteredAdvanceProjects].sort((a, b) => (a.final_date || a.expected_date || '').localeCompare(b.final_date || b.expected_date || '')).map(row => (
+              <tr key={row.project_id}>
+                <td><strong>{row.project_name}</strong><br/><small>#{row.project_id}</small></td><td>{row.client || '—'}</td><td>{row.department}</td><td>{row.bd_person || '—'}</td><td>{row.project_manager || '—'}</td>
+                <td>{displayAdvanceAmount(row.project_value)}</td><td>{row.advance_required ? 'Yes' : 'No'}</td><td>{displayAdvanceAmount(row.advance_amount)}</td><td>{displayAdvanceAmount(row.received_amount)}</td><td>{displayAdvanceAmount(row.pending_amount)}</td>
+                <td>{row.expected_date || '—'}</td><td>{row.final_date || '—'}</td><td><span className="advance-status" data-status={row.status}>{row.status_label}</span></td><td><button className="finance-secondary-button" type="button" onClick={() => openAdvanceProject(row.project_id)}>View details</button></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </section>
+
+      {!advanceOnlyView && <>
       <section className="sr-target-panel" aria-labelledby="command-target-heading" data-nk-reveal>
         <div className="sr-target-heading">
           <div>
@@ -1255,6 +1594,129 @@ export function FinanceCommandCenter() {
           </div>
         )}
       </section>
+      </>}
+
+      {selectedAdvanceId != null && (() => {
+        const snapshot = advanceProjects.find(row => row.project_id === selectedAdvanceId) ?? null
+        const detail = selectedAdvanceDetail
+        const collection = advanceCollection
+        const applyAmount = Number(advanceApplyForm.amount)
+        const applyTarget = collection?.invoices.find(row => String(row.invoice_id) === advanceApplyForm.invoice_id) ?? null
+        const applyPreview = applyTarget && Number.isFinite(applyAmount) && applyAmount > 0
+          ? { invoiceTotal: applyTarget.invoice_total, resultingBalance: Math.max((applyTarget.balance ?? 0) - applyAmount, 0) }
+          : null
+        return (
+          <div className="sr-modal-backdrop" role="presentation" onMouseDown={() => setSelectedAdvanceId(null)}>
+            <section className="sr-modal" role="dialog" aria-modal="true" aria-label={`Advance payment detail for ${snapshot?.project_name || selectedAdvanceId}`} onMouseDown={event => event.stopPropagation()}>
+              <div className="sr-modal-header">
+                <div><span>CLIENT ADVANCE PAYMENT DETAIL</span><h3>{snapshot?.project_name || `Project #${selectedAdvanceId}`}</h3><p>{snapshot?.client || '—'} · {snapshot?.department || '—'} · Status {snapshot?.status_label || '—'}</p></div>
+                <button className="sr-modal-close" type="button" onClick={() => setSelectedAdvanceId(null)} aria-label="Close advance payment detail"><X size={20}/></button>
+              </div>
+              {advanceDetailLoading && <div className="finance-empty-state" role="status">Loading advance payment detail...</div>}
+              {!advanceDetailLoading && advanceDetailError && <div className="finance-error">Unable to load advance payment detail: {advanceDetailError}{' '}<button type="button" className="finance-inline-link" onClick={() => openAdvanceProject(selectedAdvanceId)}>Retry</button></div>}
+              {!advanceDetailLoading && !advanceDetailError && detail && (
+                <div className="advance-detail-stack">
+                  <div className="sr-facts">
+                    <div><span>Project Value</span><strong>{displayAdvanceAmount(detail.project_value)}</strong></div><div><span>Advance Expected</span><strong>{displayAdvanceAmount(detail.advance_amount)}</strong></div><div><span>Advance Received</span><strong>{displayAdvanceAmount(detail.received_amount)}</strong></div><div><span>Advance Pending</span><strong>{displayAdvanceAmount(detail.pending_amount)}</strong></div>
+                    <div><span>Expected Date</span><strong>{detail.expected_date || '—'}</strong></div><div><span>Final Date</span><strong>{detail.final_date || '—'}</strong></div><div><span>BD Person</span><strong>{detail.bd_person || '—'}</strong></div><div><span>Project Manager</span><strong>{detail.project_manager || '—'}</strong></div>
+                    <div><span>Status</span><strong><span className="advance-status" data-status={detail.status}>{detail.status_label}</span></strong></div><div className="wide"><span>Payment Terms</span><strong>{detail.payment_terms || (detail.financial_amounts_visible ? '—' : 'Restricted for your role')}</strong></div>
+                  </div>
+                  {/* Layer 1: client advance only - never revenue, never an invoice payment. */}
+                  <section className="advance-detail-section" data-layer="advance">
+                    <div className="sr-panel-heading"><div><span>ADVANCE COLLECTION</span><h3>Client Advance</h3><p>Money received before billing. It never becomes Revenue on its own.</p></div><strong>{collection ? collection.advance_status_label : '—'}</strong></div>
+                    <div className="sr-facts compact">
+                      <div><span>Expected</span><strong>{collection ? displayAdvanceAmount(collection.advance_expected_inr) : '—'}</strong></div>
+                      <div><span>Received</span><strong>{collection ? displayAdvanceAmount(collection.advance_received_inr) : '—'}</strong></div>
+                      <div><span>Pending</span><strong>{collection ? displayAdvanceAmount(collection.advance_pending_inr) : '—'}</strong></div>
+                      <div><span>Applied to Invoice</span><strong>{collection ? displayAdvanceAmount(collection.advance_applied_inr) : '—'}</strong></div>
+                      <div><span>Available / Unapplied</span><strong>{collection ? displayAdvanceAmount(collection.advance_unapplied_inr) : '—'}</strong></div>
+                      <div><span>Advance Status</span><strong>{collection ? collection.advance_status_label : '—'}</strong></div>
+                    </div>
+                  </section>
+
+                  {/* Layer 2: project / invoice collection - the actual receivable. */}
+                  <section className="advance-detail-section" data-layer="project">
+                    <div className="sr-panel-heading"><div><span>PROJECT COLLECTION</span><h3>Project &amp; Invoice Collection</h3><p>Total collected = advance received + invoice cash payments. An applied advance is counted once.</p></div><strong>{collection ? collection.collection_status : '—'}</strong></div>
+                    <div className="sr-facts compact">
+                      <div><span>Project Value</span><strong>{collection ? displayAdvanceAmount(collection.project_value_inr) : '—'}</strong></div>
+                      <div><span>Advance Collected</span><strong>{collection ? displayAdvanceAmount(collection.advance_received_inr) : '—'}</strong></div>
+                      <div><span>Advance Applied</span><strong>{collection ? displayAdvanceAmount(collection.advance_applied_inr) : '—'}</strong></div>
+                      <div><span>Invoice Cash Payments</span><strong>{collection ? displayAdvanceAmount(collection.invoice_cash_payments_inr) : '—'}</strong></div>
+                      <div><span>Total Collected</span><strong>{collection ? displayAdvanceAmount(collection.total_collected_inr) : '—'}</strong></div>
+                      <div><span>Remaining</span><strong>{collection ? displayAdvanceAmount(collection.remaining_project_balance_inr) : '—'}</strong></div>
+                      <div><span>Collection Status</span><strong>{collection ? collection.collection_status : '—'}</strong></div>
+                      <div><span>Invoice Status</span><strong>{collection ? collection.invoice_status : '—'}</strong></div>
+                    </div>
+                    {collection && collection.invoices.length > 0 && (
+                      <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Invoice</th><th>Status</th><th>Invoice Value</th><th>Cash Paid</th><th>Advance Applied</th><th>Total Settled</th><th>Outstanding</th></tr></thead><tbody>
+                        {collection.invoices.map(row => (
+                          <tr key={row.invoice_id}>
+                            <td>{row.invoice_number}</td>
+                            <td><span className="advance-status" data-status={row.status}>{titleCase(row.status)}</span></td>
+                            <td>{displayAdvanceAmount(row.invoice_total)}</td>
+                            <td>{displayAdvanceAmount(row.cash_payments)}</td>
+                            <td>{displayAdvanceAmount(row.advance_applied)}</td>
+                            <td>{displayAdvanceAmount(row.settled_total)}</td>
+                            <td>{displayAdvanceAmount(row.balance)}</td>
+                          </tr>
+                        ))}
+                      </tbody></table></div>
+                    )}
+                  </section>
+                  <section className="advance-detail-section">
+                    <div className="sr-panel-heading"><div><span>PAYMENT HISTORY</span><h3>Advance Transactions</h3></div><strong>{detail.transactions.length}</strong></div>
+                    {!detail.financial_amounts_visible ? <div className="sr-empty compact">Financial transaction details are restricted for your role.</div> : detail.transactions.length === 0 ? <div className="sr-empty compact">No advance transactions recorded.</div> : <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Reference</th><th>Bank Reference</th><th>Recorded By</th></tr></thead><tbody>{detail.transactions.map(row => <tr key={row.id}><td>{row.payment_date}</td><td>{money(row.amount, row.currency)}<br/><small>{inr(row.amount_inr)}</small></td><td>{titleCase(row.payment_mode)}</td><td>{row.reference_number || '—'}</td><td>{row.bank_reference || '—'}</td><td>{row.recorded_by || '—'}</td></tr>)}</tbody></table></div>}
+                  </section>
+                  <section className="advance-detail-section">
+                    <div className="sr-panel-heading"><div><span>COLLECTION FOLLOW-UPS</span><h3>Follow-up History</h3></div><strong>{detail.followups.length}</strong></div>
+                    {!detail.financial_amounts_visible ? <div className="sr-empty compact">Follow-up details are restricted for your role.</div> : detail.followups.length === 0 ? <div className="sr-empty compact">No follow-ups recorded.</div> : <div className="finance-timeline">{detail.followups.map(row => <div className="finance-timeline-item" key={row.id}><strong>{titleCase(row.communication_type)} · {row.contact_person}</strong><span>{row.followup_date}{row.next_followup_date ? ` · next ${row.next_followup_date}` : ''}</span><p>{row.remarks}</p></div>)}</div>}
+                  </section>
+                  {canRecordAdvanceMoney && (
+                    <section className="advance-detail-section" data-layer="finance-action">
+                      <div className="sr-panel-heading"><div><span>FINANCE ACTION</span><h3>Record Advance Received</h3><p>Money received against the agreed advance terms. Only Finance can record it.</p></div></div>
+                      {advanceRecordError && <div className="finance-error">{advanceRecordError}</div>}
+                      <div className="advance-action-grid">
+                        <label><span>Amount *</span><input type="number" min="0.01" step="0.01" value={advanceRecordForm.amount} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, amount: e.target.value })}/></label>
+                        <label><span>Currency</span><input maxLength={3} value={advanceRecordForm.currency} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, currency: e.target.value.toUpperCase() })}/></label>
+                        <label><span>Payment Date *</span><input type="date" value={advanceRecordForm.payment_date} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, payment_date: e.target.value })}/></label>
+                        <label><span>Payment Mode</span><select value={advanceRecordForm.payment_mode} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, payment_mode: e.target.value })}>
+                          <option value="bank_transfer">Bank Transfer</option><option value="neft">NEFT</option><option value="rtgs">RTGS</option><option value="imps">IMPS</option><option value="cheque">Cheque</option><option value="demand_draft">Demand Draft</option><option value="upi">UPI</option><option value="other">Other</option>
+                        </select></label>
+                        <label><span>Reference Number</span><input value={advanceRecordForm.reference_number} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, reference_number: e.target.value })}/></label>
+                        <label><span>Bank Reference</span><input value={advanceRecordForm.bank_reference} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, bank_reference: e.target.value })}/></label>
+                        <label className="span-all"><span>Receipt / Attachment</span><input value={advanceRecordForm.attachment} onChange={e => setAdvanceRecordForm({ ...advanceRecordForm, attachment: e.target.value })} placeholder="Receipt number or attachment reference"/></label>
+                      </div>
+                      <button type="button" className="operations-button" disabled={advanceRecordBusy} onClick={() => void submitAdvanceReceived(selectedAdvanceId)}>{advanceRecordBusy ? 'Saving...' : 'Record Advance Received'}</button>
+                    </section>
+                  )}
+                  {canRecordAdvanceMoney && collection && collection.invoices.length > 0 && (collection.advance_unapplied_inr ?? 0) > 0 && (
+                    <section className="advance-detail-section" data-layer="finance-action">
+                      <div className="sr-panel-heading"><div><span>FINANCE ACTION</span><h3>Apply Advance to Invoice</h3><p>Settles an invoice with money already received. The invoice value is never reduced.</p></div><strong>{displayAdvanceAmount(collection.advance_unapplied_inr)} available</strong></div>
+                      {advanceApplyError && <div className="finance-error">{advanceApplyError}</div>}
+                      <div className="advance-action-grid">
+                        <label><span>Invoice *</span><select value={advanceApplyForm.invoice_id} onChange={e => setAdvanceApplyForm({ ...advanceApplyForm, invoice_id: e.target.value })}>
+                          <option value="">Select invoice</option>
+                          {collection.invoices.map(row => <option key={row.invoice_id} value={row.invoice_id}>{row.invoice_number} · {displayAdvanceAmount(row.invoice_total)} · balance {displayAdvanceAmount(row.balance)}</option>)}
+                        </select></label>
+                        <label><span>Amount to Apply *</span><input type="number" min="0.01" step="0.01" value={advanceApplyForm.amount} onChange={e => setAdvanceApplyForm({ ...advanceApplyForm, amount: e.target.value })}/></label>
+                      </div>
+                      <div className="cw-readout">
+                        <span>Available Advance</span><b>{displayAdvanceAmount(collection.advance_unapplied_inr)}</b>
+                        {applyPreview && <><span>Invoice Value</span><b>{displayAdvanceAmount(applyPreview.invoiceTotal)}</b><span>Resulting Balance</span><b>{displayAdvanceAmount(applyPreview.resultingBalance)}</b></>}
+                      </div>
+                      <button type="button" className="operations-button" disabled={advanceApplyBusy} onClick={() => void submitApplyAdvance(selectedAdvanceId)}>{advanceApplyBusy ? 'Applying...' : 'Apply Advance to Invoice'}</button>
+                    </section>
+                  )}
+                  <section className="advance-detail-section">
+                    <div className="sr-panel-heading"><div><span>DERIVED STATUS AUDIT</span><h3>Status History</h3></div><strong>{detail.status_history.length}</strong></div>
+                    {detail.status_history.length === 0 ? <div className="sr-empty compact">No status changes recorded.</div> : <div className="finance-timeline">{detail.status_history.map(row => <div className="finance-timeline-item" key={row.id}><strong>{row.old_status_label || 'Initial'} → {row.new_status_label}</strong><span>{row.created_at.replace('T', ' ').slice(0, 19)}{row.created_by ? ` · ${row.created_by}` : ''}</span>{row.remarks && <p>{row.remarks}</p>}</div>)}</div>}
+                  </section>
+                </div>
+              )}
+            </section>
+          </div>
+        )
+      })()}
 
       {selectedProject && (
         <div className="sr-modal-backdrop" role="presentation" onMouseDown={() => setSelectedProjectId(null)}>
@@ -1446,6 +1908,47 @@ export function FinanceCommandCenter() {
               const ddRevenue = drilldownData.overview.revenue_events.filter(row => dateInside(row.revenue_date, range) && dimensionsMatch(row))
               const departmentScope = lockedDepartment ?? department
               const ddTargets = drilldownData.targets.filter(row => departmentScope === 'all' || row.department_code === departmentScope)
+              const ddAdvance = drilldownData.advanceProjects.filter(row => {
+                const basisDate = row.expected_date || row.final_date
+                return dateInside(basisDate, range)
+                  && (departmentScope === 'all' || row.department_code === departmentScope)
+                  && (client === 'all' || row.client === client)
+                  && (projectFilter === 'all' || String(row.project_id) === projectFilter)
+                  && (bd === 'all' || row.bd_person === bd)
+                  && (pm === 'all' || row.project_manager === pm)
+                  && (currency === 'all' || row.advance_currency === currency)
+                  && (advanceStatusFilter === 'all' || row.status === advanceStatusFilter)
+              })
+
+              if (drilldown === 'advance_pending' || drilldown === 'advance_overdue' || drilldown === 'advance_received') {
+                const rows = ddAdvance.filter(row => {
+                  if (drilldown === 'advance_overdue') return row.status === 'overdue'
+                  if (drilldown === 'advance_received') return (row.received_amount ?? 0) > 0 || ['received', 'adjusted', 'closed'].includes(row.status)
+                  return (row.pending_amount ?? 0) > 0 || ['requested', 'pending', 'partial_received', 'overdue'].includes(row.status)
+                })
+                const amount = rows.reduce((sum, row) => sum + (drilldown === 'advance_received' ? (row.received_amount ?? 0) : (row.pending_amount ?? 0)), 0)
+                const headline = drilldown === 'advance_received' ? 'Advance Received' : drilldown === 'advance_overdue' ? 'Overdue Advance' : 'Advance Pending'
+                return (
+                  <>
+                    <div className="sr-facts">
+                      <div><span>{headline}</span><strong>{advanceAmountsVisible ? inr(amount) : 'Restricted'}</strong></div>
+                      <div><span>Projects</span><strong>{rows.length}</strong></div>
+                      <div><span>Current filter</span><strong>{advanceStatusFilter === 'all' ? 'All Advance Statuses' : ADVANCE_STATUS_OPTIONS.find(([value]) => value === advanceStatusFilter)?.[1]}</strong></div>
+                      <div><span>Amount visibility</span><strong>{advanceAmountsVisible ? 'Visible' : 'Restricted'}</strong></div>
+                    </div>
+                    {rows.length === 0 ? <div className="sr-empty">No records available</div> : (
+                      <div className="sr-table-wrap"><table className="sr-table">
+                        <thead><tr><th>Client</th><th>Project</th><th>Department</th><th>BD Person</th><th>Expected</th><th>Received</th><th>Pending</th><th>Expected Date</th><th>Final Date</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody>{rows.map(row => <tr key={row.project_id}>
+                          <td>{row.client || '—'}</td><td><strong>{row.project_name}</strong><br/><small>#{row.project_id}</small></td><td>{row.department}</td><td>{row.bd_person || '—'}</td>
+                          <td>{displayAdvanceAmount(row.advance_amount)}</td><td>{displayAdvanceAmount(row.received_amount)}</td><td>{displayAdvanceAmount(row.pending_amount)}</td><td>{row.expected_date || '—'}</td><td>{row.final_date || '—'}</td>
+                          <td><span className="advance-status" data-status={row.status}>{row.status_label}</span></td><td><button className="finance-secondary-button" type="button" onClick={() => { closeDrilldown(); openAdvanceProject(row.project_id) }}>View details</button></td>
+                        </tr>)}</tbody>
+                      </table></div>
+                    )}
+                  </>
+                )
+              }
 
               if (drilldown === 'payment_pending' || drilldown === 'partial_payment' || drilldown === 'invoice_not_raised') {
                 type CollectionRow = { row: SalesProject; inv: InvoiceRow | null }

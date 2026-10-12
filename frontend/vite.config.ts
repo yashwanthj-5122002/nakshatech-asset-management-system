@@ -6,6 +6,8 @@ export default defineConfig({
   server: {
     port: 3100,
     host: '0.0.0.0',
+    // Docker Desktop bind mounts on Windows can miss native file events.
+    watch: { usePolling: true, interval: 300 },
     proxy: {
       '/api': {
         target: 'http://backend:8000',

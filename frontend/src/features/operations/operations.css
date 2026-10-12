@@ -288,3 +288,23 @@
 .operations-row-link{border:0;background:transparent;color:inherit;text-align:left;padding:0;cursor:pointer}.operations-row-link strong,.operations-row-link small{display:block}.operations-notification-list{display:grid;gap:10px}.operations-notification-list>button{display:flex;width:100%;gap:12px;text-align:left;border:1px solid var(--border-color,#d9e2ec);border-radius:12px;padding:14px;background:rgba(37,99,235,.05);color:inherit;cursor:pointer}.operations-notification-list>button.read{background:var(--surface,#fff)}.operations-notification-list>button div{flex:1}.operations-notification-list p{margin:5px 0}.operations-notification-list small{color:var(--text-muted,#64748b)}.operations-notification-list>button>span{width:8px;height:8px;border-radius:50%;background:#2563eb}
 .operations-instructions{margin:8px 0;padding:10px 12px;border-radius:10px;background:rgba(37,99,235,.06);font-size:.85rem;color:var(--text-color,#1a2b3c)}
 @media(max-width:900px){.operations-summary-columns{grid-template-columns:1fr}.operations-filter-grid{grid-template-columns:1fr}}
+
+/* Deep link highlight: /finance/billing?project=<id>&invoice=<id> and /management/project-360/<id>?tab=actions&invoice=<id> */
+.nk-deeplink-focus {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.18);
+}
+
+
+/* Finance billing: keep the payment lifecycle and Bad Debt disposition visible together. */
+.operations-status-stack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 760px) {
+  .operations-status-stack { justify-content: flex-start; }
+}

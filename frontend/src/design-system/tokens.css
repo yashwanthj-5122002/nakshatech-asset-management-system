@@ -84,6 +84,30 @@
   --nk-space-7: 32px;
   --nk-space-8: 40px;
 
+  /* Font weights — one normalized scale across the ERP */
+  --nk-w-regular: 400;
+  --nk-w-medium: 500;
+  --nk-w-semibold: 600;
+  --nk-w-bold: 700;
+
+  /* Typography hierarchy (approx. px in parentheses) */
+  --nk-caption: 0.7rem;        /* 11.2px — micro label / kicker */
+  --nk-meta: 0.75rem;          /* 12px   — small metadata */
+  --nk-meta-lg: 0.78rem;       /* 12.5px — raised metadata */
+  --nk-body: 0.875rem;         /* 14px   — body */
+  --nk-body-lg: 0.94rem;       /* 15px   — large body */
+  --nk-card-title: 1.06rem;    /* 17px   — card title */
+  --nk-section-title: 1.19rem; /* 19px   — section title */
+
+  /* Shared component metrics */
+  --nk-control-h: 40px;        /* buttons / inputs */
+  --nk-badge-h: 25px;          /* status badges and pills */
+  --nk-chip-h: 26px;           /* filter and component chips */
+  --nk-card-pad: 20px;         /* card internal gutter */
+  --nk-section-gap: 32px;      /* section-to-section rhythm */
+  /* Motion */
+  --nk-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
   /* Motion */
   --nk-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --nk-dur-fast: 140ms;

@@ -23,6 +23,14 @@ export type CommercialFormState = {
   fx_rate_to_inr: string
   fx_rate_mode: string
   fx_override_reason: string
+  /** Client Advance Request (input only; never changes the contract amount). */
+  advance_required: string
+  advance_payment_type: string
+  advance_percent: string
+  advance_amount: string
+  advance_currency_code: string
+  expected_advance_date: string
+  final_advance_date: string
 }
 
 export const emptyCommercialForm = (): CommercialFormState => ({
@@ -30,6 +38,8 @@ export const emptyCommercialForm = (): CommercialFormState => ({
   payment_terms: '', expected_billing_milestone: '', projected_payment_date: '', quotation_reference: '', po_wo_reference: '', notes: '',
   unit_rate: '', estimated_quantity: '', quantity_unit: '', milestones: [], estimated_direct_cost_inr: '',
   fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '',
+  advance_required: '', advance_payment_type: '', advance_percent: '', advance_amount: '', advance_currency_code: '',
+  expected_advance_date: '', final_advance_date: '',
 })
 
 export function commercialFormFromRevision(rev: CommercialEstimate): CommercialFormState {
@@ -44,6 +54,13 @@ export function commercialFormFromRevision(rev: CommercialEstimate): CommercialF
     milestones: (rev.milestones ?? []).map(m => ({ milestone_name: m.milestone_name, percent: m.percent == null ? '' : String(m.percent) })),
     estimated_direct_cost_inr: rev.estimated_direct_cost_inr == null ? '' : String(rev.estimated_direct_cost_inr),
     fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '',
+    advance_required: rev.advance_required == null ? '' : rev.advance_required ? 'yes' : 'no',
+    advance_payment_type: rev.advance_payment_type || '',
+    advance_percent: rev.advance_percent == null ? '' : String(rev.advance_percent),
+    advance_amount: rev.advance_amount == null ? '' : String(rev.advance_amount),
+    advance_currency_code: rev.advance_currency_code || rev.currency_code || 'INR',
+    expected_advance_date: rev.expected_advance_date || '',
+    final_advance_date: rev.final_advance_date || '',
   }
 }
 
@@ -68,6 +85,15 @@ export function commercialFormProblems(form: CommercialFormState): string[] {
     if (total > 100) problems.push('Milestone percentages cannot add up to more than 100%.')
   }
   if (form.currency_code !== 'INR' && form.fx_rate_to_inr.trim() && form.fx_override_reason.trim().length < 3) problems.push('A reason is required when entering the exchange rate manually.')
+  if (form.advance_required === 'yes') {
+    if (!form.advance_payment_type) problems.push('Advance Payment Type is required when an advance is requested.')
+    const percent = num(form.advance_percent)
+    const advanceAmount = num(form.advance_amount)
+    if (percent == null && advanceAmount == null) problems.push('Enter the Advance % or the Advance Amount.')
+    if (percent != null && (percent < 0 || percent > 100)) problems.push('Advance % must be between 0 and 100.')
+    if (advanceAmount != null && advanceAmount < 0) problems.push('Advance Amount cannot be negative.')
+    if (form.expected_advance_date && form.final_advance_date && form.final_advance_date < form.expected_advance_date) problems.push('Final Advance Date cannot be earlier than the Expected Advance Date.')
+  }
   return problems
 }
 
@@ -93,6 +119,14 @@ export function commercialFormToPayload(form: CommercialFormState, estimateDate?
     quantity_unit: unitBased ? (form.quantity_unit.trim() || DEFAULT_UNIT[form.billing_type] || null) : null,
     milestones: form.billing_type === 'milestone' ? form.milestones.map(m => ({ milestone_name: m.milestone_name.trim(), percent: Number(m.percent) })) : [],
     estimated_direct_cost_inr: num(form.estimated_direct_cost_inr),
+    // Client Advance Request (input only; the contract amount above is never reduced).
+    advance_required: form.advance_required === 'yes' ? true : form.advance_required === 'no' ? false : null,
+    advance_payment_type: form.advance_required === 'yes' ? form.advance_payment_type : form.advance_required === 'no' ? 'no_advance' : null,
+    advance_percent: form.advance_required === 'yes' ? num(form.advance_percent) : null,
+    advance_amount: form.advance_required === 'yes' ? num(form.advance_amount) : null,
+    advance_currency_code: form.advance_required === 'yes' ? (form.advance_currency_code || form.currency_code) : null,
+    expected_advance_date: form.advance_required === 'yes' ? (form.expected_advance_date || null) : null,
+    final_advance_date: form.advance_required === 'yes' ? (form.final_advance_date || null) : null,
     ...(estimateDate ? { estimate_date: estimateDate } : {}),
     fx_rate_to_inr: manual,
     fx_rate_mode: manual ? form.fx_rate_mode : null,

@@ -36,6 +36,15 @@ export type CommercialEstimate = {
   expected_tax: number
   expected_gross: number
   estimated_direct_cost_inr: number | null
+  /** Client Advance Request terms (input only; never part of Sales/Revenue/Outstanding). */
+  advance_required?: boolean | null
+  advance_payment_type?: string | null
+  advance_percent?: number | null
+  advance_amount?: number | null
+  advance_base_amount?: number | null
+  advance_currency_code?: string | null
+  expected_advance_date?: string | null
+  final_advance_date?: string | null
   fx_snapshot_id: number | null
   fx_rate_to_inr: number
   fx_rate_date: string

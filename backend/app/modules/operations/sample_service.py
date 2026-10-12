@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
-from app.modules.notifications.service import create_global_notification, resolve_recipient_users
+from app.modules.notifications.service import resolve_recipient_users
 from app.modules.operations.models import BDOpportunity, BDOpportunityEvent
 from app.modules.operations.sample_models import (
     TechnicalSampleDepartment,
@@ -225,23 +225,8 @@ def _sample_request_message(db: Session, row: TechnicalSampleRequest, department
 
 
 def create_sample_team_notifications(db: Session, *, sample_request_id: int) -> int:
-    row = db.get(TechnicalSampleRequest, sample_request_id)
-    if row is None:
-        return 0
-    created = 0
-    for department in row.departments:
-        for user in _sample_recipients(db, department.department_code):
-            created += len(create_global_notification(
-                db,
-                event_type="technical.sample.requested",
-                title=f"Technical sample requested: {row.request_code}",
-                message=_sample_request_message(db, row, department.department_code),
-                category="system",
-                target_url="/sample-requests",
-                recipient_user_ids=[user.id],
-                dedupe_key=f"technical.sample.requested.{row.id}.{department.department_code}.{user.id}",
-            ))
-    return created
+    logger.info("retired Sample Request notification ignored sample_request_id=%s", sample_request_id)
+    return 0
 
 
 def deliver_sample_team_emails(db: Session, *, sample_request_id: int) -> tuple[int, int]:
@@ -349,26 +334,13 @@ def create_bd_sample_submission_notification(
     department_code: str,
     attempt_no: int,
 ) -> int:
-    row = db.get(TechnicalSampleRequest, sample_request_id)
-    if row is None:
-        return 0
-    opportunity = db.get(BDOpportunity, row.opportunity_id)
-    if opportunity is None:
-        return 0
-    created = create_global_notification(
-        db,
-        event_type="bd.sample.submitted",
-        title=f"Sample submitted: {row.request_code} - {TECHNICAL_DEPARTMENT_LABELS[department_code]}",
-        message=(
-            f"{TECHNICAL_DEPARTMENT_LABELS[department_code]} submitted sample attempt {attempt_no} for "
-            f"{row.request_code}. Review the submission in Sample Requests before sending it to the client."
-        ),
-        category="system",
-        target_url="/sample-requests",
-        recipient_user_ids=[opportunity.owner_user_id],
-        dedupe_key=f"bd.sample.submitted.{row.id}.{department_code}.{attempt_no}",
+    logger.info(
+        "retired Sample Request submission notification ignored sample_request_id=%s department=%s attempt=%s",
+        sample_request_id,
+        department_code,
+        attempt_no,
     )
-    return len(created)
+    return 0
 
 
 def send_sample_to_client_review(
@@ -479,29 +451,8 @@ def record_sample_client_decision(
 
 
 def create_revision_team_notifications(db: Session, *, sample_request_id: int) -> int:
-    row = db.get(TechnicalSampleRequest, sample_request_id)
-    if row is None:
-        return 0
-    created = 0
-    for department in row.departments:
-        if department.status != "revision_requested":
-            continue
-        for user in _sample_recipients(db, department.department_code):
-            created += len(create_global_notification(
-                db,
-                event_type="technical.sample.revision_requested",
-                title=f"Client revision requested: {row.request_code}",
-                message=(
-                    f"Client requested a revision from {TECHNICAL_DEPARTMENT_LABELS[department.department_code]}.\n"
-                    f"Feedback: {department.revision_feedback or 'See BD feedback'}\n"
-                    "Open Sample Requests, start the revision and submit a new attempt."
-                ),
-                category="system",
-                target_url="/sample-requests",
-                recipient_user_ids=[user.id],
-                dedupe_key=f"technical.sample.revision.{row.id}.{department.department_code}.{len(department.submissions) + 1}.{user.id}",
-            ))
-    return created
+    logger.info("retired Sample Request revision notification ignored sample_request_id=%s", sample_request_id)
+    return 0
 
 
 def deliver_revision_team_emails(db: Session, *, sample_request_id: int) -> tuple[int, int]:
@@ -555,23 +506,8 @@ def _finance_handoff_message(db: Session, row: TechnicalSampleRequest) -> tuple[
 
 
 def create_finance_client_approved_notifications(db: Session, *, sample_request_id: int) -> int:
-    row = db.get(TechnicalSampleRequest, sample_request_id)
-    if row is None:
-        return 0
-    message, opportunity = _finance_handoff_message(db, row)
-    if opportunity is None:
-        return 0
-    created = create_global_notification(
-        db,
-        event_type="finance.bd_opportunity.client_approved",
-        title=f"Client approved - create Client/Project IDs: {opportunity.opportunity_code}",
-        message=message,
-        category="system",
-        target_url="/finance",
-        recipient_roles=["finance"],
-        dedupe_key=f"finance.bd_opportunity.client_approved.{opportunity.id}",
-    )
-    return len(created)
+    logger.info("retired Sample Request Finance notification ignored sample_request_id=%s", sample_request_id)
+    return 0
 
 
 def deliver_finance_client_approved_emails(db: Session, *, sample_request_id: int) -> tuple[int, int]:

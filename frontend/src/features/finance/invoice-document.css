@@ -1,0 +1,105 @@
+.invoice-preview-backdrop{position:fixed;inset:0;z-index:1400;background:rgba(3,18,34,.76);backdrop-filter:blur(5px);display:grid;place-items:center;padding:22px}
+.invoice-erp-settlement{margin:12px 16px 16px;border:1px solid #bae6fd;border-radius:12px;background:#f0f9ff;padding:12px 14px}
+.invoice-erp-settlement>header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.invoice-erp-settlement>header span{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#0369a1}
+.invoice-erp-settlement>header strong{font-size:.68rem;color:#64748b;font-weight:600}
+.invoice-erp-settlement>div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.invoice-erp-settlement>div>div{display:flex;flex-direction:column;gap:3px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:8px 10px}
+.invoice-erp-settlement>div span{font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b}
+.invoice-erp-settlement>div strong{font-size:.92rem;color:#0f172a;font-variant-numeric:tabular-nums}
+@media(max-width:900px){.invoice-erp-settlement>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.invoice-preview-dialog{width:min(1120px,97vw);height:min(94vh,940px);display:grid;grid-template-rows:auto 1fr;overflow:hidden;border:1px solid rgba(145,196,216,.42);border-radius:18px;background:#e7eef3;box-shadow:0 34px 100px rgba(0,0,0,.45)}
+.invoice-preview-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 18px;background:#082a4a;color:#fff;border-bottom:3px solid #08a8c4;flex:0 0 auto}
+.invoice-preview-toolbar>div:first-child{display:grid;gap:2px}
+.invoice-preview-toolbar span{font-size:.67rem;font-weight:900;letter-spacing:.13em;color:#63e5f6}
+.invoice-preview-toolbar h2{margin:0;font-size:1.15rem}
+.invoice-preview-toolbar p{margin:0;color:#bfd2df;font-size:.78rem}
+.invoice-preview-actions{display:flex;align-items:center;gap:8px}
+.invoice-preview-actions button{min-height:38px;display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.1);color:#fff;font-weight:800;cursor:pointer}
+.invoice-preview-actions button:hover{background:rgba(255,255,255,.18)}
+.invoice-preview-actions .invoice-preview-close{width:38px;justify-content:center;padding:0}
+
+/* Scroll area: the ONLY scrolling region. scrollbar-gutter keeps a reserved track so the
+   A4 sheet never shifts sideways when the scrollbar appears/disappears. */
+.invoice-preview-scroll-area{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable both-edges;display:flex;justify-content:center}
+
+.invoice-a4-sheet{position:relative;isolation:isolate;width:794px;max-width:calc(100% - 24px);min-height:1123px;flex:0 0 auto;margin:20px 0;padding:42px 46px 36px;overflow:hidden;background:#fff;color:#13293d;box-shadow:0 12px 36px rgba(15,35,55,.24);font-family:Inter,Arial,sans-serif}
+.invoice-a4-sheet>*:not(.invoice-a4-watermark){position:relative;z-index:1}
+.invoice-a4-watermark{position:absolute;z-index:0;inset:0;display:grid;place-items:center;pointer-events:none;overflow:hidden}
+.invoice-a4-watermark img{width:54%;max-width:430px;opacity:.055;filter:grayscale(1)}
+
+.invoice-a4-brand{display:flex;justify-content:space-between;align-items:center;gap:20px;padding-bottom:14px;border-bottom:2px solid #08a8c4}
+.invoice-a4-logo{height:46px;width:auto;object-fit:contain}
+.invoice-a4-brand h1{margin:0;font-size:1.55rem;letter-spacing:.05em;color:#082a4a;text-align:right}
+
+.invoice-a4-header-strip{display:grid;grid-template-columns:1.25fr 1fr;border:1px solid #cbd5e1;border-top:0;margin-bottom:18px}
+.invoice-a4-header-strip>div:first-child{padding:14px;border-right:1px solid #cbd5e1}
+.invoice-a4-header-strip>div:first-child strong{font-size:1.05rem;color:#082a4a}
+.invoice-a4-header-strip>div:first-child p{margin:3px 0 0;font-size:.74rem;color:#52677a}
+.invoice-a4-meta{display:grid;gap:6px;padding:14px}
+.invoice-a4-meta>div{display:flex;justify-content:space-between;gap:10px;font-size:.74rem}
+.invoice-a4-meta span{font-weight:900;letter-spacing:.07em;text-transform:uppercase;color:#168ca2;font-size:.62rem}
+.invoice-a4-meta strong{text-align:right}
+
+.invoice-a4-parties{display:grid;grid-template-columns:1.35fr 1fr;border:1px solid #cbd5e1;margin-bottom:18px}
+.invoice-a4-parties section{padding:14px}
+.invoice-a4-parties section+section{border-left:1px solid #cbd5e1}
+.invoice-a4-parties span{display:block;font-size:.62rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#168ca2}
+.invoice-a4-parties h3{margin:5px 0;font-size:.92rem}
+.invoice-a4-parties p{margin:4px 0;font-size:.74rem;color:#52677a}
+
+.invoice-a4-table-wrap{overflow-x:auto}
+.invoice-a4-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.72rem}
+/* Issue 1: explicit per-cell borders (separate + spacing 0) instead of a collapsed grid.
+   Collapsed borders get clipped by the overflow-x:auto wrapper, which left the product
+   row visually open under the Description column. Every cell now carries a bottom rule, so
+   each item closes with one continuous line across the full table width - also when the
+   description wraps. 1px keeps the row height (and therefore pagination) unchanged. */
+.invoice-a4-table th,.invoice-a4-table td{border-right:1px solid #dbe7ee;border-bottom:1px solid #dbe7ee}
+.invoice-a4-table th:last-child,.invoice-a4-table td:last-child{border-right:0}
+.invoice-a4-table th{padding:9px 7px;background:#082a4a;color:#fff;text-align:left;font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #08a8c4;border-right-color:#1d4a6b}
+.invoice-a4-table tbody tr:last-child td{border-bottom:1px solid #c2d8e3}
+.invoice-a4-table th:nth-last-child(-n+2),.invoice-a4-table td:nth-last-child(-n+2){text-align:right}
+.invoice-a4-table th:nth-child(1),.invoice-a4-table th:nth-child(3),.invoice-a4-table th:nth-child(4),.invoice-a4-table th:nth-child(5),.invoice-a4-table td:nth-child(1),.invoice-a4-table td:nth-child(3),.invoice-a4-table td:nth-child(4),.invoice-a4-table td:nth-child(5){text-align:center}
+.invoice-a4-table td{padding:11px 7px;vertical-align:top}
+.invoice-a4-table td small{display:block;margin-top:4px;color:#64748b}
+
+.invoice-a4-totals{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start;margin-top:15px}
+.invoice-a4-totals>div:first-child{display:grid;gap:6px;padding-top:6px}
+.invoice-a4-totals>div:first-child span{display:block;font-size:.62rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#168ca2}
+.invoice-a4-totals>div:first-child strong{font-size:.76rem;line-height:1.5}
+.invoice-a4-legal{margin:6px 0 0;font-size:.68rem;color:#52677a}
+.invoice-a4-totals table{width:100%;border-collapse:collapse;font-size:.75rem}
+.invoice-a4-totals th,.invoice-a4-totals td{padding:8px;border:1px solid #cbd5e1}
+.invoice-a4-totals th{text-align:left}
+.invoice-a4-totals td{text-align:right}
+.invoice-a4-totals tr:last-child{background:#eff8fb;font-weight:900}
+
+.invoice-a4-remittance,.invoice-a4-notes{margin-top:18px}
+.invoice-a4-remittance p,.invoice-a4-notes p{margin:6px 0 0;font-size:.72rem;color:#52677a}
+.invoice-a4-remittance span,.invoice-a4-notes span{display:block;font-size:.62rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#168ca2}
+.invoice-a4-bank-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 24px;margin-top:6px}
+.invoice-a4-signature-row{display:grid;grid-template-columns:1fr auto;align-items:end;gap:20px}
+.invoice-a4-qr{width:78px;height:78px;object-fit:contain}
+
+.invoice-a4-signature{display:flex;flex-direction:column;align-items:flex-end;margin-top:28px;margin-left:auto;width:220px;text-align:center;font-size:.76rem;font-weight:700;color:#13293d}
+.invoice-a4-signature-space{height:46px;width:100%}
+.invoice-a4-signature strong{font-size:.74rem}
+.invoice-a4-standalone .invoice-a4-table{font-size:.66rem}
+.invoice-a4-standalone .invoice-a4-table th,.invoice-a4-standalone .invoice-a4-table td{padding:8px 5px}
+
+.invoice-a4-sheet footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:30px;padding-top:12px;border-top:1px solid #cbd5e1;font-size:.66rem;color:#64748b}
+.invoice-a4-footer-logo{height:20px;width:auto;object-fit:contain;opacity:.85}
+
+@media(max-width:760px){
+  .invoice-preview-backdrop{padding:0}
+  .invoice-preview-dialog{width:100vw;height:100vh;max-height:none;border-radius:0}
+  .invoice-preview-toolbar{align-items:flex-start;padding:12px}
+  .invoice-preview-toolbar p{display:none}
+  .invoice-preview-actions button{font-size:0;width:38px;justify-content:center;padding:0}
+  .invoice-a4-header-strip{grid-template-columns:1fr}
+  .invoice-a4-header-strip>div:first-child{border-right:0;border-bottom:1px solid #cbd5e1}
+  .invoice-a4-parties{grid-template-columns:1fr}
+  .invoice-a4-parties section+section{border-left:0;border-top:1px solid #cbd5e1}
+  .invoice-a4-totals{grid-template-columns:1fr}
+}

@@ -549,8 +549,23 @@ def submit_project_to_finance(db: Session, *, actor: User, project_id: int) -> P
         title=f"Finance review required: {project.project_code}",
         message=f"BD submitted Project ID {project.project_code} for Finance approval. Client ID: {_client_code(project) or 'Not recorded'}.",
         category="approval",
-        target_url="/finance",
+        target_url=f"/finance?project={project.id}",
         recipient_roles=[FINANCE_ROLE],
+        # Popup experience (additive): Finance must act, so the center popup offers
+        # Approve / Return. Closing the popup never resolves this - only the real
+        # finance_review_project action does.
+        severity="info",
+        requires_action=True,
+        metadata={
+            "project_id": project.id,
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "submitted_by": actor.full_name or actor.email,
+            "submitted_at": workflow.submitted_at.isoformat() if workflow.submitted_at else None,
+            "current_stage": "Finance Approval",
+            "amount": workflow.commercial_value,
+            "currency": workflow.currency,
+        },
     )
     db.flush()
     return workflow
@@ -694,8 +709,36 @@ def finance_review_project(db: Session, *, actor: User, project_id: int, payload
         title=title,
         message=message,
         category="approval",
-        target_url="/bd",
+        target_url=f"/bd/projects?project={project.id}",
         recipient_user_ids=[workflow.bd_owner_user_id],
+        severity="danger" if payload.decision == "return" else "success",
+        requires_action=payload.decision == "return",
+        metadata={
+            "project_id": project.id,
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "returned_by": "Finance" if payload.decision == "return" else None,
+            "status": "Correction Required" if payload.decision == "return" else "Approved",
+            "reason": (payload.feedback or None) if payload.decision == "return" else None,
+            "required_action": (
+                "Upload the missing Work Order and resubmit."
+                if payload.decision == "return"
+                else None
+            ),
+            "decided_by": actor.full_name or actor.email,
+        },
+    )
+    # The Finance approval/return action really completed, so the Finance pending
+    # notification is now resolved. This runs inside the same transaction as the
+    # workflow transition - the popup itself never performs this.
+    from app.modules.notifications.service import resolve_notifications
+
+    resolve_notifications(
+        db,
+        recipient_user_ids=[user.id for user in resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE])],
+        event_type="workflow.project.submitted_finance",
+        resolved_by_id=actor.id,
+        resolution_note=f"Finance {payload.decision}",
     )
     db.flush()
     return workflow
@@ -804,8 +847,19 @@ def assign_project_manager(db: Session, *, actor: User, project_id: int, payload
         title=f"New project assigned: {project.project_code}",
         message=f"You are the {department_label(workflow.performing_department_code)} Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho/project-360/{project.id}",
         recipient_user_ids=[pm.id],
+        # Actionable and ASSIGNMENT-scoped: only the assigned PM is a recipient.
+        # A different PM must never receive this.
+        severity="warning",
+        requires_action=True,
+        metadata={
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "assigned_role": department_label(workflow.performing_department_code),
+            "amount": workflow.commercial_value,
+            "currency": workflow.currency,
+        },
     )
     db.flush()
     return workflow, pm
@@ -959,7 +1013,7 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
             title=f"Project team assignment: {project.project_code}",
             message=f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}.",
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1087,7 +1141,7 @@ def confirm_rework_team(
                 f"Rework Cycle {cycle.cycle_number} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1215,7 +1269,7 @@ def allocate_rework_work(
                 f"Area {area} · Code {code} · {payload.quantity} {unit} · Target {payload.target_date.isoformat()}."
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1388,8 +1442,19 @@ def allocate_work(db: Session, *, actor: User, project_id: int, payload: Workflo
                 f"Area {payload.area_name} · Code {payload.package_code} · {payload.quantity} {payload.quantity_unit} · Target {payload.target_date.isoformat()}."
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
+            # Actionable, and ASSIGNMENT-scoped: only the assigned user is a recipient.
+            # A different Production/QC/QA user must never receive it.
+            severity="warning",
+            requires_action=True,
+            metadata={
+                "project_name": project.project_code,
+                "package_code": payload.package_code,
+                "assigned_role": role.upper(),
+                "area": payload.area_name,
+                "target_date": payload.target_date.isoformat() if payload.target_date else None,
+            },
         )
     db.flush()
     return package
@@ -1516,7 +1581,7 @@ def complete_production(db: Session, *, actor: User, work_package_id: int) -> Or
         title=f"Production completed: {package.package_code}",
         message=f"Project ID {project.project_code} · Code {package.package_code} is ready for QC.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=recipients,
     )
     db.flush()
@@ -1693,7 +1758,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         title=title,
         message=message,
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in recipients if uid],
     )
     db.flush()
@@ -1718,7 +1783,7 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
         title=f"Delivered: {package.package_code}",
         message=f"Project ID {project.project_code} · Code {package.package_code} has been delivered.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in {package.team_leader_user_id, pm.id if pm else None} if uid],
     )
     db.flush()
@@ -1828,7 +1893,7 @@ def finance_close_project(db: Session, *, actor: User, project_id: int, payload:
         title=f"Project closed: {project.project_code}",
         message=f"Finance Closure is complete for Project ID {project.project_code}.",
         category="system",
-        target_url="/bd",
+        target_url=f"/bd/projects?project={project.id}",
         recipient_user_ids=recipients,
     )
     db.flush()

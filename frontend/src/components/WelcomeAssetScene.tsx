@@ -1,0 +1,383 @@
+import { useEffect, useRef } from 'react'
+// @ts-ignore - Three.js is the existing renderer used by react-globe.gl.
+import * as THREE from 'three'
+
+export interface AssetNodePosition { key: string; x: number; y: number; depth?: number; opacity?: number }
+interface Props {
+  paused: boolean
+  reducedMotion: boolean
+  selected: string | null
+  highlighted: string | null
+  resetVersion: number
+  onReady: (ready: boolean) => void
+  onProject: (positions: AssetNodePosition[]) => void
+  onHighlight: (key: string | null) => void
+  onSelect: (key: string) => void
+}
+
+const nodes = [
+  { key: 'gis', arm: [0, 1, 0] }, { key: 'ortho', arm: [0, 0, -1] },
+  { key: 'drone', arm: [1, 0, 0] }, { key: 'survey', arm: [0, -1, 0] },
+  { key: 'civil', arm: [0, 0, 1] }, { key: 'lidar', arm: [-1, 0, 0] },
+]
+
+// Motion adapted from the user's supplied Originkit Metal Rosette component.
+const CYCLE_SECONDS = 3.45
+const HOLD = .48
+const START_PHASE = (1 - HOLD) * (.4 + .31) + HOLD / 2
+function armExtension(cycle: number): number {
+  const phase = cycle - Math.floor(cycle)
+  const rest = (1 - HOLD) * .4
+  const expand = (1 - HOLD) * .31
+  const collapse = (1 - HOLD) * .29
+  if (phase < rest) return 0
+  if (phase < rest + expand) return 1 - Math.pow(1 - (phase - rest) / expand, 3)
+  if (phase < rest + expand + HOLD) return 1
+  return 1 - Math.pow(Math.min((phase - rest - expand - HOLD) / collapse, 1), 3)
+}
+
+/** Real 3D geometry; projected HTML controls stay attached to the same render frame. */
+export default function WelcomeAssetScene(props: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const latest = useRef(props)
+  const invalidate = useRef<(() => void) | null>(null)
+  latest.current = props
+  useEffect(() => { invalidate.current?.() }, [props.paused, props.reducedMotion, props.selected, props.highlighted, props.resetVersion])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const host = canvas?.parentElement
+    const interaction = host?.parentElement
+    if (!canvas || !host || !interaction) return
+    let renderer: any
+    try {
+      const context = canvas.getContext('webgl2', { alpha: true, antialias: true, powerPreference: 'low-power' })
+      if (!context) { latest.current.onReady(false); return }
+      renderer = new THREE.WebGLRenderer({ canvas, context, alpha: true, antialias: true })
+    } catch { latest.current.onReady(false); return }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.setClearColor(0x000000, 0)
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(34, 1, .1, 60)
+    camera.position.set(0, .25, 13)
+    camera.lookAt(0, 0, 0)
+    scene.add(new THREE.AmbientLight(0x63b9eb, 2.3))
+    const keyLight = new THREE.DirectionalLight(0xbef9ff, 4.2)
+    keyLight.position.set(-4, 6, 5)
+    scene.add(keyLight)
+    const blueLight = new THREE.PointLight(0x006dff, 75, 20)
+    blueLight.position.set(4, -2, 4)
+    scene.add(blueLight)
+    const cyanLight = new THREE.PointLight(0x03cfee, 45, 15)
+    cyanLight.position.set(-3, 2, 3)
+    scene.add(cyanLight)
+
+    const constellation = new THREE.Group()
+    scene.add(constellation)
+    const rosetteView = new THREE.Group()
+    rosetteView.rotation.set(35 * Math.PI / 180, -Math.PI / 4, 0)
+    const rosette = new THREE.Group()
+    rosetteView.add(rosette)
+    constellation.add(rosetteView)
+    const disposables: any[] = []
+    const track = (object: any) => { disposables.push(object); return object }
+    const makeCube = (size: number, hub = false) => {
+      const group = new THREE.Group()
+      const geometry = track(new THREE.BoxGeometry(size, size, size))
+      const material = track(new THREE.MeshStandardMaterial({
+        color: hub ? 0x064c73 : 0x123f5b, metalness: .56, roughness: .24,
+        emissive: hub ? 0x003b61 : 0x00263e,
+        emissiveIntensity: .6, transparent: true, opacity: .93,
+      }))
+      const mesh = new THREE.Mesh(geometry, material)
+      group.add(mesh)
+      const edges = track(new THREE.EdgesGeometry(geometry))
+      const edgeMaterial = track(new THREE.LineBasicMaterial({ color: hub ? 0x68efff : 0x26bfea, transparent: true, opacity: .8 }))
+      group.add(new THREE.LineSegments(edges, edgeMaterial))
+      // Fine circuit lines on the front face give each solid volume an illuminated surface.
+      const circuitVertices = new Float32Array([
+        -size * .34, size * .27, size * .503, size * .12, size * .27, size * .503,
+        size * .12, size * .27, size * .503, size * .12, size * .1, size * .503,
+        size * .12, size * .1, size * .503, size * .34, size * .1, size * .503,
+        -size * .34, -size * .28, size * .503, size * .34, -size * .28, size * .503,
+      ])
+      const circuit = track(new THREE.BufferGeometry())
+      circuit.setAttribute('position', new THREE.BufferAttribute(circuitVertices, 3))
+      group.add(new THREE.LineSegments(circuit, track(new THREE.LineBasicMaterial({ color: 0x28d5ef, transparent: true, opacity: .6 }))))
+      group.rotation.set(0, 0, 0)
+      return { group, material, edgeMaterial }
+    }
+    const hub = makeCube(1.55, true)
+    rosette.add(hub.group)
+    let disposed = false
+    const logo = new THREE.TextureLoader().load('/nakshatech-horizontal-light.png', () => {
+      if (disposed) return
+      logo.colorSpace = THREE.SRGBColorSpace
+      paint()
+    })
+    track(logo)
+    hub.group.add(new THREE.Mesh(
+      track(new THREE.PlaneGeometry(1.23, .217)),
+      track(new THREE.MeshBasicMaterial({ map: logo, transparent: true, depthWrite: false, toneMapped: false })),
+    ))
+    hub.group.children[hub.group.children.length - 1].position.set(0, -.015, .785)
+
+    const glowCanvas = document.createElement('canvas')
+    glowCanvas.width = glowCanvas.height = 128
+    const glowContext = glowCanvas.getContext('2d')!
+    const gradient = glowContext.createRadialGradient(64, 64, 0, 64, 64, 64)
+    gradient.addColorStop(0, '#18bbff')
+    gradient.addColorStop(.23, '#0995cb88')
+    gradient.addColorStop(1, '#0079bb00')
+    glowContext.fillStyle = gradient
+    glowContext.fillRect(0, 0, 128, 128)
+    const glowTexture = track(new THREE.CanvasTexture(glowCanvas))
+    const glow = new THREE.Sprite(track(new THREE.SpriteMaterial({ map: glowTexture, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false })))
+    glow.scale.set(6, 6, 1)
+    glow.position.z = -.8
+    constellation.add(glow)
+
+    const dotGeometry = track(new THREE.SphereGeometry(.035, 8, 8))
+    const dotMaterial = track(new THREE.MeshBasicMaterial({ color: 0x7aeeff }))
+    const satellites = nodes.map(({ key, arm }, index) => {
+      const cube = makeCube(.78)
+      const origin = new THREE.Vector3(...arm).multiplyScalar(3.05)
+      cube.group.position.copy(origin)
+      rosette.add(cube.group)
+      const lineGeometry = track(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), origin]))
+      const lineMaterial = track(new THREE.LineBasicMaterial({ color: 0x0875ad, transparent: true, opacity: .55 }))
+      const line = new THREE.Line(lineGeometry, lineMaterial)
+      rosette.add(line)
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial)
+      rosette.add(dot)
+      return { key, index, ...cube, origin, lineGeometry, lineMaterial, dot }
+    })
+
+    // Latitude and meridian curves create the same planetary depth as the login globe.
+    const globeGrid = new THREE.Group()
+    const gridMaterial = track(new THREE.LineBasicMaterial({ color: 0x1688c1, transparent: true, opacity: .12 }))
+    for (let latitude = -60; latitude <= 60; latitude += 30) {
+      const phi = latitude * Math.PI / 180
+      const points = Array.from({ length: 129 }, (_, index) => {
+        const theta = index / 128 * Math.PI * 2
+        return new THREE.Vector3(3.5 * Math.cos(phi) * Math.cos(theta), 3.5 * Math.sin(phi), 3.5 * Math.cos(phi) * Math.sin(theta))
+      })
+      globeGrid.add(new THREE.Line(track(new THREE.BufferGeometry().setFromPoints(points)), gridMaterial))
+    }
+    for (let meridian = 0; meridian < 6; meridian++) {
+      const theta = meridian / 6 * Math.PI
+      const points = Array.from({ length: 129 }, (_, index) => {
+        const phi = index / 128 * Math.PI * 2
+        return new THREE.Vector3(3.5 * Math.cos(phi) * Math.cos(theta), 3.5 * Math.sin(phi), 3.5 * Math.cos(phi) * Math.sin(theta))
+      })
+      globeGrid.add(new THREE.Line(track(new THREE.BufferGeometry().setFromPoints(points)), gridMaterial))
+    }
+    constellation.add(globeGrid)
+
+    let width = 1
+    let height = 1
+    let visible = true
+    let contextAvailable = true
+    let frame = 0
+    let elapsed = 0
+    let previousTime = performance.now()
+    let lastReset = latest.current.resetVersion
+    let yaw = -.06
+    let pitch = .035
+    let targetYaw = yaw
+    let targetPitch = pitch
+    let dragging = false
+    let keyboardInspection = false
+    let previousX = 0
+    let previousY = 0
+    let pressX = 0
+    let pressY = 0
+    let pressedNode: string | null = null
+    const raycaster = new THREE.Raycaster()
+    const pointerVector = new THREE.Vector2()
+    const pick = (event: PointerEvent) => {
+      const rect = interaction.getBoundingClientRect()
+      pointerVector.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
+      raycaster.setFromCamera(pointerVector, camera)
+      const hit = raycaster.intersectObjects(satellites.map(node => node.group.children[0]), false)[0]
+      return hit ? satellites.find(node => node.group.children[0] === hit.object)?.key ?? null : null
+    }
+    const labelPosition = new THREE.Vector3()
+    const shouldAnimate = () => contextAvailable && visible && !document.hidden && !latest.current.paused && !latest.current.reducedMotion
+    const inspecting = () => dragging || keyboardInspection || Boolean(latest.current.highlighted || latest.current.selected)
+    const paint = () => {
+      if (disposed || !contextAvailable) return
+      if (lastReset !== latest.current.resetVersion) {
+        lastReset = latest.current.resetVersion
+        targetYaw = yaw = -.06
+        targetPitch = pitch = .035
+        elapsed = 0
+      }
+      yaw += (targetYaw - yaw) * .2
+      pitch += (targetPitch - pitch) * .2
+      constellation.rotation.set(pitch, yaw, 0)
+      const extension = latest.current.reducedMotion || inspecting() ? 1 : armExtension(START_PHASE + elapsed / CYCLE_SECONDS)
+      const spin = latest.current.reducedMotion || keyboardInspection ? 0 : elapsed * Math.PI / 2
+      rosette.rotation.y = spin
+      globeGrid.rotation.y = elapsed * .026
+      for (const node of satellites) {
+        const active = node.key === (latest.current.highlighted ?? latest.current.selected)
+        node.group.position.copy(node.origin).multiplyScalar(extension)
+        node.group.visible = extension > .05
+        node.dot.visible = extension > .35
+        node.lineMaterial.opacity = extension * (active ? 1 : .5)
+        node.group.scale.setScalar(active ? 1.09 : 1)
+        node.material.emissiveIntensity = active ? 1.8 : .6
+        node.edgeMaterial.color.setHex(active ? 0x9cffff : 0x26bfea)
+        const attribute = node.lineGeometry.getAttribute('position')
+        attribute.setXYZ(1, node.group.position.x, node.group.position.y, node.group.position.z)
+        attribute.needsUpdate = true
+        const progress = ((elapsed * .22 + node.index / 6) % 1)
+        node.dot.position.copy(node.group.position).multiplyScalar(progress)
+      }
+      scene.updateMatrixWorld(true)
+      latest.current.onProject(satellites.map(node => {
+        node.group.getWorldPosition(labelPosition)
+        labelPosition.y -= .8
+        labelPosition.project(camera)
+        return {
+          key: node.key, x: (labelPosition.x + 1) / 2 * 100, y: (1 - labelPosition.y) / 2 * 100,
+          depth: labelPosition.z, opacity: Math.max(0, Math.min(1, (extension - .72) / .18)),
+        }
+      }))
+      renderer.render(scene, camera)
+      canvas.dataset.viewYaw = yaw.toFixed(4)
+      canvas.dataset.animation = shouldAnimate() ? 'running' : 'resting'
+      canvas.dataset.extension = extension.toFixed(4)
+      canvas.dataset.spin = spin.toFixed(4)
+    }
+    const loop = (time: number) => {
+      frame = 0
+      // Cap decorative rendering at 30 fps to keep input responsive on smaller devices.
+      if (time - previousTime >= 32) {
+        if (shouldAnimate() && !inspecting()) elapsed += Math.min((time - previousTime) / 1000, .1)
+        previousTime = time
+        paint()
+      }
+      if (shouldAnimate()) frame = requestAnimationFrame(loop)
+    }
+    const sync = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
+      previousTime = performance.now()
+      paint()
+      if (shouldAnimate()) frame = requestAnimationFrame(loop)
+    }
+    invalidate.current = sync
+    const resize = () => {
+      const rect = host.getBoundingClientRect()
+      width = Math.max(1, rect.width)
+      height = Math.max(1, rect.height)
+      renderer.setSize(width, height, false)
+      camera.aspect = width / height
+      camera.position.z = width < 600 ? 14 : 13
+      camera.updateProjectionMatrix()
+      sync()
+    }
+    const move = (event: PointerEvent) => {
+      if (dragging) {
+        targetYaw = Math.max(-.5, Math.min(.5, targetYaw + (event.clientX - previousX) * .0035))
+        targetPitch = Math.max(-.22, Math.min(.22, targetPitch + (event.clientY - previousY) * .0025))
+        previousX = event.clientX
+        previousY = event.clientY
+        if (!shouldAnimate()) { yaw = targetYaw; pitch = targetPitch; paint() }
+      } else if (event.pointerType === 'mouse' && !latest.current.reducedMotion && !latest.current.paused) {
+        const rect = interaction.getBoundingClientRect()
+        targetYaw = -.06 + ((event.clientX - rect.left) / rect.width - .5) * .2
+        targetPitch = .035 + ((event.clientY - rect.top) / rect.height - .5) * .08
+      }
+      if (!dragging && !(event.target as Element).closest('button')) latest.current.onHighlight(pick(event))
+    }
+    const down = (event: PointerEvent) => {
+      if (event.button !== 0 || (event.target as Element).closest('button')) return
+      dragging = true
+      previousX = event.clientX
+      previousY = event.clientY
+      pressX = event.clientX
+      pressY = event.clientY
+      pressedNode = pick(event)
+      interaction.setPointerCapture(event.pointerId)
+      interaction.classList.add('is-dragging')
+    }
+    const up = (event: PointerEvent) => {
+      if (dragging && event.type === 'pointerup' && pressedNode && Math.hypot(event.clientX - pressX, event.clientY - pressY) < 8) latest.current.onSelect(pressedNode)
+      dragging = false
+      pressedNode = null
+      if (interaction.hasPointerCapture(event.pointerId)) interaction.releasePointerCapture(event.pointerId)
+      interaction.classList.remove('is-dragging')
+    }
+    const leave = () => {
+      if (!dragging) { targetYaw = -.06; targetPitch = .035 }
+      latest.current.onHighlight(null)
+    }
+    const keydown = (event: KeyboardEvent) => {
+      if (event.target !== interaction || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+      event.preventDefault()
+      if (event.key === 'ArrowLeft') targetYaw = Math.max(-.5, targetYaw - .1)
+      if (event.key === 'ArrowRight') targetYaw = Math.min(.5, targetYaw + .1)
+      if (event.key === 'ArrowUp') targetPitch = Math.max(-.22, targetPitch - .06)
+      if (event.key === 'ArrowDown') targetPitch = Math.min(.22, targetPitch + .06)
+      if (!shouldAnimate()) { yaw = targetYaw; pitch = targetPitch; paint() }
+    }
+    const focus = (event: FocusEvent) => {
+      if (event.target === interaction) { keyboardInspection = true; sync() }
+    }
+    const blur = (event: FocusEvent) => {
+      if (!interaction.contains(event.relatedTarget as Node | null)) { keyboardInspection = false; sync() }
+    }
+    const contextLost = (event: Event) => {
+      event.preventDefault()
+      contextAvailable = false
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
+      latest.current.onReady(false)
+    }
+    const contextRestored = () => { contextAvailable = true; latest.current.onReady(true); sync() }
+    const observer = new ResizeObserver(resize)
+    const visibility = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync() })
+    observer.observe(host)
+    visibility.observe(host)
+    interaction.addEventListener('pointerdown', down)
+    interaction.addEventListener('pointermove', move)
+    interaction.addEventListener('pointerup', up)
+    interaction.addEventListener('pointercancel', up)
+    interaction.addEventListener('pointerleave', leave)
+    interaction.addEventListener('keydown', keydown)
+    interaction.addEventListener('focusin', focus)
+    interaction.addEventListener('focusout', blur)
+    canvas.addEventListener('webglcontextlost', contextLost)
+    canvas.addEventListener('webglcontextrestored', contextRestored)
+    document.addEventListener('visibilitychange', sync)
+    resize()
+    latest.current.onReady(true)
+    return () => {
+      disposed = true
+      invalidate.current = null
+      if (frame) cancelAnimationFrame(frame)
+      observer.disconnect()
+      visibility.disconnect()
+      interaction.removeEventListener('pointerdown', down)
+      interaction.removeEventListener('pointermove', move)
+      interaction.removeEventListener('pointerup', up)
+      interaction.removeEventListener('pointercancel', up)
+      interaction.removeEventListener('pointerleave', leave)
+      interaction.removeEventListener('keydown', keydown)
+      interaction.removeEventListener('focusin', focus)
+      interaction.removeEventListener('focusout', blur)
+      canvas.removeEventListener('webglcontextlost', contextLost)
+      canvas.removeEventListener('webglcontextrestored', contextRestored)
+      document.removeEventListener('visibilitychange', sync)
+      disposables.forEach(object => object.dispose())
+      renderer.dispose()
+    }
+  }, [])
+
+  return <div className="rosette-hero__webgl" aria-hidden="true"><canvas ref={canvasRef} /></div>
+}

@@ -129,10 +129,20 @@ class CommercialEstimateInput(FxInputMixin):
     milestones: list[EstimateMilestoneInput] = Field(default_factory=list, max_length=30)
     estimate_date: date
     reason: str | None = Field(default=None, max_length=10_000)
+    # --- Client Advance Request (input only; never projected into Sales/Revenue/Outstanding) ---
+    advance_required: bool | None = None
+    advance_payment_type: str | None = Field(default=None, max_length=30)
+    advance_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
+    advance_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    advance_base_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    advance_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    expected_advance_date: date | None = None
+    final_advance_date: date | None = None
 
     @field_validator(
         "quotation_reference", "po_wo_reference", "scope_description", "billing_type",
-        "payment_terms", "expected_billing_milestone", "notes", "reason", "quantity_unit", mode="before",
+        "payment_terms", "expected_billing_milestone", "notes", "reason", "quantity_unit",
+        "advance_payment_type", mode="before",
     )
     @classmethod
     def strip_text(cls, value):
@@ -140,6 +150,18 @@ class CommercialEstimateInput(FxInputMixin):
             value = value.strip()
             return value or None
         return value
+
+    @field_validator("advance_currency_code", mode="before")
+    @classmethod
+    def normalize_advance_currency(cls, value):
+        if value is None:
+            return None
+        code = str(value).strip().upper()
+        if not code:
+            return None
+        if not is_supported_currency(code):
+            raise ValueError(f"Unsupported ISO 4217 advance currency code: {code}")
+        return code
 
     @model_validator(mode="after")
     def normalize_taxable_base(self):
@@ -168,7 +190,50 @@ class CommercialEstimateInput(FxInputMixin):
                 raise ValueError("Milestone names must be unique")
         elif self.milestones:
             raise ValueError("Milestones apply only to Milestone billing")
+        self._normalize_advance_terms()
         return self
+
+    def _normalize_advance_terms(self) -> None:
+        """Client Advance Request cross-field rules (input only; no commercial value is modified)."""
+        from app.modules.finance.advance import ADVANCE_PAYMENT_TYPES
+
+        payment_type = (self.advance_payment_type or "").strip().lower()
+        if payment_type and payment_type not in ADVANCE_PAYMENT_TYPES:
+            raise ValueError(
+                "Advance Payment Type must be one of: " + ", ".join(sorted(ADVANCE_PAYMENT_TYPES))
+            )
+        if self.advance_required is False or payment_type == "no_advance":
+            # No advance requested: persist the explicit no-advance state and drop any financial detail.
+            self.advance_required = False
+            self.advance_payment_type = "no_advance"
+            self.advance_percent = None
+            self.advance_amount = None
+            self.advance_base_amount = None
+            self.expected_advance_date = None
+            self.final_advance_date = None
+            return
+        if self.advance_required is None and not payment_type and self.advance_percent is None \
+                and self.advance_amount is None and self.expected_advance_date is None and self.final_advance_date is None:
+            # Nothing entered at all: leave every advance column NULL (legacy payload).
+            return
+        if self.advance_required is None:
+            self.advance_required = True
+        if not payment_type:
+            raise ValueError("Advance Payment Type is required when an advance is requested")
+        self.advance_payment_type = payment_type
+        if self.advance_percent is None and self.advance_amount is None:
+            raise ValueError("Enter the advance percentage or the advance amount")
+        if self.advance_percent is not None:
+            # Percentage request: anchor the % to the taxable base so Finance sees the exact
+            # calculation. This applies whether or not the user also typed the resulting
+            # amount (the form submits both % and amount), and it only records the base used
+            # for the client-advance ledger: no commercial value, tax or FX is derived from it.
+            self.advance_base_amount = self.advance_base_amount or self.taxable_base_amount
+        if self.final_advance_date is not None and self.expected_advance_date is not None \
+                and self.final_advance_date < self.expected_advance_date:
+            raise ValueError("Final Advance Date cannot be earlier than the Expected Advance Date")
+        if self.advance_currency_code is None:
+            self.advance_currency_code = self.currency_code
 
 
 class ProjectCommercialInput(CommercialEstimateInput):
