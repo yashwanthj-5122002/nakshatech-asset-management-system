@@ -1,4 +1,4 @@
-import { Activity, BarChart3, FileCheck2, FileSpreadsheet, HardDrive, LifeBuoy, MonitorCheck, ReceiptIndianRupee, Settings, ShieldCheck, Users } from 'lucide-react'
+import { Activity, BarChart3, FileCheck2, FileSpreadsheet, HardDrive, LifeBuoy, MonitorCheck, ReceiptIndianRupee, RefreshCcw, Settings, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DroneIcon as Drone } from '../components/DroneIcon'
 import { Link } from 'react-router-dom'
@@ -13,29 +13,41 @@ export function AdminDashboard() {
   const softwareTeam = user?.role === 'software_team'
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [financeClaims, setFinanceClaims] = useState<ExpenseClaim[]>([])
-  useEffect(() => {
+
+  function load() {
     void apiFetch<DashboardSummary>('/dashboard/summary').then(setSummary)
     if (!softwareTeam) {
       void apiFetch<ExpenseClaim[]>('/finance/claims').then(setFinanceClaims).catch(() => setFinanceClaims([]))
     }
+  }
+
+  useEffect(() => {
+    load()
   }, [softwareTeam])
   const pendingExpenseApprovals = financeClaims.filter(claim => claim.status === 'submitted').length
   return (
     <>
       <DashboardHeader
+        variant="ops"
+        icon={ShieldCheck}
         eyebrow={softwareTeam ? "SOFTWARE TEAM · FULL TECHNICAL ACCESS" : "ADMIN · ORGANIZATION CONTROL"}
         title={softwareTeam ? "Software Team Control Centre" : "Admin Control Centre"}
         description={softwareTeam
           ? "Maintain and support every IT, drone, management, reporting and backup module without changing department workflows."
           : "Review Management, IT, Drone and Finance operations through a clear department-wise workspace. Expense claims awaiting Admin verification are surfaced here directly."}
+        actions={<button className="secondary-button" type="button" onClick={load}><RefreshCcw size={17} /> Refresh</button>}
+        summary={<>
+          <StatCard icon={HardDrive} label="IT Assets" value={summary?.assets_total ?? '—'} note="Organization-wide register" />
+          <StatCard icon={Drone} label="Drones" value={summary?.drones_total ?? '—'} tone="cyan" note="Aerial fleet master" />
+          <StatCard icon={BarChart3} label="Open Work" value={summary?.pending_work ?? '—'} tone="orange" note="Active work records" />
+          {!softwareTeam && <StatCard icon={ReceiptIndianRupee} label="Expense Approvals" value={pendingExpenseApprovals} tone={pendingExpenseApprovals > 0 ? "orange" : "green"} note="Awaiting Admin verification" />}
+          <StatCard icon={ShieldCheck} label="Access Level" value="Full" tone="green" note="Cross-department visibility" />
+        </>}
+        meta={<>
+          <span className="nk-meta-chip"><ShieldCheck size={14} /> {softwareTeam ? 'Software team · full technical access' : 'Admin · organization control'}</span>
+          <span className="nk-meta-chip"><Users size={14} /> Management · IT · Drone · Finance workspaces</span>
+        </>}
       />
-      <section className="stats-grid">
-        <StatCard icon={HardDrive} label="IT Assets" value={summary?.assets_total ?? '—'} />
-        <StatCard icon={Drone} label="Drones" value={summary?.drones_total ?? '—'} tone="cyan" />
-        <StatCard icon={BarChart3} label="Open Work" value={summary?.pending_work ?? '—'} tone="orange" />
-        <StatCard icon={ShieldCheck} label="Access Level" value="Full" tone="green" />
-        {!softwareTeam && <StatCard icon={ReceiptIndianRupee} label="Expense Approvals" value={pendingExpenseApprovals} tone={pendingExpenseApprovals > 0 ? "orange" : "green"} />}
-      </section>
       <section className="module-grid admin-modules">
         <Link className="module-card" to="/it"><HardDrive /><h3>IT Operations</h3><p>Inventory, dashboard, work, repair and replacement records.</p></Link>
         <Link className="module-card" to="/drone"><Drone /><h3>Drone Operations</h3><p>Drone fleet, projects, pilot allocation and live location.</p></Link>

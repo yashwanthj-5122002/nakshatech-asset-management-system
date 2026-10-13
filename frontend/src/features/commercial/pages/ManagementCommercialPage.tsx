@@ -52,7 +52,7 @@ export function ManagementCommercialPage() {
   const maxMonthly = useMemo(() => Math.max(1, ...(data?.monthly ?? []).map(row => Math.max(row.billing_inr, row.total_cost_inr))), [data])
 
   return <div className="commercial-page">
-    <DashboardHeader eyebrow="MANAGEMENT · COMMERCIAL INTELLIGENCE" title="Project Commercial Analytics" description="INR is the accounting truth. Display-currency conversion is optional and presentation-only; historic transaction FX snapshots remain unchanged." actions={<button className="commercial-button secondary" onClick={() => { void loadReferences(); void loadAnalytics() }}><RefreshCcw size={15}/> Refresh</button>}/>
+    <DashboardHeader eyebrow="MANAGEMENT · COMMERCIAL INTELLIGENCE" title="Project Commercial Analytics" description="INR is the accounting truth. Display-currency conversion is optional and presentation-only; historic transaction FX snapshots remain unchanged." actions={<button className="commercial-button secondary" onClick={() => { void loadReferences(); void loadAnalytics() }}><RefreshCcw size={15}/> Refresh</button>} meta={<><span className="nk-meta-chip"><TrendingUp size={14}/> Project-level commercial analytics</span><span className="nk-meta-chip"><BarChart3 size={14}/> INR accounting · display currency is optional</span><span className="nk-meta-chip"><RefreshCcw size={14}/> Historic FX snapshots preserved</span></>}/>
     {error && <div className="commercial-alert error">{error}</div>}
     <section className="commercial-panel">
       <form className="commercial-toolbar" onSubmit={loadAnalytics}>

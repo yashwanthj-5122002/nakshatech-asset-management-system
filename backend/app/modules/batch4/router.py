@@ -38,6 +38,11 @@ from app.modules.it_activity.service import decide_purchase_request, purchase_re
 from app.schemas.work import WorkApprovalDecision, WorkRecordUpdate
 from app.services.asset_lifecycle_service import inventory_summary, is_primary_device_type
 
+from app.modules.business.service import business_overview
+from app.modules.commercial.service import management_analytics
+from app.modules.operations.lifecycle_service import lifecycle_dashboard
+from app.modules.finance.service import dashboard_payload as finance_dashboard_payload
+
 
 router = APIRouter(tags=["Batch 4 Management Control"])
 install_asset_return_compatibility()
@@ -101,6 +106,54 @@ def management_control_center_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="NakshaTech_Management_Control_{suffix}.xlsx"'},
     )
+
+
+@router.get("/management/executive-dashboard")
+def management_executive_dashboard(
+    month: str | None = Query(default=None, description="Optional reporting month in YYYY-MM format"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("management", "admin")),
+) -> dict:
+    """Aggregated executive dashboard combining business, commercial, lifecycle,
+    and operational data for the Management Dashboard redesign."""
+    # Existing control center data (purchases, tickets, SLA)
+    control = _active_management_control_center(db, month)
+
+    # Business revenue overview
+    try:
+        biz = business_overview(db, actor=user, role="management", month=month)
+        biz_data = biz.model_dump() if hasattr(biz, "model_dump") else biz.dict()
+    except Exception:
+        biz_data = None
+
+    # Commercial analytics (billing, costs, margins)
+    try:
+        commercial = management_analytics(db)
+    except Exception:
+        commercial = None
+
+    # Project lifecycle status
+    try:
+        lifecycle = lifecycle_dashboard(db, actor=user, role="management")
+    except Exception:
+        lifecycle = None
+
+    # Finance expense claims
+    try:
+        finance = finance_dashboard_payload(db, viewer=user, effective_role="management")
+    except Exception:
+        finance = None
+
+    return {
+        "month": month,
+        "control_center": control.get("executive", {}),
+        "purchase_summary": control.get("purchase_summary", {}),
+        "risk_tickets": control.get("risk_tickets", []),
+        "business": biz_data,
+        "commercial": commercial,
+        "lifecycle": lifecycle,
+        "finance": finance,
+    }
 
 
 @router.post(

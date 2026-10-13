@@ -10,6 +10,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import (
+    DEFAULT_DEPARTMENT,
+    SUPPORTED_DEPARTMENTS,
+    department_for_pm_role,
+    department_label,
+    is_technical_pm_role,
+    normalize_department_code,
+    normalize_department_code_or_default,
+    pm_role_for_department,
+    user_department_matches,
+)
+from app.core.department_access import user_department_code
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import (
@@ -30,6 +42,7 @@ from app.modules.finance.service import (
     remaining_amount,
     set_project_status,
 )
+from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
 from app.modules.notifications.service import create_global_notification, resolve_recipient_users
 from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectReworkCycle
 from app.modules.operations.lifecycle_service import (
@@ -235,6 +248,8 @@ def _full_project_payload(db: Session, project: FinanceProject, workflow: Projec
         "quantity": float(workflow.quantity) if workflow.quantity is not None else None,
         "quantity_unit": workflow.quantity_unit,
         "priority": workflow.priority,
+        "performing_department_code": workflow.performing_department_code,
+        "performing_department_label": department_label(workflow.performing_department_code),
         "commercial_value": float(workflow.commercial_value) if workflow.commercial_value is not None else None,
         "currency": workflow.currency,
         "po_wo_number": workflow.po_wo_number,
@@ -286,10 +301,17 @@ def _commercial_summary(db: Session, project_id: int) -> dict:
     return commercial_summary(db, project_id=project_id)
 
 
-def project_manager_options(db: Session) -> list[dict]:
+def project_manager_options(db: Session, *, department_code: str | None = None) -> list[dict]:
+    """Active technical Project Manager accounts.
+
+    ``department_code`` restricts the list to the one technical PM role that performs that
+    department (e.g. LiDAR projects only ever show LiDAR PMs). Omitted, every supported
+    department's PM role is returned (a cross-department directory view).
+    """
+    roles = [pm_role_for_department(department_code)] if department_code else [pm_role_for_department(code) for code in SUPPORTED_DEPARTMENTS]
     users = db.scalars(
         select(User).where(
-            User.role == ORTHO_ROLE,
+            User.role.in_(roles),
             User.is_active.is_(True),
             User.account_status.in_(["active", "pending_mfa"]),
         ).order_by(User.full_name.asc(), User.email.asc())
@@ -302,12 +324,20 @@ def project_manager_options(db: Session) -> list[dict]:
             "employee_id": user.employee_id,
             "department": user.department,
             "designation": user.designation,
+            "performing_department_code": department_for_pm_role(user.role),
         }
         for user in users
     ]
 
 
-def employee_options(db: Session) -> list[dict]:
+def employee_options(db: Session, *, department_code: str | None = None) -> list[dict]:
+    """Active Employee accounts, optionally restricted to the given performing department.
+
+    Employee.role is always the generic ``employee`` role; only ``User.department`` (free
+    text set at seeding/HR time) distinguishes which department an employee belongs to, so a
+    Team Lead can never allocate work to, and a PM can never add, an employee from another
+    department even through a direct API call.
+    """
     users = db.scalars(
         select(User).where(
             User.role == EMPLOYEE_ROLE,
@@ -315,6 +345,8 @@ def employee_options(db: Session) -> list[dict]:
             User.account_status.in_(["active", "pending_mfa"]),
         ).order_by(User.full_name.asc(), User.email.asc())
     ).all()
+    if department_code:
+        users = [user for user in users if user_department_matches(user.department, department_code)]
     return [
         {
             "id": user.id,
@@ -330,6 +362,7 @@ def employee_options(db: Session) -> list[dict]:
 
 def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
+    query = exclude_hidden_projects(db, query)
     if role == BD_ROLE:
         query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
@@ -347,6 +380,8 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
         },
         "clients": [client_payload(client) for client in list_finance_clients(db)],
         "project_managers": project_manager_options(db),
+        "project_managers_by_department": {code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS},
+        "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
         "projects": payloads,
     }
 
@@ -388,6 +423,7 @@ def create_bd_project(db: Session, *, actor: User, payload: WorkflowProjectCreat
         project_id=project.id,
         bd_owner_user_id=actor.id,
         status=WORKFLOW_DRAFT,
+        performing_department_code=normalize_department_code_or_default(payload.performing_department_code),
         scope_text=payload.scope_text,
         quantity=payload.quantity,
         quantity_unit=payload.quantity_unit,
@@ -467,6 +503,7 @@ def update_bd_project(
     workflow.quantity = payload.quantity
     workflow.quantity_unit = payload.quantity_unit
     workflow.priority = payload.priority
+    workflow.performing_department_code = normalize_department_code_or_default(payload.performing_department_code)
     workflow.commercial_value = payload.commercial_value
     workflow.currency = payload.currency.upper()
     workflow.po_wo_number = payload.po_wo_number
@@ -512,8 +549,23 @@ def submit_project_to_finance(db: Session, *, actor: User, project_id: int) -> P
         title=f"Finance review required: {project.project_code}",
         message=f"BD submitted Project ID {project.project_code} for Finance approval. Client ID: {_client_code(project) or 'Not recorded'}.",
         category="approval",
-        target_url="/finance",
+        target_url=f"/finance?project={project.id}",
         recipient_roles=[FINANCE_ROLE],
+        # Popup experience (additive): Finance must act, so the center popup offers
+        # Approve / Return. Closing the popup never resolves this - only the real
+        # finance_review_project action does.
+        severity="info",
+        requires_action=True,
+        metadata={
+            "project_id": project.id,
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "submitted_by": actor.full_name or actor.email,
+            "submitted_at": workflow.submitted_at.isoformat() if workflow.submitted_at else None,
+            "current_stage": "Finance Approval",
+            "amount": workflow.commercial_value,
+            "currency": workflow.currency,
+        },
     )
     db.flush()
     return workflow
@@ -589,10 +641,12 @@ def _finance_closure_readiness(db: Session, workflow: ProjectWorkflow, normalize
 
 
 def finance_dashboard(db: Session) -> dict:
+    query = exclude_hidden_projects(
+        db,
+        _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id),
+    )
     projects = list(db.scalars(
-        _project_query()
-        .join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
-        .order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())
+        query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())
     ).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow)).all()}
     payloads = []
@@ -655,8 +709,36 @@ def finance_review_project(db: Session, *, actor: User, project_id: int, payload
         title=title,
         message=message,
         category="approval",
-        target_url="/bd",
+        target_url=f"/bd/projects?project={project.id}",
         recipient_user_ids=[workflow.bd_owner_user_id],
+        severity="danger" if payload.decision == "return" else "success",
+        requires_action=payload.decision == "return",
+        metadata={
+            "project_id": project.id,
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "returned_by": "Finance" if payload.decision == "return" else None,
+            "status": "Correction Required" if payload.decision == "return" else "Approved",
+            "reason": (payload.feedback or None) if payload.decision == "return" else None,
+            "required_action": (
+                "Upload the missing Work Order and resubmit."
+                if payload.decision == "return"
+                else None
+            ),
+            "decided_by": actor.full_name or actor.email,
+        },
+    )
+    # The Finance approval/return action really completed, so the Finance pending
+    # notification is now resolved. This runs inside the same transaction as the
+    # workflow transition - the popup itself never performs this.
+    from app.modules.notifications.service import resolve_notifications
+
+    resolve_notifications(
+        db,
+        recipient_user_ids=[user.id for user in resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE])],
+        event_type="workflow.project.submitted_finance",
+        resolved_by_id=actor.id,
+        resolution_note=f"Finance {payload.decision}",
     )
     db.flush()
     return workflow
@@ -735,12 +817,13 @@ def _ensure_profile_and_pm_member(db: Session, *, project: FinanceProject, workf
 def assign_project_manager(db: Session, *, actor: User, project_id: int, payload: WorkflowPMAssignment) -> tuple[ProjectWorkflow, User]:
     workflow = _workflow(db, project_id)
     if workflow.bd_owner_user_id != actor.id:
-        raise PermissionError("Only the BD owner can assign the Ortho Project Manager")
+        raise PermissionError("Only the BD owner can assign the Project Manager")
     if workflow.status not in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
         raise ValueError("Project Manager can be assigned only after Finance approval and before the project team starts work")
+    expected_role = pm_role_for_department(workflow.performing_department_code)
     pm = db.get(User, payload.project_manager_id)
-    if pm is None or not pm.is_active or pm.role != ORTHO_ROLE:
-        raise ValueError("Select an active Ortho Project Manager account")
+    if pm is None or not pm.is_active or pm.role != expected_role:
+        raise ValueError(f"Select an active {department_label(workflow.performing_department_code)} Project Manager account")
     project = _project(db, project_id)
     if project.master_profile is None:
         project.master_profile = FinanceProjectMasterProfile(
@@ -762,10 +845,21 @@ def assign_project_manager(db: Session, *, actor: User, project_id: int, payload
         db,
         event_type="workflow.project.pm_assigned",
         title=f"New project assigned: {project.project_code}",
-        message=f"You are the Ortho Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
+        message=f"You are the {department_label(workflow.performing_department_code)} Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho/project-360/{project.id}",
         recipient_user_ids=[pm.id],
+        # Actionable and ASSIGNMENT-scoped: only the assigned PM is a recipient.
+        # A different PM must never receive this.
+        severity="warning",
+        requires_action=True,
+        metadata={
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "assigned_role": department_label(workflow.performing_department_code),
+            "amount": workflow.commercial_value,
+            "currency": workflow.currency,
+        },
     )
     db.flush()
     return workflow, pm
@@ -779,10 +873,10 @@ def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int
         return
     _safe_send_email(
         recipient=pm.email,
-        subject=f"[{project.project_code}] Ortho Project Manager assignment",
+        subject=f"[{project.project_code}] {department_label(workflow.performing_department_code)} Project Manager assignment",
         body=(
             f"Hello {pm.full_name},\n\n"
-            "Business Development assigned you as the Ortho Project Manager.\n\n"
+            f"Business Development assigned you as the {department_label(workflow.performing_department_code)} Project Manager.\n\n"
             f"Project ID: {project.project_code}\n"
             f"Client ID: {_client_code(project) or 'Not recorded'}\n"
             f"Start Date: {project.start_date.isoformat() if project.start_date else 'Not recorded'}\n"
@@ -808,10 +902,12 @@ def _active_member_ids(db: Session, *, project_id: int, role: str) -> set[int]:
     )).all()}
 
 
-def _validate_employee(db: Session, user_id: int, label: str) -> User:
+def _validate_employee(db: Session, user_id: int, label: str, *, department_code: str | None = None) -> User:
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.role != EMPLOYEE_ROLE:
         raise ValueError(f"Selected {label} must be an active Employee account")
+    if department_code and not user_department_matches(user.department, department_code):
+        raise ValueError(f"Selected {label} must belong to the {department_label(department_code)} department")
     return user
 
 
@@ -888,11 +984,12 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
         "qc": set(payload.qc_user_ids),
         "qa": set(payload.qa_user_ids),
     }
+    department_code = workflow.performing_department_code
     for role, ids in selected.items():
         if not ids:
             raise ValueError(f"Select at least one {role.replace('_', ' ')} employee")
         for user_id in ids:
-            _validate_employee(db, user_id, role.replace("_", " "))
+            _validate_employee(db, user_id, role.replace("_", " "), department_code=department_code)
     if len(selected["team_leader"]) != 1:
         raise ValueError("Exactly one Team Lead is required")
 
@@ -916,7 +1013,7 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
             title=f"Project team assignment: {project.project_code}",
             message=f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}.",
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -996,7 +1093,7 @@ def confirm_rework_team(
                 if payload.mode == "reuse" else f"Select at least one {label} employee"
             )
         for user_id in ids:
-            _validate_employee(db, user_id, label)
+            _validate_employee(db, user_id, label, department_code=workflow.performing_department_code)
     if len(selected["team_leader"]) != 1:
         raise ValueError("Exactly one Team Lead is required")
 
@@ -1044,7 +1141,7 @@ def confirm_rework_team(
                 f"Rework Cycle {cycle.cycle_number} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1172,7 +1269,7 @@ def allocate_rework_work(
                 f"Area {area} · Code {code} · {payload.quantity} {unit} · Target {payload.target_date.isoformat()}."
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1345,8 +1442,19 @@ def allocate_work(db: Session, *, actor: User, project_id: int, payload: Workflo
                 f"Area {payload.area_name} · Code {payload.package_code} · {payload.quantity} {payload.quantity_unit} · Target {payload.target_date.isoformat()}."
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
+            # Actionable, and ASSIGNMENT-scoped: only the assigned user is a recipient.
+            # A different Production/QC/QA user must never receive it.
+            severity="warning",
+            requires_action=True,
+            metadata={
+                "project_name": project.project_code,
+                "package_code": payload.package_code,
+                "assigned_role": role.upper(),
+                "area": payload.area_name,
+                "target_date": payload.target_date.isoformat() if payload.target_date else None,
+            },
         )
     db.flush()
     return package
@@ -1473,7 +1581,7 @@ def complete_production(db: Session, *, actor: User, work_package_id: int) -> Or
         title=f"Production completed: {package.package_code}",
         message=f"Project ID {project.project_code} · Code {package.package_code} is ready for QC.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=recipients,
     )
     db.flush()
@@ -1650,7 +1758,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         title=title,
         message=message,
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in recipients if uid],
     )
     db.flush()
@@ -1675,7 +1783,7 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
         title=f"Delivered: {package.package_code}",
         message=f"Project ID {project.project_code} · Code {package.package_code} has been delivered.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in {package.team_leader_user_id, pm.id if pm else None} if uid],
     )
     db.flush()
@@ -1785,7 +1893,7 @@ def finance_close_project(db: Session, *, actor: User, project_id: int, payload:
         title=f"Project closed: {project.project_code}",
         message=f"Finance Closure is complete for Project ID {project.project_code}.",
         category="system",
-        target_url="/bd",
+        target_url=f"/bd/projects?project={project.id}",
         recipient_user_ids=recipients,
     )
     db.flush()
@@ -1927,7 +2035,9 @@ def _user_min(user: User | None) -> dict | None:
 
 def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
     project_ids: set[int] = set()
-    if role == ORTHO_ROLE:
+    if is_technical_pm_role(role):
+        # Being e.g. a LiDAR PM never grants every LiDAR project - only the ones this account
+        # is actually assigned to (FinanceProjectMasterProfile.project_manager_id == actor.id).
         project_ids.update(int(v) for v in db.scalars(select(FinanceProjectMasterProfile.project_id).where(
             FinanceProjectMasterProfile.project_manager_id == actor.id,
         )).all())
@@ -1937,9 +2047,26 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             OrthoProjectMember.member_role.in_(TEAM_ROLES),
             OrthoProjectMember.is_active.is_(True),
         )).all())
+        # Department isolation: a normal employee only ever sees projects performed by
+        # their own department (Employee Master scope), never cross-department work.
+        # Employees without a resolvable department keep membership-based visibility.
+        employee_department = user_department_code(db, actor)
+        if employee_department is not None:
+            department_projects = set(
+                db.scalars(
+                    select(ProjectWorkflow.project_id).where(
+                        ProjectWorkflow.performing_department_code == normalize_department_code(employee_department)
+                    )
+                ).all()
+            )
+            project_ids &= department_projects
     if role in {ADMIN_ROLE, MANAGEMENT_ROLE}:
         project_ids.update(int(v) for v in db.scalars(select(ProjectWorkflow.project_id)).all())
 
+    if not project_ids:
+        return {"viewer_mode": "participant" if role == EMPLOYEE_ROLE else "project_manager", "projects": [], "employees": []}
+
+    project_ids = set(filter_visible_project_ids(db, project_ids))
     if not project_ids:
         return {"viewer_mode": "participant" if role == EMPLOYEE_ROLE else "project_manager", "projects": [], "employees": []}
 
@@ -1996,7 +2123,11 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             })
         result.append(base)
     return {
-        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if role == ORTHO_ROLE else "participant"),
+        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if is_technical_pm_role(role) else "participant"),
         "projects": result,
-        "employees": employee_options(db) if role == ORTHO_ROLE and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result) else [],
+        "employees": (
+            employee_options(db, department_code=department_for_pm_role(role))
+            if is_technical_pm_role(role) and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result)
+            else []
+        ),
     }

@@ -237,6 +237,9 @@ class ProjectWorkflow(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), primary_key=True)
     bd_owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    # Which technical department performs this project (ortho/lidar/mobile_mapping/laser_scanning/civil).
+    # Drives PM role, project-team department matching and dashboard routing across the one shared workflow.
+    performing_department_code: Mapped[str] = mapped_column(String(30), default="ortho", index=True)
     scope_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     quantity_unit: Mapped[str] = mapped_column(String(30), default="unit")

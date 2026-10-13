@@ -68,12 +68,13 @@ export type FeedbackRequestRow = {
 
 export type FeedbackResponseRow = {
   id: number
-  feedback_request_id: number
+  feedback_request_id: number | null
   response_type: 'accepted' | 'correction' | 'additional_scope'
   comments: string | null
   correction_description: string | null
   classification_status: string
   classified_as: string | null
+  source: 'client_portal' | 'bd_manual'
   responded_at: string
 }
 
@@ -136,6 +137,35 @@ export type InvoicePaymentRow = {
   created_at: string
 }
 
+export type BadDebtRow = {
+  id: number
+  project_id?: number
+  project_code?: string
+  project_name?: string
+  client_name?: string | null
+  invoice_id?: number
+  invoice_number?: string
+  invoice_total?: number
+  paid_amount?: number
+  cash_balance?: number
+  status: 'PROPOSED' | 'APPROVED' | 'REJECTED' | 'RECOVERED'
+  proposed_amount: number
+  approved_amount: number | null
+  recovered_amount: number
+  net_bad_debt: number
+  unrecovered_amount?: number
+  currency?: string
+  reason: string
+  collection_attempts: string
+  last_followup_date: string | null
+  finance_remarks: string | null
+  proposed_at: string
+  proposed_by_name?: string | null
+  reviewed_at: string | null
+  reviewed_by_name?: string | null
+  decision_reason: string | null
+}
+
 export type InvoiceRow = {
   id: number
   invoice_number: string
@@ -148,6 +178,9 @@ export type InvoiceRow = {
   total_amount: number
   paid_amount: number
   balance: number
+  collectible_balance: number
+  days_overdue?: number
+  bad_debt: BadDebtRow | null
   currency: string
   tax_percent: number | null
   payment_terms: string | null
@@ -165,6 +198,107 @@ export type InvoiceRow = {
   raised_at: string | null
   closed_at: string | null
   payments: InvoicePaymentRow[]
+}
+
+export type InvoiceDocumentPayload = {
+  document_type: string
+  document_version: number
+  document_source: 'project_invoice' | 'standalone_invoice'
+  entry_mode: 'auto_fill' | 'manual' | null
+  company: {
+    name: string
+    address: string | null
+    gstin: string | null
+    pan: string | null
+    phone: string | null
+    email: string | null
+    website: string | null
+    msme_registration?: string | null
+    hsn_sac: string | null
+    bank_name: string | null
+    bank_account_name: string | null
+    bank_account_number: string | null
+    bank_ifsc: string | null
+    bank_swift: string | null
+    bank_branch: string | null
+    data_source: string
+  }
+  client: {
+    code: string | null
+    name: string
+    address: string | null
+    country: string | null
+    gstin: string | null
+    pan: string | null
+    contact_person: string | null
+    phone: string | null
+    email: string | null
+    data_source: string
+  }
+  ship_to?: {
+    name: string
+    address: string | null
+    gstin: string | null
+    pan: string | null
+    phone: string | null
+    email: string | null
+  } | null
+  project: { id: number; code: string; name: string; description: string | null } | null
+  /**
+   * ERP-only settlement snapshot (STEP 12). It is returned by the project-invoice
+   * document payload for Finance screens and is never rendered onto the printable
+   * A4 tax invoice or its PDF. Standalone invoices carry no settlement data.
+   */
+  settlement?: {
+    advance_applied: number
+    cash_received: number
+    total_settled: number
+    outstanding: number
+    status: string
+  } | null
+  invoice: Partial<InvoiceRow> & {
+    id: number
+    invoice_number: string
+    invoice_date: string
+    due_date: string | null
+    payment_terms: string | null
+    po_wo_reference: string | null
+    notes: string | null
+    created_at: string
+    project_id?: number
+    work_order_date: string | null
+    dispatch_details: string | null
+    dispatch_date: string | null
+    place_of_supply: string | null
+  }
+  line_items: Array<{
+    sequence: number
+    description: string
+    detail: string | null
+    hsn_sac: string | null
+    quantity: number
+    unit: string
+    rate: number
+    taxable_amount: number
+    tax_percent?: number
+    tax_amount?: number
+    source: string
+  }>
+  tax_lines: Array<{ label: string; rate_percent: number | null; amount: number; source: string }>
+  totals: {
+    subtotal?: number
+    taxable_amount: number
+    tax_amount: number
+    invoice_total: number
+    amount_in_words: string
+    currency: string
+    balance_due?: number
+  }
+  notes?: string | null
+  terms_conditions?: string | null
+  authorized_signatory_name?: string | null
+  qr_data?: string | null
+  qr_image_data_uri?: string | null
 }
 
 export type Project360 = LifecycleProjectSummary & {

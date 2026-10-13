@@ -709,7 +709,6 @@
   background: #e7f9fc !important;
 }
 .finance-support-card span { color: #087fa2 !important; }
-.employee-finance-recent { margin-top: 20px; }
 
 @media (max-width: 1180px) {
   .finance-kpi-grid,

@@ -158,6 +158,11 @@ export function DroneOperationsPage() {
       eyebrow="CONTROLLED DRONE OPERATIONS"
       title="Dispatch, Return, Transfer & Assignment"
       description="Every transaction updates current custody, project allocation, movement history, work records and the live Drone dashboard in one controlled operation."
+      meta={<>
+        <span className="nk-meta-chip"><ArrowRightLeft size={14} /> Dispatch · Return · Transfer · Assign</span>
+        <span className="nk-meta-chip"><ClipboardCheck size={14} /> Custody, project, movement and work records update together</span>
+        <span className="nk-meta-chip"><UserCheck size={14} /> Every transaction recorded with its performer</span>
+      </>}
     />
     <div className="operation-tab-bar">
       <button className={tab === 'dispatch' ? 'active' : ''} onClick={() => setTab('dispatch')}><Send size={17} /> Dispatch</button>

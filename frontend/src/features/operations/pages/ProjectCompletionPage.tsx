@@ -237,6 +237,11 @@ export function ProjectCompletionPage() {
             ? 'Finance receives only projects whose Master Project Final Delivery is already recorded. Start billing/closure, then mark financially closed when financial follow-up is complete.'
             : 'Read-only oversight of technical completion, Master Project delivery and Finance closure status.'}
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><LockKeyhole size={14}/> Delivery unlocks only after every handover is accepted</span>
+        <span className="nk-meta-chip"><FileCheck2 size={14}/> Final delivery is recorded once per master project</span>
+        <span className="nk-meta-chip"><CircleDollarSign size={14}/> Finance closure follows delivery</span>
+      </>}
     />
 
     {data && <div className="completion-demo-banner"><ShieldAlert size={16}/><strong>{data.live_technical_routing_enabled?'Phase 7 LIVE:':'Phase 5 UAT:'}</strong> {data.live_technical_routing_enabled?'department completion is owned by the assigned real PM and configured real completion recipients are notified after commit.':'technical completion actions remain restricted to reserved demo department PM accounts.'}</div>}

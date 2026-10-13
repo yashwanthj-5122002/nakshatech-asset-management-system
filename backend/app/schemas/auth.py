@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     branch: str
     employee_id: str | None = None
     department: str | None = None
+    department_code: str | None = None
     designation: str | None = None
     phone_number: str | None = None
     joining_date: date | None = None

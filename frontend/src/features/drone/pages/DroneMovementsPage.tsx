@@ -1,4 +1,4 @@
-import { ArrowRightLeft } from 'lucide-react'
+import { ArrowRightLeft, History, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
@@ -9,7 +9,7 @@ export function DroneMovementsPage() {
   const [error, setError] = useState('')
   useEffect(() => { void apiFetch<DroneMovement[]>('/drone/movements?limit=500').then(setRows).catch(err => setError(err.message)) }, [])
   return <>
-    <DashboardHeader eyebrow="AUDITABLE CUSTODY HISTORY" title="Drone Movement History" description="Every dispatch, return, transfer and assignment is recorded here without replacing or deleting earlier custody history." />
+    <DashboardHeader eyebrow="AUDITABLE CUSTODY HISTORY" title="Drone Movement History" description="Every dispatch, return, transfer and assignment is recorded here without replacing or deleting earlier custody history." meta={<><span className="nk-meta-chip"><History size={14} /> Append-only custody timeline</span><span className="nk-meta-chip"><ShieldCheck size={14} /> Earlier history is never replaced or deleted</span><span className="nk-meta-chip"><ArrowRightLeft size={14} /> Assets and kits in one audit trail</span></>} />
     {error && <div className="error-message">{error}</div>}
     <section className="panel">
       <div className="panel-heading"><div><span className="section-kicker">ALL MOVEMENTS</span><h2>Asset and Kit Timeline</h2></div><ArrowRightLeft /></div>

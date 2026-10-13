@@ -1,4 +1,4 @@
-import { Plus, RefreshCcw, RefreshCw } from 'lucide-react'
+import { Building2, FolderKanban, Plus, RefreshCcw, RefreshCw, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -33,7 +33,7 @@ export function BDClientManagementPage(){
   const [clientForm,setClientForm]=useState<ClientForm>(emptyClient);const [projectForm,setProjectForm]=useState<ProjectForm>(emptyProject)
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
   const [commercial,setCommercial]=useState<CommercialFormState>(emptyCommercialForm);const [docs,setDocs]=useState<PendingDocument[]>([]);const [currencies,setCurrencies]=useState<CurrencyPayload|null>(null)
-  const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:''})
+  const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''})
   useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
   function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
@@ -68,6 +68,7 @@ export function BDClientManagementPage(){
   async function createProject(submit:boolean){
     if(!selected)return
     setError('');setNotice('')
+    if(!delivery.performing_department_code){setError('Select the Performing Department before saving or submitting this project.');return}
     const problems=commercialFormProblems(commercial)
     if(problems.length){setError(problems[0]);return}
     setBusy(true)
@@ -76,6 +77,7 @@ export function BDClientManagementPage(){
       const result=await apiFetch<{project_id:number;project_code:string;commercial?:{baseline?:{id:number}|null}}>('/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,start_date:projectForm.start_date,end_date:projectForm.end_date,
         scope_text:projectForm.scope_text,quantity:delivery.quantity===''?null:Number(delivery.quantity),quantity_unit:delivery.quantity_unit||'unit',priority:delivery.priority,
+        performing_department_code:delivery.performing_department_code,
         commercial_value:Number(commercial.estimated_amount),currency:commercial.currency_code,po_wo_number:commercial.po_wo_reference.trim()||null,
         attachment_references:[],description:projectForm.description||null,
         commercial:commercialFormToPayload(commercial),
@@ -89,16 +91,16 @@ export function BDClientManagementPage(){
         return
       }
       if(submit)await apiFetch(`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
-      setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:''});setShowProjectForm(false)
+      setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''});setShowProjectForm(false)
       setNotice(`${result.project_code} ${submit?'and its Commercial Revision 1 were submitted to Finance':'saved as Draft with Commercial Revision 1'}.`);load()
     }catch(err){setError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}
   }
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow="CLIENT MASTER" title="Client Management" description="Find an existing client before creating a new one. Project creation always starts from the selected Client ID." details={<>
+    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · CLIENT INTELLIGENCE" title="Client Management" description="Find an existing client before creating a new one — search the Client Register first. Project creation always starts from the selected Client ID." details={<>
       <div><span>Clients on record</span><strong>{data?.clients.length ?? 0}</strong></div>
       <div><span>Projects linked</span><strong>{data?.projects.length ?? 0}</strong></div>
-    </>} actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>}/>
+    </>} actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>} meta={<><span className="nk-meta-chip"><Building2 size={14}/> {data?.clients.length ?? 0} clients on record</span><span className="nk-meta-chip"><FolderKanban size={14}/> Project creation starts from a selected Client ID</span><span className="nk-meta-chip"><ShieldCheck size={14}/> Client ID entered manually · duplicates rejected</span></>}/>
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
 
     {showClientForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW CLIENT</span><h2>Client Details</h2><p>Client ID is manually entered and duplicate IDs are rejected by the backend.</p></div></header><form className="operations-form-grid" onSubmit={createClient}>
@@ -115,7 +117,7 @@ export function BDClientManagementPage(){
       <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy}>{busy?'Creating…':'Create Client'}</button><button type="button" className="operations-button secondary" onClick={()=>setShowClientForm(false)}>Cancel</button></div>
     </form></section>}
 
-    {!selected&&<ClientRegisterPanel register={register} loading={!data&&!error} onView={setSelectedId} onCreateProject={id=>{setSelectedId(id);setShowProjectForm(true)}}/>}
+    {!selected&&<ClientRegisterPanel register={register} loading={!data&&!error} onView={setSelectedId} onCreateClient={()=>setShowClientForm(true)} onCreateProject={id=>{setSelectedId(id);setShowProjectForm(true)}}/>}
 
     {selected&&<>
       <BackToClientsButton onClick={()=>{setSelectedId(null);setShowProjectForm(false)}}/>
@@ -131,10 +133,13 @@ export function BDClientManagementPage(){
         <label className="operations-field operations-span-2"><span>Remarks</span><textarea value={projectForm.description} onChange={e=>setProjectForm({...projectForm,description:e.target.value})}/></label>
 
         <div className="operations-span-2"><span className="operations-kicker">DELIVERY / DEPARTMENT INFORMATION</span></div>
+        <label className="operations-field"><span>Performing Department *</span><select required value={delivery.performing_department_code} onChange={e=>setDelivery({...delivery,performing_department_code:e.target.value})}>
+          <option value="" disabled>Select Performing Department</option><option value="ortho">ORTHO</option><option value="lidar">LiDAR</option><option value="mobile_mapping">Mobile Mapping</option><option value="laser_scanning">Laser Scanning</option><option value="civil">Civil</option>
+        </select></label>
         <label className="operations-field"><span>Priority</span><select value={delivery.priority} onChange={e=>setDelivery({...delivery,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
         <label className="operations-field"><span>Planned quantity (optional)</span><input type="number" min="0" step="0.001" value={delivery.quantity} onChange={e=>setDelivery({...delivery,quantity:e.target.value})}/></label>
         <label className="operations-field"><span>Quantity unit</span><input value={delivery.quantity_unit} onChange={e=>setDelivery({...delivery,quantity_unit:e.target.value})} placeholder="e.g. sq.km, sites"/></label>
-        <div className="operations-note operations-span-2">Delivery department: Ortho / technical production. Finance approves first; you then assign the Ortho Project Manager, who selects the team.</div>
+        <div className="operations-note operations-span-2">Finance approves first; you then assign the matching technical Project Manager for the selected Performing Department, who selects the project team.</div>
 
         <div className="operations-span-2"><CommercialDetailsSection form={commercial} onChange={setCommercial} currencies={currencies} disabled={busy}/></div>
 

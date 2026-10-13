@@ -221,6 +221,11 @@ export function ProjectMonitoringPage(){
           ? 'See the complete connected project while updating only your own department progress. Peer teams remain independent workstreams under the same Master Project.'
           : 'Read-only management oversight of project progress, technical dependencies, overdue handovers and bottlenecks.'}
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><BarChart3 size={14}/> Live progress across every workstream</span>
+        <span className="nk-meta-chip"><Clock3 size={14}/> Overdue handovers and bottlenecks surfaced</span>
+        <span className="nk-meta-chip"><AlertTriangle size={14}/> Cross-team dependencies under one Project ID</span>
+      </>}
     />
 
     {data&&<div className="monitoring-demo-banner"><ShieldAlert size={16}/><strong>{data.live_technical_routing_enabled?'Phase 7 LIVE:':'Phase 4 UAT:'}</strong> {data.live_technical_routing_enabled?'progress updates are restricted to the assigned live-ready real department PM.':'progress updates remain restricted to reserved demo department PM accounts.'}</div>}

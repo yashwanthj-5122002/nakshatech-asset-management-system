@@ -1,0 +1,252 @@
+/* ==========================================================================
+   Notification popup experience (global centre popup + bell status chips).
+   Reuses the existing ERP palette: --navy / --cyan / --line / --panel with the
+   same radii, shadows and typography as the rest of NakshaTech ERP.
+   ========================================================================== */
+
+.nk-notification-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 22px;
+  background: rgba(3, 24, 52, .58);
+  backdrop-filter: blur(4px);
+}
+
+.nk-notification-popup {
+  width: min(560px, 100%);
+  max-height: min(88vh, 780px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #dce6ef);
+  border-radius: 18px;
+  box-shadow: 0 34px 90px rgba(7, 34, 72, .28);
+  animation: nk-notification-popup-in 170ms ease-out;
+}
+
+@keyframes nk-notification-popup-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nk-notification-popup { animation: none; }
+}
+
+.nk-notification-popup-header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--navy, #06295b), var(--navy-2, #0a376e));
+}
+
+.nk-notification-popup-header.severity-warning { background: linear-gradient(135deg, #8a5a06, #b7791f); }
+.nk-notification-popup-header.severity-danger  { background: linear-gradient(135deg, #8f1d1d, #c53030); }
+.nk-notification-popup-header.severity-success { background: linear-gradient(135deg, #14532d, #15803d); }
+
+.nk-notification-popup-header-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .16);
+}
+
+.nk-notification-popup-eyebrow {
+  display: block;
+  font-size: .63rem;
+  font-weight: 850;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  opacity: .82;
+}
+
+.nk-notification-popup-title {
+  margin: 2px 0 0;
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.nk-notification-popup-close {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  transition: background 150ms ease;
+}
+
+.nk-notification-popup-close:hover { background: rgba(255, 255, 255, .24); }
+
+.nk-notification-popup-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 18px;
+  color: var(--navy, #06295b);
+}
+
+.nk-notification-popup-message {
+  margin: 0 0 14px;
+  color: var(--text-soft, #607189);
+  font-size: .87rem;
+  line-height: 1.55;
+}
+.nk-notification-popup-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.nk-notification-popup-fact {
+  padding: 9px 11px;
+  border: 1px solid var(--line, #dce6ef);
+  border-radius: 11px;
+  background: #f7fafd;
+}
+
+.nk-notification-popup-fact dt {
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-soft, #607189);
+}
+
+.nk-notification-popup-fact dd {
+  margin: 3px 0 0;
+  font-size: .87rem;
+  font-weight: 700;
+  color: var(--navy, #06295b);
+  word-break: break-word;
+}
+
+.nk-notification-popup-fact.is-danger { border-color: #f3c2c2; background: #fef4f4; }
+.nk-notification-popup-fact.is-warning { border-color: #f6dfae; background: #fffaf0; }
+
+.nk-notification-popup-reason {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-left: 3px solid var(--cyan, #06abc1);
+  border-radius: 0 11px 11px 0;
+  background: #f1fbfd;
+  font-size: .84rem;
+  line-height: 1.5;
+}
+
+.nk-notification-popup-reason strong { display: block; margin-bottom: 3px; }
+
+.nk-notification-popup-issues {
+  margin: 0;
+  padding-left: 20px;
+  color: #8f1d1d;
+  font-size: .86rem;
+  line-height: 1.7;
+}
+
+.nk-notification-popup-footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--line, #dce6ef);
+  background: #f8fbfe;
+}
+
+.nk-notification-popup-footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border-radius: 11px;
+  border: 1px solid var(--line, #dce6ef);
+  background: #fff;
+  font-size: .8rem;
+  font-weight: 780;
+  color: var(--navy, #06295b);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.nk-notification-popup-footer button:hover:not(:disabled) { border-color: #b9dce9; background: #f7fcff; }
+.nk-notification-popup-footer button:disabled { opacity: .6; cursor: not-allowed; }
+
+.nk-notification-popup-footer button.is-primary { border-color: transparent; background: var(--cyan, #06abc1); color: #fff; }
+.nk-notification-popup-footer button.is-danger { border-color: transparent; background: #c53030; color: #fff; }
+.nk-notification-popup-footer button.is-success { border-color: transparent; background: #15803d; color: #fff; }
+
+.nk-notification-popup-footer button:focus-visible {
+  outline: 3px solid rgba(18, 155, 190, .22);
+  outline-offset: 2px;
+}
+
+.nk-notification-popup-queue-hint {
+  margin-top: 9px;
+  font-size: .68rem;
+  color: var(--text-soft, #607189);
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .nk-notification-popup-backdrop { padding: 12px; }
+  .nk-notification-popup { width: 100%; max-height: calc(100vh - 24px); border-radius: 14px; }
+  .nk-notification-popup-facts { grid-template-columns: 1fr; }
+  .nk-notification-popup-footer { justify-content: stretch; }
+  .nk-notification-popup-footer button { flex: 1 1 auto; justify-content: center; }
+}
+
+/* Bell status grouping: PENDING ACTION / OVERDUE / RESOLVED */
+.app-shell .notification-item-status.is-pending { color: #b7791f; background: #fffaf0; }
+.app-shell .notification-item-status.is-overdue { color: #c53030; background: #fef4f4; }
+.app-shell .notification-item-status.is-resolved { color: #15803d; background: #f0fdf4; }
+
+/* "Go To First Issue" focus highlight for inline validation */
+.nk-notification-field-error {
+  outline: 2px solid #c53030;
+  outline-offset: 1px;
+  border-radius: 8px;
+  background: #fef4f4;
+}
+
+/* Management notification settings block */
+.app-shell .nk-notification-settings {
+  display: grid;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 1px solid var(--line, #dce6ef);
+  border-radius: 14px;
+  background: #f8fbfe;
+}
+
+.app-shell .nk-notification-settings h4 { margin: 0; font-size: .88rem; font-weight: 800; }
+.app-shell .nk-notification-settings p { margin: 0; font-size: .78rem; color: var(--text-soft, #607189); }
+.app-shell .nk-notification-settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+
+.app-shell .nk-notification-settings-row select {
+  padding: 8px 11px;
+  border: 1px solid var(--line, #dce6ef);
+  border-radius: 10px;
+  background: #fff;
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--navy, #06295b);
+}

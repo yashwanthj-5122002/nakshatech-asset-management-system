@@ -30,6 +30,7 @@ from app.modules.business.schemas import (
     BusinessTotals,
 )
 from app.modules.finance.models import FinanceProject, FinanceProjectMasterProfile
+from app.modules.finance.visibility import exclude_hidden_projects
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import ProjectWorkstream
 from app.modules.operations.service import TECHNICAL_DEPARTMENT_LABELS, TECHNICAL_ROLE_DEPARTMENT_MAP
@@ -215,6 +216,7 @@ def _project_rows(
         )
     else:
         statement = statement.where(FinanceProject.is_active.is_(True))
+    statement = exclude_hidden_projects(db, statement)
     projects = list(db.scalars(statement).all())
 
     attribution = _project_attribution(db, projects)

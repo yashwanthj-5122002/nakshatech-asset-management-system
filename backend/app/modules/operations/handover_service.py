@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceProject
+from app.modules.finance.visibility import filter_visible_project_ids
 from app.modules.notifications.service import create_global_notification
 from app.modules.operations.handover_models import ProjectDataHandover, ProjectDataHandoverAttempt
 from app.modules.operations.handover_schemas import (
@@ -499,6 +500,7 @@ def handover_dashboard_payload(db: Session, *, actor: User, effective_role: str)
     else:
         raise PermissionError("Project Data Handovers are not available for this role")
 
+    project_ids = filter_visible_project_ids(db, project_ids)
     projects: list[dict] = []
     for project_id in project_ids:
         project = db.get(FinanceProject, project_id)

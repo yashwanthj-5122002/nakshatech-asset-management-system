@@ -129,6 +129,11 @@ export function SampleRequestsPage(){
       title={bdEditor?'Technical Sample Requests':departmentViewer?`${currentDepartment?.label||'Technical Team'} Sample Inbox`:'Technical Sample Oversight'}
       description="BD can request one sample from multiple peer technical departments. Teams submit independently; BD sends the complete sample to the client. Finance is notified only after client approval."
       actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><FlaskConical size={14}/> One sample requested from multiple peer teams</span>
+        <span className="nk-meta-chip"><UsersRound size={14}/> Teams submit independently · BD sends to client</span>
+        <span className="nk-meta-chip"><Send size={14}/> Finance notified only after client approval</span>
+      </>}
     />
     {data&&<div className="operations-readonly sample-demo-banner"><FlaskConical size={16}/> <strong>{data.live_technical_routing_enabled?'Phase 7 LIVE:':'Phase 2 UAT:'}</strong> {data.live_technical_routing_enabled?'sample actions, notifications and emails use configured real Technical Team Directory recipients.':'reserved demo technical accounts are still used; real team emails remain locked.'}</div>}
     {notice&&<div className="success-message">{notice}</div>}{error&&<div className="error-message">{error}</div>}

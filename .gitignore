@@ -16,6 +16,11 @@ database-backup-*.sql
 .*_applied
 .patch_state/
 patch_backups/
+.nk-patch-stage/
+.freebuff/
+
+# Local database dumps / restore points
+*_reset_backup.sql
 .*_backups/
 .*_last_backup.txt
 _*_last_backup.txt

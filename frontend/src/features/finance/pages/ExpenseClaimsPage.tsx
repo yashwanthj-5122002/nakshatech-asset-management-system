@@ -1,4 +1,4 @@
-import { FilePlus2, ReceiptText, Search } from 'lucide-react'
+import { FilePlus2, Inbox, ReceiptText, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -48,6 +48,11 @@ export function ExpenseClaimsPage() {
         title="Expense Claims"
         description="Track every Advance, Reimbursement, and Additional Advance request from submission through Admin and Finance approval."
         actions={<Link className="finance-primary-button" to="/expenses/new"><FilePlus2 size={16} /> New Claim</Link>}
+        meta={<>
+          <span className="nk-meta-chip"><Inbox size={14} /> {pending} awaiting approval</span>
+          <span className="nk-meta-chip"><ReceiptText size={14} /> {approved} approved · {formatInr(paid)} released</span>
+          <span className="nk-meta-chip"><Search size={14} /> {claims.length} claims in your register</span>
+        </>}
       />
 
       <section className="finance-kpi-grid">
@@ -78,7 +83,20 @@ export function ExpenseClaimsPage() {
 
         {error && <div className="finance-error">{error}</div>}
         {loading ? <div className="finance-empty-state">Loading expense claims...</div> : visible.length === 0 ? (
-          <div className="finance-empty-state"><ReceiptText size={28} /><p>No expense claims match this view.</p></div>
+          claims.length === 0 ? (
+            <div className="nk-empty">
+              <span className="nk-empty-icon"><Inbox size={22} /></span>
+              <h3>No expense claims yet</h3>
+              <p>Advance, Reimbursement and Additional Advance requests appear here after submission and stay tracked through Admin and Finance approval to final payment.</p>
+              <div className="nk-empty-action"><Link className="finance-primary-button" to="/expenses/new"><FilePlus2 size={16} /> New Claim</Link></div>
+            </div>
+          ) : (
+            <div className="nk-empty">
+              <span className="nk-empty-icon"><ReceiptText size={22} /></span>
+              <h3>No claims match these filters</h3>
+              <p>{claims.length} claim(s) are in your register. Clear the search box or widen the request type and status filters to bring them back into view.</p>
+            </div>
+          )
         ) : (
           <div className="finance-table-wrap">
             <table className="finance-table">

@@ -236,9 +236,9 @@ export function TicketDetailPage() {
         <div className="ticket-meta-row"><span>SLA Timing</span><strong>{sla.value}</strong></div>
         {ticket.sla_due_at && <div className="ticket-meta-row"><span>SLA Due</span><strong>{formatStandardDateTime(ticket.sla_due_at)}</strong></div>}
         {ticket.sla_first_response_at && <div className="ticket-meta-row"><span>First Response</span><strong>{formatStandardDateTime(ticket.sla_first_response_at)}</strong></div>}
-        <div className="ticket-meta-row"><span>Assigned To</span><strong>{ticket.assigned_to_name || 'Not assigned'}</strong></div>
+        <div className="ticket-meta-row"><span>Assigned To</span><strong title={ticket.assigned_to_name || undefined}>{ticket.assigned_to_name || 'Not assigned'}</strong></div>
         <div className="ticket-meta-row"><span>Department</span><strong>{ticket.department.replace('_', ' ')}</strong></div>
-        <div className="ticket-meta-row"><span>Reporting Manager</span><strong>{ticket.reporting_manager_email || 'Not recorded'}</strong></div>
+        <div className="ticket-meta-row"><span>Reporting Manager</span><strong title={ticket.reporting_manager_email || undefined}>{ticket.reporting_manager_email || 'Not recorded'}</strong></div>
         <div className="ticket-meta-row"><span>Raised At</span><strong>{formatStandardDateTime(ticket.created_at)}</strong></div>
         <div className="ticket-meta-row"><span>Last Updated</span><strong>{formatStandardDateTime(ticket.updated_at)}</strong></div>
         {progress === 'completed' && <div className="ticket-meta-row"><span>Completed In</span><strong>{formatDuration(ticket.created_at, ticket.resolved_at || ticket.closed_at || ticket.updated_at)}</strong></div>}

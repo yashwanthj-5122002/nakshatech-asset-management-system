@@ -88,6 +88,11 @@ export function ProductionReadinessPage(){
       title="Production Readiness & System Assurance"
       description="Read-only operational assurance for auditability, notifications, service health, security configuration, performance indexes and go-live readiness."
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><Activity size={14}/> Read-only operational assurance</span>
+        <span className="nk-meta-chip"><ShieldCheck size={14}/> {data?.production_review_ready ? 'Ready for production review' : 'Checking go-live readiness…'}</span>
+        <span className="nk-meta-chip"><Gauge size={14}/> Health · security · performance indexes</span>
+      </>}
     />
 
     {data&&<div className={`hardening-readiness-banner ${data.production_review_ready?'ready':'blocked'}`}>

@@ -254,6 +254,11 @@ export function WorkFormPage() {
         eyebrow="CONTROLLED WORKFLOW"
         title="Work Records & Component Changes"
         description={`Identify every system by CPU / Asset Tag and Workstation. IT controls operational completion; activity saved here is reported in ${monthLabel(selectedMonth)} with actual server date and time preserved.`}
+        meta={<>
+          <span className="nk-meta-chip"><History size={14} /> Reported in {monthLabel(selectedMonth)}</span>
+          <span className="nk-meta-chip"><ClipboardPlus size={14} /> {mode === 'work' ? 'Normal work record' : 'Component changes'} · {defaultModule === 'drone' ? 'Drone module' : 'IT module'}</span>
+          <span className="nk-meta-chip"><Repeat2 size={14} /> {records.length} work records · {componentRecords.length} component changes</span>
+        </>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}

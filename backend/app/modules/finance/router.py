@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 from io import BytesIO
+from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import department_for_pm_role, is_technical_pm_role, normalize_department_code_or_default
+from app.core.roles import SOFTWARE_TEAM_ROLE
 from app.models.entities import utc_now
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.attachments import (
@@ -40,6 +43,7 @@ from app.modules.finance.schemas import (
     FinanceProjectUserResponse,
     FinanceProjectStatusUpdate,
     FinanceProjectScheduleUpdate,
+    FinanceRevenueTargetUpsertRequest,
     FinanceReportResponse,
     SettlementAttachmentResponse,
     SettlementDecisionRequest,
@@ -102,6 +106,10 @@ from app.modules.finance.client_master_io import (
     import_client_master_workbook,
     project_tracking,
 )
+from app.modules.finance.sales_revenue_service import sales_revenue_overview
+from app.modules.finance.revenue_target_service import list_revenue_targets, upsert_revenue_target
+from app.modules.finance.advance_router import router as advance_payment_router
+from app.modules.finance.standalone_invoice_router import router as standalone_invoice_router
 
 router = APIRouter(prefix="/finance", tags=["Finance CRM"])
 
@@ -113,6 +121,27 @@ def _role(auth: CurrentAuth) -> str:
 def _require_role(auth: CurrentAuth, *roles: str) -> None:
     if _role(auth) not in set(roles):
         raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
+
+
+_COMMAND_CENTER_ROLES = {FINANCE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE, SOFTWARE_TEAM_ROLE}
+
+
+def _command_center_department_scope(auth: CurrentAuth) -> str | None:
+    """Resolve Finance Command Center department visibility for the caller.
+
+    Returns None (all departments) for management/admin/finance/software_team.
+    Returns a single canonical department code for technical PM roles.
+    Raises 403 for employees and any other non-authorized role.
+    """
+    role = _role(auth)
+    if role in _COMMAND_CENTER_ROLES:
+        return None
+    if is_technical_pm_role(role):
+        scope = department_for_pm_role(role)
+        if scope is None:
+            raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
+        return normalize_department_code_or_default(scope)
+    raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
 
 
 def _visible_claim_or_404(db: Session, auth: CurrentAuth, claim_id: int):
@@ -130,6 +159,48 @@ def _xlsx_stream(data: bytes, filename: str) -> StreamingResponse:
     )
 
 
+@router.get("/sales-revenue")
+def get_sales_revenue_overview(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> dict:
+    """Read-only Sales/Revenue intelligence backed by the existing commercial and billing lifecycle."""
+    department_scope = _command_center_department_scope(auth)
+    return sales_revenue_overview(db, department_scope=department_scope)
+
+
+@router.get("/revenue-targets")
+def get_revenue_targets(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> dict:
+    department_scope = _command_center_department_scope(auth)
+    return {"targets": list_revenue_targets(db, year=year, department_scope=department_scope)}
+
+
+@router.put("/revenue-targets")
+def put_revenue_target(
+    payload: FinanceRevenueTargetUpsertRequest,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> dict:
+    _require_role(auth, FINANCE_ROLE)
+    try:
+        result = upsert_revenue_target(
+            db,
+            month_start=payload.month_start,
+            department_code=payload.department_code,
+            target_amount_inr=Decimal(str(payload.target_amount_inr)),
+            actor=auth.user,
+        )
+        db.commit()
+        return result
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/client-master/import.xlsx")
 async def import_client_master_excel(
     request: Request,
@@ -138,7 +209,7 @@ async def import_client_master_excel(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     filename = (file.filename or "client-master.xlsx").strip()
     if not filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=422, detail="Upload an .xlsx Client Master workbook")
@@ -216,7 +287,7 @@ def create_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     try:
         client = create_finance_client(db, actor=auth.user, payload=payload)
     except ValueError as exc:
@@ -238,7 +309,7 @@ def update_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     client = db.get(FinanceClient, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Finance client not found")
@@ -304,7 +375,7 @@ def create_project_for_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     client = db.get(FinanceClient, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Finance client not found")
@@ -330,7 +401,7 @@ def update_project_for_client(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None or project.client_id != client_id:
         raise HTTPException(status_code=404, detail="Finance project not found for this client")
@@ -373,9 +444,9 @@ def list_projects(
     if role not in {EMPLOYEE_ROLE, *VISIBLE_STAFF_ROLES}:
         raise HTTPException(status_code=403, detail="Finance project access is not available for this role")
     if role == EMPLOYEE_ROLE:
-        # Least-privilege project selection: an employee can raise a project
-        # expense only against projects to which the PM has assigned them.
-        return [employee_project_payload(project) for project in assigned_projects_for_user(db, user_id=auth.user.id)]
+        # Employees see every project for selection; expense gating is lifecycle-based
+        # (expense_allowed / expense_block_reason) on employee_project_payload.
+        return [employee_project_payload(project) for project in all_projects(db)]
     return [project_payload(project) for project in active_projects(db)]
 
 
@@ -398,7 +469,7 @@ def update_project_status(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Finance project not found")
@@ -471,7 +542,7 @@ def update_project_schedule(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     project = db.get(FinanceProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Finance project not found")
@@ -612,7 +683,7 @@ def decide_claim_as_admin(
 ) -> dict:
     # Strict on purpose: Software Team's normal Admin-equivalent behavior does
     # not grant financial verification authority.
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     claim = _visible_claim_or_404(db, auth, claim_id)
     try:
         claim = admin_decision(
@@ -1181,7 +1252,7 @@ def decide_settlement_as_admin(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, ADMIN_ROLE)
+    _require_role(auth, ADMIN_ROLE, FINANCE_ROLE)
     settlement = _visible_settlement_or_404(db, auth, settlement_id)
     try:
         settlement = admin_settlement_decision(db, settlement=settlement, actor=auth.user, action=payload.action, comments=payload.comments, request=request)
@@ -1271,3 +1342,7 @@ def download_complete_a4_pack(
     record_audit(db, event_type="FINANCE_A4_PACK_DOWNLOADED", request=request, user=auth.user, module="finance", target_type="expense_claim", target_id=claim.id, details={"claim_code": claim.claim_code})
     db.commit()
     return _document_response(output, filename=f"{claim.claim_code}_Complete_A4_Pack.pdf", media_type="application/pdf")
+
+
+router.include_router(advance_payment_router)
+router.include_router(standalone_invoice_router)

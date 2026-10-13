@@ -1,52 +1,51 @@
-import { ArrowRight, LogIn } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { WelcomeGeoNetwork } from '../components/WelcomeGeoNetwork'
-import '../welcome-geospatial-network.css'
+
+import { MetalRosetteHero } from '../components/MetalRosetteHero'
+import { LoginParticleField } from '../components/LoginParticleField'
+
+import './welcome-space.css'
 
 export function WelcomePage() {
   return (
-    <main className="welcome-screen">
-      <div className="welcome-shell welcome-shell--reference2">
-        <div className="welcome-terrain-layer" aria-hidden="true" />
-        <WelcomeGeoNetwork />
-        <header className="welcome-header">
-          <Link className="welcome-brand" to="/" aria-label="NakshaTech Asset Management System home">
-            <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" />
-            <span className="welcome-brand-divider" aria-hidden="true" />
-            <span className="welcome-product-name">Asset Management System</span>
+    <main className="space-welcome">
+      <a className="space-welcome__skip" href="#workspace-welcome">Skip to content</a>
+      <div className="space-welcome__background" aria-hidden="true" />
+      <LoginParticleField />
+
+      <div className="space-welcome__layout">
+        <header className="space-welcome__header">
+          <Link className="space-welcome__brand" to="/" aria-label="NakshaTech home">
+            <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" width="500" height="88" />
+            <span className="space-welcome__brand-divider" aria-hidden="true" />
+            <span className="space-welcome__product-name">Asset Management System</span>
           </Link>
 
-          <div className="welcome-header-actions">
-            <Link className="outline-login" to="/login" aria-label="Open privileged login page">
-              <span>Login</span>
-            </Link>
-          </div>
         </header>
 
-        <section className="welcome-main" aria-labelledby="welcome-title">
-          <div className="welcome-copy">
-            <h1 id="welcome-title">
-              <span className="welcome-title-primary">Smart Internal</span>
-              <span className="welcome-title-gradient">Asset Management</span>
+        <section className="space-welcome__hero" id="workspace-welcome" aria-labelledby="space-welcome-title" tabIndex={-1}>
+          <div className="space-welcome__copy">
+            <div className="space-welcome__eyebrow">Intelligent Asset Operations <span aria-hidden="true" /></div>
+
+            <h1 id="space-welcome-title">
+              <span>Organization</span>
+              <strong className="space-welcome__title-gradient">Improvement Process</strong>
             </h1>
 
-            <p className="welcome-description">
-              Manage IT assets, drone operations, workflows, and admin visibility — all in one intelligent platform.
+            <p className="space-welcome__description">
+              Manage IT assets, drone operations, and workflows<br className="space-welcome__description-break" /> in one intelligent platform.
             </p>
 
-            <div className="welcome-login-actions">
-              <Link className="welcome-login" to="/login">
-                <LogIn size={22} aria-hidden="true" />
-                <span>Login</span>
-                <ArrowRight className="welcome-login-arrow" size={20} aria-hidden="true" />
-              </Link>
-            </div>
+            <Link className="space-welcome__login" to="/login">
+              <span>Login</span><span className="space-welcome__login-arrow"><ArrowRight size={21} aria-hidden="true" /></span>
+            </Link>
+          </div>
+
+          <div className="space-welcome__visual">
+            <MetalRosetteHero />
           </div>
         </section>
 
-        <div className="welcome-coordinate coordinate-north" aria-hidden="true">60°N</div>
-        <div className="welcome-coordinate coordinate-south" aria-hidden="true">30°S</div>
-        <div className="welcome-grid-dots" aria-hidden="true" />
       </div>
     </main>
   )

@@ -89,7 +89,7 @@ export function TicketListPage() {
         : 'Simple work status: red is not started, yellow is ongoing, and green is completed. Priority remains visible for queue urgency.'
 
   return <>
-    <DashboardHeader eyebrow="TICKET OPERATIONS" title={title} description={description} />
+    <DashboardHeader eyebrow="TICKET OPERATIONS" title={title} description={description} meta={<><span className="nk-meta-chip"><TicketCheck size={14}/> Raise, track and resolve support tickets</span><span className="nk-meta-chip"><Search size={14}/> Search ticket, employee, asset or component</span><span className="nk-meta-chip"><Filter size={14}/> Priority and work-status filters</span></>} />
     <section className="panel-card ticket-list-panel ticket-simple-list-panel">
       <div className="ticket-list-toolbar">
         <label className="ticket-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search ticket, employee, asset tag, component, or issue" /></label>

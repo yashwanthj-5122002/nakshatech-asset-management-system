@@ -1,4 +1,4 @@
-import { FolderPlus } from 'lucide-react'
+import { FolderPlus, Repeat2 } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -20,7 +20,7 @@ export function DroneProjectsPage() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create project') }
   }
   return <>
-    <DashboardHeader eyebrow="PROJECT MASTER" title="Drone Projects" description="Create every project once. Multiple projects can run in the same month, and one project can continue across several months or financial years." actions={<button className="primary-button" onClick={() => setShowForm(value => !value)}><FolderPlus size={17} /> New Project</button>} />
+    <DashboardHeader eyebrow="PROJECT MASTER" title="Drone Projects" description="Create every project once. Multiple projects can run in the same month, and one project can continue across several months or financial years." actions={<button className="primary-button" onClick={() => setShowForm(value => !value)}><FolderPlus size={17} /> New Project</button>} meta={<><span className="nk-meta-chip"><FolderPlus size={14} /> Create every project once</span><span className="nk-meta-chip"><Repeat2 size={14} /> Spans multiple months and financial years</span></>} />
     {error && <div className="error-message">{error}</div>}
     {showForm && <form className="panel compact-form-panel drone-project-form" onSubmit={submit}>
       <div className="compact-form-heading">

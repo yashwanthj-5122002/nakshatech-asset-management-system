@@ -14,6 +14,7 @@ export interface AuthUser {
   branch: string
   employee_id?: string
   department?: string
+  department_code?: string
   designation?: string
   phone_number?: string | null
   joining_date?: string | null

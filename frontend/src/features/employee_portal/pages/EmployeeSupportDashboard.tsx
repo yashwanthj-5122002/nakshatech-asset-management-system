@@ -1,4 +1,4 @@
-import { Bell, CheckCircle2, Clock3, FilePlus2, LifeBuoy, MessageSquarePlus, ReceiptIndianRupee, TicketCheck } from 'lucide-react'
+import { ArrowRight, Bell, CheckCircle2, Clock3, FilePlus2, LifeBuoy, MessageSquarePlus, ReceiptIndianRupee, TicketCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -9,6 +9,12 @@ import type { ExpenseClaim, SupportTicketSummary, TicketNotification } from '../
 import { financeClaimTypeLabels, financeStatusLabels, financeStatusTone, formatInr } from '../../finance/finance-utils'
 import '../../finance/finance-expenses.css'
 import { ticketProgressFromStatus, ticketProgressShortLabel } from '../ticketProgress'
+
+/* Presentation-only label: backend stores 'it'; house style renders 'IT'. */
+function formatTicketDepartment(department: string) {
+  if (department === 'it') return 'IT'
+  return department.replace('_', ' ')
+}
 
 export function EmployeeSupportDashboard() {
   const { user } = useAuth()
@@ -42,7 +48,7 @@ export function EmployeeSupportDashboard() {
 
   return (
     <>
-      <DashboardHeader eyebrow="EMPLOYEE SUPPORT" title="Support & Project Expense Workspace" description={`Raise support tickets and project-linked expense requests. Current branch: ${user?.selected_branch_name || user?.branch || 'Not selected'}.`} />
+      <DashboardHeader eyebrow="EMPLOYEE SUPPORT" title="Support & Project Expense Workspace" description={`Raise support tickets and project-linked expense requests. Current branch: ${user?.selected_branch_name || user?.branch || 'Not selected'}.`} meta={<><span className="nk-meta-chip"><LifeBuoy size={14}/> Support tickets and project expense requests</span><span className="nk-meta-chip"><Bell size={14}/> {unread} unread updates</span><span className="nk-meta-chip"><ReceiptIndianRupee size={14}/> Branch: {user?.selected_branch_name || user?.branch || 'Not selected'}</span></>} />
       <section className="stats-grid">
         <StatCard icon={TicketCheck} label="My Tickets" value={tickets.length} />
         <StatCard icon={Clock3} label="Open" value={open} tone="orange" />
@@ -58,14 +64,14 @@ export function EmployeeSupportDashboard() {
       </section>
 
       <section className="panel-card support-recent-panel">
-        <div className="section-heading"><div><span className="section-kicker">RECENT SUPPORT ACTIVITY</span><h2>Latest tickets</h2></div><Link to="/tickets">View all</Link></div>
-        {tickets.length === 0 ? <div className="empty-state">No tickets have been raised yet.</div> : <div className="support-ticket-list">{tickets.slice(0, 5).map(ticket => { const progress = ticketProgressFromStatus(ticket.status); return <Link key={ticket.id} to={`/tickets/${ticket.id}`} className="support-ticket-row"><div><strong>{ticket.ticket_code} · {ticket.title}</strong><span>{ticket.department.replace('_', ' ')} · {ticket.branch_name}</span></div><span className={`ticket-progress-pill progress-${progress}`}><i />{ticketProgressShortLabel(ticket.status)}</span></Link> })}</div>}
+        <div className="section-heading"><div><span className="section-kicker">RECENT SUPPORT ACTIVITY</span><h2>Latest tickets</h2></div><Link to="/tickets">View all<ArrowRight size={14} aria-hidden="true" /></Link></div>
+        {tickets.length === 0 ? <div className="empty-state"><LifeBuoy size={18} aria-hidden="true" /><span>No tickets have been raised yet.</span></div> : <div className="support-ticket-list">{tickets.slice(0, 5).map(ticket => { const progress = ticketProgressFromStatus(ticket.status); return <Link key={ticket.id} to={`/tickets/${ticket.id}`} className="support-ticket-row"><div><strong>{ticket.ticket_code} · {ticket.title}</strong><span>{formatTicketDepartment(ticket.department)} · {ticket.branch_name}</span></div><span className={`ticket-progress-pill progress-${progress}`}><i />{ticketProgressShortLabel(ticket.status)}</span></Link> })}</div>}
       </section>
 
       {financeAvailable && (
-        <section className="panel-card support-recent-panel employee-finance-recent">
-          <div className="section-heading"><div><span className="section-kicker">RECENT PROJECT EXPENSES</span><h2>Latest claims</h2></div><Link to="/expenses">View all</Link></div>
-          {expenseClaims.length === 0 ? <div className="empty-state">No project expense claims have been raised yet.</div> : (
+        <section className="panel-card support-recent-panel">
+          <div className="section-heading"><div><span className="section-kicker">RECENT PROJECT EXPENSES</span><h2>Latest claims</h2></div><Link to="/expenses">View all<ArrowRight size={14} aria-hidden="true" /></Link></div>
+          {expenseClaims.length === 0 ? <div className="empty-state"><ReceiptIndianRupee size={18} aria-hidden="true" /><span>No project expense claims have been raised yet.</span></div> : (
             <div className="support-ticket-list">{expenseClaims.slice(0, 5).map(claim => (
               <Link key={claim.id} to={`/expenses/${claim.id}`} className="support-ticket-row">
                 <div><strong>{claim.claim_code} · {claim.project.project_code}</strong><span>{financeClaimTypeLabels[claim.claim_type]} · {formatInr(claim.total_amount)}</span></div>

@@ -28,6 +28,24 @@ interface GlobalNotification {
   is_read: boolean
   read_at?: string | null
   created_at: string
+  // Popup experience (additive). READ and RESOLVED are independent concepts.
+  severity?: string
+  requires_action?: boolean
+  resolved_at?: string | null
+  is_resolved?: boolean
+  is_reminder?: boolean
+}
+
+/**
+ * Bell status chip. READ means "seen"; RESOLVED means "the required business
+ * action completed". A notification can be read yet still pending, so the bell
+ * must not collapse the two.
+ */
+function notificationStatus(notification: GlobalNotification): { id: string; label: string } {
+  if (notification.is_resolved) return { id: 'resolved', label: 'Resolved' }
+  if (notification.severity === 'danger') return { id: 'overdue', label: 'Overdue' }
+  if (notification.requires_action) return { id: 'pending', label: 'Pending Action' }
+  return { id: 'information', label: 'Information' }
 }
 
 interface UnreadCountResponse {
@@ -275,33 +293,37 @@ export function GlobalNotificationBell() {
               </div>
             )}
 
-            {!loading && !error && notifications.map(notification => (
-              <button
-                type="button"
-                key={notification.id}
-                className={`notification-item ${notification.is_read ? 'read' : 'unread'}`}
-                onClick={() => void openNotification(notification)}
-              >
-                <span className={`notification-category-icon ${notification.category}`}>
-                  <NotificationCategoryIcon category={notification.category} />
-                </span>
-                <span className="notification-item-copy">
-                  <span className="notification-item-meta">
-                    <span className={`notification-category-chip ${notification.category}`}>{categoryLabel(notification.category)}</span>
-                    <span className="notification-item-time">{formatNotificationTimestamp(notification.created_at)}</span>
-                  </span>
-                  <strong>{notification.title}</strong>
-                  <span className="notification-message">{notification.message}</span>
-                </span>
-                <span
-                  className={`notification-item-status ${notification.is_read ? 'read' : 'unread'}`}
-                  aria-label={notification.is_read ? 'Read' : 'Unread'}
+            {!loading && !error && notifications.map(notification => {
+              const status = notificationStatus(notification)
+              return (
+                <button
+                  type="button"
+                  key={notification.id}
+                  className={`notification-item ${notification.is_read ? 'read' : 'unread'}`}
+                  onClick={() => void openNotification(notification)}
                 >
-                  {notification.is_read ? <Check size={12} aria-hidden="true" /> : <span className="notification-unread-dot" aria-hidden="true" />}
-                  <span>{notification.is_read ? 'Read' : 'New'}</span>
-                </span>
-              </button>
-            ))}
+                  <span className={`notification-category-icon ${notification.category}`}>
+                    <NotificationCategoryIcon category={notification.category} />
+                  </span>
+                  <span className="notification-item-copy">
+                    <span className="notification-item-meta">
+                      <span className={`notification-category-chip ${notification.category}`}>{categoryLabel(notification.category)}</span>
+                      <span className={`notification-item-status is-${status.id}`}>{status.label}</span>
+                      <span className="notification-item-time">{formatNotificationTimestamp(notification.created_at)}</span>
+                    </span>
+                    <strong>{notification.title}</strong>
+                    <span className="notification-message">{notification.message}</span>
+                  </span>
+                  <span
+                    className={`notification-item-status ${notification.is_read ? 'read' : 'unread'}`}
+                    aria-label={notification.is_read ? 'Read' : 'Unread'}
+                  >
+                    {notification.is_read ? <Check size={12} aria-hidden="true" /> : <span className="notification-unread-dot" aria-hidden="true" />}
+                    <span>{notification.is_read ? 'Read' : 'New'}</span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </section>
       )}

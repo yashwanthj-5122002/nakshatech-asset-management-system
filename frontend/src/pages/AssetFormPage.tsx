@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Boxes,
+  CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   Cpu,
@@ -327,6 +328,11 @@ export function AssetFormPage() {
       title={isPrinter ? (isEdit ? `Edit Printer ${form.cpu_asset_tag || assetCode}` : 'Add New Printer') : isExternalHdd ? (isEdit ? `Edit External HDD ${form.cpu_asset_tag || assetCode}` : 'Add New External HDD') : isEdit ? `Edit ${assetCode}` : quickAddPrimaryDevice ? `Add New ${quickAddPrimaryDevice}` : 'Add IT Asset'}
       description={isPrinter ? `Maintain the dedicated Printer Asset Register fields for ${monthLabel(selectedMonth)}. Last updated date and time are recorded automatically by the server.` : isExternalHdd ? `Maintain only External HDD register fields for ${monthLabel(selectedMonth)}. Holder, project and status changes remain in the audit timeline.` : `Complete one full form. This activity will be reported in ${monthLabel(selectedMonth)}, while the actual server save date and time remain unchanged.`}
       actions={<button className="secondary-button" onClick={() => navigate(returnPath)}><ArrowLeft size={17} /> {backLabel}</button>}
+      meta={<>
+        <span className="nk-meta-chip"><CalendarDays size={14} /> Reported in {monthLabel(selectedMonth)}</span>
+        <span className="nk-meta-chip"><Cpu size={14} /> {form.device_type} · {form.status.replaceAll('_', ' ')}</span>
+        <span className="nk-meta-chip"><ShieldCheck size={14} /> {isEdit ? 'Editing an existing asset record' : 'Creating a new asset record'}</span>
+      </>}
     />
 
     {(error || validationErrors.length > 0) && <div className="asset-form-alerts">{error && <div className="error-message">{error}</div>}{validationErrors.length > 0 && <div className="error-message"><strong>Correct these items before saving:</strong><ul>{validationErrors.map(item => <li key={item}>{item}</li>)}</ul></div>}</div>}

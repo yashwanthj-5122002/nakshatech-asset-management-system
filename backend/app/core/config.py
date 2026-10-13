@@ -56,10 +56,29 @@ class Settings(BaseSettings):
     seed_employee_test_email: str = ""
     seed_employee_test_password: str = ""
 
+    # Multi-department generalization of the Ortho PM login above: one PM/UAT
+    # account per additional technical department, same unified authentication,
+    # same opt-in gate (seed_operations_test_users_enabled), password never logged.
+    seed_lidar_pm_email: str = ""
+    seed_lidar_pm_password: str = ""
+    seed_mobile_mapping_pm_email: str = ""
+    seed_mobile_mapping_pm_password: str = ""
+    seed_laser_scanning_pm_email: str = ""
+    seed_laser_scanning_pm_password: str = ""
+    seed_civil_pm_email: str = ""
+    seed_civil_pm_password: str = ""
+
     # V8.1 local/test-only normal Employee fixtures. The seed function also
     # refuses to run whenever APP_ENV or ENVIRONMENT identifies production.
     enable_test_employee_seed: bool = False
     test_employee_seed_password: str = ""
+    # Shared password for the 60 LiDAR/Mobile Mapping/Laser Scanning/Civil test employees
+    # (15 each), gated by the same enable_test_employee_seed flag as the Ortho 15.
+    multi_department_test_employee_seed_password: str = ""
+
+    # Local/UAT-only control panel for the deterministic 2026 ERP simulation.
+    # It is disabled by default and is explicitly forbidden in production.
+    enable_uat_2026_controls: bool = False
 
     database_url: str = "postgresql+psycopg://asset_user:asset_password@db:5432/asset_management"
     database_pool_size: int = 5
@@ -91,6 +110,27 @@ class Settings(BaseSettings):
     finance_email_heading: str = "NakshaTech Finance CRM"
     finance_admin_notification_emails: str = "admin@nakshatech.com"
     finance_team_notification_emails: str = "finance@nakshatech.com"
+    # Legal/remittance details used by the read-only ProjectInvoice A4 renderer.
+    # Production supplies these through environment configuration; blank values
+    # are omitted from the document rather than guessed in application code.
+    invoice_company_name: str = "NAKSHA TECH PRIVATE LIMITED"
+    invoice_company_address: str = ""
+    invoice_company_gstin: str = ""
+    invoice_company_pan: str = ""
+    invoice_company_phone: str = ""
+    invoice_company_email: str = "finance@nakshatech.com"
+    invoice_company_website: str = ""
+    invoice_company_hsn_sac: str = ""
+    invoice_bank_name: str = ""
+    invoice_bank_account_name: str = ""
+    invoice_bank_account_number: str = ""
+    invoice_bank_ifsc: str = ""
+    invoice_bank_swift: str = ""
+    invoice_bank_branch: str = ""
+    # Optional override for the ERP brand mark used on the A4 tax invoice. Blank means
+    # "auto-detect the existing frontend/public/nakshatech-logo.png asset"; the invoice
+    # still renders correctly (text-only header) when neither is available.
+    invoice_logo_path: str = ""
     app_public_url: str = "http://localhost:3100"
     email_otp_expiry_minutes: int = 10
     email_otp_resend_seconds: int = 60
@@ -162,6 +202,12 @@ class Settings(BaseSettings):
     # Legacy projects that were already submitted/returned before the commercial layer stay resubmittable.
     commercial_revision1_required_on_submit: bool = True
 
+    # Client advance payment notifications (Finance V8 Phase 4). Pending advances
+    # above this amount raise a High Value Pending Advance alert for Management.
+    # Configurable so UAT and production can tune the escalation limit without a
+    # code change (env: ADVANCE_HIGH_VALUE_THRESHOLD_INR).
+    advance_high_value_threshold_inr: float = 1_000_000.0
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
     @property
@@ -203,6 +249,8 @@ class Settings(BaseSettings):
             raise RuntimeError("SEED_OPERATIONS_TEST_USERS_ENABLED must be false in production")
         if self.enable_test_employee_seed:
             raise RuntimeError("ENABLE_TEST_EMPLOYEE_SEED must be false in production")
+        if self.enable_uat_2026_controls:
+            raise RuntimeError("ENABLE_UAT_2026_CONTROLS must be false in production")
         weak_secrets = {
             "change-this-secret-before-production",
             "change-this-secret-before-production-with-at-least-32-characters",

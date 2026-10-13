@@ -1,0 +1,269 @@
+--- a/frontend/src/components/WelcomeAssetScene.tsx
++++ b/frontend/src/components/WelcomeAssetScene.tsx
+@@ -23,6 +23,12 @@
+ 
+ // Motion adapted from the user's supplied Originkit Metal Rosette component.
+ const CYCLE_SECONDS = 3.45
++// Dragging roughly 520px turns the scene 360 degrees around its upright axis.
++const YAW_RADIANS_PER_PIXEL = (Math.PI * 2) / 520
++// A short press still selects a department; press-and-hold starts the 360-degree spin.
++const PRESS_HOLD_DELAY_MS = 220
++const HOLD_SPIN_SECONDS_PER_TURN = 3.2
++const DRAG_THRESHOLD_PX = 8
+ const HOLD = .48
+ const START_PHASE = (1 - HOLD) * (.4 + .31) + HOLD / 2
+ function armExtension(cycle: number): number {
+@@ -61,7 +67,7 @@
+     renderer.setClearColor(0x000000, 0)
+     const scene = new THREE.Scene()
+     const camera = new THREE.PerspectiveCamera(34, 1, .1, 60)
+-    camera.position.set(0, .25, 13)
++    camera.position.set(0, 0, 13)
+     camera.lookAt(0, 0, 0)
+     scene.add(new THREE.AmbientLight(0x63b9eb, 2.3))
+     const keyLight = new THREE.DirectionalLight(0xbef9ff, 4.2)
+@@ -77,7 +83,7 @@
+     const constellation = new THREE.Group()
+     scene.add(constellation)
+     const rosetteView = new THREE.Group()
+-    rosetteView.rotation.set(35 * Math.PI / 180, -Math.PI / 4, 0)
++    rosetteView.rotation.set(0, -Math.PI / 4, 0)
+     const rosette = new THREE.Group()
+     rosetteView.add(rosette)
+     constellation.add(rosetteView)
+@@ -235,14 +241,15 @@
+     let elapsed = 0
+     let previousTime = performance.now()
+     let lastReset = latest.current.resetVersion
+-    let yaw = -.06
+-    let pitch = .035
+-    let targetYaw = yaw
+-    let targetPitch = pitch
++    let yaw = 0
++    let targetYaw = 0
+     let dragging = false
++    let manualDragging = false
++    let holdSpinning = false
++    let holdTimer: number | null = null
++    let activePointerId: number | null = null
+     let keyboardInspection = false
+     let previousX = 0
+-    let previousY = 0
+     let pressX = 0
+     let pressY = 0
+     let pressedNode: string | null = null
+@@ -257,18 +264,19 @@
+     }
+     const labelPosition = new THREE.Vector3()
+     const shouldAnimate = () => contextAvailable && visible && !document.hidden && !latest.current.paused && !latest.current.reducedMotion
++    // Explicit press-and-hold works even when the decorative animation is paused.
++    const shouldRender = () => shouldAnimate() || (holdSpinning && contextAvailable && visible && !document.hidden && !latest.current.reducedMotion)
+     const inspecting = () => dragging || keyboardInspection || Boolean(latest.current.highlighted || latest.current.selected)
+     const paint = () => {
+       if (disposed || !contextAvailable) return
+       if (lastReset !== latest.current.resetVersion) {
+         lastReset = latest.current.resetVersion
+-        targetYaw = yaw = -.06
+-        targetPitch = pitch = .035
++        targetYaw = yaw = 0
+         elapsed = 0
+       }
+       yaw += (targetYaw - yaw) * .2
+-      pitch += (targetPitch - pitch) * .2
+-      constellation.rotation.set(pitch, yaw, 0)
++      // Upright rotation: only Y changes; X and Z remain zero.
++      constellation.rotation.set(0, yaw, 0)
+       const extension = latest.current.reducedMotion || inspecting() ? 1 : armExtension(START_PHASE + elapsed / CYCLE_SECONDS)
+       const spin = latest.current.reducedMotion || keyboardInspection ? 0 : elapsed * Math.PI / 2
+       rosette.rotation.y = spin
+@@ -300,26 +308,32 @@
+       }))
+       renderer.render(scene, camera)
+       canvas.dataset.viewYaw = yaw.toFixed(4)
+-      canvas.dataset.animation = shouldAnimate() ? 'running' : 'resting'
++      canvas.dataset.animation = holdSpinning ? 'hold-spinning' : shouldAnimate() ? 'running' : 'resting'
+       canvas.dataset.extension = extension.toFixed(4)
+       canvas.dataset.spin = spin.toFixed(4)
+     }
+     const loop = (time: number) => {
+       frame = 0
+-      // Cap decorative rendering at 30 fps to keep input responsive on smaller devices.
+-      if (time - previousTime >= 32) {
+-        if (shouldAnimate() && !inspecting()) elapsed += Math.min((time - previousTime) / 1000, .1)
++      // Higher frame rate while the user is holding the cube; 30 fps for ambient motion.
++      if (time - previousTime >= (holdSpinning ? 16 : 32)) {
++        const dt = Math.min((time - previousTime) / 1000, .1)
++        if (shouldAnimate() && !inspecting()) elapsed += dt
++        if (holdSpinning && !latest.current.reducedMotion) {
++          // Exactly one upright revolution per HOLD_SPIN_SECONDS_PER_TURN.
++          targetYaw += dt * (Math.PI * 2) / HOLD_SPIN_SECONDS_PER_TURN
++          yaw = targetYaw
++        }
+         previousTime = time
+         paint()
+       }
+-      if (shouldAnimate()) frame = requestAnimationFrame(loop)
++      if (shouldRender()) frame = requestAnimationFrame(loop)
+     }
+     const sync = () => {
+       if (frame) cancelAnimationFrame(frame)
+       frame = 0
+       previousTime = performance.now()
+       paint()
+-      if (shouldAnimate()) frame = requestAnimationFrame(loop)
++      if (shouldRender()) frame = requestAnimationFrame(loop)
+     }
+     invalidate.current = sync
+     const resize = () => {
+@@ -332,50 +346,88 @@
+       camera.updateProjectionMatrix()
+       sync()
+     }
++    const clearHoldTimer = () => {
++      if (holdTimer !== null) window.clearTimeout(holdTimer)
++      holdTimer = null
++    }
++    const stopPointerInteraction = () => {
++      clearHoldTimer()
++      dragging = false
++      manualDragging = false
++      holdSpinning = false
++      pressedNode = null
++      const pointerId = activePointerId
++      activePointerId = null
++      if (pointerId !== null && interaction.hasPointerCapture(pointerId)) {
++        interaction.releasePointerCapture(pointerId)
++      }
++      interaction.classList.remove('is-dragging')
++      sync()
++    }
+     const move = (event: PointerEvent) => {
+-      if (dragging) {
+-        targetYaw = Math.max(-.5, Math.min(.5, targetYaw + (event.clientX - previousX) * .0035))
+-        targetPitch = Math.max(-.22, Math.min(.22, targetPitch + (event.clientY - previousY) * .0025))
++      if (dragging && event.pointerId === activePointerId) {
++        const dx = event.clientX - previousX
+         previousX = event.clientX
+-        previousY = event.clientY
+-        if (!shouldAnimate()) { yaw = targetYaw; pitch = targetPitch; paint() }
+-      } else if (event.pointerType === 'mouse' && !latest.current.reducedMotion && !latest.current.paused) {
+-        const rect = interaction.getBoundingClientRect()
+-        targetYaw = -.06 + ((event.clientX - rect.left) / rect.width - .5) * .2
+-        targetPitch = .035 + ((event.clientY - rect.top) / rect.height - .5) * .08
++        // Moving beyond the threshold switches from automatic spin to manual drag.
++        if (!manualDragging && Math.hypot(event.clientX - pressX, event.clientY - pressY) >= DRAG_THRESHOLD_PX) {
++          manualDragging = true
++          holdSpinning = false
++          clearHoldTimer()
++        }
++        if (manualDragging) {
++          targetYaw += dx * YAW_RADIANS_PER_PIXEL
++          if (!shouldRender()) { yaw = targetYaw; paint() }
++        }
+       }
+       if (!dragging && !(event.target as Element).closest('button')) latest.current.onHighlight(pick(event))
+     }
+     const down = (event: PointerEvent) => {
+-      if (event.button !== 0 || (event.target as Element).closest('button')) return
++      const target = event.target instanceof Element ? event.target : null
++      if (dragging || event.button !== 0 || target?.closest('button, a, input, select, textarea, [role="button"]')) return
+       dragging = true
++      manualDragging = false
++      holdSpinning = false
++      activePointerId = event.pointerId
+       previousX = event.clientX
+-      previousY = event.clientY
+       pressX = event.clientX
+       pressY = event.clientY
+       pressedNode = pick(event)
+       interaction.setPointerCapture(event.pointerId)
+       interaction.classList.add('is-dragging')
++      if (!latest.current.reducedMotion) {
++        holdTimer = window.setTimeout(() => {
++          holdTimer = null
++          if (!dragging || manualDragging || disposed || !contextAvailable || !visible || document.hidden) return
++          holdSpinning = true
++          targetYaw = yaw
++          sync()
++        }, PRESS_HOLD_DELAY_MS)
++      }
+     }
+     const up = (event: PointerEvent) => {
+-      if (dragging && event.type === 'pointerup' && pressedNode && Math.hypot(event.clientX - pressX, event.clientY - pressY) < 8) latest.current.onSelect(pressedNode)
+-      dragging = false
+-      pressedNode = null
+-      if (interaction.hasPointerCapture(event.pointerId)) interaction.releasePointerCapture(event.pointerId)
+-      interaction.classList.remove('is-dragging')
++      if (event.pointerId !== activePointerId) return
++      const selectedNode = event.type === 'pointerup' && dragging && !manualDragging && !holdSpinning &&
++        Math.hypot(event.clientX - pressX, event.clientY - pressY) < DRAG_THRESHOLD_PX ? pressedNode : null
++      stopPointerInteraction()
++      if (selectedNode) latest.current.onSelect(selectedNode)
++    }
++    const lostCapture = (event: PointerEvent) => {
++      if (event.pointerId === activePointerId) stopPointerInteraction()
+     }
+     const leave = () => {
+-      if (!dragging) { targetYaw = -.06; targetPitch = .035 }
+       latest.current.onHighlight(null)
+     }
++    const windowBlur = () => { if (dragging) stopPointerInteraction() }
++    const visibilityChanged = () => {
++      if (document.hidden && dragging) stopPointerInteraction()
++      else sync()
++    }
+     const keydown = (event: KeyboardEvent) => {
+-      if (event.target !== interaction || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
++      if (event.target !== interaction || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+       event.preventDefault()
+-      if (event.key === 'ArrowLeft') targetYaw = Math.max(-.5, targetYaw - .1)
+-      if (event.key === 'ArrowRight') targetYaw = Math.min(.5, targetYaw + .1)
+-      if (event.key === 'ArrowUp') targetPitch = Math.max(-.22, targetPitch - .06)
+-      if (event.key === 'ArrowDown') targetPitch = Math.min(.22, targetPitch + .06)
+-      if (!shouldAnimate()) { yaw = targetYaw; pitch = targetPitch; paint() }
++      if (event.key === 'ArrowLeft') targetYaw -= Math.PI / 12
++      if (event.key === 'ArrowRight') targetYaw += Math.PI / 12
++      if (!shouldAnimate()) { yaw = targetYaw; paint() }
+     }
+     const focus = (event: FocusEvent) => {
+       if (event.target === interaction) { keyboardInspection = true; sync() }
+@@ -399,18 +451,21 @@
+     interaction.addEventListener('pointermove', move)
+     interaction.addEventListener('pointerup', up)
+     interaction.addEventListener('pointercancel', up)
++    interaction.addEventListener('lostpointercapture', lostCapture)
+     interaction.addEventListener('pointerleave', leave)
+     interaction.addEventListener('keydown', keydown)
+     interaction.addEventListener('focusin', focus)
+     interaction.addEventListener('focusout', blur)
+     canvas.addEventListener('webglcontextlost', contextLost)
+     canvas.addEventListener('webglcontextrestored', contextRestored)
+-    document.addEventListener('visibilitychange', sync)
++    document.addEventListener('visibilitychange', visibilityChanged)
++    window.addEventListener('blur', windowBlur)
+     resize()
+     latest.current.onReady(true)
+     return () => {
+       disposed = true
+       invalidate.current = null
++      clearHoldTimer()
+       if (frame) cancelAnimationFrame(frame)
+       observer.disconnect()
+       visibility.disconnect()
+@@ -418,13 +473,15 @@
+       interaction.removeEventListener('pointermove', move)
+       interaction.removeEventListener('pointerup', up)
+       interaction.removeEventListener('pointercancel', up)
++      interaction.removeEventListener('lostpointercapture', lostCapture)
+       interaction.removeEventListener('pointerleave', leave)
+       interaction.removeEventListener('keydown', keydown)
+       interaction.removeEventListener('focusin', focus)
+       interaction.removeEventListener('focusout', blur)
+       canvas.removeEventListener('webglcontextlost', contextLost)
+       canvas.removeEventListener('webglcontextrestored', contextRestored)
+-      document.removeEventListener('visibilitychange', sync)
++      document.removeEventListener('visibilitychange', visibilityChanged)
++      window.removeEventListener('blur', windowBlur)
+       disposables.forEach(object => object.dispose())
+       renderer.dispose()
+     }

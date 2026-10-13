@@ -15,6 +15,9 @@
 .cw-fx-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cw-fx-ok { color: #207446; font-size: 13px; }
 .cw-fx-warn { color: #8a5b08; font-size: 13px; background: #fff4df; border-radius: 8px; padding: 8px 10px; }
+.cw-advance { border: 1px solid #d9e5f0; border-radius: 12px; padding: 12px; display: grid; gap: 10px; background: #f8fbfe; }
+.cw-advance-head { display: flex; flex-direction: column; gap: 2px; }
+.cw-advance-head strong { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .13em; color: #0b5cc6; text-transform: uppercase; }
 .cw-docs { display: grid; gap: 10px; }
 .cw-docs-add { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 12px; }
 .cw-doc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

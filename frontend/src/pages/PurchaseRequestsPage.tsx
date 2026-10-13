@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   CheckCircle2,
   Clock3,
   Download,
@@ -347,6 +348,11 @@ export function PurchaseRequestsPage() {
         eyebrow="PURCHASE GOVERNANCE"
         title="Purchase Permission & Approvals"
         description={`Track requests, email approvals, management decisions and completed procurement for ${monthLabel(selectedMonth)}. Quotation and supporting documents are not required for permission requests.`}
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Reporting month {monthLabel(selectedMonth)}</span>
+          <span className="nk-meta-chip"><FileCheck2 size={14} /> Permission requests · no quotations required</span>
+          <span className="nk-meta-chip"><Eye size={14} /> {canCreate ? (canApprove ? 'Management approval enabled' : 'Request & approval view') : 'Read-only for your role'}</span>
+        </>}
       />
 
       {message && <div className="success-message">{message}</div>}

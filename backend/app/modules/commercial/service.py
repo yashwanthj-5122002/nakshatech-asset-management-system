@@ -52,6 +52,7 @@ from app.modules.commercial.schemas import (
     VendorPaymentInput,
 )
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectAssignment
+from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import OrthoWorkPackage, ProjectWorkflow, ProjectWorkflowEvent
 
@@ -282,6 +283,21 @@ def _tax_values(payload: CommercialEstimateInput) -> tuple[Decimal, Decimal, Dec
     return base, tax, gross
 
 
+def _advance_values(payload: CommercialEstimateInput) -> dict:
+    """Client Advance Request terms (input only). Never projected into Sales/Revenue/Outstanding
+    and never applied to invoice commercial value; they only feed the Finance advance ledger."""
+    return {
+        "advance_required": payload.advance_required,
+        "advance_payment_type": payload.advance_payment_type,
+        "advance_percent": payload.advance_percent,
+        "advance_amount": money(payload.advance_amount) if payload.advance_amount is not None else None,
+        "advance_base_amount": money(payload.advance_base_amount) if payload.advance_base_amount is not None else None,
+        "advance_currency_code": payload.advance_currency_code,
+        "expected_advance_date": payload.expected_advance_date,
+        "final_advance_date": payload.final_advance_date,
+    }
+
+
 def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
     return {
         "id": row.id,
@@ -296,6 +312,7 @@ def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
         "billing_type": row.billing_type,
         "payment_terms": row.payment_terms,
         "expected_billing_milestone": row.expected_billing_milestone,
+        "projected_payment_date": row.projected_payment_date.isoformat() if row.projected_payment_date else None,
         "notes": row.notes,
         "currency_code": row.currency_code,
         "estimated_amount": float(row.estimated_amount),
@@ -304,6 +321,14 @@ def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
         "expected_tax": float(row.expected_tax),
         "expected_gross": float(row.expected_gross),
         "estimated_direct_cost_inr": float(row.estimated_direct_cost_inr) if row.estimated_direct_cost_inr is not None else None,
+        "advance_required": row.advance_required,
+        "advance_payment_type": row.advance_payment_type,
+        "advance_percent": float(row.advance_percent) if row.advance_percent is not None else None,
+        "advance_amount": float(row.advance_amount) if row.advance_amount is not None else None,
+        "advance_base_amount": float(row.advance_base_amount) if row.advance_base_amount is not None else None,
+        "advance_currency_code": row.advance_currency_code,
+        "expected_advance_date": row.expected_advance_date.isoformat() if row.expected_advance_date else None,
+        "final_advance_date": row.final_advance_date.isoformat() if row.final_advance_date else None,
         "billing_type_label": BILLING_TYPES.get(row.billing_type, row.billing_type),
         "unit_rate": float(row.unit_rate) if row.unit_rate is not None else None,
         "estimated_quantity": float(row.estimated_quantity) if row.estimated_quantity is not None else None,
@@ -350,6 +375,8 @@ def list_estimate_queue(db: Session, *, statuses: tuple[str, ...] = ("PENDING_AP
         row for row in rows
         if not (row.revision_no == 1 and _status_key(_workflow(db, row.project_id)) in PROJECT_APPROVAL_STATES)
     ]
+    visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+    rows = [row for row in rows if row.project_id in visible]
     return [_estimate_payload(row) for row in rows]
 
 
@@ -445,12 +472,16 @@ def upsert_baseline_estimate(db: Session, *, actor: User, project_id: int, paylo
     row.billing_type = payload.billing_type
     row.payment_terms = payload.payment_terms
     row.expected_billing_milestone = payload.expected_billing_milestone
+    row.projected_payment_date = payload.projected_payment_date
     row.notes = payload.notes
     row.estimated_direct_cost_inr = money(payload.estimated_direct_cost_inr) if payload.estimated_direct_cost_inr is not None else None
     row.unit_rate = payload.unit_rate
     row.estimated_quantity = payload.estimated_quantity
     row.quantity_unit = payload.quantity_unit
     row.reason = payload.reason
+    # Client Advance Request terms (input only; commercial value / tax / FX above stay untouched).
+    for column, value in _advance_values(payload).items():
+        setattr(row, column, value)
     row.fx_snapshot_id = snapshot.id
     db.flush()
     snapshot.event_ref_id = row.id
@@ -597,6 +628,7 @@ def create_estimate_revision(db: Session, *, actor: User, project_id: int, paylo
         billing_type=payload.billing_type,
         payment_terms=payload.payment_terms,
         expected_billing_milestone=payload.expected_billing_milestone,
+        projected_payment_date=payload.projected_payment_date,
         notes=payload.notes,
         currency_code=payload.currency_code,
         estimated_amount=money(payload.estimated_amount),
@@ -608,6 +640,8 @@ def create_estimate_revision(db: Session, *, actor: User, project_id: int, paylo
         unit_rate=payload.unit_rate,
         estimated_quantity=payload.estimated_quantity,
         quantity_unit=payload.quantity_unit,
+        # Client Advance Request terms (input only; never projected into commercial value).
+        **_advance_values(payload),
         fx_snapshot_id=snapshot.id,
         fx_rate_to_inr=snapshot.fx_rate_to_inr,
         fx_rate_date=snapshot.fx_rate_date,
@@ -862,6 +896,9 @@ def list_project_expenses(db: Session, *, actor: User, role: str, project_id: in
     if status:
         query = query.where(ProjectExpense.status == status.strip().upper())
     rows = list(db.scalars(query.order_by(ProjectExpense.expense_date.desc(), ProjectExpense.id.desc())).all())
+    if project_id is None:
+        visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+        rows = [row for row in rows if row.project_id in visible]
     return [_expense_payload(row) for row in rows]
 
 
@@ -1027,6 +1064,9 @@ def list_vendor_invoices(db: Session, *, project_id: int | None = None) -> list[
         _project(db, project_id)
         query = query.where(ProjectVendorInvoice.project_id == project_id)
     rows = list(db.scalars(query.order_by(ProjectVendorInvoice.invoice_date.desc(), ProjectVendorInvoice.id.desc())).all())
+    if project_id is None:
+        visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+        rows = [row for row in rows if row.project_id in visible]
     return [_vendor_invoice_payload(db, row) for row in rows]
 
 
@@ -1316,7 +1356,7 @@ def management_analytics(
     if display not in MANAGEMENT_DISPLAY_CURRENCIES:
         raise ValueError("Selected Management display currency is not enabled")
 
-    project_query = select(FinanceProject)
+    project_query = exclude_hidden_projects(db, select(FinanceProject))
     if project_id:
         project_query = project_query.where(FinanceProject.id == project_id)
     projects = list(db.scalars(project_query.order_by(FinanceProject.project_code)).all())

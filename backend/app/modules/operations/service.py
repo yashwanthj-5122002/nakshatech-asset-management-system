@@ -10,9 +10,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import normalize_department_code
+from app.core.department_access import ensure_project_department_access, user_department_code
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
+from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects, filter_visible_project_ids, hidden_project_ids
 from app.modules.notifications.service import create_global_notification, resolve_recipient_users
 from app.modules.operations.models import (
     BDOpportunity,
@@ -24,6 +27,7 @@ from app.modules.operations.models import (
     OrthoReview,
     OrthoWorkPackage,
     OrthoWorkSession,
+    ProjectWorkflow,
     ProjectWorkstream,
 )
 from app.modules.operations.schemas import (
@@ -341,6 +345,7 @@ def finance_project_options(db: Session, *, project_manager_id: int | None = Non
         .options(selectinload(FinanceProject.client), selectinload(FinanceProject.master_profile))
         .order_by(FinanceProject.project_code.asc())
     )
+    query = exclude_hidden_projects(db, query)
     projects = db.scalars(query).all()
     rows = [finance_project_payload(project) for project in projects]
     if project_manager_id is not None:
@@ -349,7 +354,9 @@ def finance_project_options(db: Session, *, project_manager_id: int | None = Non
 
 
 def client_options(db: Session) -> list[dict]:
-    clients = db.scalars(select(FinanceClient).order_by(FinanceClient.client_code.asc())).all()
+    query = select(FinanceClient).order_by(FinanceClient.client_code.asc())
+    query = exclude_hidden_clients(db, query)
+    clients = db.scalars(query).all()
     return [
         {"id": row.id, "client_code": row.client_code, "client_name": row.client_name, "is_active": bool(row.is_active)}
         for row in clients
@@ -1305,19 +1312,51 @@ def visible_ortho_profiles(db: Session, *, actor: User, effective_role: str) -> 
         selectinload(OrthoProjectProfile.work_packages).selectinload(OrthoWorkPackage.daily_updates),
         selectinload(OrthoProjectProfile.deliveries),
     ).order_by(OrthoProjectProfile.updated_at.desc(), OrthoProjectProfile.project_id.desc())
+    hidden = hidden_project_ids(db)
+    if hidden:
+        query = query.where(OrthoProjectProfile.project_id.not_in(hidden))
     if role == ORTHO_ROLE:
         candidates = db.scalars(query).unique().all()
+        visible_ids = set(filter_visible_project_ids(db, (profile.project_id for profile in candidates)))
         return [
             profile
             for profile in candidates
-            if is_effective_pm(db, project_id=profile.project_id, user_id=actor.id)
-            or bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)
+            if profile.project_id in visible_ids
+            and (
+                is_effective_pm(db, project_id=profile.project_id, user_id=actor.id)
+                or bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)
+            )
         ]
     if role == EMPLOYEE_ROLE:
+        employee_department = user_department_code(db, actor)
         candidates = db.scalars(query).unique().all()
-        return [profile for profile in candidates if bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)]
+        visible_ids = set(filter_visible_project_ids(db, (profile.project_id for profile in candidates)))
+        if employee_department is None:
+            # Legacy user without a resolvable department: membership-based visibility.
+            return [
+                profile
+                for profile in candidates
+                if profile.project_id in visible_ids
+                and bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)
+            ]
+        department_by_project = dict(
+            db.execute(
+                select(OrthoProjectProfile.project_id, ProjectWorkflow.performing_department_code).join(
+                    ProjectWorkflow, ProjectWorkflow.project_id == OrthoProjectProfile.project_id
+                )
+            ).all()
+        )
+        return [
+            profile
+            for profile in candidates
+            if profile.project_id in visible_ids
+            and bool(member_roles(db, profile.project_id, actor.id) & PARTICIPANT_MEMBER_ROLES)
+            and normalize_department_code(employee_department) == department_by_project.get(profile.project_id)
+        ]
     if role in OVERSIGHT_ROLES:
-        return db.scalars(query).unique().all()
+        candidates = db.scalars(query).unique().all()
+        visible_ids = set(filter_visible_project_ids(db, (profile.project_id for profile in candidates)))
+        return [profile for profile in candidates if profile.project_id in visible_ids]
     return []
 
 
@@ -1405,6 +1444,8 @@ def get_visible_work_package(db: Session, *, work_package_id: int, actor: User, 
     if is_effective_pm(db, project_id=row.project_id, user_id=actor.id):
         return row
     if actor.id in {row.team_leader_user_id, row.production_user_id, row.qc_user_id, row.qa_user_id}:
+        if role == EMPLOYEE_ROLE:
+            ensure_project_department_access(db, actor, role, row.project_id)
         return row
     # V8 least privilege: project membership alone never grants access to every
     # work package. Normal operations users must be the exact TL/Production/QC/QA
@@ -1473,13 +1514,21 @@ def sync_bd_progress_stage(db: Session, project_id: int) -> None:
 def corporate_summary_payload(db: Session) -> dict:
     opportunities = db.scalars(select(BDOpportunity)).all()
     profiles = db.scalars(select(OrthoProjectProfile)).all()
+    visible_ids = set(filter_visible_project_ids(db, (profile.project_id for profile in profiles)))
+    profiles = [profile for profile in profiles if profile.project_id in visible_ids]
     project_summaries = [ortho_project_progress(db, profile.project_id) for profile in profiles]
     project_summaries = [summary for summary in project_summaries if summary]
+    linked_ids = {int(item.linked_project_id) for item in opportunities if item.linked_project_id is not None}
+    visible_linked = set(filter_visible_project_ids(db, linked_ids)) if linked_ids else set()
     return {
         "bd": {
             "total_opportunities": len(opportunities),
             "active_opportunities": sum(1 for item in opportunities if item.stage not in {"delivered", "closed"}),
-            "linked_projects": sum(1 for item in opportunities if item.linked_project_id is not None),
+            "linked_projects": sum(
+                1
+                for item in opportunities
+                if item.linked_project_id is not None and int(item.linked_project_id) in visible_linked
+            ),
             "delivered": sum(1 for item in opportunities if item.stage == "delivered"),
         },
         "ortho": {
@@ -1845,8 +1894,9 @@ def project_workstreams_dashboard_payload(db: Session, *, actor: User, effective
     else:
         raise PermissionError("Project Workstreams dashboard is not available for this role")
 
-    opportunity_by_project = {int(item.linked_project_id): item for item in opportunities if item.linked_project_id}
-    projects = list(db.scalars(select(FinanceProject).where(FinanceProject.id.in_(project_ids)).order_by(FinanceProject.project_code.asc())).all()) if project_ids else []
+    project_ids = set(filter_visible_project_ids(db, project_ids))
+    opportunity_by_project = {int(item.linked_project_id): item for item in opportunities if item.linked_project_id and int(item.linked_project_id) in project_ids}
+    projects = list(db.scalars(exclude_hidden_projects(db, select(FinanceProject)).where(FinanceProject.id.in_(project_ids)).order_by(FinanceProject.project_code.asc())).all()) if project_ids else []
     if project_ids:
         workstream_query = select(ProjectWorkstream).where(
             ProjectWorkstream.project_id.in_(project_ids),

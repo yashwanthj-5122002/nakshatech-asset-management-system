@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import json
 import secrets
+from io import BytesIO
 from urllib.parse import quote
+from zipfile import BadZipFile
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.roles import EMPLOYEE_ROLE, SOFTWARE_TEAM_ROLE
+from app.core.roles import ADMIN_ROLE, EMPLOYEE_ROLE, HR_ROLE, IT_ROLE, SOFTWARE_TEAM_ROLE
 from app.core.management_access import (
     FIRST_LOGIN_PRIVILEGED_ROLES,
     MANAGEMENT_ROLE,
@@ -25,6 +27,7 @@ from app.modules.employee_portal.models import (
     AuditEvent,
     AuthenticatorCredential,
     Branch,
+    EmployeeMaster,
     SupportTicket,
     TicketAttachment,
     TicketMessage,
@@ -37,6 +40,10 @@ from app.modules.employee_portal.schemas import (
     AuditPageViewRequest,
     BranchResponse,
     BranchSelectionRequest,
+    EmployeeMasterDirectoryResponse,
+    EmployeeMasterManagementResponse,
+    EmployeeMasterPublicationRequest,
+    EmployeeMasterPurgeRequest,
     ForgotPasswordVerifyResponse,
     MFAConfirmRequest,
     MFALoginVerifyRequest,
@@ -44,6 +51,10 @@ from app.modules.employee_portal.schemas import (
     ManagementPasswordChangeRequest,
     ManagementPasswordSetupRequest,
     NotificationResponse,
+    OnboardingCreateRequest,
+    OnboardingItApproveRequest,
+    OnboardingRejectRequest,
+    OnboardingRequestResponse,
     OTPRequest,
     OTPRequestResponse,
     OTPVerifyRequest,
@@ -110,6 +121,31 @@ from app.modules.employee_portal.service import (
     validate_password_strength,
     verify_email_otp,
 )
+from app.modules.employee_portal.onboarding_service import (
+    create_draft,
+    it_approve,
+    list_requests,
+    management_approve,
+    reject_request,
+    submit_to_it,
+)
+from app.modules.employee_portal.employee_master import (
+    ACCOUNT_SETUP_PENDING,
+    ACTIVE,
+    ACTIVE_EMPLOYMENT,
+    AUTHENTICATOR_PENDING,
+    EMAIL_OTP_PENDING,
+    EMAIL_VERIFIED,
+    NEEDS_REVIEW,
+    employee_master_for_user,
+    employee_profile,
+    has_blocking_errors,
+    import_workbook,
+    imported_master_is_published,
+    inspect_workbook,
+    is_imported_master,
+    set_imported_master_publication,
+)
 from app.modules.employee_portal.ticket_attachments import (
     TICKET_ATTACHMENT_MAX_BYTES,
     TICKET_ATTACHMENT_MAX_FILES,
@@ -127,6 +163,7 @@ router = APIRouter(tags=["Employee Portal"])
 
 def _user_response(db: Session, user: User, branch_id: int | None = None, role_override: str | None = None) -> UserResponse:
     branch = db.get(Branch, branch_id) if branch_id else None
+    master = employee_master_for_user(db, user)
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -135,6 +172,7 @@ def _user_response(db: Session, user: User, branch_id: int | None = None, role_o
         branch=branch.name if branch else user.branch,
         employee_id=user.employee_id,
         department=user.department,
+        department_code=master.department_code if master else None,
         designation=user.designation,
         selected_branch_id=branch.id if branch else None,
         selected_branch_name=branch.name if branch else None,
@@ -166,8 +204,53 @@ def request_registration_otp(payload: OTPRequest, request: Request, db: Session 
     email = ensure_allowed_email(str(payload.email))
     existing = db.scalar(select(User).where(func.lower(User.email) == email))
     if existing:
-        raise HTTPException(status_code=409, detail="An account already exists for this organization email. Use Login or Forgot Password.")
+        raise HTTPException(
+            status_code=409,
+            detail="Your CRM account already exists. Please sign in or reset your password.",
+        )
+    master = db.scalar(select(EmployeeMaster).where(EmployeeMaster.email_normalized == email))
+    if (
+        master is None
+        or master.employment_status != ACTIVE_EMPLOYMENT
+        or master.crm_account_status in {NEEDS_REVIEW, "disabled"}
+        or not master.department_code
+        or (is_imported_master(master) and not imported_master_is_published(db))
+    ):
+        record_audit(
+            db,
+            event_type="REGISTRATION_FAILED",
+            request=request,
+            actor_email=email,
+            result="failed",
+            module="authentication",
+            details={"reason": "employee_master_not_eligible"},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="This organization email is not eligible for self-registration. Contact HR / Software Team.",
+        )
+    master.crm_account_status = EMAIL_OTP_PENDING
+    record_audit(
+        db,
+        event_type="REGISTRATION_STARTED",
+        request=request,
+        actor_email=email,
+        module="authentication",
+        target_type="employee_master",
+        target_id=master.id,
+    )
     code = issue_email_otp(db, email=email, purpose=REGISTRATION_PURPOSE, request=request)
+    record_audit(
+        db,
+        event_type="EMAIL_OTP_SENT",
+        request=request,
+        actor_email=email,
+        module="authentication",
+        target_type="employee_master",
+        target_id=master.id,
+    )
+    db.commit()
     return OTPRequestResponse(
         message="A verification code has been sent to your organization email.",
         expires_in_seconds=settings.email_otp_expiry_minutes * 60,
@@ -179,8 +262,23 @@ def request_registration_otp(payload: OTPRequest, request: Request, db: Session 
 def verify_registration_otp(payload: OTPVerifyRequest, request: Request, db: Session = Depends(get_db)) -> RegistrationOTPVerifyResponse:
     email = ensure_allowed_email(str(payload.email))
     verify_email_otp(db, email=email, purpose=REGISTRATION_PURPOSE, code=payload.otp, request=request)
+    master = db.scalar(select(EmployeeMaster).where(EmployeeMaster.email_normalized == email))
+    if (
+        master is None
+        or master.employment_status != ACTIVE_EMPLOYMENT
+        or master.crm_account_status in {NEEDS_REVIEW, "disabled"}
+        or (is_imported_master(master) and not imported_master_is_published(db))
+    ):
+        raise HTTPException(status_code=403, detail="This employee record is not eligible for self-registration")
+    master.crm_account_status = EMAIL_VERIFIED
+    db.commit()
     return RegistrationOTPVerifyResponse(
-        registration_token=create_temporary_token(email, "registration_verified", extra={"email_verified": True})
+        registration_token=create_temporary_token(
+            email,
+            "registration_verified",
+            extra={"email_verified": True, "employee_master_id": master.id},
+        ),
+        employee=employee_profile(master),
     )
 
 
@@ -190,30 +288,39 @@ def complete_registration(
     request: Request,
     db: Session = Depends(get_db),
 ) -> MFASetupResponse:
-    email, _claims = decode_temporary_subject(payload.registration_token, "registration_verified")
+    email, claims = decode_temporary_subject(payload.registration_token, "registration_verified")
     ensure_allowed_email(email)
+    master = db.get(EmployeeMaster, int(claims.get("employee_master_id", 0)))
+    if (
+        master is None
+        or master.email_normalized != email
+        or master.employment_status != ACTIVE_EMPLOYMENT
+        or master.crm_account_status not in {EMAIL_VERIFIED, ACCOUNT_SETUP_PENDING}
+        or (is_imported_master(master) and not imported_master_is_published(db))
+    ):
+        raise HTTPException(status_code=401, detail="The verified Employee Master registration session is invalid")
+    if payload.password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Password and confirmation do not match")
     validate_password_strength(payload.password)
     branch = get_branch(db, payload.branch_id)
 
-    duplicate_employee = db.scalar(
-        select(User).where(User.employee_id == payload.employee_id, func.lower(User.email) != email)
-    )
-    if duplicate_employee:
-        raise HTTPException(status_code=409, detail="This employee ID is already registered")
-
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user:
-        raise HTTPException(status_code=409, detail="An account already exists for this organization email. Use Login or Forgot Password.")
+        raise HTTPException(
+            status_code=409,
+            detail="Your CRM account already exists. Please sign in or reset your password.",
+        )
+    master.crm_account_status = ACCOUNT_SETUP_PENDING
     user = User(
         email=email,
-        full_name=payload.full_name,
+        full_name=master.employee_name,
         password_hash=hash_password(payload.password),
         role=EMPLOYEE_ROLE,
         branch=branch.name,
-        employee_id=payload.employee_id,
-        department=payload.department,
-        designation=payload.designation,
-        phone_number=payload.phone_number,
+        employee_id=master.employee_number,
+        department=master.department_raw,
+        designation=master.designation_raw,
+        phone_number=master.phone,
         email_verified=True,
         account_status="pending_mfa",
         mfa_required=True,
@@ -221,6 +328,8 @@ def complete_registration(
     )
     db.add(user)
     db.flush()
+    master.linked_user_id = user.id
+    master.crm_account_status = AUTHENTICATOR_PENDING
 
     access = db.scalar(
         select(UserBranchAccess).where(UserBranchAccess.user_id == user.id, UserBranchAccess.branch_id == branch.id)
@@ -243,6 +352,25 @@ def complete_registration(
             "department": user.department,
             "authentication": "email_otp_password_and_one_time_authenticator_activation",
         },
+    )
+    record_audit(
+        db,
+        event_type="PROFILE_LINKED",
+        request=request,
+        user=user,
+        branch_id=branch.id,
+        module="authentication",
+        target_type="employee_master",
+        target_id=master.id,
+        details={"department_code": master.department_code},
+    )
+    record_audit(
+        db,
+        event_type="PASSWORD_CREATED",
+        request=request,
+        user=user,
+        branch_id=branch.id,
+        module="authentication",
     )
     db.commit()
     setup_token = create_temporary_token(email, "mfa_setup", role=user.role, extra={"uid": user.id})
@@ -313,6 +441,9 @@ def confirm_registration_mfa(
     # Authenticator verification is required once for account activation only.
     # Returning sign-ins use organization email and CRM password without TOTP.
     user.mfa_required = False
+    master = employee_master_for_user(db, user)
+    if master is not None:
+        master.crm_account_status = ACTIVE
     record_audit(
         db,
         event_type="AUTHENTICATOR_REGISTRATION_VERIFIED",
@@ -320,6 +451,15 @@ def confirm_registration_mfa(
         user=user,
         module="authentication",
         details={"login_requirement": "password_only"},
+    )
+    record_audit(
+        db,
+        event_type="ACCOUNT_ACTIVATED",
+        request=request,
+        user=user,
+        module="authentication",
+        target_type="employee_master" if master else None,
+        target_id=master.id if master else None,
     )
     db.commit()
     token, _session = issue_access_for_user(db, user=user, request=request)
@@ -1331,3 +1471,286 @@ def reset_user_authenticator(
     )
     db.commit()
     return {"message": "Authenticator enrollment record removed. Normal email-and-password sign-in remains available."}
+
+
+# =============================================================================================== New Joiner onboarding
+@router.get("/onboarding/requests", response_model=list[OnboardingRequestResponse])
+def list_onboarding_requests(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> list[EmployeeOnboardingRequest]:
+    return list_requests(db, auth.user, auth.effective_role)
+
+
+@router.post("/onboarding/requests", response_model=OnboardingRequestResponse, status_code=status.HTTP_201_CREATED)
+def create_onboarding_request(
+    payload: OnboardingCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    hr: User = Depends(require_roles(HR_ROLE)),
+) -> EmployeeOnboardingRequest:
+    row = create_draft(db, hr, **payload.model_dump())
+    record_audit(
+        db,
+        event_type="ONBOARDING_HR_DRAFT_CREATED",
+        request=request,
+        user=hr,
+        module="employee_portal",
+        target_type="employee_onboarding_request",
+        target_id=row.id,
+        details={"department_code": row.department_code, "personal_email": row.personal_email_normalized},
+    )
+    db.commit()
+    return row
+
+
+@router.post("/onboarding/requests/{request_id}/submit", response_model=OnboardingRequestResponse)
+def submit_onboarding_request(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    hr: User = Depends(require_roles(HR_ROLE)),
+) -> EmployeeOnboardingRequest:
+    try:
+        row = submit_to_it(db, hr, request_id)
+        record_audit(
+            db,
+            event_type="ONBOARDING_HR_SUBMITTED_TO_IT",
+            request=request,
+            user=hr,
+            module="employee_portal",
+            target_type="employee_onboarding_request",
+            target_id=row.id,
+        )
+        db.commit()
+        return row
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/onboarding/requests/{request_id}/it-approve", response_model=OnboardingRequestResponse)
+def it_approve_onboarding_request(
+    request_id: int,
+    payload: OnboardingItApproveRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    it: User = Depends(require_roles(IT_ROLE)),
+) -> EmployeeOnboardingRequest:
+    try:
+        row = it_approve(db, it, request_id, official_email=payload.official_email)
+        record_audit(
+            db,
+            event_type="ONBOARDING_IT_APPROVED",
+            request=request,
+            user=it,
+            module="employee_portal",
+            target_type="employee_onboarding_request",
+            target_id=row.id,
+            details={"official_email": row.official_email_normalized},
+        )
+        db.commit()
+        return row
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/onboarding/requests/{request_id}/management-approve", response_model=OnboardingRequestResponse)
+def management_approve_onboarding_request(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> EmployeeOnboardingRequest:
+    try:
+        row = management_approve(db, manager, request_id)
+        record_audit(
+            db,
+            event_type="ONBOARDING_MANAGEMENT_APPROVED",
+            request=request,
+            user=manager,
+            module="employee_portal",
+            target_type="employee_onboarding_request",
+            target_id=row.id,
+            details={"decided_by": row.decided_by, "employee_master_id": row.employee_master_id},
+        )
+        db.commit()
+        return row
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/onboarding/requests/{request_id}/reject", response_model=OnboardingRequestResponse)
+def reject_onboarding_request(
+    request_id: int,
+    payload: OnboardingRejectRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    reviewer: User = Depends(require_roles(HR_ROLE, IT_ROLE, MANAGEMENT_ROLE)),
+) -> EmployeeOnboardingRequest:
+    try:
+        row = reject_request(db, reviewer, request_id, reason=payload.reason)
+        record_audit(
+            db,
+            event_type="ONBOARDING_REJECTED",
+            request=request,
+            user=reviewer,
+            module="employee_portal",
+            target_type="employee_onboarding_request",
+            target_id=row.id,
+            details={"reason": row.rejected_reason},
+        )
+        db.commit()
+        return row
+    except Exception:
+        db.rollback()
+        raise
+
+
+# =============================================================================================== Management control of the Excel Employee Master
+EMPLOYEE_MASTER_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
+
+
+async def _employee_workbook_bytes(file: UploadFile) -> bytes:
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Select an .xlsx Employee Master workbook")
+    raw = await file.read(EMPLOYEE_MASTER_UPLOAD_MAX_BYTES + 1)
+    if len(raw) > EMPLOYEE_MASTER_UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Employee Master workbook exceeds the 5 MB limit")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Employee Master workbook is empty")
+    return raw
+
+
+@router.get("/management/employee-master/status")
+def employee_master_status(
+    db: Session = Depends(get_db),
+    _manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    imported = EmployeeMaster.source_batch_id.not_like("new-joiner-%")
+    return {
+        "published": imported_master_is_published(db),
+        "record_count": int(db.scalar(select(func.count(EmployeeMaster.id)).where(imported)) or 0),
+        "linked_account_count": int(db.scalar(select(func.count(EmployeeMaster.id)).where(imported, EmployeeMaster.linked_user_id.is_not(None))) or 0),
+    }
+
+
+@router.get("/management/employee-master", response_model=list[EmployeeMasterManagementResponse])
+def management_employee_master(
+    db: Session = Depends(get_db),
+    _manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> list[EmployeeMaster]:
+    return list(db.scalars(
+        select(EmployeeMaster)
+        .where(EmployeeMaster.source_batch_id.not_like("new-joiner-%"))
+        .order_by(EmployeeMaster.employee_name.asc())
+    ).all())
+
+
+@router.post("/management/employee-master/preview")
+async def preview_employee_master(
+    file: UploadFile = File(...),
+    _manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    raw = await _employee_workbook_bytes(file)
+    try:
+        records, report = inspect_workbook(BytesIO(raw), source_name=file.filename)
+    except (ValueError, BadZipFile, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Employee Master workbook: {exc}") from exc
+    return {
+        "report": report,
+        "can_import": not has_blocking_errors(report),
+        "sample": [{"row": row["excel_row"], "employee_number": row["Employee Number"],
+                    "employee_name": row["Employee Name"], "department": row["Curr.Department"],
+                    "email": row["Email"]} for row in records[:25]],
+    }
+
+
+@router.post("/management/employee-master/import")
+async def upload_employee_master(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    raw = await _employee_workbook_bytes(file)
+    try:
+        result = import_workbook(db, BytesIO(raw), source_name=file.filename, actor_id=manager.id)
+        record_audit(db, event_type="EMPLOYEE_MASTER_IMPORTED", request=request, user=manager,
+                     module="employee_portal", target_type="employee_master",
+                     details={"created": result["created"], "updated": result["updated"], "published": False})
+        db.commit()
+        return result
+    except (ValueError, BadZipFile, OSError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Employee Master import failed: {exc}") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.put("/management/employee-master/publication")
+def update_employee_master_publication(
+    payload: EmployeeMasterPublicationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    if payload.published and not db.scalar(select(EmployeeMaster.id).where(EmployeeMaster.source_batch_id.not_like("new-joiner-%")).limit(1)):
+        raise HTTPException(status_code=409, detail="Import Employee Master records before publishing")
+    set_imported_master_publication(db, payload.published, actor_id=manager.id)
+    record_audit(db, event_type="EMPLOYEE_MASTER_PUBLICATION_CHANGED", request=request, user=manager,
+                 module="employee_portal", target_type="employee_master",
+                 details={"published": payload.published})
+    db.commit()
+    return {"published": payload.published}
+
+
+@router.delete("/management/employee-master/imported")
+def purge_imported_employee_master(
+    payload: EmployeeMasterPurgeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    manager: User = Depends(require_roles(MANAGEMENT_ROLE)),
+) -> dict:
+    if payload.confirmation != "DELETE EMPLOYEE MASTER":
+        raise HTTPException(status_code=400, detail="Type DELETE EMPLOYEE MASTER to confirm")
+    imported = EmployeeMaster.source_batch_id.not_like("new-joiner-%")
+    retained_accounts = int(db.scalar(select(func.count(EmployeeMaster.id)).where(imported, EmployeeMaster.linked_user_id.is_not(None))) or 0)
+    set_imported_master_publication(db, False, actor_id=manager.id)
+    removed = db.execute(delete(EmployeeMaster).where(imported)).rowcount or 0
+    record_audit(db, event_type="EMPLOYEE_MASTER_IMPORTED_PURGED", request=request, user=manager,
+                 module="employee_portal", target_type="employee_master",
+                 details={"removed": removed, "existing_accounts_retained": retained_accounts})
+    db.commit()
+    return {"removed": removed, "existing_accounts_retained": retained_accounts, "published": False}
+
+
+# =============================================================================================== Employee Master directory (Software Team / Admin)
+@router.get("/software/employee-master", response_model=list[EmployeeMasterDirectoryResponse])
+def list_employee_master(
+    status: str | None = Query(default=None),
+    department: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_roles(SOFTWARE_TEAM_ROLE, ADMIN_ROLE)),
+) -> list[EmployeeMaster]:
+    query = select(EmployeeMaster)
+    if not imported_master_is_published(db):
+        query = query.where(EmployeeMaster.source_batch_id.like("new-joiner-%"))
+    if status:
+        query = query.where(EmployeeMaster.crm_account_status == status)
+    if department:
+        query = query.where(EmployeeMaster.department_code == department)
+    if search:
+        query = query.where(
+            or_(
+                EmployeeMaster.employee_name.ilike(f"%{search}%"),
+                EmployeeMaster.email.ilike(f"%{search}%"),
+                EmployeeMaster.employee_number.ilike(f"%{search}%"),
+                EmployeeMaster.access_card_no.ilike(f"%{search}%"),
+            )
+        )
+    return list(db.scalars(query.order_by(EmployeeMaster.employee_name.asc())).all())

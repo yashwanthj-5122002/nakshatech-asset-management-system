@@ -245,6 +245,22 @@ class FinanceProjectScheduleUpdate(BaseModel):
         return self
 
 
+class FinanceRevenueTargetUpsertRequest(BaseModel):
+    month_start: date
+    department_code: str = Field(min_length=2, max_length=30)
+    target_amount_inr: float = Field(ge=0, le=10_000_000_000)
+
+    @field_validator("department_code", mode="before")
+    @classmethod
+    def normalize_department(cls, value):
+        return value.strip().lower().replace(" ", "_").replace("-", "_") if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def normalize_month_start(self):
+        self.month_start = self.month_start.replace(day=1)
+        return self
+
+
 class ExpenseClaimItemInput(BaseModel):
     category: str = Field(min_length=2, max_length=80)
     other_category: str | None = Field(default=None, max_length=160)

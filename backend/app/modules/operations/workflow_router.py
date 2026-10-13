@@ -9,11 +9,15 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import TECHNICAL_PM_ROLES
+from app.core.department_access import ensure_project_department_access
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.commercial.service import commercial_summary
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.schemas import FinanceClientCreateRequest
 from app.modules.finance.service import client_payload
+from app.modules.operations.lifecycle_models import ProjectReworkCycle
+from app.modules.operations.models import OrthoWorkPackage
 from app.modules.operations.schemas import (
     WorkflowDailyActivity,
     WorkflowDeliveryRequest,
@@ -104,6 +108,27 @@ def _audit(request: Request, db: Session, auth: CurrentAuth, event: str, target:
     )
 
 
+def _ensure_project_department(db: Session, auth: CurrentAuth, project_id: int) -> None:
+    """Department isolation for normal employees on project-scoped workflow actions."""
+    ensure_project_department_access(db, auth.user, _role(auth), project_id)
+
+
+def _ensure_package_project(db: Session, auth: CurrentAuth, work_package_id: int) -> int:
+    package = db.get(OrthoWorkPackage, work_package_id)
+    if package is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work package not found")
+    _ensure_project_department(db, auth, package.project_id)
+    return package.project_id
+
+
+def _ensure_cycle_project(db: Session, auth: CurrentAuth, cycle_id: int) -> int:
+    cycle = db.get(ProjectReworkCycle, cycle_id)
+    if cycle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rework cycle not found")
+    _ensure_project_department(db, auth, cycle.project_id)
+    return cycle.project_id
+
+
 @router.get("/bd/dashboard")
 def workflow_bd_dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
     _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
@@ -156,7 +181,7 @@ def workflow_create_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = create_bd_project(db, actor=auth.user, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
@@ -175,7 +200,7 @@ def workflow_update_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = update_bd_project(db, actor=auth.user, project_id=project_id, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
@@ -301,7 +326,7 @@ def workflow_finance_close(
 
 @router.get("/ortho/dashboard")
 def workflow_ortho_dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
-    _roles(auth, ORTHO_ROLE, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return ortho_dashboard(db, actor=auth.user, role=_role(auth))
 
 
@@ -313,7 +338,7 @@ def workflow_team_setup(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         workflow, roles_by_user = configure_team(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_PM_TEAM_ASSIGNED", "finance_project", project_id, {"team_leader_user_id": payload.team_leader_user_id, "production_user_ids": payload.production_user_ids, "qc_user_ids": payload.qc_user_ids, "qa_user_ids": payload.qa_user_ids, "workflow_status": workflow.status})
@@ -333,7 +358,7 @@ def workflow_rework_team(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         cycle, roles_by_user = confirm_rework_team(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_PM_REWORK_TEAM_CONFIRMED", "finance_project", cycle.project_id, {"rework_cycle_id": cycle.id, "cycle_number": cycle.cycle_number, "mode": payload.mode, "team_leader_user_id": cycle.team_leader_user_id, "workflow_status": cycle.status})
@@ -353,6 +378,7 @@ def workflow_allocate_rework(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_cycle_project(db, auth, cycle_id)
     try:
         package = allocate_rework_work(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_TL_REWORK_WORK_ALLOCATED", "finance_project", package.project_id, {"rework_cycle_id": cycle_id, "package_code": package.package_code, "rework_of_package_id": package.rework_of_package_id})
@@ -372,6 +398,7 @@ def workflow_allocate_work(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
     try:
         package = allocate_work(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_TEAM_LEAD_ALLOCATED_WORK", "ortho_work_package", package.id, {"project_id": project_id, "package_code": package.package_code})
@@ -392,6 +419,7 @@ def workflow_daily_activity(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         row = record_daily_activity(db, actor=auth.user, work_package_id=work_package_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_DAILY_ACTIVITY", "ortho_work_package", work_package_id, {"daily_activity_id": row.id, "quantity_completed": str(row.achieved_area or 0), "files_completed": row.files_completed})
@@ -410,6 +438,7 @@ def workflow_production_complete(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = complete_production(db, actor=auth.user, work_package_id=work_package_id)
         _audit(request, db, auth, "WORKFLOW_PRODUCTION_COMPLETED", "ortho_work_package", work_package_id, {"current_stage": package.current_stage})
@@ -430,6 +459,7 @@ def workflow_qc_review(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = review_work(db, actor=auth.user, work_package_id=work_package_id, kind="qc", payload=payload)
         _audit(request, db, auth, f"WORKFLOW_QC_{payload.decision.upper()}", "ortho_work_package", work_package_id, {"comments": payload.comments})
@@ -450,6 +480,7 @@ def workflow_qa_review(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = review_work(db, actor=auth.user, work_package_id=work_package_id, kind="qa", payload=payload)
         _audit(request, db, auth, f"WORKFLOW_QA_{payload.decision.upper()}", "ortho_work_package", work_package_id, {"comments": payload.comments})
@@ -469,7 +500,8 @@ def workflow_deliver(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE, EMPLOYEE_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = mark_delivered(db, actor=auth.user, work_package_id=work_package_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_DELIVERED", "ortho_work_package", work_package_id, {"remarks": payload.remarks})
@@ -489,7 +521,7 @@ def workflow_operational_complete(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         workflow = operational_complete(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_OPERATIONAL_COMPLETION", "finance_project", project_id, {"completion_date": payload.completion_date.isoformat(), "delivery_reference": payload.final_delivery_reference, "workflow_status": workflow.status})

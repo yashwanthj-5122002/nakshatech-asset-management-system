@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.entities import User
 from app.modules.finance.models import FinanceClient, FinanceProject
+from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects
 from app.modules.operations.models import ProjectWorkflow, ProjectWorkflowEvent
 from app.modules.operations.workflow_service import (
     WORKFLOW_CLOSED,
@@ -90,14 +91,20 @@ def build_project_operations_workbook(
     workbook = Workbook()
 
     clients = list(db.scalars(
-        select(FinanceClient)
-        .options(selectinload(FinanceClient.master_profile), selectinload(FinanceClient.projects))
-        .order_by(FinanceClient.client_code.asc())
+        exclude_hidden_clients(
+            db,
+            select(FinanceClient)
+            .options(selectinload(FinanceClient.master_profile), selectinload(FinanceClient.projects))
+            .order_by(FinanceClient.client_code.asc()),
+        )
     ).unique().all())
     projects = list(db.scalars(
-        select(FinanceProject)
-        .options(selectinload(FinanceProject.client), selectinload(FinanceProject.master_profile))
-        .order_by(FinanceProject.project_code.asc())
+        exclude_hidden_projects(
+            db,
+            select(FinanceProject)
+            .options(selectinload(FinanceProject.client), selectinload(FinanceProject.master_profile))
+            .order_by(FinanceProject.project_code.asc()),
+        )
     ).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow)).all()}
     user_ids = {

@@ -32,23 +32,34 @@ from app.modules.naksha_copilot.router import router as naksha_copilot_router
 from app.modules.agent_monitor.router import router as agent_monitor_router
 from app.modules.notifications import models as notification_models  # noqa: F401
 from app.modules.notifications.router import router as notification_router
+from app.modules.notifications.service import retire_obsolete_sample_notifications
 from app.modules.finance import models as finance_models  # noqa: F401
+from app.modules.finance import standalone_invoice_models as standalone_invoice_models  # noqa: F401
 from app.modules.finance.router import router as finance_router
 from app.modules.finance.service import ensure_finance_seed_data
 from app.modules.finance.schema_compat import ensure_finance_v2_schema_compatibility
 from app.modules.commercial import models as commercial_models  # noqa: F401
+from app.modules.commercial import advance as client_advance_models  # noqa: F401
 from app.modules.commercial.router import router as commercial_router
 from app.modules.commercial.schema_compat import ensure_commercial_schema_compatibility
 from app.modules.travel_km import models as travel_km_models  # noqa: F401
 from app.modules.travel_km.router import router as travel_km_router
 from app.modules.operations import models as operations_models  # noqa: F401
 from app.modules.operations.router import router as operations_router
+from app.uat_2026_router import router as uat_2026_router
 from app.modules.employee_portal.service import ensure_default_branch
 from app.modules.employee_portal.models import UserBranchAccess
 from app.models.entities import User
 from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
-from app.services.seed import ensure_management_accounts, ensure_operations_test_accounts, ensure_v81_test_employee_accounts, seed_database
+from app.services.seed import (
+    ensure_management_accounts,
+    ensure_multi_department_pm_accounts,
+    ensure_multi_department_test_employee_accounts,
+    ensure_operations_test_accounts,
+    ensure_v81_test_employee_accounts,
+    seed_database,
+)
 
 logger = logging.getLogger(__name__)
 _initialization_lock = threading.Lock()
@@ -67,6 +78,8 @@ def ensure_schema_compatibility() -> None:
             "department": "VARCHAR(120)",
             "designation": "VARCHAR(160)",
             "phone_number": "VARCHAR(40)",
+            "joining_date": "DATE",
+            "date_of_birth": "DATE",
             "email_verified": "BOOLEAN DEFAULT FALSE",
             "account_status": "VARCHAR(40) DEFAULT 'active'",
             "mfa_required": "BOOLEAN DEFAULT FALSE",
@@ -312,9 +325,15 @@ def ensure_schema_compatibility() -> None:
                 connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN finance_reviewer_id INTEGER"))
             if "finance_reviewed_at" not in existing:
                 connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN finance_reviewed_at TIMESTAMP"))
+            if "performing_department_code" not in existing:
+                connection.execute(text("ALTER TABLE ops_v800_project_workflows ADD COLUMN performing_department_code VARCHAR(30)"))
             connection.execute(text("UPDATE ops_v800_project_workflows SET submission_count = 0 WHERE submission_count IS NULL"))
+            # Historical rows created before this column existed default to Ortho, the proven template
+            # department; never overwrite a row that already carries a non-null department.
+            connection.execute(text("UPDATE ops_v800_project_workflows SET performing_department_code = 'ortho' WHERE performing_department_code IS NULL"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewer_id ON ops_v800_project_workflows (finance_reviewer_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_finance_reviewed_at ON ops_v800_project_workflows (finance_reviewed_at)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_v800_project_workflows_performing_department_code ON ops_v800_project_workflows (performing_department_code)"))
 
     # V8.1 rework: distinct rework work packages link back to their rework cycle / original package.
     inspector = inspect(engine)
@@ -335,12 +354,60 @@ def ensure_schema_compatibility() -> None:
         if "team_mode" not in existing:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE project_rework_cycles ADD COLUMN team_mode VARCHAR(20)"))
+    # V8.1 BD Feedback Action Center: manual/offline client responses recorded by BD
+    # carry source='bd_manual' and may have no portal feedback request. Additive only.
+    inspector = inspect(engine)
+    if "project_feedback_responses" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("project_feedback_responses")}
+        with engine.begin() as connection:
+            if "source" not in existing:
+                connection.execute(text("ALTER TABLE project_feedback_responses ADD COLUMN source VARCHAR(20) DEFAULT 'client_portal'"))
+            connection.execute(text("UPDATE project_feedback_responses SET source = 'client_portal' WHERE source IS NULL"))
+        # Older databases created feedback_request_id as NOT NULL; manual BD rows have
+        # no portal request, so relax the constraint on PostgreSQL (SQLite ignores it).
+        if engine.dialect.name == "postgresql":
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE project_feedback_responses ALTER COLUMN feedback_request_id DROP NOT NULL"))
     if engine.dialect.name == "postgresql" and "ops_v701_ortho_work_packages" in inspector.get_table_names():
         with engine.begin() as connection:
             # Create the replacement indexes first so uniqueness is never unprotected, then drop the old blanket constraint.
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ops_v701_project_package_code_orig ON ops_v701_ortho_work_packages (project_id, package_code) WHERE rework_cycle_id IS NULL"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ops_v701_project_package_code_rework ON ops_v701_ortho_work_packages (project_id, package_code, rework_cycle_id) WHERE rework_cycle_id IS NOT NULL"))
             connection.execute(text("ALTER TABLE ops_v701_ortho_work_packages DROP CONSTRAINT IF EXISTS uq_ops_v701_project_package_code"))
+
+    # Notification popup experience: additive, backward-compatible columns only.
+    # READ (is_read) and RESOLVED (resolved_at) are independent concepts; existing
+    # notification rows keep working untouched and simply read as resolved=false.
+    inspector = inspect(engine)
+    if "global_notifications" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("global_notifications")}
+        # Column types must stay portable across SQLite and PostgreSQL:
+        # "DATETIME" is SQLite-only and PostgreSQL rejects it, which would abort
+        # application startup. TIMESTAMP/BOOLEAN/TEXT/VARCHAR are valid on both.
+        notification_additions = {
+            "severity": "VARCHAR(16)",
+            "requires_action": "BOOLEAN",
+            "resolved_at": "TIMESTAMP",
+            "resolved_by_id": "INTEGER",
+            "resolution_note": "VARCHAR(255)",
+            "metadata_json": "TEXT",
+            "is_reminder": "BOOLEAN",
+        }
+        with engine.begin() as connection:
+            for name, sql_type in notification_additions.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE global_notifications ADD COLUMN {name} {sql_type}"))
+            # Backfill with real BOOLEAN literals: PostgreSQL rejects 0/1 for a boolean column.
+            connection.execute(text("UPDATE global_notifications SET severity = 'info' WHERE severity IS NULL"))
+            connection.execute(text("UPDATE global_notifications SET requires_action = FALSE WHERE requires_action IS NULL"))
+            connection.execute(text("UPDATE global_notifications SET is_reminder = FALSE WHERE is_reminder IS NULL"))
+            for index_name, column in (
+                ("ix_global_notifications_resolved_at", "resolved_at"),
+                ("ix_global_notifications_requires_action", "requires_action"),
+                ("ix_global_notifications_severity", "severity"),
+                ("ix_global_notifications_is_reminder", "is_reminder"),
+            ):
+                connection.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON global_notifications ({column})"))
 
 
 def initialize_application() -> None:
@@ -376,8 +443,11 @@ def initialize_application() -> None:
             ensure_management_accounts(db)
             ensure_operations_test_accounts(db)
             ensure_v81_test_employee_accounts(db)
+            ensure_multi_department_pm_accounts(db)
+            ensure_multi_department_test_employee_accounts(db)
             default_branch = ensure_default_branch(db)
             ensure_finance_seed_data(db)
+            retire_obsolete_sample_notifications(db)
             for user in db.scalars(select(User)).all():
                 if not user.branch:
                     user.branch = default_branch.name
@@ -512,6 +582,7 @@ app.include_router(finance_router, prefix=settings.api_prefix)
 app.include_router(commercial_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
 app.include_router(operations_router, prefix=settings.api_prefix)
+app.include_router(uat_2026_router, prefix=settings.api_prefix)
 
 
 @app.middleware("http")

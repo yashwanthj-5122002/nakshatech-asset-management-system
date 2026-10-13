@@ -109,6 +109,11 @@ export function ReportsPage() {
         eyebrow="REPORTING CENTRE"
         title="Monthly & Yearly Excel Reporting"
         description="Download complete monthly or yearly IT workbooks covering asset registers, Printers, External HDDs, changes, work records, replacements, handovers, returns, purchases and approval history."
+        meta={<>
+          <span className="nk-meta-chip"><FileSpreadsheet size={14} /> Monthly and yearly workbooks</span>
+          <span className="nk-meta-chip"><History size={14} /> Changes · work records · replacements · returns</span>
+          <span className="nk-meta-chip"><LockKeyhole size={14} /> Approval history included</span>
+        </>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}

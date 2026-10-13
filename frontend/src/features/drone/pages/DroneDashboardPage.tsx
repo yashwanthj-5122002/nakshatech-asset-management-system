@@ -31,6 +31,8 @@ export function DroneDashboardPage() {
   return (
     <>
       <DashboardHeader
+        variant="ops"
+        icon={Drone}
         eyebrow="DRONE & SURVEY OPERATIONS"
         title="Drone Asset Management"
         description="Permanent equipment master, Trinity kits, project custody, workbook reconciliation and honest telemetry status—kept fully separate from IT assets."
@@ -40,6 +42,17 @@ export function DroneDashboardPage() {
           <Link className="secondary-button" to="/drone/assets">Asset Master</Link>
           <Link className="primary-button" to="/drone/operations"><PlaneTakeoff size={17} /> New Operation</Link>
         </>}
+        summary={<>
+          <StatCard icon={BatteryCharging} label="Flight-Ready Kits" value={data.kpis.flight_ready_kits} tone="green" note="Cleared for dispatch" />
+          <StatCard icon={PlaneTakeoff} label="Active Operations" value={data.kpis.active_operations || 0} tone="purple" note="Open dispatches" />
+          <StatCard icon={Wrench} label="Maintenance / Service" value={data.kpis.under_maintenance} tone="orange" note="Ground awaiting service" />
+          <StatCard icon={Clock3} label="Overdue Returns" value={data.kpis.overdue_returns || 0} tone="orange" note="Past expected return date" />
+        </>}
+        meta={<>
+          <span className="nk-meta-chip"><Drone size={14} /> Aerial operations · fleet & custody</span>
+          <span className="nk-meta-chip"><ClipboardCheck size={14} /> {data.kpis.pending_verification} records pending verification</span>
+          <span className="nk-meta-chip"><AlertTriangle size={14} /> {data.import_quality.unresolved_import_exceptions} unresolved import issues</span>
+        </>}
       />
       {error && <div className="error-message">{error}</div>}
 
@@ -47,12 +60,8 @@ export function DroneDashboardPage() {
         <StatCard icon={Boxes} label="Permanent Assets" value={data.kpis.total_assets} />
         <StatCard icon={Drone} label="Flight-Capable Drones" value={data.kpis.flight_capable_drones} tone="cyan" />
         <StatCard icon={FolderKanban} label="At Projects" value={data.kpis.assets_at_projects} tone="purple" />
-        <StatCard icon={BatteryCharging} label="Flight-Ready Kits" value={data.kpis.flight_ready_kits} tone="green" />
-        <StatCard icon={Wrench} label="Maintenance / Service" value={data.kpis.under_maintenance} tone="orange" />
         <StatCard icon={ClipboardCheck} label="Pending Verification" value={data.kpis.pending_verification} />
         <StatCard icon={HardDrive} label="HDD Deliveries" value={data.kpis.hdd_deliveries} tone="cyan" />
-        <StatCard icon={PlaneTakeoff} label="Active Operations" value={data.kpis.active_operations || 0} tone="purple" />
-        <StatCard icon={Clock3} label="Overdue Returns" value={data.kpis.overdue_returns || 0} tone="orange" />
         <StatCard icon={AlertTriangle} label="Unresolved Import Issues" value={data.import_quality.unresolved_import_exceptions} tone="orange" />
       </section>
 

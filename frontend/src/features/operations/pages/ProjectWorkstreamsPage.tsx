@@ -120,6 +120,11 @@ export function ProjectWorkstreamsPage(){
           ? 'Projects assigned to your department. Phase 1 tracks department ownership and progress under the shared master Project ID.'
           : 'Read-only oversight across all technical department workstreams under each master Project ID.'}
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><FolderKanban size={14}/> One master Project ID · many department workstreams</span>
+        <span className="nk-meta-chip"><UsersRound size={14}/> Project Manager assigned per technical department</span>
+        <span className="nk-meta-chip"><ShieldCheck size={14}/> {data?.viewer_mode==='bd_editor'?'BD editing enabled':data?.viewer_mode==='department'?'Your department scope':'Read-only oversight'}</span>
+      </>}
     />
 
     {data&&<div className="operations-readonly">{data.live_technical_routing_enabled?<ShieldCheck size={16}/>:<ShieldAlert size={16}/>} <strong>{data.live_technical_routing_enabled?'Phase 7 LIVE:':'UAT Demo:'}</strong> {data.live_technical_routing_enabled?'Project Manager selection uses only PM-eligible real Technical Team Directory members. Assignment email is sent after the workstream save commits.':'Reserved demo PM routing remains active until Admin performs the Phase 7 cutover.'}</div>}
