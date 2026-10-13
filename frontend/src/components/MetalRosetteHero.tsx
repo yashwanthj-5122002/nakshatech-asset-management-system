@@ -1,15 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Grid3X3, HardHat, Layers3, Move3D, Pause, Play, Plane, RotateCcw, Ruler, ScanLine } from 'lucide-react'
+import { Grid3X3, HardHat, Layers3, Move3D, Pause, Play, RotateCcw, Ruler, ScanLine } from 'lucide-react'
 import type { AssetNodePosition } from './WelcomeAssetScene'
 
 const AssetScene = lazy(() => import('./WelcomeAssetScene'))
 const divisions = [
-  { key: 'gis', label: 'GIS', detail: 'Spatial intelligence', icon: Layers3, x: 50, y: 20 },
-  { key: 'ortho', label: 'ORTHO', detail: 'Precision imagery', icon: Grid3X3, x: 80, y: 32 },
-  { key: 'drone', label: 'DRONE', detail: 'Aerial operations', icon: Plane, x: 80, y: 66 },
-  { key: 'survey', label: 'SURVEY', detail: 'Ground insights', icon: Ruler, x: 50, y: 80 },
-  { key: 'civil', label: 'CIVIL', detail: 'Built environments', icon: HardHat, x: 20, y: 66 },
-  { key: 'lidar', label: 'LiDAR', detail: 'Depth & detail', icon: ScanLine, x: 20, y: 32 },
+  { key: 'gis', label: 'GIS / Mobile Mapping', detail: 'Spatial intelligence and field capture', icon: Layers3, x: 50, y: 20 },
+  { key: 'ortho', label: 'Laser Scanning', detail: 'High-accuracy 3D scanning', icon: ScanLine, x: 80, y: 32 },
+  { key: 'drone', label: 'Software Team', detail: 'Software development and systems', icon: Grid3X3, x: 80, y: 66 },
+  { key: 'survey', label: 'Photogrammetry & Survey', detail: 'Surveying and photogrammetric measurement', icon: Ruler, x: 50, y: 80 },
+  { key: 'civil', label: 'Civil', detail: 'Civil engineering and infrastructure', icon: HardHat, x: 20, y: 66 },
+  { key: 'lidar', label: 'LiDAR & Ortho', detail: 'Point clouds and orthophotography', icon: Layers3, x: 20, y: 32 },
 ]
 
 function CubeFaces({ hub = false }: { hub?: boolean }) {
@@ -110,21 +110,11 @@ export function MetalRosetteHero() {
             left: `${x}%`, top: `${y}%`, '--division-delay': `${index * -1.2}s`,
           } as CSSProperties} aria-label={`Explore ${label}: ${detail}`} aria-pressed={activeKey === key} aria-controls="rosette-division-detail" onPointerEnter={() => setHighlighted(key)} onPointerLeave={() => setHighlighted(null)} onFocus={() => setHighlighted(key)} onBlur={() => setHighlighted(null)} onClick={() => setActiveKey(value => value === key ? null : key)}>
             <div className="rosette-hero__satellite"><CubeFaces /></div>
-            <span className="rosette-hero__division-label"><Icon size={16} strokeWidth={1.6} aria-hidden="true" /><strong>{label}</strong></span>
+            <span className="rosette-hero__division-label"><Icon size={6} strokeWidth={1.6} aria-hidden="true" /><strong>{label}</strong></span>
           </button>
         ))}
       </div>
-      <div className="rosette-hero__toolbar">
-        <div className="rosette-hero__detail" id="rosette-division-detail" aria-live="polite" aria-atomic="true">
-          <span className="rosette-hero__detail-icon"><ActiveIcon size={20} strokeWidth={1.5} aria-hidden="true" /></span>
-          <div><strong>{activeDivision ? `${activeDivision.label} · ${activeDivision.detail}` : 'NakshaTech'}</strong><p>{webgl ? 'Drag to rotate · Select a division' : 'Select a division'}</p></div>
-        </div>
-        <div className="rosette-hero__controls">
-          {webgl && <Move3D className="rosette-hero__drag-icon" size={18} aria-hidden="true" />}
-          {webgl && <button type="button" className="rosette-hero__motion" onClick={() => setResetVersion(value => value + 1)} aria-label="Reset 3D view" title="Reset view"><RotateCcw size={16} aria-hidden="true" /></button>}
-          {!reducedMotion && <button type="button" className="rosette-hero__motion" onClick={() => setPaused(value => !value)} aria-label={paused ? 'Resume visual animation' : 'Pause visual animation'} aria-pressed={paused} title={paused ? 'Resume animation' : 'Pause animation'}>{paused ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}</button>}
-        </div>
-      </div>
+    
     </div>
   )
 }
