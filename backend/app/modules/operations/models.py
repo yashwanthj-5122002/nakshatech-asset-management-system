@@ -142,6 +142,33 @@ class OrthoWorkPackage(Base):
     qa_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     delivery_ready_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # --- V8.1 shared production tracking (ADDITIVE, all nullable; historical rows unaffected) ---
+    # General context (LiDAR Daily Activity: MARCHE LOTTO 3, SUPPLY DATE, REMARKS).
+    lot_batch: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    supply_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional additional processing stages; each has a current status + timestamp.
+    # NULL means "stage not tracked/not started" so legacy packages keep loading unchanged.
+    import_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dxf_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    dxf_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dxf_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    inspection_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    inspected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    upload_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # --- V8.2 one-day production buffer (ADDITIVE; original target_date is never modified) ---
+    production_target_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    # NULL means "use the global default (1 day)"; never rewrites target_date.
+    production_buffer_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # --- V8.3 stage targets + delivery readiness (ADDITIVE) ---
+    # Area-level rollup of the Team Lead stage targets; the AUTHORITATIVE per-stage
+    # deadlines live on each WorkPackageItem (selected files inherit them).
+    qc_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qa_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ready_for_delivery_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    ready_for_delivery_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
@@ -155,6 +182,10 @@ class OrthoWorkPackage(Base):
     )
     daily_updates: Mapped[list["OrthoDailyUpdate"]] = relationship(
         back_populates="work_package", cascade="all, delete-orphan", order_by="OrthoDailyUpdate.id"
+    )
+    # V8.2 optional file/tile/item tracking (empty collection = legacy area-only package).
+    items: Mapped[list["WorkPackageItem"]] = relationship(
+        back_populates="work_package", cascade="all, delete-orphan", order_by="WorkPackageItem.id"
     )
 
 
@@ -210,6 +241,36 @@ class OrthoReview(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
     work_package: Mapped[OrthoWorkPackage] = relationship(back_populates="reviews")
+
+
+class OrthoStageEvent(Base):
+    """Append-only audit history for the optional additional production stages
+    (Import / DXF / Inspection / Upload) and general work-package context edits.
+
+    V8.1 additive: production / QC / QA / delivery history remains in
+    ``OrthoDailyUpdate`` / ``OrthoReview`` / ``ProjectWorkflowEvent`` untouched;
+    this table never overwrites or replaces them.
+    """
+
+    __tablename__ = "ops_v81_ortho_stage_events"
+    __table_args__ = (
+        Index("ix_ops_v81_ortho_stage_events_package_stage", "work_package_id", "stage_code"),
+        Index("ix_ops_v81_ortho_stage_events_project", "project_id"),
+        Index("ix_ops_v81_ortho_stage_events_event_at", "event_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    stage_code: Mapped[str] = mapped_column(String(30), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(30), index=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class OrthoDelivery(Base):
@@ -302,4 +363,92 @@ class ProjectWorkstream(Base):
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+
+class WorkPackageItem(Base):
+    """Optional FILE / TILE / ITEM child of one AREA / work package (V8.2 additive).
+
+    File tracking is OPTIONAL: a work package with zero items keeps working with
+    area-level tracking exactly as before. Items are never hard-deleted — an
+    incorrect file is deactivated (``is_active = False``) so its history survives.
+    """
+
+    __tablename__ = "work_package_items"
+    __table_args__ = (
+        UniqueConstraint("work_package_id", "item_number", name="uq_work_package_items_number"),
+        Index("ix_work_package_items_production_user_id", "production_user_id"),
+        Index("ix_work_package_items_qc_user_id", "qc_user_id"),
+        Index("ix_work_package_items_qa_user_id", "qa_user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    # Denormalized for fast project-visibility queries (same pattern as OrthoStageEvent).
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    item_number: Mapped[str] = mapped_column(String(120), index=True)
+    item_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sequence_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    planned_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    planned_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    production_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    qc_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    qa_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # V8.3 Team Lead stage targets — the AUTHORITATIVE per-file deadlines. Production
+    # keeps the 1-day buffer; QC / QA have no buffer (not_due / due_today / overdue).
+    production_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qc_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qa_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Traceability for Excel-master imports (additive, nullable).
+    import_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    work_package: Mapped["OrthoWorkPackage"] = relationship(back_populates="items")
+
+
+class WorkPackageItemActivity(Base):
+    """Append-only per-file stage activity / history (V8.2 additive).
+
+    One row per timed session (production / qc / qa) or per delivery event for
+    one work-package item. Nothing here overwrites prior rows: rework and repeat
+    attempts are new rows, so history is always preserved. Durations are derived
+    from the real ``started_at`` / ``ended_at`` values, never typed in.
+    """
+
+    __tablename__ = "work_package_item_activities"
+    __table_args__ = (
+        Index("ix_work_package_item_activities_item_stage", "work_package_item_id", "stage"),
+        Index("ix_work_package_item_activities_employee_stage", "employee_user_id", "stage"),
+        Index("ix_work_package_item_activities_stage_status", "stage", "status"),
+        Index("ix_work_package_item_activities_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    work_package_item_id: Mapped[int] = mapped_column(ForeignKey("work_package_items.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(String(20), index=True)
+    employee_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    performed_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity_completed: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    files_completed: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(40), default="in_progress", index=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Legitimate delay / difficulty capture (never blamed on the employee).
+    delay_category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    affected_item_id: Mapped[int | None] = mapped_column(ForeignKey("work_package_items.id", ondelete="SET NULL"), nullable=True)
+    delay_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    system_malfunction: Mapped[bool] = mapped_column(Boolean, default=False)
+    delay_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # created_at index is declared once in __table_args__ (ix_work_package_item_activities_created_at).
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)

@@ -130,6 +130,7 @@ const navItems: NavItem[] = [
   { to: '/bd/feedback', label: 'Client Feedback', icon: FileCheck2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/ortho', label: 'Project Operations', icon: FolderKanban, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho' },
+  { to: '/production-tracking', label: 'Production Tracking', icon: Activity, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho', managementGroup: 'operations', managementLabel: 'Production Tracking' },
   { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Dashboard' },
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },

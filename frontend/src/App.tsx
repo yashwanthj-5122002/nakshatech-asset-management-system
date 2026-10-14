@@ -69,6 +69,7 @@ import { BDClientManagementPage } from './features/operations/pages/BDClientMana
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
 import { NotificationsPage } from './features/operations/pages/NotificationsPage'
 import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPage'
+import { ProductionTrackingPage } from './features/operations/pages/ProductionTrackingPage'
 import { ClientFeedbackPage } from './features/operations/pages/ClientFeedbackPage'
 import { BDClientFeedbackPage } from './features/operations/pages/BDClientFeedbackPage'
 import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
@@ -158,6 +159,7 @@ export default function App() {
       <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin', 'management']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin', 'software_team']}><WithLayout><NotificationsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/ortho" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><OrthoDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/production-tracking" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><ProductionTrackingPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/ortho/project-360/:projectId" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></StrictProtectedRoute>} />
       <Route path="/finance" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClaimsPage /></WithLayout></ProtectedRoute>} />

@@ -46,6 +46,7 @@ from app.modules.travel_km import models as travel_km_models  # noqa: F401
 from app.modules.travel_km.router import router as travel_km_router
 from app.modules.operations import models as operations_models  # noqa: F401
 from app.modules.operations.router import router as operations_router
+from app.modules.operations.production_schema_compat import ensure_production_tracking_schema_compatibility
 from app.uat_2026_router import router as uat_2026_router
 from app.modules.employee_portal.service import ensure_default_branch
 from app.modules.employee_portal.models import UserBranchAccess
@@ -434,6 +435,7 @@ def initialize_application() -> None:
                 logger.warning("PostGIS extension could not be enabled: %s", exc)
         Base.metadata.create_all(bind=engine)
         ensure_schema_compatibility()
+        ensure_production_tracking_schema_compatibility()
         ensure_finance_v2_schema_compatibility()
         ensure_business_schema_compatibility()
         ensure_commercial_schema_compatibility()

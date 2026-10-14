@@ -79,6 +79,19 @@ from app.modules.operations.schemas import (
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
 )
+from app.modules.operations.production_stages import (
+    STAGE_LABELS,
+    STAGE_STATUSES,
+    STAGE_STATUS_ATTR,
+    STAGE_TIMESTAMP_ATTR,
+    TRACKABLE_STAGES,
+    aggregate_project_progress,
+    package_production_progress,
+    package_workflow_progress,
+    stage_profile_for_department,
+    stage_status,
+)
+from app.modules.operations.production_items import item_dashboard_context, item_rows_for_viewer
 
 logger = logging.getLogger(__name__)
 
@@ -1803,7 +1816,17 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     packages = list(db.scalars(select(OrthoWorkPackage).where(OrthoWorkPackage.project_id == project_id)).all())
     if not packages:
         raise ValueError("Create and complete at least one work allocation before Project Completion")
-    blocking = [pkg.package_code for pkg in packages if pkg.current_stage != "delivered"]
+    # File-tracked areas derive their effective stage from the item rollups (one source of
+    # truth); legacy areas keep the package-level stage column.
+    item_contexts = item_dashboard_context(db, packages)
+
+    def _effective_stage(pkg: OrthoWorkPackage) -> str | None:
+        ctx = item_contexts.get(pkg.id) or {}
+        if ctx.get("has_items"):
+            return ctx.get("stage_bucket") or pkg.current_stage
+        return pkg.current_stage
+
+    blocking = [pkg.package_code for pkg in packages if _effective_stage(pkg) != "delivered"]
     if blocking:
         raise ValueError("All assigned work must be delivered before Project Completion: " + ", ".join(blocking[:10]))
     workflow.operational_completed_at = utc_now()
@@ -1946,11 +1969,45 @@ def _member_map(db: Session, project_id: int) -> list[dict]:
     ]
 
 
-def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, viewer_is_pm: bool, viewer_is_tl: bool) -> dict:
+def _package_payload(
+    db: Session,
+    package: OrthoWorkPackage,
+    *,
+    viewer: User,
+    viewer_is_pm: bool,
+    viewer_is_tl: bool,
+    item_ctx: dict | None = None,
+) -> dict:
     total, files = _daily_totals(package)
+    item_ctx = item_ctx or {"has_items": False}
+    has_items = bool(item_ctx.get("has_items"))
     target = package.area or Decimal("0")
+    if has_items:
+        # File-based area: the authoritative figures are the item rollups (same source
+        # as Production Tracking) — never the legacy area-level daily updates.
+        total = Decimal(str(item_ctx.get("production_actual", 0.0)))
+        files = int(item_ctx.get("active_count", 0))
     remaining = max(Decimal("0"), target - total)
     progress = 0.0 if target <= 0 else min(100.0, float((total / target) * Decimal("100")))
+    # V8.1 production tracking (additive): over-target variance + workflow % derived
+    # from the applicable department stage profile (never user-typed).
+    production_math = package_production_progress(total, package.area)
+    department_code = db.scalar(select(ProjectWorkflow.performing_department_code).where(ProjectWorkflow.project_id == package.project_id)) or "ortho"
+    applicable_stages = stage_profile_for_department(department_code)
+    can_edit_general = viewer_is_pm or viewer_is_tl
+    stage_updates: dict[str, dict] = {}
+    actor_is_production = package.production_user_id == viewer.id
+    actor_is_dxf = package.dxf_user_id is not None and package.dxf_user_id == viewer.id
+    for stage in TRACKABLE_STAGES:
+        if stage not in applicable_stages:
+            continue
+        allowed = can_edit_general or actor_is_production or (stage == "dxf" and actor_is_dxf)
+        stage_updates[stage] = {
+            "label": STAGE_LABELS.get(stage, stage),
+            "status": getattr(package, STAGE_STATUS_ATTR[stage], None),
+            "statuses": list(STAGE_STATUSES[stage]),
+            "can_update": allowed,
+        }
     my_roles = []
     if package.team_leader_user_id == viewer.id:
         my_roles.append("team_leader")
@@ -1960,6 +2017,16 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
         my_roles.append("qc")
     if package.qa_user_id == viewer.id:
         my_roles.append("qa")
+    if has_items:
+        # File-level assignment is authoritative when the area tracks files.
+        active_item_rows = [row for row in item_ctx["rows"] if row["is_active"]]
+        for stage_name, id_key in (
+            ("production", "production_user_id"),
+            ("qc", "qc_user_id"),
+            ("qa", "qa_user_id"),
+        ):
+            if stage_name not in my_roles and any(row.get(id_key) == viewer.id for row in active_item_rows):
+                my_roles.append(stage_name)
 
     updates = package.daily_updates
     if not (viewer_is_pm or viewer_is_tl):
@@ -1980,6 +2047,26 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
         "cumulative_completed": float(total),
         "remaining_quantity": float(remaining),
         "progress_percent": round(progress, 2),
+        "over_target_quantity": float(production_math["over_target_quantity"]),
+        "workflow_progress_percent": package_workflow_progress(package, department_code, item_ctx),
+        "applicable_stages": [
+            {"code": stage, "label": STAGE_LABELS.get(stage, stage), "status": stage_status(package, stage)}
+            for stage in applicable_stages
+        ],
+        "stage_updates": stage_updates,
+        "lot_batch": package.lot_batch,
+        "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+        "remarks": package.remarks,
+        "import_status": package.import_status,
+        "imported_at": package.imported_at.isoformat() if package.imported_at else None,
+        "dxf_status": package.dxf_status,
+        "dxf_at": package.dxf_at.isoformat() if package.dxf_at else None,
+        "dxf_user_id": package.dxf_user_id,
+        "inspection_status": package.inspection_status,
+        "inspected_at": package.inspected_at.isoformat() if package.inspected_at else None,
+        "upload_status": package.upload_status,
+        "uploaded_at": package.uploaded_at.isoformat() if package.uploaded_at else None,
+        "can_edit_general": can_edit_general,
         "files_completed": files,
         "my_roles": my_roles,
         "can_daily_activity": package.production_user_id == viewer.id and package.current_stage in {"not_started", "production", "production_rework"},
@@ -2015,6 +2102,27 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
             for row in package.reviews
         ],
     }
+    if has_items:
+        counts = item_ctx.get("aggregate", {})
+        payload.update({
+            "has_items": True,
+            "files_expected": int(item_ctx.get("active_count", 0)),
+            "files_production_done": counts.get("files_production_done", 0),
+            "files_qc_passed": counts.get("files_qc_passed", 0),
+            "files_qa_passed": counts.get("files_qa_passed", 0),
+            "files_delivered": counts.get("files_delivered", 0),
+            "stage_bucket": item_ctx.get("stage_bucket"),
+            "item_assignees": {
+                **item_ctx.get("item_assignees", {}),
+                "team_leader": [item_ctx["team_leader"]] if item_ctx.get("team_leader") else [],
+            },
+            # Employees receive ONLY their assigned files; PM/TL receive all files.
+            "items": item_rows_for_viewer(
+                item_ctx["rows"], viewer_id=viewer.id, privileged=(viewer_is_pm or viewer_is_tl),
+            ),
+        })
+    else:
+        payload["has_items"] = False
     if viewer_is_pm or viewer_is_tl:
         user_ids = {uid for uid in [package.team_leader_user_id, package.production_user_id, package.qc_user_id, package.qa_user_id] if uid}
         users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
@@ -2083,18 +2191,57 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
         status_key = normalized_workflow_status(workflow.status)
         packages = list(db.scalars(_package_query().where(OrthoWorkPackage.project_id == project.id).order_by(OrthoWorkPackage.id.asc())).unique().all())
         all_packages = packages
-        if not (viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE}):
-            packages = [pkg for pkg in packages if actor.id in {pkg.team_leader_user_id, pkg.production_user_id, pkg.qc_user_id, pkg.qa_user_id}]
-        package_payloads = [_package_payload(db, pkg, viewer=actor, viewer_is_pm=viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE}, viewer_is_tl=viewer_is_tl) for pkg in packages]
+        # Item-level context (single source of truth for file-based areas). PM / Team Lead /
+        # Management keep FULL project visibility; a normal employee sees a package when the
+        # legacy package-level columns OR at least one ACTIVE child item assignment matches.
+        item_contexts = item_dashboard_context(db, packages)
+        if not (viewer_is_pm or viewer_is_tl or role in {ADMIN_ROLE, MANAGEMENT_ROLE}):
+            def _employee_can_see(pkg: OrthoWorkPackage) -> bool:
+                if actor.id in {pkg.team_leader_user_id, pkg.production_user_id, pkg.qc_user_id, pkg.qa_user_id}:
+                    return True
+                ctx = item_contexts.get(pkg.id) or {}
+                if not ctx.get("has_items"):
+                    return False
+                return any(
+                    row["is_active"]
+                    and actor.id in {row.get("production_user_id"), row.get("qc_user_id"), row.get("qa_user_id")}
+                    for row in ctx["rows"]
+                )
+            packages = [pkg for pkg in packages if _employee_can_see(pkg)]
+        package_payloads = [
+            _package_payload(
+                db, pkg,
+                viewer=actor,
+                viewer_is_pm=viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE},
+                viewer_is_tl=viewer_is_tl,
+                item_ctx=item_contexts.get(pkg.id),
+            )
+            for pkg in packages
+        ]
         _annotate_rework_packages(db, project.id, package_payloads, packages, all_packages)
+
+        def _stage_for_counts(payload: dict) -> str:
+            # File-based areas report the live item stage; legacy areas keep current_stage.
+            return payload.get("stage_bucket") or payload["current_stage"]
+
         summary = {
             "packages": len(package_payloads),
-            "production": sum(1 for p in package_payloads if p["current_stage"] in {"not_started", "production", "production_rework"}),
-            "qc": sum(1 for p in package_payloads if p["current_stage"] == "qc"),
-            "qa": sum(1 for p in package_payloads if p["current_stage"] == "qa"),
-            "delivery_ready": sum(1 for p in package_payloads if p["current_stage"] == "delivery_ready"),
-            "delivered": sum(1 for p in package_payloads if p["current_stage"] == "delivered"),
+            "production": sum(1 for p in package_payloads if _stage_for_counts(p) in {"not_started", "production", "production_rework"}),
+            "qc": sum(1 for p in package_payloads if _stage_for_counts(p) == "qc"),
+            "qa": sum(1 for p in package_payloads if _stage_for_counts(p) == "qa"),
+            "delivery_ready": sum(1 for p in package_payloads if _stage_for_counts(p) == "delivery_ready"),
+            "delivered": sum(1 for p in package_payloads if _stage_for_counts(p) == "delivered"),
         }
+        # V8.1 production tracking (additive): server-side progress for this project's
+        # visible packages. Production % can legitimately be 100 while QC/QA/Delivery
+        # are still pending — both figures are always exposed separately.
+        tracking = aggregate_project_progress(packages, workflow.performing_department_code, item_contexts)
+        summary["production_progress_percent"] = tracking["production_progress_percent"]
+        summary["workflow_progress_percent"] = tracking["workflow_progress_percent"]
+        summary["measurement_groups"] = [
+            {k: (float(v) if hasattr(v, "as_tuple") else v) for k, v in group.items()}
+            for group in tracking["measurement_groups"]
+        ]
         base = {
             "project_id": project.id,
             "project_code": project.project_code,
@@ -2107,7 +2254,7 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             # rework (or any later lifecycle stage) they would be rejected, so they are not offered.
             "can_manage_team": viewer_is_pm and status_key in TEAM_SELECTION_STATUSES,
             "can_allocate_work": viewer_is_tl and status_key in WORK_ALLOCATION_STATUSES,
-            "can_complete_project": viewer_is_pm and status_key in WORK_ALLOCATION_STATUSES and bool(package_payloads) and all(p["current_stage"] == "delivered" for p in package_payloads),
+            "can_complete_project": viewer_is_pm and status_key in WORK_ALLOCATION_STATUSES and bool(package_payloads) and all(_stage_for_counts(p) == "delivered" for p in package_payloads),
             "rework": None,
         }
         if viewer_is_pm or viewer_is_tl or role in {ADMIN_ROLE, MANAGEMENT_ROLE}:

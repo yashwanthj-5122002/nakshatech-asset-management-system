@@ -202,6 +202,11 @@ class Settings(BaseSettings):
     # Legacy projects that were already submitted/returned before the commercial layer stay resubmittable.
     commercial_revision1_required_on_submit: bool = True
 
+    # V8.2 production buffer: calendar days of grace after a production target date
+    # (env: PRODUCTION_BUFFER_DAYS). Per-package production_buffer_days overrides this.
+    # The original target date is never modified.
+    production_buffer_days: int = 1
+
     # Client advance payment notifications (Finance V8 Phase 4). Pending advances
     # above this amount raise a High Value Pending Advance alert for Management.
     # Configurable so UAT and production can tune the escalation limit without a
