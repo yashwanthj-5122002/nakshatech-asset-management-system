@@ -1,0 +1,31 @@
+NAKSHATECH WELCOME CUBE FACE LABELS - OPTION A
+
+Source: uploaded repository ZIP, frontend/src/components/WelcomeAssetScene.tsx
+Patch retains the external department chips and original central front logo.
+It adds all-six-face labels to Nakshatech, GIS, LIDAR, ORTHO, DRONE, CIVIL and SURVEY cubes.
+Existing pointer drag / inspection code is not modified.
+
+APPLY ON WINDOWS FROM PROJECT ROOT (VS CODE POWERSHELL):
+cd D:\shreeyansh\nakshatech-asset-management-system
+git status --short
+# Copy this ZIP to D:\shreeyansh and expand into repository root:
+Expand-Archive -Path D:\shreeyansh\nakshatech_cube_labels_optionA.zip -DestinationPath . -Force
+# Do not expand a second time unless discarding manual changes.
+# Alternative: put .patch in root and run: git apply --check .\nakshatech_cube_labels.patch; git apply .\nakshatech_cube_labels.patch
+
+BUILD / DEPLOY:
+$env:Path += ";$env:LOCALAPPDATA\Programs\DockerDesktop\resources\bin"
+docker compose up -d --build frontend
+docker compose ps
+docker compose logs --tail 80 frontend
+
+OPEN: http://localhost:8088 (or http://localhost:3100)
+Hard refresh CTRL+SHIFT+R. Drag cube / pause / rotate and check labels on each face.
+
+RESTORE ORIGINAL:
+git restore -- frontend/src/components/WelcomeAssetScene.tsx
+docker compose up -d --build frontend
+
+VALIDATION: Source-level modifications inspected. Full TypeScript build NOT completed in the authoring environment because npm ci timed out. Verify compile using Docker command above.
+
+shreeyansh

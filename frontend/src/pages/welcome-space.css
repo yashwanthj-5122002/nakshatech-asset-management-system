@@ -144,3 +144,8 @@
   .space-welcome *, .space-welcome *::before, .space-welcome *::after { animation: none !important; transition: none !important; }
   .rosette-hero__signal { stroke-dasharray: none; opacity: .3; }
 }
+
+/* NAKSHA_NAVY360_HIDE_FLOATING_BADGES */
+.rosette-hero--webgl .rosette-hero__division {
+  display: none !important;
+}

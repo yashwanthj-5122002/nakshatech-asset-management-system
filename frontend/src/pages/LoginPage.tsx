@@ -243,14 +243,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
               </p>
             </div>
 
-            <div className="final-login-notice" role="status">
-              <ShieldCheck size={18} aria-hidden="true" />
-              <span>
-                {employeeMode
-                  ? 'This compatibility login keeps the existing Employee Support access mode available for old bookmarks and workflows.'
-                  : 'One secure login for Management, Admin, IT, Software Team, Drone, Finance, HR, Business Development, Ortho, LiDAR, Civil, Laser Scanning, BIM, Mobile Mapping and Employees. Access permissions are read from your authenticated account — no manual department selection.'}
-              </span>
-            </div>
+           
 
             <label className="final-login-field" htmlFor="login-email">
               <span>Official Email or Employee ID</span>

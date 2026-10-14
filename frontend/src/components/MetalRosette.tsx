@@ -172,7 +172,7 @@ function drawCube(
   const tightness = 1 - Math.min(1, Math.max(0, roughness / 100))
   const glow = ctx.createRadialGradient(glintX, glintY, 0, glintX, glintY, half * 1.1)
   glow.addColorStop(0, `rgba(255, 255, 255, ${0.16 + 0.34 * gloss * (0.4 + 0.6 * tightness)})`)
-  glow.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  glow.addColorStop(1, 'rgb(255, 255, 255)')
   facePath(ctx, cx, cy, top)
   ctx.fillStyle = glow
   ctx.fill()
@@ -189,7 +189,7 @@ function drawCube(
 
   /* NakshaTech cyan rim along the base. */
   ctx.lineWidth = Math.max(1, half * 0.06)
-  ctx.strokeStyle = 'rgba(64, 214, 255, 0.3)'
+  ctx.strokeStyle = 'rgb(64, 214, 255)'
   ctx.beginPath()
   ctx.moveTo(cx - half, cy + half * 0.5)
   ctx.lineTo(cx, cy + half)
@@ -307,7 +307,7 @@ function renderScene(
 
 export default function MetalRosette({
   background = 'transparent',
-  baseColor = '#9fb3c8',
+  baseColor = '#0775eb',
   speed,
   material,
   camera,

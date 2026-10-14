@@ -1,4 +1,3 @@
-﻿services:
-  backend:
-    env_file:
-      - .env
+services:
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
