@@ -169,6 +169,10 @@ class OrthoWorkPackage(Base):
     qa_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     ready_for_delivery_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     ready_for_delivery_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # --- V8.4 declared physical-file count for the area (ADDITIVE, source metadata) ---
+    # The master workbook may declare TOTAL FILES for a Lot/Code/Area; the physical files
+    # (File 1..N) are generated from this. NULL = legacy row-based import (one file per row).
+    total_files: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
@@ -442,6 +446,10 @@ class WorkPackageItemActivity(Base):
     unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
     files_completed: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(40), default="in_progress", index=True)
+    # V8.4 physical-file workflow (additive): every attempt is INITIAL or REWORK.
+    # Historical rows keep NULL and are treated as the first attempt.
+    attempt_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Legitimate delay / difficulty capture (never blamed on the employee).
     delay_category: Mapped[str | None] = mapped_column(String(80), nullable=True)

@@ -684,7 +684,15 @@ def bad_debt_decision(
         row = decide_bad_debt(db, actor=auth.user, invoice_id=invoice_id, payload=payload)
         _audit(request, db, auth, "PROJECT_INVOICE_BAD_DEBT_DECISION", "project_invoice", invoice_id, {"project_id": row.project_id, "bad_debt_id": row.id, "decision": row.status})
         db.commit()
-        return {"id": row.id, "project_id": row.project_id, "invoice_id": row.invoice_id, "status": row.status}
+        # Dual-approval progress so the UI can show "1 of 2 approvals complete" without refetching.
+        from app.modules.operations.lifecycle_service import _bad_debt_approval_payload
+        return {
+            "id": row.id,
+            "project_id": row.project_id,
+            "invoice_id": row.invoice_id,
+            "status": row.status,
+            "approvals": _bad_debt_approval_payload(db, row),
+        }
     except Exception as exc:
         db.rollback()
         raise _error(exc) from exc

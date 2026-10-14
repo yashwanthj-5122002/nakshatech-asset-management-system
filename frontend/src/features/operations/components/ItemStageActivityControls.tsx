@@ -76,6 +76,10 @@ export type ActivityItem = {
   production_quantity?: number | null
   production_unit?: string | null
   production_files?: number
+  production_attempt_type?: string | null
+  production_attempt_number?: number | null
+  qc_attempt_type?: string | null
+  qa_attempt_type?: string | null
   production_remarks?: string | null
   qc_remarks?: string | null
   qa_remarks?: string | null
@@ -178,9 +182,8 @@ export function ItemStageActivityControls({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [active, setActive] = useState<'production' | 'qc' | 'qa' | null>(null)
-  // ENDING A WORK SESSION ("save daily progress") is distinct from FINAL FILE
-  // COMPLETION ("complete production"). Same endpoint, different `finalize` flag.
-  const [prodFinalize, setProdFinalize] = useState(true)
+  // V8.4 physical-file workflow: production is START -> COMPLETE only (no "save daily
+  // progress" in the normal file flow); historical multi-session rows stay readable.
   const [prodDraft, setProdDraft] = useState(EMPTY_PRODUCTION_DRAFT)
   const [reviewDraft, setReviewDraft] = useState(EMPTY_REVIEW_DRAFT)
   const [now, setNow] = useState(() => Date.now())
@@ -299,10 +302,17 @@ export function ItemStageActivityControls({
     duration?: number | null,
     deadline?: StageDeadline | null,
     target?: string | null,
+    attemptType?: string | null,
+    attemptNumber?: number | null,
   ) => (
     <div className="isa-stage" key={stage}>
       <span className="isa-stage-name">{stageLabel(stage)}</span>
       <span className={`operations-status ${stageStatusTone(status)}`}>{label(status)}</span>
+      {attemptType === 'REWORK' && (
+        <span className="operations-status warning">
+          REWORK{attemptNumber ? ` attempt ${attemptNumber}` : ''}
+        </span>
+      )}
       {target && <span className="isa-meta">Target: {target}</span>}
       {stageDeadlineLabel(deadline) && <span className="isa-meta">{stageDeadlineLabel(deadline)}</span>}
       {startedAt && <span className="isa-meta">Started: {fmtTime(startedAt)}</span>}
@@ -317,11 +327,12 @@ export function ItemStageActivityControls({
       {error && <div className="operations-alert error">{error}</div>}
 
       {stageRow('production', item.production_status, item.production_start, item.production_end,
-        item.production_duration_seconds, item.production_deadline, item.production_target_date)}
+        item.production_duration_seconds, item.production_deadline, item.production_target_date,
+        item.production_attempt_type, item.production_attempt_number)}
       {stageRow('qc', item.qc_status, item.qc_start, item.qc_end,
-        item.qc_duration_seconds, item.qc_deadline, item.qc_target_date)}
+        item.qc_duration_seconds, item.qc_deadline, item.qc_target_date, item.qc_attempt_type)}
       {stageRow('qa', item.qa_status, item.qa_start, item.qa_end,
-        item.qa_duration_seconds, item.qa_deadline, item.qa_target_date)}
+        item.qa_duration_seconds, item.qa_deadline, item.qa_target_date, item.qa_attempt_type)}
 
       {(sessionCount > 0 || cumulativeQty !== null) && (
         <div className="isa-meta isa-strong">
@@ -362,16 +373,10 @@ export function ItemStageActivityControls({
       {item.production_user_id === myUserId && (
         <div className="isa-actions">
           {openStage === 'production' && active !== 'production' && (
-            <>
-              <button type="button" className="operations-button secondary" disabled={busy}
-                onClick={() => { setProdFinalize(false); setActive('production') }}>
-                Save Daily Progress
-              </button>
-              <button type="button" className="operations-button danger" disabled={busy}
-                onClick={() => { setProdFinalize(true); setActive('production') }}>
-                Complete Production
-              </button>
-            </>
+            <button type="button" className="operations-button danger" disabled={busy}
+              onClick={() => setActive('production')}>
+              Complete File
+            </button>
           )}
           {!item.open_session && canStartProduction && (
             <button type="button" className="operations-button" disabled={busy} onClick={() => start('production')}>
@@ -443,7 +448,7 @@ export function ItemStageActivityControls({
       {/* ---- Inline completion form ---- */}
       {openStage === 'production' && active === 'production' && (
         <div className="isa-form">
-          <strong>{prodFinalize ? 'Complete production (finalize file)' : 'Save daily progress (file stays open)'} — {item.item_number}</strong>
+          <strong>Complete file — {item.item_number}</strong>
           <div className="pt-form-row">
             <label className="operations-field"><span>Actual Quantity *</span>
               <input type="number" min={0} step="0.001" value={prodDraft.quantity}
@@ -458,9 +463,8 @@ export function ItemStageActivityControls({
             </label>
           </div>
           <div className="isa-meta">
-            {prodFinalize
-              ? 'Files completed is counted automatically (1 per completed file). This ends the file and unlocks QC.'
-              : 'The finished file is NOT counted and QC stays locked — Start Work again later for the next session.'}
+            Completing the file records the server end time and duration and unlocks QC for this file.
+            Files completed is counted automatically (one per physical file, never per attempt).
           </div>
           <div className="pt-delay-box">
             <strong>Difficulty / Delay (optional)</strong>
@@ -501,10 +505,7 @@ export function ItemStageActivityControls({
           </div>
           <div className="operations-actions">
             <button type="button" className="operations-button success" disabled={busy} onClick={() => submitProduction(true)}>
-              Save &amp; Complete Production
-            </button>
-            <button type="button" className="operations-button" disabled={busy} onClick={() => submitProduction(false)}>
-              Save Daily Progress (keep open)
+              Complete File
             </button>
             <button type="button" className="operations-button secondary" onClick={() => setActive(null)}>Cancel</button>
           </div>

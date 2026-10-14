@@ -1106,6 +1106,7 @@ def workflow_assign_files(
             qa_target_date=payload.qa_target_date,
             supply_date=payload.supply_date,
             note=payload.note,
+            reassign=payload.reassign,
         )
         _audit(request, db, auth, "WORKFLOW_FILES_ALLOCATED", "ortho_work_package", work_package_id, {
             "item_ids": payload.item_ids, "production_target_date": str(payload.production_target_date),

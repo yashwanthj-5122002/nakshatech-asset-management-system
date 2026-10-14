@@ -751,6 +751,15 @@ def start_activity(
             raise ValueError(f"You already have an open {stage.upper()} session for this file — complete it first")
         raise ValueError(f"Another employee already has an open {stage.upper()} session for this file")
 
+    # Attempt metadata (V8.4): a repeat attempt for the same file+stage is a REWORK
+    # attempt; the physical file still counts once regardless of how many attempts exist.
+    prior_attempts = db.scalar(select(func.count(WorkPackageItemActivity.id)).where(
+        WorkPackageItemActivity.work_package_item_id == item.id,
+        WorkPackageItemActivity.stage == stage,
+    )) or 0
+    attempt_number = int(prior_attempts) + 1
+    attempt_type = "REWORK" if attempt_number > 1 else "INITIAL"
+
     activity = WorkPackageItemActivity(
         project_id=package.project_id,
         work_package_id=package.id,
@@ -762,6 +771,8 @@ def start_activity(
         started_at=started_at or utc_now(),
         status="in_progress",
         files_completed=0,
+        attempt_type=attempt_type,
+        attempt_number=attempt_number,
     )
     db.add(activity)
     if item.status == "not_started":
@@ -1239,6 +1250,10 @@ def build_item_rows(
             "production_files": files_completed_total,
             "qc_attempts": len([a for a in item_acts if a.stage == "qc" and a.ended_at is not None]),
             "qa_attempts": len([a for a in item_acts if a.stage == "qa" and a.ended_at is not None]),
+            "production_attempt_type": prod.attempt_type if prod else None,
+            "production_attempt_number": prod.attempt_number if prod else None,
+            "qc_attempt_type": qc.attempt_type if qc else None,
+            "qa_attempt_type": qa.attempt_type if qa else None,
             "production_remarks": prod.remarks if prod else None,
             "production_employee": name_of(prod.employee_user_id) if prod else None,
             "qc_start": qc.started_at.isoformat() if qc and qc.started_at else None,
@@ -1284,8 +1299,11 @@ def file_aggregates_for_packages(db: Session, package_ids: Iterable[int]) -> dic
             "files_expected": 0, "files_total": 0,
             "files_production_done": 0, "files_qc_passed": 0,
             "files_qa_passed": 0, "files_delivered": 0,
-            "production_pending": 0, "qc_pending": 0, "qc_rework": 0,
-            "qa_pending": 0, "qa_rework": 0,
+            "files_assigned": 0, "files_available": 0,
+            "production_pending": 0, "production_in_progress": 0, "production_rework": 0,
+            "qc_pending": 0, "qc_in_progress": 0, "qc_rework": 0,
+            "qa_pending": 0, "qa_in_progress": 0, "qa_rework": 0,
+            "ready": 0,
             "production_item_percent": 0.0, "qc_item_percent": 0.0,
             "qa_item_percent": 0.0, "delivery_item_percent": 0.0,
         }
@@ -1297,23 +1315,48 @@ def file_aggregates_for_packages(db: Session, package_ids: Iterable[int]) -> dic
         if not item.is_active:
             continue
         row["files_expected"] = row.get("files_expected", 0) + 1
+        if item.production_user_id:
+            row["files_assigned"] += 1
+        else:
+            row["files_available"] += 1
         per_stage = latest.get(item.id, {})
         prod, qc, qa = per_stage.get("production"), per_stage.get("qc"), per_stage.get("qa")
+        # A QC reject/rework that is NEWER than the latest Production completion puts the
+        # file back into ACTIVE production rework (still ONE physical file). If Production
+        # has since been redone, the file is production-complete again and merely awaiting
+        # QC re-inspection.
+        rework_outstanding = (
+            qc is not None and qc.status in {"rejected", "rework"}
+            and (prod is None or prod.id < qc.id)
+        )
+        if prod is not None and prod.status == "completed" and rework_outstanding:
+            row["production_rework"] += 1
+            row["qc_rework"] += 1
+            continue
         if prod is not None and prod.status == "completed":
             row["files_production_done"] += 1
+        elif prod is not None and prod.status == "in_progress":
+            row["production_in_progress"] += 1
+            row["production_pending"] += 1
         else:
             row["production_pending"] += 1
         if prod is not None and prod.status == "completed":
             if qc is None:
                 row["qc_pending"] += 1
+            elif qc.status == "in_progress":
+                row["qc_in_progress"] += 1
             elif qc.status == "passed":
                 row["files_qc_passed"] += 1
                 if qa is None:
                     row["qa_pending"] += 1
+                elif qa.status == "in_progress":
+                    row["qa_in_progress"] += 1
                 elif qa.status == "passed":
                     row["files_qa_passed"] += 1
                 else:
                     row["qa_rework"] += 1
+            elif qc.status in {"rejected", "rework"}:
+                row["qc_pending"] += 1          # production redone → awaiting QC retry
             else:
                 row["qc_rework"] += 1
         if per_stage.get("delivery") is not None and per_stage["delivery"].status == "delivered":
@@ -1326,6 +1369,8 @@ def file_aggregates_for_packages(db: Session, package_ids: Iterable[int]) -> dic
             row["qa_item_percent"] = round(row["files_qa_passed"] * 100.0 / total, 2)
             row["delivery_item_percent"] = round(row["files_delivered"] * 100.0 / total, 2)
         row["ready_for_delivery"] = bool(total) and row["files_qa_passed"] == total
+        # "Ready" file counter = distinct physical files that have passed QA (eligible).
+        row["ready"] = row["files_qa_passed"]
     return agg
 
 
@@ -1522,6 +1567,8 @@ def item_history(db: Session, *, actor: User, role: str, work_package_item_id: i
         "id": a.id,
         "stage": a.stage,
         "status": a.status,
+        "attempt_type": a.attempt_type,
+        "attempt_number": a.attempt_number,
         "employee_user_id": a.employee_user_id,
         "employee": users.get(a.employee_user_id).full_name if a.employee_user_id in users else None,
         "performed_role": a.performed_role,
@@ -1605,6 +1652,8 @@ def item_dashboard_context(db: Session, packages: Iterable[OrthoWorkPackage]) ->
             "aggregate": counts,
             "stage_bucket": bucket,
             "production_actual": production_actual,
+            "declared_total_files": package.total_files,
+            "ready_confirmed": package.ready_for_delivery_at is not None,
             # Derived per-stage activity flags so every screen can show the SAME
             # stage status (no screen may report "not started" once work has begun).
             "stage_started": {
@@ -1669,6 +1718,8 @@ def activity_rows_for_packages(db: Session, package_ids: Iterable[int]) -> list[
             "unit": act.unit,
             "files_completed": int(act.files_completed or 0),
             "status": act.status,
+            "attempt_type": act.attempt_type,
+            "attempt_number": act.attempt_number,
             "finalized": act.stage == "production" and act.status == "completed",
             "remarks": act.remarks,
             "delay_category": act.delay_category,

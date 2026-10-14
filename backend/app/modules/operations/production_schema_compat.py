@@ -44,6 +44,8 @@ WORK_PACKAGE_COLUMNS = {
     "qa_target_date": "DATE",
     "ready_for_delivery_by_id": "INTEGER",
     "ready_for_delivery_at": "TIMESTAMP",
+    # V8.4 declared physical-file count (additive, nullable)
+    "total_files": "INTEGER",
 }
 
 # V8.3 per-file columns added to the existing (V8.2) work_package_items table.
@@ -52,6 +54,12 @@ WORK_PACKAGE_ITEM_COLUMNS = {
     "qc_target_date": "DATE",
     "qa_target_date": "DATE",
     "import_source": "VARCHAR(255)",
+}
+
+# V8.4 attempt metadata added to the existing activity table (additive, nullable).
+WORK_PACKAGE_ITEM_ACTIVITY_COLUMNS = {
+    "attempt_type": "VARCHAR(20)",
+    "attempt_number": "INTEGER",
 }
 
 
@@ -105,6 +113,9 @@ def ensure_production_tracking_schema_compatibility() -> None:
             ):
                 connection.execute(text(ddl))
         if "work_package_item_activities" in tables:
+            activity_existing = {c["name"] for c in inspector.get_columns("work_package_item_activities")}
+            _add_missing(connection, "work_package_item_activities", activity_existing,
+                         WORK_PACKAGE_ITEM_ACTIVITY_COLUMNS)
             for ddl in (
                 "CREATE INDEX IF NOT EXISTS ix_work_package_item_activities_project_id ON work_package_item_activities (project_id)",
                 "CREATE INDEX IF NOT EXISTS ix_work_package_item_activities_work_package_id ON work_package_item_activities (work_package_id)",

@@ -91,7 +91,11 @@ from app.modules.operations.production_stages import (
     stage_profile_for_department,
     stage_status,
 )
-from app.modules.operations.production_items import item_dashboard_context, item_rows_for_viewer
+from app.modules.operations.production_items import (
+    delivery_readiness,
+    item_dashboard_context,
+    item_rows_for_viewer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1785,8 +1789,40 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
     project = _project(db, package.project_id)
     if not (_is_pm(project, actor.id) or package.team_leader_user_id == actor.id):
         raise PermissionError("Only the Team Lead or Project Manager can record Delivery")
-    if package.current_stage != "delivery_ready" or package.qa_state != "approved":
+    # File-tracked areas: readiness comes from the authoritative physical files (all files
+    # must have passed QA) AND the explicit Ready-for-Delivery confirmation. Legacy areas
+    # keep the original stage/qa_state gate unchanged.
+    readiness = delivery_readiness(db, package)
+    if readiness["applicable"]:
+        if not readiness["ready"]:
+            raise ValueError(
+                "Not all files passed QA yet — QA must approve every required file before Delivery"
+            )
+        if package.ready_for_delivery_at is None:
+            raise ValueError("Confirm Ready for Delivery before recording Delivery")
+    elif package.current_stage != "delivery_ready" or package.qa_state != "approved":
         raise ValueError("QA must approve the task before Delivery")
+    if package.current_stage == "delivered":
+        raise ValueError("This area is already delivered")
+    if readiness["applicable"]:
+        # Keep ONE source of truth: record the delivery on each physical file so the
+        # file-tracked counters/readiness/stage bucket all agree with the area state.
+        from app.modules.operations import production_items as _items
+        item_rows = _items.items_for_packages(db, [package.id])
+        latest = _items.latest_activities_by_item(db, [package.id])
+        for item in item_rows:
+            if not item.is_active:
+                continue
+            delivery = latest.get(item.id, {}).get("delivery")
+            if delivery is not None and delivery.status == "delivered":
+                continue
+            _items.deliver_item(
+                db, actor=actor,
+                role=("project_manager" if _is_pm(project, actor.id) else "employee"),
+                work_package_item_id=item.id,
+                remarks=(payload.remarks or "").strip() or None,
+                reference=None,
+            )
     package.current_stage = "delivered"
     package.delivered_at = utc_now()
     pm = _pm(project)
@@ -1981,6 +2017,7 @@ def _package_payload(
     total, files = _daily_totals(package)
     item_ctx = item_ctx or {"has_items": False}
     has_items = bool(item_ctx.get("has_items"))
+    _item_expected = int(item_ctx.get("active_count") or 0)
     target = package.area or Decimal("0")
     if has_items:
         # File-based area: the authoritative figures are the item rollups (same source
@@ -2040,6 +2077,14 @@ def _package_payload(
         "target_date": package.target_date.isoformat() if package.target_date else None,
         "instructions": package.instructions,
         "current_stage": package.current_stage,
+        # Displayed stage for the UI: file-tracked areas show the derived physical-file
+        # stage (never the stale legacy column), legacy areas keep current_stage.
+        "display_stage": package.current_stage,
+        # Delivery lifecycle flags (legacy semantics; overridden for file-tracked areas below).
+        "ready_eligible": package.current_stage == "delivery_ready",
+        "ready_for_delivery": package.current_stage == "delivery_ready",
+        "delivered": package.current_stage == "delivered",
+        "delivered_at": package.delivered_at.isoformat() if package.delivered_at else None,
         "production_state": package.production_state,
         "qc_state": package.qc_state,
         "qa_state": package.qa_state,
@@ -2111,7 +2156,24 @@ def _package_payload(
             "files_qc_passed": counts.get("files_qc_passed", 0),
             "files_qa_passed": counts.get("files_qa_passed", 0),
             "files_delivered": counts.get("files_delivered", 0),
+            # V8.4 distinct physical-file counters (never inflated by rework attempts).
+            "files_assigned": counts.get("files_assigned", 0),
+            "files_available": counts.get("files_available", 0),
+            "files_production_in_progress": counts.get("production_in_progress", 0),
+            "files_production_rework": counts.get("production_rework", 0),
+            "files_qc_in_progress": counts.get("qc_in_progress", 0),
+            "files_qc_rework": counts.get("qc_rework", 0),
+            "files_qa_in_progress": counts.get("qa_in_progress", 0),
+            "files_qa_rework": counts.get("qa_rework", 0),
+            "files_ready": counts.get("ready", 0),
+            "declared_total_files": item_ctx.get("declared_total_files"),
             "stage_bucket": item_ctx.get("stage_bucket"),
+            # File-tracked area: derive the DISPLAYED stage + delivery lifecycle from the
+            # authoritative physical-file state (never the stale legacy columns).
+            "display_stage": item_ctx.get("stage_bucket") or package.current_stage,
+            "ready_eligible": bool(_item_expected) and int(counts.get("files_qa_passed", 0)) >= _item_expected,
+            "ready_for_delivery": bool(item_ctx.get("ready_confirmed")),
+            "delivered": bool(_item_expected) and int(counts.get("files_delivered", 0)) >= _item_expected,
             "item_assignees": {
                 **item_ctx.get("item_assignees", {}),
                 "team_leader": [item_ctx["team_leader"]] if item_ctx.get("team_leader") else [],
@@ -2121,6 +2183,14 @@ def _package_payload(
                 item_ctx["rows"], viewer_id=viewer.id, privileged=(viewer_is_pm or viewer_is_tl),
             ),
         })
+        # Delivery is the EXPLICIT step after Ready has been confirmed (never merged with
+        # Mark Ready, never automatic) — derived from the physical-file state.
+        payload["can_deliver"] = (
+            (viewer_is_pm or package.team_leader_user_id == viewer.id)
+            and bool(item_ctx.get("ready_confirmed"))
+            and not payload["delivered"]
+            and payload["ready_eligible"]
+        )
     else:
         payload["has_items"] = False
     if viewer_is_pm or viewer_is_tl:

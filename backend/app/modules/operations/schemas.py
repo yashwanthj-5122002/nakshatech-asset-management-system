@@ -499,6 +499,9 @@ class WorkflowFileAllocation(BaseModel):
     qa_target_date: date
     supply_date: date | None = None
     note: str | None = Field(default=None, max_length=5000)
+    # V8.4: take over an UNSTARTED file owned by another employee (no history). Default
+    # off so the normal allocation can never silently steal an assigned file.
+    reassign: bool = False
 
     @field_validator("item_ids")
     @classmethod

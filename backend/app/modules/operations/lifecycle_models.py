@@ -337,6 +337,33 @@ class ProjectInvoiceBadDebt(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
 
 
+class ProjectInvoiceBadDebtApproval(Base):
+    """Append-only management decision for one Bad Debt case (DUAL approval).
+
+    NakshaTech requires BOTH management approvers (Vinod Sir and Chethan) to
+    approve a write-off before it becomes financially effective. Each decision is
+    its own immutable row, so approval history is never overwritten, a repeated or
+    concurrent click cannot duplicate the effect, and a re-proposal starts a fresh
+    approval cycle (approvals are scoped by ``decided_at >= proposed_at``).
+    """
+
+    __tablename__ = "project_invoice_bad_debt_approvals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bad_debt_id: Mapped[int] = mapped_column(
+        ForeignKey("project_invoice_bad_debts.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("project_invoices.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    # 'vinod' | 'chethan' — resolved from the authorized management account email.
+    approver_key: Mapped[str] = mapped_column(String(20), index=True)
+    approver_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    approver_email: Mapped[str] = mapped_column(String(255))
+    decision: Mapped[str] = mapped_column(String(20))  # approved | rejected
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
 class ProjectMessage(Base):
     __tablename__ = "project_messages"
 

@@ -33,7 +33,10 @@ export type AllocationArea = {
   planned_quantity?: number | null
   planned_unit?: string | null
   supply_date?: string | null
+  declared_total_files?: number | null
   file_count: number
+  assigned_files?: number
+  available_files?: number
   files_completed: number
   production_status: string
   qc_status: string
@@ -63,6 +66,11 @@ export type AreaFilesResponse = {
   planned_quantity?: number | null
   planned_unit?: string | null
   supply_date?: string | null
+  declared_total_files?: number | null
+  total_files?: number
+  assigned_files?: number
+  available_files?: number
+  remarks?: string | null
   files: {
     work_package_item_id: number
     item_number: string
@@ -70,11 +78,27 @@ export type AreaFilesResponse = {
     planned_quantity?: number | null
     planned_unit?: string | null
     production_status: string
+    production_user_id?: number | null
     production_user?: string | null
+    production_target_date?: string | null
+    qc_user_id?: number | null
+    qa_user_id?: number | null
     qc_user?: string | null
     qa_user?: string | null
+    qc_attempts?: number
+    qa_attempts?: number
   }[]
   planned_groups: { measurement_type: string; unit: string; quantity: number; rows: number }[]
+}
+
+/** One Production employee's assignment draft/saved card for the selected area. */
+type ProdAssignment = {
+  key: string
+  userId: string
+  itemIds: number[]
+  targetDate: string
+  instructions: string
+  editing: boolean
 }
 
 function fmtQty(value: number | null | undefined): string {
@@ -145,8 +169,10 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
           <h2>Upload the work file master (Excel)</h2>
           <p>
             Columns: MARCHE LOTTO 3 · CODE · AREA NAME · FILE NUMBER · PLANNED LENGTH · UOM ·
-            REMARKS (optional) · FILE NAME (optional). You will see a preview first — nothing is saved
-            until you confirm, and files that already have work history are never overwritten.
+            REMARKS (optional) · FILE NAME (optional). For count-based areas use TOTAL FILES instead
+            of FILE NUMBER — the ERP then creates File 1..N for that Lot/Code/Area (no per-file
+            length is invented). You will see a preview first — nothing is saved until you confirm,
+            and files that already have work history are never overwritten.
           </p>
         </div>
         <label className="operations-button">
@@ -230,10 +256,9 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
   const [code, setCode] = useState('')
   const [areaId, setAreaId] = useState('')
   const [files, setFiles] = useState<AreaFilesResponse | null>(null)
-  const [selected, setSelected] = useState<number[]>([])
+  // Production is built per employee: an employee's own card owns its exact physical files.
+  const [prodBlocks, setProdBlocks] = useState<ProdAssignment[]>([])
   const [supplyDate, setSupplyDate] = useState('')
-  const [prodUser, setProdUser] = useState('')
-  const [prodTarget, setProdTarget] = useState('')
   const [qcUser, setQcUser] = useState('')
   const [qcTarget, setQcTarget] = useState('')
   const [qaUser, setQaUser] = useState('')
@@ -267,32 +292,87 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
 
   function loadFiles(workPackageId: string) {
     setFiles(null)
-    setSelected([])
+    setProdBlocks([])
     if (!workPackageId) return
     void apiFetch<AreaFilesResponse>(`/operations/workflow/ortho/work-packages/${workPackageId}/area-files`)
-      .then((v) => { setFiles(v); setSelected(v.files.map((f) => f.work_package_item_id)) })
+      .then(setFiles)
       .catch((e) => setError(e instanceof Error ? e.message : 'Unable to load files'))
   }
   useEffect(() => { loadFiles(activeAreaId) }, [activeAreaId])
 
-  const plannedTotal = useMemo(() => {
-    // Group by unit string so incompatible units are never added together.
-    const picked = (files?.files ?? []).filter((f) => selected.includes(f.work_package_item_id))
-    const byUnit: Record<string, { unit: string; quantity: number }> = {}
-    for (const f of picked) {
-      const unit = f.planned_unit || 'unit'
-      byUnit[unit] = byUnit[unit] ?? { unit, quantity: 0 }
-      byUnit[unit].quantity += f.planned_quantity ?? 0
-    }
-    return Object.values(byUnit)
-  }, [files, selected])
+  const areaFiles = files?.files ?? []
 
-  async function assign() {
+  /** A file is LOCKED once real work exists — it can never be silently reassigned. */
+  function isLocked(f: AreaFilesResponse['files'][number]): boolean {
+    return (!!f.production_status && f.production_status !== 'not_started')
+      || (f.qc_attempts ?? 0) > 0 || (f.qa_attempts ?? 0) > 0
+  }
+
+  /** Saved assignments grouped by owner — server state is the single source of truth. */
+  const savedGroups = useMemo(() => {
+    const map = new Map<number, { userId: number; name: string; files: typeof areaFiles; target: string | null }>()
+    for (const f of areaFiles) {
+      if (!f.production_user_id) continue
+      const g = map.get(f.production_user_id) ?? {
+        userId: f.production_user_id, name: f.production_user || `User ${f.production_user_id}`,
+        files: [] as typeof areaFiles, target: f.production_target_date ?? null,
+      }
+      g.files.push(f)
+      map.set(f.production_user_id, g)
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [areaFiles])
+
+  const usedProdIds = useMemo(() => new Set(savedGroups.map((g) => g.userId)), [savedGroups])
+  // ONLY PM-selected Production team members of THIS project; already-assigned employees
+  // are excluded from NEW assignment cards (one card per employee).
+  const prodMembers = options?.team.production ?? []
+  const unusedProdMembers = prodMembers.filter((m) => !usedProdIds.has(m.user_id))
+  const totalFiles = files?.total_files ?? areaFiles.length
+  const assignedCount = areaFiles.filter((f) => f.production_user_id).length
+  const availableCount = Math.max(0, totalFiles - assignedCount)
+
+  /** Files a block may select: unassigned, or already owned by that same employee (edit). */
+  function selectableFor(block: ProdAssignment) {
+    return areaFiles.filter((f) => !isLocked(f)
+      && (!f.production_user_id || String(f.production_user_id) === block.userId))
+  }
+
+  function newBlock(seedUser = ''): ProdAssignment {
+    return {
+      key: `b${Date.now()}${Math.random().toString(36).slice(2, 7)}`,
+      userId: seedUser, itemIds: [], targetDate: '', instructions: '', editing: false,
+    }
+  }
+
+  function addEmployee() {
+    // Exactly ONE unused eligible employee remains -> preselect them automatically.
+    const seed = unusedProdMembers.length === 1 ? String(unusedProdMembers[0].user_id) : ''
+    setProdBlocks((b) => [...b, newBlock(seed)])
+  }
+
+  function editAssignment(group: { userId: number; files: typeof areaFiles }) {
+    setProdBlocks((b) => [...b, {
+      ...newBlock(String(group.userId)),
+      itemIds: group.files.filter((f) => !isLocked(f)).map((f) => f.work_package_item_id),
+      targetDate: group.files.find((f) => f.production_target_date)?.production_target_date ?? '',
+      editing: true,
+    }])
+  }
+
+  function patchBlock(key: string, patch: Partial<ProdAssignment>) {
+    setProdBlocks((b) => b.map((x) => (x.key === key ? { ...x, ...patch } : x)))
+  }
+
+  async function assignBlock(block: ProdAssignment) {
     if (!activeAreaId) { setError('Select Lot, Code and Area first.'); return }
-    if (!selected.length) { setError('Select at least one file.'); return }
-    if (!prodUser || !qcUser || !qaUser) { setError('Production, QC and QA employees are all required.'); return }
-    if (!prodTarget || !qcTarget || !qaTarget) { setError('Production, QC and QA target dates are all required.'); return }
-    if (!(prodTarget <= qcTarget && qcTarget <= qaTarget)) {
+    if (!block.userId) { setError('Select a Production employee for this assignment.'); return }
+    if (!block.itemIds.length) { setError('Select at least one file for this assignment.'); return }
+    if (!qcUser || !qaUser) { setError('QC and QA employees are required.'); return }
+    if (!block.targetDate || !qcTarget || !qaTarget) {
+      setError('Production, QC and QA target dates are all required.'); return
+    }
+    if (!(block.targetDate <= qcTarget && qcTarget <= qaTarget)) {
       setError('Target dates must satisfy Production ≤ QC ≤ QA.'); return
     }
     setBusy(true); setError(''); setNotice('')
@@ -302,22 +382,23 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
         {
           method: 'POST',
           body: JSON.stringify({
-            item_ids: selected,
-            production_user_id: Number(prodUser),
-            production_target_date: prodTarget,
+            item_ids: block.itemIds,
+            production_user_id: Number(block.userId),
+            production_target_date: block.targetDate,
             qc_user_id: Number(qcUser),
             qc_target_date: qcTarget,
             qa_user_id: Number(qaUser),
             qa_target_date: qaTarget,
             supply_date: supplyDate || null,
-            note: note.trim() || null,
+            note: block.instructions.trim() || note.trim() || null,
+            // Explicit edit/reassign; the backend still refuses started/history files.
+            reassign: block.editing,
           }),
         },
       )
       setNotice(`${summary.assigned_files} file(s) allocated. Production, QC and QA employees notified.`)
-      setProdUser(''); setQcUser(''); setQaUser('')
-      setProdTarget(''); setQcTarget(''); setQaTarget('')
-      setNote('')
+      setProdBlocks((b) => b.filter((x) => x.key !== block.key))
+      // Authoritative refresh — files, ownership, availability and cards come from the server.
       loadFiles(activeAreaId)
       loadOptions()
       onAssigned()
@@ -381,7 +462,9 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
           {area && (
             <div className="pt-alloc-summary">
               <div><span>Planned quantity</span><strong>{fmtQty(area.planned_quantity)} {area.planned_unit || ''}</strong></div>
-              <div><span>Files</span><strong>{area.file_count} ({area.files_completed} completed)</strong></div>
+              <div><span>Total files</span><strong>{area.declared_total_files ?? area.file_count}</strong></div>
+              <div><span>Assigned</span><strong>{area.assigned_files ?? 0}</strong></div>
+              <div><span>Available</span><strong>{area.available_files ?? area.file_count}</strong></div>
               <div><span>Production</span><strong>{area.production_status}</strong></div>
               <div><span>QC</span><strong>{area.qc_status}</strong></div>
               <div><span>QA</span><strong>{area.qa_status}</strong></div>
@@ -391,34 +474,137 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
 
           {files && (
             <>
-              <div className="pt-alloc-files">
-                <strong>Files of this area</strong>
-                <div className="pt-alloc-file-actions">
-                  <button type="button" className="operations-button secondary"
-                    onClick={() => setSelected(files.files.map((f) => f.work_package_item_id))}>Select All</button>
-                  <button type="button" className="operations-button secondary"
-                    onClick={() => setSelected([])}>Clear</button>
+              {/* Imported master remarks are READ-ONLY here — allocation must never edit them. */}
+              {files.remarks && (
+                <div className="operations-note">
+                  <strong>Imported master remarks (read-only):</strong> {files.remarks}
                 </div>
-                {files.files.map((file) => (
-                  <label className="operations-check" key={file.work_package_item_id}>
-                    <input type="checkbox"
-                      checked={selected.includes(file.work_package_item_id)}
-                      onChange={(e) => setSelected((ids) => e.target.checked
-                        ? [...ids, file.work_package_item_id]
-                        : ids.filter((id) => id !== file.work_package_item_id))} />
-                    <span>
-                      {file.item_number}{file.item_name ? ` — ${file.item_name}` : ''} · {fmtQty(file.planned_quantity)} {file.planned_unit || ''}
-                      {file.production_user ? ` · Production: ${file.production_user}` : ''}
-                    </span>
-                  </label>
-                ))}
+              )}
+              <div className="pt-alloc-summary">
+                <div><span>Total files</span><strong>{totalFiles}</strong></div>
+                <div><span>Assigned</span><strong>{assignedCount}</strong></div>
+                <div><span>Available</span><strong>{availableCount}</strong></div>
               </div>
-              <div className="pt-alloc-total">
-                <strong>Planned Quantity</strong>
-                {plannedTotal.length === 0
-                  ? <span>—</span>
-                  : plannedTotal.map((g) => <span key={g.unit}>{fmtQty(g.quantity)} {g.unit}</span>)}
-                <span className="pt-auto-tag">{selected.length} file(s) · auto-calculated</span>
+
+              <div className="pt-alloc-files">
+                <strong>Production Assignments</strong>
+                {!savedGroups.length && !prodBlocks.length && (
+                  <div className="operations-note">
+                    No Production assignment yet — click “+ Add Employee” to assign exact files to a
+                    PM-selected Production team member.
+                  </div>
+                )}
+
+                {savedGroups.map((g) => (
+                  <div className="pt-alloc-assignment" key={g.userId}>
+                    <div className="pt-alloc-assignment-head">
+                      <strong>{g.name}</strong>
+                      <span>{g.files.length} assigned</span>
+                      {g.target && <span>Target: {g.target}</span>}
+                    </div>
+                    <div className="operations-project-meta">
+                      <span>Assigned Files: {g.files.map((f) => f.item_number).join(', ')}</span>
+                      <span>Status: {g.files.filter(isLocked).length} started · {g.files.filter((f) => !isLocked(f)).length} not started</span>
+                    </div>
+                    <div className="operations-actions">
+                      <button type="button" className="operations-button secondary" disabled={busy}
+                        onClick={() => editAssignment(g)}>Edit Assignment</button>
+                    </div>
+                  </div>
+                ))}
+
+                {prodBlocks.map((block, index) => {
+                  const selectable = selectableFor(block)
+                  const lockedFiles = areaFiles.filter(isLocked)
+                  const memberOptions = block.editing
+                    ? prodMembers.filter((m) => String(m.user_id) === block.userId)
+                    : prodMembers.filter((m) => !usedProdIds.has(m.user_id))
+                  return (
+                    <div className="pt-alloc-assignment" key={block.key}>
+                      <div className="pt-alloc-assignment-head">
+                        <strong>PRODUCTION ASSIGNMENT {savedGroups.length + index + 1}{block.editing ? ' · EDIT' : ''}</strong>
+                      </div>
+                      <div className="pt-form-row">
+                        <label className="operations-field"><span>Production Employee</span>
+                          <select value={block.userId} disabled={block.editing}
+                            onChange={(e) => patchBlock(block.key, { userId: e.target.value, itemIds: [] })}>
+                            <option value="">Select</option>
+                            {/* PM-selected Production members of THIS project only. */}
+                            {memberOptions.map((u) => (
+                              <option key={u.user_id} value={u.user_id}>{u.full_name || `User ${u.user_id}`}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="operations-field"><span>Production Target Date</span>
+                          <input type="date" value={block.targetDate}
+                            onChange={(e) => patchBlock(block.key, { targetDate: e.target.value })} />
+                        </label>
+                        <label className="operations-field pt-span"><span>Team Lead Instructions (optional)</span>
+                          <input value={block.instructions}
+                            onChange={(e) => patchBlock(block.key, { instructions: e.target.value })}
+                            placeholder="Instructions for this employee" />
+                        </label>
+                      </div>
+                      <div className="pt-alloc-file-list">
+                        <div className="pt-alloc-file-actions">
+                          <button type="button" className="operations-button secondary" disabled={busy}
+                            onClick={() => patchBlock(block.key, {
+                              itemIds: selectable.map((f) => f.work_package_item_id),
+                            })}>Select All Available</button>
+                          <button type="button" className="operations-button secondary" disabled={busy}
+                            onClick={() => patchBlock(block.key, { itemIds: [] })}>Clear</button>
+                          <span className="pt-auto-tag">{block.itemIds.length} file(s) selected</span>
+                        </div>
+                        {!selectable.length && (
+                          <div className="operations-note">
+                            No available files remain for this employee (unassigned and not started).
+                          </div>
+                        )}
+                        {selectable.map((f) => (
+                          <label className="operations-check" key={f.work_package_item_id}>
+                            <input type="checkbox"
+                              checked={block.itemIds.includes(f.work_package_item_id)}
+                              onChange={(e) => patchBlock(block.key, {
+                                itemIds: e.target.checked
+                                  ? [...block.itemIds, f.work_package_item_id]
+                                  : block.itemIds.filter((id) => id !== f.work_package_item_id),
+                              })} />
+                            <span>
+                              File {f.item_number}{f.item_name ? ` — ${f.item_name}` : ''} · {fmtQty(f.planned_quantity)} {f.planned_unit || ''} · Remarks: —
+                            </span>
+                          </label>
+                        ))}
+                        {lockedFiles.length > 0 && (
+                          <div className="operations-note">
+                            Locked — cannot be reassigned after work has started:{' '}
+                            {lockedFiles.map((f) => `File ${f.item_number}${f.production_user ? ` (${f.production_user})` : ''}`).join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="operations-actions">
+                        <button type="button" className="operations-button" disabled={busy} onClick={() => assignBlock(block)}>
+                          {block.editing ? 'Save Assignment' : 'Assign'}
+                        </button>
+                        <button type="button" className="operations-button secondary" disabled={busy}
+                          onClick={() => setProdBlocks((b) => b.filter((x) => x.key !== block.key))}>Cancel</button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                <div className="operations-actions">
+                  {unusedProdMembers.length > 0
+                    ? (
+                      <button type="button" className="operations-button secondary" disabled={busy} onClick={addEmployee}>
+                        + Add Employee
+                      </button>
+                    )
+                    : (
+                      <span className="operations-note">
+                        No additional Production team members are available for this project.
+                      </span>
+                    )}
+                </div>
               </div>
             </>
           )}
@@ -427,18 +613,10 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
             <label className="operations-field"><span>Supply Date</span>
               <input type="date" value={supplyDate || (files?.supply_date ?? '')} onChange={(e) => setSupplyDate(e.target.value)} />
             </label>
-            <label className="operations-field"><span>Production employee</span>
-              <select value={prodUser} onChange={(e) => setProdUser(e.target.value)}>
-                <option value="">Select</option>
-                {options.team.production.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name || `User ${u.user_id}`}</option>)}
-              </select>
-            </label>
-            <label className="operations-field"><span>Production Target Date</span>
-              <input type="date" value={prodTarget} onChange={(e) => setProdTarget(e.target.value)} />
-            </label>
             <label className="operations-field"><span>QC employee</span>
               <select value={qcUser} onChange={(e) => setQcUser(e.target.value)}>
                 <option value="">Select</option>
+                {/* PM-selected QC members of THIS project only. */}
                 {options.team.qc.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name || `User ${u.user_id}`}</option>)}
               </select>
             </label>
@@ -448,20 +626,21 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
             <label className="operations-field"><span>QA employee</span>
               <select value={qaUser} onChange={(e) => setQaUser(e.target.value)}>
                 <option value="">Select</option>
+                {/* PM-selected QA members of THIS project only. */}
                 {options.team.qa.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name || `User ${u.user_id}`}</option>)}
               </select>
             </label>
             <label className="operations-field"><span>QA Target Date</span>
               <input type="date" value={qaTarget} onChange={(e) => setQaTarget(e.target.value)} />
             </label>
-            <label className="operations-field pt-span"><span>Instructions (optional)</span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Work instructions for the assigned employees" />
+            <label className="operations-field pt-span"><span>General Instructions (optional)</span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Applies to the whole area when no per-employee instructions are set" />
             </label>
           </div>
           <div className="operations-actions">
-            <button type="button" className="operations-button" disabled={busy} onClick={assign}>
-              Assign Work &amp; Notify
-            </button>
+            <span className="pt-auto-tag">
+              Each “Assign” sends that employee’s exact files to Production/QC/QA and notifies them.
+            </span>
           </div>
         </div>
       )}

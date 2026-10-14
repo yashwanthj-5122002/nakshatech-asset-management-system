@@ -64,6 +64,11 @@ _HEADER_ALIASES: dict[str, str] = {
     "uom": "unit", "unit": "unit", "planned unit": "unit", "planned_unit": "unit",
     "remarks": "remarks", "remark": "remarks", "note": "remarks", "notes": "remarks",
     "file name": "item_name", "file_name": "item_name", "item name": "item_name", "item_name": "item_name",
+    # V8.4 declared physical-file count for a Lot/Code/Area (additive).
+    "total files": "total_files", "total_files": "total_files", "totalfiles": "total_files",
+    "no of files": "total_files", "no. of files": "total_files", "no of file": "total_files",
+    "file count": "total_files", "file_count": "total_files", "files": "total_files",
+    "total no of files": "total_files", "total number of files": "total_files",
 }
 
 _REQUIRED_FIELDS = ("lot", "code", "area_name", "item_number", "planned_quantity", "unit")
@@ -71,6 +76,7 @@ _FIELD_LABELS = {
     "lot": "MARCHE LOTTO 3", "code": "CODE", "area_name": "AREA NAME",
     "item_number": "FILE NUMBER", "planned_quantity": "PLANNED LENGTH", "unit": "UOM",
 }
+MAX_GENERATED_FILES = 5000
 
 _UNIT_TOKEN = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./ _-")
 
@@ -90,7 +96,11 @@ def _map_headers(header_row: Iterable[Any]) -> tuple[dict[int, str], list[str]]:
         if field and field not in seen:
             mapping[index] = field
             seen.add(field)
-    missing = [_FIELD_LABELS[f] for f in _REQUIRED_FIELDS if f not in seen]
+    missing_fields = [f for f in _REQUIRED_FIELDS if f not in seen]
+    # FILE NUMBER is only required when TOTAL FILES is absent (V8.4 count-based areas).
+    if "item_number" in missing_fields and "total_files" in seen:
+        missing_fields.remove("item_number")
+    missing = [_FIELD_LABELS[f] for f in missing_fields]
     return mapping, missing
 
 
@@ -147,6 +157,7 @@ def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
         number = str(cell("item_number") or "").strip()
         unit = str(cell("unit") or "").strip()
         raw_qty = cell("planned_quantity")
+        raw_total = cell("total_files")
         remarks = str(cell("remarks") or "").strip() or None
         item_name = str(cell("item_name") or "").strip() or None
         row_errors: list[str] = []
@@ -156,8 +167,21 @@ def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
             row_errors.append("blank CODE")
         if not area_name:
             row_errors.append("blank AREA NAME")
-        if not number:
-            row_errors.append("blank FILE NUMBER")
+        # V8.4: TOTAL FILES (count) OR FILE NUMBER (explicit) — at least one is required.
+        total_files = None
+        if raw_total is not None and str(raw_total).strip():
+            try:
+                total_files = int(Decimal(str(raw_total).strip()))
+                if total_files < 1:
+                    row_errors.append(f"TOTAL FILES must be at least 1 (got '{raw_total}')")
+                elif total_files > MAX_GENERATED_FILES:
+                    row_errors.append(f"TOTAL FILES {total_files} exceeds the safe limit ({MAX_GENERATED_FILES})")
+            except (InvalidOperation, ValueError):
+                row_errors.append(f"invalid TOTAL FILES '{raw_total}'")
+        if not number and total_files is None:
+            row_errors.append("blank FILE NUMBER (or provide TOTAL FILES for the area)")
+        if total_files is not None and number:
+            row_errors.append("provide EITHER TOTAL FILES for the area OR a FILE NUMBER per row, not both")
         if not unit:
             row_errors.append("blank UOM")
         elif len(unit) > 30 or any(ch not in _UNIT_TOKEN for ch in unit):
@@ -172,11 +196,15 @@ def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
                     row_errors.append(f"negative PLANNED LENGTH '{raw_qty}'")
             except (InvalidOperation, ValueError):
                 row_errors.append(f"invalid PLANNED LENGTH '{raw_qty}'")
+        # Deterministic physical-file identity: explicit FILE NUMBER, else File 1..N.
+        numbers = [number] if number else [str(i) for i in range(1, (total_files or 0) + 1)]
         if not row_errors:
-            key = (lot, code, area_name, number)
-            if key in seen_keys:
-                row_errors.append("duplicate row (same Lot + Code + Area + File Number)")
-            seen_keys.add(key)
+            for candidate in numbers:
+                key = (lot, code, area_name, candidate)
+                if key in seen_keys:
+                    row_errors.append("duplicate row (same Lot + Code + Area + File Number)")
+                    break
+                seen_keys.add(key)
         if row_errors:
             errors.append(f"row {index}: " + "; ".join(row_errors))
             if len(errors) >= 25:
@@ -185,8 +213,14 @@ def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
             continue
         entries.append({
             "row": index, "lot": lot, "code": code, "area_name": area_name,
-            "item_number": number, "planned_quantity": quantity, "unit": unit,
-            "remarks": remarks, "item_name": item_name,
+            "item_number": numbers[0], "item_numbers": numbers,
+            # Per-file planned length is only meaningful for explicit FILE NUMBER rows;
+            # a count-based area must NOT fabricate per-file KM. The area's declared
+            # length is carried separately (applied once, never divided).
+            "planned_quantity": quantity if number else None,
+            "area_planned_quantity": quantity,
+            "total_files": total_files,
+            "unit": unit, "remarks": remarks, "item_name": item_name,
         })
     if errors:
         raise ValueError("Import validation failed — " + " | ".join(errors))
@@ -310,28 +344,43 @@ def _existing_item(db: Session, package_id: int, number: str) -> WorkPackageItem
 # ===========================================================================================
 
 def _analyse(db: Session, *, ctx: dict, entries: list[dict]) -> tuple[list[dict], list[dict], int]:
-    """Classify entries against existing data: new / existing-without-history / conflict."""
+    """Classify each row's FILE NUMBERS against existing data.
+
+    Per row: numbers that do not exist yet are "new"; numbers already present with
+    history are conflicts (never overwritten); numbers already present without history
+    are skipped (idempotent re-import). Row-level planned length is applied at most once.
+    """
     packages = ctx["packages"]
     fresh: list[dict] = []
     conflicts: list[dict] = []
     skipped_existing = 0
     for entry in entries:
         package = _find_package(packages, entry["lot"], entry["code"], entry["area_name"])
-        if package is None:
-            fresh.append(entry)
-            continue
-        existing = _existing_item(db, package.id, entry["item_number"])
-        if existing is None:
-            fresh.append(entry)
-        elif _item_has_history(db, existing):
-            conflicts.append({
-                "row": entry["row"], "lot": entry["lot"], "code": entry["code"],
-                "area_name": entry["area_name"], "item_number": entry["item_number"],
-                "reason": "file already has production/QC/QA history — skipped, never overwritten",
-                "work_package_item_id": existing.id,
-            })
-        else:
-            skipped_existing += 1
+        new_numbers: list[str] = []
+        any_existing = False
+        for number in entry["item_numbers"]:
+            if package is None:
+                new_numbers.append(number)
+                continue
+            existing = _existing_item(db, package.id, number)
+            if existing is None:
+                new_numbers.append(number)
+            elif _item_has_history(db, existing):
+                any_existing = True
+                conflicts.append({
+                    "row": entry["row"], "lot": entry["lot"], "code": entry["code"],
+                    "area_name": entry["area_name"], "item_number": number,
+                    "reason": "file already has production/QC/QA history — skipped, never overwritten",
+                    "work_package_item_id": existing.id,
+                })
+            else:
+                any_existing = True
+                skipped_existing += 1
+        if new_numbers:
+            row = dict(entry)
+            row["new_numbers"] = new_numbers
+            row["any_number_existing"] = any_existing
+            fresh.append(row)
     return fresh, conflicts, skipped_existing
 
 
@@ -355,11 +404,14 @@ def preview_master_import(
         "lots": len(lots),
         "codes": len(codes),
         "areas": len(areas),
-        "files": len(entries),
-        "new_rows": len(fresh),
+        "files": sum(len(e["item_numbers"]) for e in entries),
+        "new_rows": sum(len(e["new_numbers"]) for e in fresh),
         "skipped_existing": skipped,
         "conflicts": conflicts,
-        "planned_by_unit": group_planned_by_unit(entries),
+        "planned_by_unit": group_planned_by_unit([
+            {"planned_quantity": e["area_planned_quantity"], "unit": e["unit"]}
+            for e in entries if e.get("area_planned_quantity") is not None
+        ]),
         "lot_list": lots,
     }
 
@@ -404,27 +456,36 @@ def commit_master_import(
             packages_by_area[key] = package
             packages.append(package)
             created_packages += 1
-        existing = _existing_item(db, package.id, entry["item_number"])
-        if existing is not None:
-            skipped += 1  # re-checked by number within the same area
-            continue
-        item = WorkPackageItem(
-            work_package_id=package.id,
-            project_id=project_id,
-            item_number=entry["item_number"],
-            item_name=entry["item_name"],
-            planned_quantity=entry["planned_quantity"],
-            planned_unit=entry["unit"],
-            status="not_started",
-            is_active=True,
-            import_source=source,
-            created_by_id=actor.id,
-        )
-        db.add(item)
-        created_items += 1
-        # Area planned length: sum only compatible units; never rewrite a plan from another family.
-        if entry["planned_quantity"] is not None and units_compatible(package.area_unit, entry["unit"]):
-            package.area = (package.area or Decimal("0")) + entry["planned_quantity"]
+        # Declared physical-file count is source metadata on the area (additive).
+        if entry.get("total_files") is not None:
+            package.total_files = max(package.total_files or 0, int(entry["total_files"]))
+        for number in entry["new_numbers"]:
+            if _existing_item(db, package.id, number) is not None:
+                skipped += 1  # re-checked by number within the same area
+                continue
+            item = WorkPackageItem(
+                work_package_id=package.id,
+                project_id=project_id,
+                item_number=number,
+                item_name=entry["item_name"] if number == entry["item_numbers"][0] else None,
+                sequence_no=int(number) if str(number).isdigit() else None,
+                # Count-based areas carry NO fabricated per-file length (NULL); explicit
+                # FILE NUMBER rows keep the imported planned length.
+                planned_quantity=entry["planned_quantity"],
+                planned_unit=entry["unit"],
+                status="not_started",
+                is_active=True,
+                import_source=source,
+                created_by_id=actor.id,
+            )
+            db.add(item)
+            created_items += 1
+        # Area planned length: applied ONCE per row (never divided by file count), and only
+        # on the import that first creates this row's files (idempotent re-import adds nothing).
+        area_planned = entry.get("area_planned_quantity")
+        if (area_planned is not None and not entry.get("any_number_existing")
+                and units_compatible(package.area_unit, entry["unit"])):
+            package.area = (package.area or Decimal("0")) + area_planned
         # Imported REMARKS accumulate on the area (deduped) so the AREA MASTER export
         # and the allocation screen show the master remarks.
         if entry.get("remarks"):
@@ -474,6 +535,7 @@ def allocation_options(db: Session, *, actor: User, role: str, project_id: int) 
             if per.get("delivery") is not None and per["delivery"].status == "delivered":
                 area_done["delivered"] += 1
         total = len(package_items)
+        assigned = len([i for i in package_items if i.production_user_id])
         areas.append({
             "work_package_id": package.id,
             "lot": package.lot_batch,
@@ -482,7 +544,10 @@ def allocation_options(db: Session, *, actor: User, role: str, project_id: int) 
             "planned_quantity": float(package.area) if package.area is not None else None,
             "planned_unit": package.area_unit,
             "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+            "declared_total_files": package.total_files,
             "file_count": total,
+            "assigned_files": assigned,
+            "available_files": total - assigned,
             "files_completed": area_done["production"],
             "production_status": ("completed" if total and area_done["production"] == total
                                   else "in_progress" if area_done["production"] else "not_started"),
@@ -537,6 +602,7 @@ def area_files(db: Session, *, actor: User, role: str, work_package_id: int) -> 
         raise PermissionError("You are not assigned to this project")
     rows = items_service.build_item_rows(db, [package.id])
     active = [r for r in rows if r["is_active"]]
+    assigned = [r for r in active if r.get("production_user_id")]
     groups = group_planned_by_unit([
         {"planned_quantity": Decimal(str(r["planned_quantity"])), "unit": r["planned_unit"] or ""}
         for r in active if r["planned_quantity"] is not None
@@ -549,6 +615,13 @@ def area_files(db: Session, *, actor: User, role: str, work_package_id: int) -> 
         "planned_quantity": float(package.area) if package.area is not None else None,
         "planned_unit": package.area_unit,
         "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+        "declared_total_files": package.total_files,
+        "total_files": len(active),
+        "assigned_files": len(assigned),
+        "available_files": len(active) - len(assigned),
+        # Imported master remarks are exposed READ-ONLY so the allocation UI can show them
+        # beside the files; allocation never edits them.
+        "remarks": package.remarks,
         "files": active,
         "planned_groups": groups,
     }
@@ -569,8 +642,15 @@ def assign_files(
     qa_target_date: date | None = None,
     supply_date: date | None = None,
     note: str | None = None,
+    reassign: bool = False,
 ) -> dict:
-    """Team Lead allocation: assign selected files + stage targets (server-validated)."""
+    """Team Lead allocation: assign selected files + stage targets (server-validated).
+
+    Physical-file EXCLUSIVITY is guaranteed by the backend, not the UI: a file already
+    owned by another Production employee is rejected (``reassign`` only permits taking
+    over an UNSTARTED file with no history). Selected rows are locked (``FOR UPDATE``)
+    so two concurrent allocations of the same file cannot both succeed.
+    """
     package = items_service.load_package(db, work_package_id)
     ctx = items_service.actor_context(db, package, actor, role)
     items_service._ensure_mutable(ctx)
@@ -592,16 +672,29 @@ def assign_files(
     if not (production_user_id and qc_user_id and qa_user_id):
         raise ValueError("Production, QC and QA employees are all required")
 
+    # Lock the rows first so concurrent allocation cannot double-assign a physical file.
     items = db.scalars(select(WorkPackageItem).where(
         WorkPackageItem.id.in_(item_ids),
         WorkPackageItem.work_package_id == package.id,
-    )).all()
+    ).with_for_update()).all()
     if len(items) != len(set(item_ids)):
         raise ValueError("Some selected files do not belong to this area")
 
     for item in items:
         if not item.is_active:
             raise ValueError(f"File {item.item_number} is inactive and cannot be allocated")
+        owner = item.production_user_id
+        if owner and int(owner) != int(production_user_id):
+            if items_service.open_session_for(db, item_id=item.id, stage="production") is not None \
+                    or _item_has_history(db, item):
+                raise ValueError(
+                    f"File {item.item_number} is already assigned and has work history — "
+                    f"it cannot be reallocated"
+                )
+            if not reassign:
+                raise ValueError(
+                    f"File {item.item_number} is already assigned to another Production employee"
+                )
         item.production_user_id = int(production_user_id)
         item.qc_user_id = int(qc_user_id)
         item.qa_user_id = int(qa_user_id)

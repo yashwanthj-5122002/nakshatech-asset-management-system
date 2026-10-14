@@ -23,6 +23,7 @@ type Package = {
   daily_updates:DailyUpdate[]; review_history:{review_type:string;attempt_no:number;decision:string;comments?:string|null;created_at:string}[];
   assignments?:{team_leader:Assignment;production:Assignment;qc:Assignment;qa:Assignment};
   has_items?:boolean; files_expected?:number; files_production_done?:number; files_qc_passed?:number; files_qa_passed?:number; files_delivered?:number; stage_bucket?:string|null; ready_for_delivery?:boolean;
+  display_stage?:string|null; ready_eligible?:boolean; delivered?:boolean; delivered_at?:string|null;
   items?:ActivityItem[];
   item_assignees?:{production?:AssigneeLite[];qc?:AssigneeLite[];qa?:AssigneeLite[];team_leader?:AssigneeLite[]}
 }
@@ -258,7 +259,7 @@ export function OrthoDashboardPage(){
 
       {selected&&<section className="operations-panel"><header><div><span className="operations-kicker">ASSIGNMENT TRACKER</span><h2>{selected.can_manage_team||selected.can_allocate_work?'Project Work Packages':'My Exact Assigned Work'}</h2><p>Daily progress is calculated from activity entries. Cumulative quantity and progress percentage cannot be manually overwritten.</p></div>{selected.can_complete_project&&<button className="operations-button success" disabled={busy} onClick={()=>completeProject(selected)}><CheckCircle2 size={15}/> Complete Project</button>}</header>
         {!selected.packages.length?<div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work packages allocated yet</h3><p>This project has no assigned work packages yet — the Team Lead's Area / Code / Quantity allocations appear here.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{const d=daily[pkg.id]??emptyDaily;return <article className="operations-daily-card" key={pkg.id}>
-          <div className="operations-daily-heading"><div><span className="operations-kicker">{pkg.package_code}</span><h3>{pkg.area_name}</h3><div className="operations-project-meta"><span>Project: {selected.project_code}</span><span>Client ID: {selected.client_code||'—'}</span><span>My Role: {pkg.my_roles.map(label).join(', ')||'Monitoring'}</span><span>Target: {pkg.target_date||'—'}</span></div></div><div>{pkg.rework_cycle_id&&<span className="operations-status warning">Rework Cycle #{pkg.rework_cycle_number}{pkg.rework_of_package_code?` · of ${pkg.rework_of_package_code}`:''}</span>} <span className="operations-status">{label(pkg.current_stage)}</span></div></div>
+          <div className="operations-daily-heading"><div><span className="operations-kicker">{pkg.package_code}</span><h3>{pkg.area_name}</h3><div className="operations-project-meta"><span>Project: {selected.project_code}</span><span>Client ID: {selected.client_code||'—'}</span><span>My Role: {pkg.my_roles.map(label).join(', ')||'Monitoring'}</span><span>Target: {pkg.target_date||'—'}</span></div></div><div>{pkg.rework_cycle_id&&<span className="operations-status warning">Rework Cycle #{pkg.rework_cycle_number}{pkg.rework_of_package_code?` · of ${pkg.rework_of_package_code}`:''}</span>} <span className="operations-status">{label(pkg.display_stage ?? pkg.current_stage)}</span></div></div>
           {pkg.instructions&&<div className="operations-instructions"><strong>Instructions:</strong> {pkg.instructions}</div>}
           <div className="operations-progress"><span style={{width:`${Math.min(100,pkg.progress_percent)}%`}}/></div><div className="operations-project-meta"><span>Assigned: {pkg.quantity??'—'} {pkg.quantity_unit}</span><span>Completed: {pkg.cumulative_completed} {pkg.quantity_unit}</span><span>Remaining: {pkg.remaining_quantity} {pkg.quantity_unit}</span><span>Progress: {pkg.progress_percent}%</span><span>Files: {pkg.has_items?(pkg.files_expected??0):pkg.files_completed}</span>{pkg.has_items&&<span>Completed Files: {pkg.files_production_done??0} of {pkg.files_expected??0}</span>}</div>
           {pkg.has_items
@@ -294,13 +295,18 @@ export function OrthoDashboardPage(){
             {(() => {
               const total=pkg.files_expected??0
               const qaPassed=pkg.files_qa_passed??0
-              const ready=total>0&&qaPassed===total
+              const eligible=pkg.ready_eligible??(total>0&&qaPassed===total)
+              const confirmed=!!pkg.ready_for_delivery
+              const delivered=!!pkg.delivered
               return <>
-                <span className={`operations-status ${ready?'success':'warning'}`}>{ready?'READY FOR DELIVERY':'NOT READY FOR DELIVERY'}</span>
+                <span className={`operations-status ${delivered||confirmed?'success':eligible?'success':'warning'}`}>
+                  {delivered?'DELIVERED':confirmed?'READY CONFIRMED':eligible?'READY FOR DELIVERY':'NOT READY FOR DELIVERY'}
+                </span>
                 <span>Total files: {total} · Production completed: {pkg.files_production_done??0} · QC passed: {pkg.files_qc_passed??0} · QA passed: {qaPassed}</span>
-                {!ready&&<span>Production pending: {pkg.files_expected!==undefined?(pkg.files_production_done??0):0}</span>}
-                {ready&&!pkg.ready_for_delivery&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>action(`/operations/workflow/ortho/work-packages/${pkg.id}/ready-for-delivery`,undefined,'Ready for Delivery confirmed. The Project Manager was notified.')}>Mark Ready for Delivery</button>}
-                {pkg.ready_for_delivery&&<span className="operations-status success">Ready confirmed</span>}
+                {delivered&&<span>Delivered {pkg.delivered_at?pkg.delivered_at.slice(0,16).replace('T',' '):''}</span>}
+                {/* Ready is an explicit step; once confirmed it is replaced by the explicit Deliver action. */}
+                {eligible&&!confirmed&&!delivered&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>action(`/operations/workflow/ortho/work-packages/${pkg.id}/ready-for-delivery`,undefined,'Ready for Delivery confirmed. The Project Manager was notified.')}>Mark Ready for Delivery</button>}
+                {confirmed&&!delivered&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>deliver(pkg)}>Deliver</button>}
               </>
             })()}
           </div>}

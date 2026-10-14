@@ -424,6 +424,11 @@
 .pt-alloc-summary strong, .pt-readiness-grid strong { display:block; margin-top:2px; color:#102a43; font-size:.85rem; }
 .pt-alloc-files { display:grid; gap:6px; max-height:200px; overflow:auto; border:1px solid #edf1f5; border-radius:10px; padding:10px 12px; background:#fff; }
 .pt-alloc-file-actions { display:flex; gap:8px; }
+/* V8.4 Team Lead per-employee Production assignment cards */
+.pt-alloc-assignment { border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; background:#fff; display:grid; gap:8px; }
+.pt-alloc-assignment-head { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; }
+.pt-alloc-assignment-head span { font-size:.78rem; color:#64748b; }
+.pt-alloc-file-list { display:grid; gap:6px; max-height:220px; overflow:auto; border:1px solid #edf1f5; border-radius:10px; padding:10px 12px; background:#fbfdff; }
 .pt-alloc-total { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; font-size:.86rem; }
 .pt-alloc-total > strong { text-transform:uppercase; font-size:.72rem; letter-spacing:.05em; color:#637083; }
 .pt-span { flex:2 1 320px; }
