@@ -8,7 +8,7 @@ from app.core.database import SessionLocal
 from app.models.entities import User
 from app.modules.finance.models import FinanceClient, FinanceProject
 from app.modules.finance.sales_revenue_service import OPEN_SALES_CATEGORIES, sales_revenue_overview
-from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
+from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoiceBadDebt, ProjectInvoicePayment
 from app.modules.operations.models import ProjectWorkflow
 
 
@@ -132,6 +132,42 @@ def _assert_reconciled(payload: dict) -> None:
         project_sum = sum(project_categories[key] for key in OPEN_SALES_CATEGORIES)
         assert row["open_sales_reconciled"] is True
         assert abs(row["open_sales_inr"] - project_sum) <= 0.01
+
+
+def test_bad_debt_kpi_includes_both_closed_and_open_projects():
+    with SessionLocal() as db:
+        for suffix, total, cash, closed in (
+            ("GORILLA", Decimal("80788.70"), Decimal("0"), False),
+            ("ZYX123", Decimal("24148.70"), Decimal("20000"), True),
+        ):
+            seed = _seed_project(db, suffix=suffix, commercial_value=total,
+                                 invoices=[{"amount": total, "status": "INVOICE_CLOSED" if closed else "PAYMENT_OVERDUE"}])
+            invoice, finance, _ = seed["invoices"][0]
+            if cash:
+                _add_payment(db, project=seed["project"], invoice=invoice, finance=finance,
+                             amount=cash, reference="ACTUAL-CASH")
+            if closed:
+                seed["workflow"].status = "CLOSED"
+                seed["project"].is_active = False
+            db.add(ProjectInvoiceBadDebt(
+                project_id=seed["project"].id, invoice_id=invoice.id, status="APPROVED",
+                proposed_amount=total-cash, approved_amount=total-cash, recovered_amount=Decimal("0"),
+                currency="INR", reason="Approved uncollectible balance", collection_attempts="Collection exhausted",
+                proposed_by_id=finance.id,
+            ))
+        db.flush()
+        payload = sales_revenue_overview(db)
+        rows = {row["project_code"]: row for row in payload["projects"]}
+        closed_row = rows["KPI-P-ZYX123"]
+        assert payload["kpi_summary"]["bad_debt_inr"] == 84937.40
+        assert rows["KPI-P-GORILLA"]["bad_debt_inr"] == 80788.70
+        assert closed_row["bad_debt_inr"] == 4148.70
+        assert closed_row["cash_received_inr"] == closed_row["closed_revenue_inr"] == 20000
+        assert closed_row["received_against_open_sales_inr"] == 0
+        assert closed_row["open_sales_inr"] == closed_row["outstanding_inr"] == 0
+        assert closed_row["sales_visible"] is False
+        _assert_reconciled(payload)
+        db.rollback()
 
 
 def test_multiple_invoices_on_one_project_reconcile():

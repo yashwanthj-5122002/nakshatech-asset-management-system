@@ -277,7 +277,7 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
     """Return one authoritative read model for Finance Sales and Revenue analytics.
 
     Sales is the still-open commercial pipeline. A project's commercial value remains in Sales
-    until an invoice has been fully paid AND Finance closes that invoice. Revenue contains only
+    until an invoice has been fully resolved AND Finance closes that invoice. Revenue contains only
     payments attached to closed invoices. This keeps dashboards read-only and reuses the existing
     Commercial -> Billing -> Payment -> Invoice Close lifecycle instead of creating a second ledger.
 
@@ -354,6 +354,13 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
         ).all():
             bad_debt_by_invoice[row.invoice_id] = row
 
+    from app.modules.operations.lifecycle_service import approved_bad_debt_remaining
+
+    approved_bad_debt_by_invoice = {
+        invoice_id: approved_bad_debt_remaining(row)
+        for invoice_id, row in bad_debt_by_invoice.items()
+    }
+
     # A client advance applied against an invoice settles it exactly like a cash payment, but it is
     # NEVER duplicated into project_invoice_payments. Reading it here from the isolated
     # client-advance ledger keeps one settlement definition everywhere:
@@ -403,15 +410,16 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
         baseline = _baseline_revision(revisions_by_project.get(project.id, []))
         project_invoices = invoices_by_project.get(project.id, [])
         # Revenue is deliberately stricter than a status label: the invoice must be CLOSED and
-        # its settled amount (cash payments + client advance applied to it) must cover the full
-        # invoice total. This defensive check prevents inconsistent/legacy rows from being
-        # presented as realized revenue, and an applied advance is counted exactly once.
+        # its balance must be resolved. Approved unrecovered Bad Debt resolves a balance
+        # but contributes no Revenue; only actual payments/applied advances are realized.
+        # Unresolved legacy CLOSED rows remain excluded by this defensive check.
         revenue_invoice_ids = {
             row.id
             for row in project_invoices
             if (row.status or "").upper() == INVOICE_CLOSED
             and sum((_decimal(payment.amount) for payment in payments_by_invoice.get(row.id, [])), Decimal("0"))
-            + advance_applied_original_by_invoice.get(row.id, Decimal("0")) >= _invoice_total(row)
+            + advance_applied_original_by_invoice.get(row.id, Decimal("0"))
+            + approved_bad_debt_by_invoice.get(row.id, Decimal("0")) >= _invoice_total(row)
         }
         closed_invoices = [row for row in project_invoices if row.id in revenue_invoice_ids]
         open_invoices = [row for row in project_invoices if row.id not in revenue_invoice_ids]
@@ -435,6 +443,7 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
 
         invoice_payloads: list[dict] = []
         closed_revenue_inr = Decimal("0")
+        cash_received_inr = Decimal("0")
         closed_sales_value_inr = Decimal("0")
         open_received_inr = Decimal("0")
         open_invoice_total_inr = Decimal("0")
@@ -455,15 +464,14 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
             total_inr = _invoice_total_inr(invoice)
             payment_inr_values = [_payment_inr(row, invoice) for row in payments]
             cash_paid_inr = sum(payment_inr_values, Decimal("0"))
+            cash_received_inr += cash_paid_inr
             advance_applied_inr = advance_applied_inr_by_invoice.get(invoice.id, Decimal("0"))
             paid_inr = cash_paid_inr + advance_applied_inr
             if paid_inr == 0 and settled_original == invoice_total and total_inr > 0:
                 paid_inr = total_inr
             balance_inr = max(total_inr - paid_inr, Decimal("0")) if total_inr > 0 else Decimal("0")
             bad_debt_row = bad_debt_by_invoice.get(invoice.id)
-            approved_bad_debt_original = Decimal("0")
-            if bad_debt_row is not None and bad_debt_row.status == "APPROVED":
-                approved_bad_debt_original = max(_decimal(bad_debt_row.approved_amount) - _decimal(bad_debt_row.recovered_amount), Decimal("0"))
+            approved_bad_debt_original = approved_bad_debt_by_invoice.get(invoice.id, Decimal("0"))
             invoice_rate = _invoice_rate_to_inr(invoice)
             approved_bad_debt_inr = _quantize_money(approved_bad_debt_original * invoice_rate) if invoice_rate > 0 else Decimal("0")
             collectible_balance_inr = max(balance_inr - approved_bad_debt_inr, Decimal("0"))
@@ -475,7 +483,7 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
                 # but recognize Revenue using actual realized payment INR. Keeping those two
                 # measures separate avoids FX movement corrupting open-sales balances.
                 closed_sales_value_inr += total_inr
-                closed_revenue_inr += paid_inr if paid_inr > 0 else total_inr
+                closed_revenue_inr += paid_inr
             else:
                 open_sales_category = classify_open_invoice(
                     status=invoice.status,
@@ -542,7 +550,7 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
                     or (invoice.closed_at.date() if invoice.closed_at else None)
                     or invoice.invoice_date
                 )
-                event_revenue_inr = paid_inr if paid_inr > 0 else total_inr
+                event_revenue_inr = paid_inr
                 revenue_events.append({
                     "project_id": project.id,
                     "project_code": project.project_code,
@@ -615,7 +623,6 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
             for key in OPEN_SALES_CATEGORIES:
                 kpi_categories[key] += open_categories[key]
             kpi_outstanding += outstanding_inr
-            kpi_bad_debt += project_bad_debt_inr
             kpi_open_received += open_received_inr
             kpi_open_invoice_total += open_invoice_total_inr
             kpi_open_invoice_balance += open_invoice_balance_inr
@@ -629,6 +636,9 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
                 kpi_partial_projects += 1
             if sales_status == "Overdue":
                 kpi_overdue_projects += 1
+        # A closed invoice's unrecovered write-off remains Bad Debt, even though
+        # its historical invoice value has left the Open Sales pipeline.
+        kpi_bad_debt += project_bad_debt_inr
         kpi_realized_revenue += closed_revenue_inr
 
         payload_projects.append({
@@ -667,6 +677,7 @@ def sales_revenue_overview(db: Session, *, department_scope: str | None = None) 
             "open_payment_pending_invoice_count": open_payment_pending_count,
             "open_partial_invoice_count": open_partial_count,
             "received_against_open_sales_inr": _money(open_received_inr),
+            "cash_received_inr": _money(cash_received_inr),
             "outstanding_inr": _money(outstanding_inr),
             "bad_debt_inr": _money(project_bad_debt_inr),
             "closed_revenue_inr": _money(closed_revenue_inr),

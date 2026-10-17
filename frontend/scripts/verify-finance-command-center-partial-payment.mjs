@@ -98,6 +98,21 @@ assert.equal(closed.outstanding, 0)
 assert.equal(closed.closedRevenue, 10000)
 assert.equal(closed.openSales, 0)
 
+// Backend-resolved invoices carry no open category. Bad Debt resolves the
+// balance while only the persisted cash realization enters Revenue.
+const writeOffClosed = projectFixture({ total: 24148.70, paid: 20000, status: 'INVOICE_CLOSED', category: null, salesStatus: 'Moved to Revenue' })
+writeOffClosed.outstanding_inr = 0
+writeOffClosed.bad_debt_inr = 4148.70
+writeOffClosed.invoices[0].collectible_balance_inr = 0
+writeOffClosed.invoices[0].bad_debt_amount = 4148.70
+const closedWithBadDebt = aggregateFinanceCommandCenterKpis([writeOffClosed], [{ revenue_amount_inr: 20000 }])
+assert.equal(closedWithBadDebt.closedRevenue, 20000)
+assert.equal(closedWithBadDebt.openSales, 0)
+assert.equal(closedWithBadDebt.outstanding, 0)
+assert.equal(closedWithBadDebt.openInvoiced, 0)
+const billingSource = fs.readFileSync(path.join(root, 'src/features/finance/pages/FinanceBillingPage.tsx'), 'utf8')
+assert.ok(billingSource.includes('invoice.can_close_invoice &&'), 'Close Invoice must follow backend eligibility, including approved write-offs')
+
 const liveProject = projectFixture({ total: 1180, paid: 1000, status: 'PARTIALLY_PAID', category: 'partial_payment_inr', salesStatus: 'Partially Paid' })
 const liveExample = aggregateFinanceCommandCenterKpis([liveProject], [])
 assert.equal(liveExample.openInvoiced, 1180)

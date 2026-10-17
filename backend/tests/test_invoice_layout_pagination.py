@@ -18,8 +18,15 @@ from decimal import Decimal
 from io import BytesIO
 
 from pypdf import PdfReader
+import pytest
 
 from app.modules.operations.invoice_documents import amount_in_words, build_invoice_a4_pdf
+
+
+@pytest.fixture(autouse=True)
+def isolated_application_database():
+    """Literal document models need no application database or schema mutations."""
+    yield
 
 LONG_DESCRIPTION = "Digitization of Road Topographical Features at Goa and surrounding district"
 

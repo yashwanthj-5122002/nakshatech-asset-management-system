@@ -87,6 +87,7 @@ interface SalesProject {
   sales_value_inr: number
   open_sales_inr: number
   received_against_open_sales_inr: number
+  cash_received_inr: number
   outstanding_inr: number
   bad_debt_inr: number
   closed_revenue_inr: number
@@ -521,12 +522,15 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
       && (currency === 'all' || row.currency === currency)
   }
 
-  const salesRows = useMemo(() => allProjects.filter(row =>
-    row.sales_visible
-    && dateInside(salesDateBasis === 'projected' ? row.projected_payment_date : row.sales_date, range)
+  const filteredProjects = useMemo(() => allProjects.filter(row =>
+    dateInside(salesDateBasis === 'projected' ? row.projected_payment_date : row.sales_date, range)
     && dimensionsMatch(row)
     && (statusFilter === 'all' || row.sales_status === statusFilter)
   ), [allProjects, range, department, client, project, bd, pm, currency, statusFilter, salesDateBasis])
+
+  // Bad Debt uses every scoped backend balance, including Finance-closed cases.
+  // The ordinary Sales register continues to contain only open Sales projects.
+  const salesRows = useMemo(() => filteredProjects.filter(row => row.sales_visible), [filteredProjects])
 
   const sortedSalesRows = useMemo(() => [...salesRows].sort((a, b) =>
     (b.sales_date || '').localeCompare(a.sales_date || '')
@@ -580,11 +584,11 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
       invoiced: roundMoney(canonical.openInvoiced),
       received: roundMoney(canonical.received),
       outstanding: roundMoney(canonical.outstanding),
-      badDebt: sumMoney(salesRows.map(row => salesKpiAmount(row, 'bad_debt'))),
+      badDebt: sumMoney(filteredProjects.map(row => salesKpiAmount(row, 'bad_debt'))),
       partial: canonical.partial,
       overdue: canonical.overdue,
     }
-  }, [salesRows])
+  }, [salesRows, filteredProjects])
 
   const revenueKpis = useMemo(() => {
     const total = roundMoney(aggregateFinanceCommandCenterKpis([], revenueRows).closedRevenue)
@@ -622,7 +626,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
         bad_debt: { kicker: 'BAD DEBT TRACE', title: 'Bad Debt', subtitle: 'Management-approved unrecovered write-off balance only. Bad Debt is never Revenue.' },
       }
       const key = kpiDrilldown as SalesKpiKey
-      const rows = salesRows
+      const rows = (key === 'bad_debt' ? filteredProjects : salesRows)
         .map(row => ({ row, amount: roundMoney(salesKpiAmount(row, key)) }))
         .filter(item => item.amount > 0)
         .sort((a, b) => b.amount - a.amount || a.row.project_code.localeCompare(b.row.project_code))
@@ -679,7 +683,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
       rows: revenueRows,
       backendReconciled: true,
     }
-  }, [kpiDrilldown, salesRows, salesKpis, revenueRows, revenueKpis, revenueByProject])
+  }, [kpiDrilldown, salesRows, filteredProjects, salesKpis, revenueRows, revenueKpis, revenueByProject])
 
   const targetMonthRows = useMemo(() => {
     const targetByDepartment = new Map(
@@ -1054,7 +1058,7 @@ export function SalesRevenuePage({ mode }: { mode: Mode }) {
             kpiDrilldown === 'realized_revenue' || kpiDrilldown === 'closed_invoices' || kpiDrilldown === 'average_closed_invoice' ? <div className="sr-table-wrap"><table className="sr-table sr-drilldown-table"><thead><tr><th>Project / Client</th><th>Finance Invoice</th><th>Revenue Date</th><th>Realized Revenue</th><th>Payment Trace</th><th>Action</th></tr></thead><tbody>
               {revenueRows.map(row => <tr key={`${kpiDrilldown}-${row.project_id}-${row.finance_invoice_number}`}><td><strong>{row.project_code}</strong><br/><span>{row.project_name}</span><br/><small>{row.client_name}</small></td><td><strong>{row.finance_invoice_number}</strong><br/><small>{row.finance_invoice_date} · {money(row.finance_invoice_amount, row.currency)}</small></td><td>{row.revenue_date}<br/><small>Closed {row.invoice_closed_at ? row.invoice_closed_at.slice(0, 10) : '—'}</small></td><td><strong>{inr(row.revenue_amount_inr)}</strong></td><td>{row.payment_references.length ? row.payment_references.join(', ') : '—'}</td><td><button className="finance-secondary-button" type="button" onClick={() => openContributorProject(row.project_id, row.finance_invoice_number)}>Project details</button></td></tr>)}
             </tbody></table></div> : <div className="sr-table-wrap"><table className="sr-table sr-drilldown-table"><thead><tr><th>Project / Client</th><th>BD / Department / PM</th><th>Contributing Amount</th><th>Received</th><th>Collectible Outstanding</th><th>Bad Debt</th><th>Status</th><th>Action</th></tr></thead><tbody>
-              {(kpiDrilldownData.rows as Array<{ row: SalesProject; amount: number }>).map(item => <tr key={`${kpiDrilldown}-${item.row.project_id}`}><td><strong>{item.row.project_code}</strong><br/><span>{item.row.project_name}</span><br/><small>{item.row.client_code || '—'} · {item.row.client_name}</small></td><td><strong>{item.row.bd_name}</strong><br/><span>{item.row.department_label}</span><br/><small>PM: {item.row.project_manager_name}</small></td><td><strong>{inr(item.amount)}</strong>{kpiDrilldown === 'open_invoiced' && <><br/><small>{item.row.open_invoice_count} open invoice(s)</small></>}</td><td>{inr(item.row.received_against_open_sales_inr)}</td><td>{inr(item.row.outstanding_inr)}</td><td>{inr(item.row.bad_debt_inr || 0)}</td><td><span className="sr-status">{item.row.sales_status}</span>{kpiDrilldown === 'open_sales' && item.row.open_sales_reconciled === false && <><br/><small className="sr-recon-warning-text">Backend reconciliation difference {inr(item.row.open_sales_reconciliation_difference_inr || 0)}</small></>}</td><td><button className="finance-secondary-button" type="button" onClick={() => openContributorProject(item.row.project_id)}>Project details</button></td></tr>)}
+              {(kpiDrilldownData.rows as Array<{ row: SalesProject; amount: number }>).map(item => <tr key={`${kpiDrilldown}-${item.row.project_id}`}><td><strong>{item.row.project_code}</strong><br/><span>{item.row.project_name}</span><br/><small>{item.row.client_code || '—'} · {item.row.client_name}</small></td><td><strong>{item.row.bd_name}</strong><br/><span>{item.row.department_label}</span><br/><small>PM: {item.row.project_manager_name}</small></td><td><strong>{inr(item.amount)}</strong>{kpiDrilldown === 'open_invoiced' && <><br/><small>{item.row.open_invoice_count} open invoice(s)</small></>}</td><td>{inr(kpiDrilldown === 'bad_debt' ? item.row.cash_received_inr : item.row.received_against_open_sales_inr)}</td><td>{inr(item.row.outstanding_inr)}</td><td>{inr(item.row.bad_debt_inr || 0)}</td><td><span className="sr-status">{kpiDrilldown === 'bad_debt' && !item.row.sales_visible ? 'Closed with Bad Debt' : item.row.sales_status}</span>{kpiDrilldown === 'open_sales' && item.row.open_sales_reconciled === false && <><br/><small className="sr-recon-warning-text">Backend reconciliation difference {inr(item.row.open_sales_reconciliation_difference_inr || 0)}</small></>}</td><td><button className="finance-secondary-button" type="button" onClick={() => openContributorProject(item.row.project_id)}>Project details</button></td></tr>)}
             </tbody></table></div>}
         </section>
       </div>}
