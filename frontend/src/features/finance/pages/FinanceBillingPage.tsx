@@ -1,10 +1,5 @@
-<<<<<<< HEAD
-import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Pencil, Plus, Printer, RefreshCcw, Save, Trash2, Wallet, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-=======
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Plus, Printer, RefreshCcw, Trash2, Wallet, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
->>>>>>> 174c0fba15985a1a49d771807ff205580c8e0398
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
@@ -37,11 +32,7 @@ type LineItemForm = { sequence: number; description: string; hsn_sac: string; un
 type GstMode = 'none' | 'cgst_sgst' | 'igst'
 type BadDebtFormState = { proposed_amount: string; reason: string; collection_attempts: string; last_followup_date: string; finance_remarks: string }
 type RecoveryFormState = { amount: string; payment_date: string; payment_reference: string; payment_mode: string; remarks: string }
-<<<<<<< HEAD
-type DraftDetailsForm = { payment_terms: string; po_wo_reference: string; notes: string; work_order_date: string; dispatch_details: string; dispatch_date: string; place_of_supply: string }
-=======
 type MiniInvoicePreview = { invoiceId: number; invoiceNumber: string; theme: string; url: string }
->>>>>>> 174c0fba15985a1a49d771807ff205580c8e0398
 
 function blankBadDebtForm(): BadDebtFormState {
   return { proposed_amount: '', reason: '', collection_attempts: '', last_followup_date: '', finance_remarks: '' }
@@ -477,37 +468,6 @@ export function FinanceBillingPage() {
     }
   }
 
-<<<<<<< HEAD
-  async function startDraftEdit(invoiceId: number) {
-    setBusy(`edit-draft-${invoiceId}`); setError('')
-    try {
-      const saved = await apiFetch<InvoiceDocumentPayload>(`/operations/lifecycle/invoices/${invoiceId}/document`)
-      const invoice = saved.invoice
-      setDraftDetails({
-        payment_terms: invoice.payment_terms || '', po_wo_reference: invoice.po_wo_reference || '',
-        notes: invoice.notes || '', work_order_date: invoice.work_order_date || '',
-        dispatch_details: invoice.dispatch_details || '', dispatch_date: invoice.dispatch_date || '',
-        place_of_supply: invoice.place_of_supply || '',
-      })
-      setDraftEditInvoiceId(invoiceId)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Invoice draft could not be loaded for editing') }
-    finally { setBusy('') }
-  }
-
-  async function saveDraftEdit(invoiceId: number) {
-    await run(`save-draft-${invoiceId}`, async () => {
-      await apiFetch(`/operations/lifecycle/invoices/${invoiceId}/draft-details`, { method: 'PATCH', body: JSON.stringify({
-        payment_terms: draftDetails.payment_terms || null,
-        po_wo_reference: draftDetails.po_wo_reference || null,
-        notes: draftDetails.notes || null,
-        work_order_date: draftDetails.work_order_date || null,
-        dispatch_details: draftDetails.dispatch_details || null,
-        dispatch_date: draftDetails.dispatch_date || null,
-        place_of_supply: draftDetails.place_of_supply || null,
-      }) })
-      setDraftEditInvoiceId(null)
-    }, 'Draft invoice details saved')
-=======
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<Record<string, string>>({})
 
@@ -544,7 +504,6 @@ export function FinanceBillingPage() {
     setEditInvoiceId(null)
     // If the compact theme preview is open for this invoice, refresh it from the persisted theme.
     if (saved && miniPreview?.invoiceId === invoiceId) void openMiniPreview(invoiceId, miniPreview.invoiceNumber, editForm.theme || 'blue_classic')
->>>>>>> 174c0fba15985a1a49d771807ff205580c8e0398
   }
 
   async function downloadInvoice(invoiceId: number, invoiceNumber: string) {
@@ -781,19 +740,6 @@ export function FinanceBillingPage() {
                   onClick={() => openEditInvoice(invoice as unknown as Record<string, unknown>)}>Edit Invoice</button>
                 {invoice.can_close_invoice && <button className="operations-button success" disabled={busy === `close-${invoice.id}`} onClick={() => void run(`close-${invoice.id}`, () => closeInvoice(invoice.id), 'Invoice closed')}>Close Invoice</button>}
               </div>
-<<<<<<< HEAD
-              {draftEditInvoiceId === invoice.id && <div className="operations-daily-form">
-                <div className="operations-note operations-span-2"><strong>EDIT DRAFT DETAILS</strong> · Financial values, GST, FX and invoice number are locked.</div>
-                <label className="operations-field"><span>Payment Terms</span><input value={draftDetails.payment_terms} onChange={e => setDraftDetails({ ...draftDetails, payment_terms: e.target.value })}/></label>
-                <label className="operations-field"><span>PO / Work Order Reference</span><input value={draftDetails.po_wo_reference} onChange={e => setDraftDetails({ ...draftDetails, po_wo_reference: e.target.value })}/></label>
-                <label className="operations-field"><span>Work Order Date</span><input type="date" value={draftDetails.work_order_date} onChange={e => setDraftDetails({ ...draftDetails, work_order_date: e.target.value })}/></label>
-                <label className="operations-field"><span>Dispatch Details</span><input value={draftDetails.dispatch_details} onChange={e => setDraftDetails({ ...draftDetails, dispatch_details: e.target.value })}/></label>
-                <label className="operations-field"><span>Dispatch Date</span><input type="date" value={draftDetails.dispatch_date} onChange={e => setDraftDetails({ ...draftDetails, dispatch_date: e.target.value })}/></label>
-                <label className="operations-field"><span>Place of Supply</span><input value={draftDetails.place_of_supply} onChange={e => setDraftDetails({ ...draftDetails, place_of_supply: e.target.value })}/></label>
-                <label className="operations-field operations-span-2"><span>Notes</span><textarea rows={2} value={draftDetails.notes} onChange={e => setDraftDetails({ ...draftDetails, notes: e.target.value })}/></label>
-                <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy === `save-draft-${invoice.id}`} onClick={() => void saveDraftEdit(invoice.id)}><Save size={15}/> Save Draft Details</button><button className="operations-button secondary" onClick={() => setDraftEditInvoiceId(null)}>Cancel</button></div>
-              </div>}
-=======
               {/* V8.7.x SELECTED THEME PREVIEW — a small A4 thumbnail of the SAME backend PDF
                   (GET .../invoices/{id}/document.pdf), rendered ONLY from persistent miniPreview
                   state. It stays visible until the user clicks Close, opens another invoice's
@@ -853,7 +799,6 @@ export function FinanceBillingPage() {
                   </div>
                 </div>
               )}
->>>>>>> 174c0fba15985a1a49d771807ff205580c8e0398
               {PAYABLE.has(invoice.stored_status) && invoice.collectible_balance > 0 && <div className="operations-daily-form">
                 <label className="operations-field"><span>Payment Reference</span><input value={pay.payment_reference} onChange={e => setPaymentForm({ ...paymentForm, [invoice.id]: { ...pay, payment_reference: e.target.value } })}/></label>
                 <label className="operations-field"><span>Payment Date</span><input type="date" value={pay.payment_date} onChange={e => setPaymentForm({ ...paymentForm, [invoice.id]: { ...pay, payment_date: e.target.value } })}/></label>
