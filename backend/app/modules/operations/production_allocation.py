@@ -575,6 +575,51 @@ def allocation_options(db: Session, *, actor: User, role: str, project_id: int) 
     lots: dict[str, list[dict]] = {}
     for area in areas:
         lots.setdefault(area["lot"] or "", []).append(area)
+    # ---- PROJECT-SCOPE physical files (V8.6) -------------------------------------------
+    # The Team Lead allocates files belonging to DIFFERENT Lots / Codes / Areas to one
+    # Production employee in ONE action, so the read model must expose every active
+    # physical file of the project. A file NUMBER is only unique INSIDE its area, so the
+    # identity used everywhere here is the persistent WorkPackageItem id.
+    project_files: list[dict] = []
+    for package in packages:
+        for item in items_by_package.get(package.id, []):
+            if not item.is_active:
+                continue
+            per = latest.get(item.id, {})
+            prod, qc, qa = per.get("production"), per.get("qc"), per.get("qa")
+            # Safe reassignment only while no real work exists on the file.
+            locked = (
+                (prod is not None and prod.status != "not_started")
+                or (qc is not None and qc.status in {"in_progress", "passed", "rejected", "rework"})
+                or (qa is not None)
+            )
+            owner_id = item.production_user_id
+            project_files.append({
+                "work_package_id": package.id,
+                "work_package_item_id": item.id,
+                "lot_or_batch": package.lot_batch,
+                "code": package.package_code,
+                "area": package.package_name,
+                "file_number": item.item_number,
+                "file_name": item.item_name,
+                "remarks": package.remarks,  # imported MASTER remarks (read-only)
+                # AREA planned length (the master row), never a fabricated per-file KM.
+                "planned_quantity": float(package.area) if package.area is not None else None,
+                "unit": package.area_unit,
+                "planned_unit": item.planned_unit,
+                "production_employee_id": owner_id,
+                "production_employee_name": (users[owner_id].full_name
+                                             if owner_id in users else None),
+                "status": item.status,
+                # Authoritative latest-workflow state (drives the allocation-completion rule).
+                "production_status": (prod.status if prod is not None else "not_started"),
+                "qc_status": (qc.status if qc is not None else "not_started"),
+                "qa_status": (qa.status if qa is not None else "not_started"),
+                "is_available": owner_id is None,
+                "safe_reassign": not locked,
+            })
+    total_files = len(project_files)
+    assigned_files = len([f for f in project_files if f["production_employee_id"]])
     return {
         "project_id": project_id,
         "project_code": ctx["project"].project_code,
@@ -590,6 +635,10 @@ def allocation_options(db: Session, *, actor: User, role: str, project_id: int) 
             for lot, group in sorted(lots.items())
         ],
         "areas": areas,
+        "files": project_files,
+        "total_files": total_files,
+        "assigned_files": assigned_files,
+        "available_files": total_files - assigned_files,
         "team": {"production": members("production"), "qc": members("qc"), "qa": members("qa")},
     }
 
@@ -761,6 +810,149 @@ def assign_files(
         "assigned_files": len(items),
         "planned_by_unit": planned_groups,
         "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+        "production_target_date": production_target_date.isoformat(),
+        "qc_target_date": qc_target_date.isoformat(),
+        "qa_target_date": qa_target_date.isoformat(),
+    }
+
+
+def assign_project_files(
+    db: Session,
+    *,
+    actor: User,
+    role: str,
+    project_id: int,
+    item_ids: list[int],
+    production_user_id: int | None = None,
+    production_target_date: date | None = None,
+    qc_user_id: int | None = None,
+    qc_target_date: date | None = None,
+    qa_user_id: int | None = None,
+    qa_target_date: date | None = None,
+    supply_date: date | None = None,
+    note: str | None = None,
+    reassign: bool = False,
+) -> dict:
+    """ATOMIC project-scope allocation (V8.6).
+
+    ONE Team Lead action may assign physical files belonging to DIFFERENT Lots / Codes /
+    Areas to one Production employee. Every selection is validated BEFORE anything is
+    written (membership, role, availability, exclusivity, reassignment, duplicates), and
+    the whole selection is applied in a single transaction — a failure can never leave a
+    partial allocation behind. The existing per-file rules are reused, never duplicated.
+    """
+    ctx = ensure_master_manage(db, actor=actor, role=role, project_id=project_id)
+    if not item_ids:
+        raise ValueError("Select at least one file to assign")
+    if production_target_date is None or qc_target_date is None or qa_target_date is None:
+        raise ValueError("Production target, QC target and QA target dates are all required")
+    if not (production_target_date <= qc_target_date <= qa_target_date):
+        raise ValueError("Target dates must satisfy Production target ≤ QC target ≤ QA target")
+    if not (production_user_id and qc_user_id and qa_user_id):
+        raise ValueError("Production, QC and QA employees are all required")
+
+    wanted = list(dict.fromkeys(item_ids))
+    # Lock every selected row first so two concurrent allocations cannot both win.
+    items = list(db.scalars(select(WorkPackageItem).where(
+        WorkPackageItem.id.in_(wanted),
+        WorkPackageItem.project_id == project_id,
+    ).with_for_update()).all())
+    if len(items) != len(wanted):
+        raise ValueError("Some selected files do not belong to this project")
+    packages = {p.id: p for p in ctx["packages"]}
+
+    # ---------------- validate ALL selections before writing anything ----------------
+    for item in items:
+        if not item.is_active:
+            raise ValueError(f"File {item.item_number} is inactive and cannot be allocated")
+        owner = item.production_user_id
+        if owner and int(owner) != int(production_user_id):
+            if items_service.open_session_for(db, item_id=item.id, stage="production") is not None \
+                    or _item_has_history(db, item):
+                raise ValueError(
+                    f"File {item.item_number} is already assigned and has work history — "
+                    f"it cannot be reallocated"
+                )
+            if not reassign:
+                raise ValueError(
+                    f"File {item.item_number} is already assigned to another Production employee"
+                )
+    # Assignees must be ACTIVE PM-selected project members of the required role.
+    representative = packages.get(items[0].work_package_id)
+    for uid, stage in ((production_user_id, "production"), (qc_user_id, "qc"), (qa_user_id, "qa")):
+        items_service._ensure_assignable(db, representative, ctx, int(uid), stage)
+
+    # ---------------- apply everything in ONE transaction ----------------------------
+    touched: set[int] = set()
+    for item in items:
+        item.production_user_id = int(production_user_id)
+        item.qc_user_id = int(qc_user_id)
+        item.qa_user_id = int(qa_user_id)
+        item.production_target_date = production_target_date
+        item.qc_target_date = qc_target_date
+        item.qa_target_date = qa_target_date
+        touched.add(item.work_package_id)
+
+    for package_id in touched:
+        package = packages.get(package_id)
+        if package is None:
+            continue
+        if supply_date is not None:
+            package.supply_date = supply_date
+        if package.team_leader_user_id is None and ctx["is_tl"]:
+            package.team_leader_user_id = actor.id
+        if note and note.strip():
+            existing = (package.remarks or "").strip()
+            package.remarks = (f"{existing}\n{note.strip()}" if existing else note.strip())[:5000]
+        active_items = [i for i in items_service.items_for_packages(db, [package.id]) if i.is_active]
+        package.production_target_date = min(
+            (i.production_target_date for i in active_items if i.production_target_date), default=None)
+        package.qc_target_date = min(
+            (i.qc_target_date for i in active_items if i.qc_target_date), default=None)
+        package.qa_target_date = min(
+            (i.qa_target_date for i in active_items if i.qa_target_date), default=None)
+    db.flush()
+
+    project = ctx["project"]
+    url = f"/production-tracking?project={project.id}"
+    area_labels = sorted({
+        " · ".join(x for x in (
+            (packages[i.work_package_id].lot_batch or "").strip(),
+            (packages[i.work_package_id].package_code or "").strip(),
+            (packages[i.work_package_id].package_name or "").strip(),
+        ) if x)
+        for i in items if i.work_package_id in packages
+    })
+    summary_text = (f"{project.project_code} — {len(items)} file(s) across "
+                    f"{len(area_labels)} area(s): " + "; ".join(area_labels[:5]))
+    create_global_notification(
+        db, event_type="workflow.allocation.production_assigned",
+        title=f"New Production Assignment: {project.project_code}",
+        message=f"{summary_text}. Production target {production_target_date}.",
+        category="system", target_url=url,
+        recipient_user_ids=[int(production_user_id)],
+        dedupe_key=f"alloc-project-production-{project.id}-{int(production_user_id)}-{min(wanted)}",
+    )
+    create_global_notification(
+        db, event_type="workflow.allocation.qc_assigned",
+        title=f"QC Assignment Created: {project.project_code}",
+        message=f"{summary_text}. Waiting for Production completion. QC target {qc_target_date}.",
+        category="system", target_url=url,
+        recipient_user_ids=[int(qc_user_id)],
+        dedupe_key=f"alloc-project-qc-{project.id}-{int(qc_user_id)}-{min(wanted)}",
+    )
+    create_global_notification(
+        db, event_type="workflow.allocation.qa_assigned",
+        title=f"QA Assignment Created: {project.project_code}",
+        message=f"{summary_text}. Waiting for QC pass. QA target {qa_target_date}.",
+        category="system", target_url=url,
+        recipient_user_ids=[int(qa_user_id)],
+        dedupe_key=f"alloc-project-qa-{project.id}-{int(qa_user_id)}-{min(wanted)}",
+    )
+    return {
+        "assigned_files": len(items),
+        "areas": area_labels,
+        "work_packages": len(touched),
         "production_target_date": production_target_date.isoformat(),
         "qc_target_date": qc_target_date.isoformat(),
         "qa_target_date": qa_target_date.isoformat(),

@@ -242,6 +242,22 @@ class ProjectInvoice(Base):
     # as they do today.
     document_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # --- V8.7 invoice presentation theme + authorised signature (ADDITIVE) ---------------
+    # ``theme`` selects ONE of the three A4 designs rendered from the SAME normalized
+    # invoice payload: 'blue_classic' | 'blue_topographic' | 'green_gold_premium'.
+    # NULL on legacy invoices, which render as 'blue_classic' (the historical design).
+    theme: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    # Visual/approval signature (authorised signatory + company stamp). This is NOT a
+    # statutory cryptographic DSC signature.
+    signed: Mapped[bool] = mapped_column(Boolean, default=False)
+    signed_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # Set when a material edit invalidates a previous signature (the sign-off no longer
+    # represents the new content). The old signed_at/signed_by stay for audit.
+    signature_invalidated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 class ProjectInvoiceLineItem(Base):
     """Invoice Generation V2 line items (additive; ``ProjectInvoice.amount`` stays authoritative).

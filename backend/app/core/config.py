@@ -131,6 +131,14 @@ class Settings(BaseSettings):
     # "auto-detect the existing frontend/public/nakshatech-logo.png asset"; the invoice
     # still renders correctly (text-only header) when neither is available.
     invoice_logo_path: str = ""
+    # Authorised-signatory workflow (V8.7). ``invoice_signatory_name`` is printed in the
+    # signature area of every theme. The optional image paths are rendered ONLY when the
+    # invoice is signed; blank means "not configured" and the template leaves the area
+    # unsigned rather than inventing a mark. These are app settings (env-overridable):
+    # INVOICE_SIGNATORY_NAME / INVOICE_SIGNATURE_IMAGE_PATH / INVOICE_STAMP_IMAGE_PATH.
+    invoice_signatory_name: str = ""
+    invoice_signature_image_path: str = ""
+    invoice_stamp_image_path: str = ""
     app_public_url: str = "http://localhost:3100"
     email_otp_expiry_minutes: int = 10
     email_otp_resend_seconds: int = 60

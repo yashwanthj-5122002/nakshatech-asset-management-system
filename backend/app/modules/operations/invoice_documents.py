@@ -33,11 +33,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.entities import User
 from app.modules.finance.models import FinanceProject
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoiceLineItem, ProjectInvoicePayment
 from app.modules.operations.lifecycle_service import _invoice_payload
 
 MONEY = Decimal("0.01")
+DEFAULT_COMPANY_ADDRESS = (
+    "R.K Chambers, 4th Floor, 5th Main, "
+    "Chamarajpet, Bengaluru, Karnataka, India 560018"
+)
 
 _ONES = (
     "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
@@ -96,9 +101,10 @@ def amount_in_words(value: object, currency: str = "INR") -> str:
 
 
 def _configured_company() -> dict:
+    configured_address = settings.invoice_company_address.strip()
     return {
         "name": settings.invoice_company_name.strip() or "NakshaTech",
-        "address": settings.invoice_company_address.strip() or None,
+        "address": configured_address or DEFAULT_COMPANY_ADDRESS,
         "gstin": settings.invoice_company_gstin.strip() or None,
         "pan": settings.invoice_company_pan.strip() or None,
         "phone": settings.invoice_company_phone.strip() or None,
@@ -252,6 +258,53 @@ def _settlement_payload(db: Session, invoice: ProjectInvoice) -> dict:
     }
 
 
+# ===========================================================================================
+# V8.7 invoice presentation themes + authorised signatory
+#
+# THREE designs, ONE normalized payload (``invoice_document_payload``). Tax, amount-in-words
+# and every financial figure stay computed exactly once, upstream of rendering.
+# ===========================================================================================
+
+INVOICE_THEME_KEYS: tuple[str, ...] = ("blue_classic", "blue_topographic", "green_gold_premium")
+
+INVOICE_THEME_LABELS: dict[str, str] = {
+    "blue_classic": "Theme 1 — Blue Classic",
+    "blue_topographic": "Theme 2 — Blue Topographic",
+    "green_gold_premium": "Theme 3 — Green Gold Premium",
+}
+
+DEFAULT_INVOICE_THEME = "blue_classic"
+
+
+def normalize_invoice_theme(value: str | None) -> str:
+    """Validate/normalize a theme key; unknown/NULL falls back to the classic design."""
+    key = (value or "").strip().lower()
+    return key if key in INVOICE_THEME_KEYS else DEFAULT_INVOICE_THEME
+
+
+def invoice_theme(invoice: object) -> str:
+    return normalize_invoice_theme(getattr(invoice, "theme", None))
+
+
+def _configured_signature() -> dict:
+    """Authorised-signatory configuration (name + optional signature/stamp image paths).
+
+    Read from application settings so nothing is hard-coded; if the company has not
+    configured an asset the value is None and the template simply leaves the area unsigned.
+    """
+    from app.core.config import settings
+
+    def _path(attr: str) -> str | None:
+        raw = getattr(settings, attr, None)
+        return str(raw).strip() or None if raw else None
+
+    return {
+        "name": _path("invoice_signatory_name"),
+        "signature_image": _path("invoice_signature_image_path"),
+        "stamp_image": _path("invoice_stamp_image_path"),
+    }
+
+
 def invoice_document_payload(db: Session, invoice_id: int) -> dict:
     """Build the canonical preview/PDF payload without changing financial state."""
     invoice = db.get(ProjectInvoice, invoice_id)
@@ -267,20 +320,28 @@ def invoice_document_payload(db: Session, invoice_id: int) -> dict:
     # customer-facing document adapter intentionally excludes its settlement data.
     lifecycle = _invoice_payload(db, invoice)
     client = project.client
+    signatory = _configured_signature()
+    signed_by = db.get(User, invoice.signed_by_id) if invoice.signed_by_id else None
+    signed_by_name = (
+        signed_by.full_name if signed_by is not None
+        else (signatory.get("name") if invoice.signed else None)
+    )
     taxable = _money(invoice.amount)
     tax = _money(invoice.tax_amount)
     total = _money(taxable + tax)
 
+    configured_company = _configured_company()
     snapshot = invoice.document_snapshot
     if snapshot:
         # Frozen at invoice-creation time: a later Client Master or company-configuration
-        # edit never retroactively changes an already issued document.
+        # edit never replaces saved values. A missing legal company address alone
+        # falls back for presentation; the stored snapshot is never modified.
         billing = snapshot.get("billing") or {}
         company_snap = snapshot.get("company") or {}
         bank_snap = snapshot.get("bank") or {}
         company_payload = {
             "name": company_snap.get("name") or "NakshaTech",
-            "address": company_snap.get("address"),
+            "address": company_snap.get("address") or configured_company.get("address"),
             "gstin": company_snap.get("gstin"),
             "pan": company_snap.get("pan"),
             "phone": company_snap.get("phone"),
@@ -308,7 +369,7 @@ def invoice_document_payload(db: Session, invoice_id: int) -> dict:
             "data_source": "invoice_snapshot",
         }
     else:
-        company_payload = _configured_company()
+        company_payload = configured_company
         client_payload = {
             "code": client.client_code if client else None,
             "name": (client.client_name if client else project.client_name) or "Client not recorded",
@@ -367,8 +428,30 @@ def invoice_document_payload(db: Session, invoice_id: int) -> dict:
         "settlement": _settlement_payload(db, invoice),
         "notes": invoice.notes,
         "terms_conditions": None,
-        "authorized_signatory_name": None,
+        "authorized_signatory_name": signatory.get("name"),
         "qr_data": None,
+        # --- V8.7 presentation -----------------------------------------------------------
+        # The SAME normalized payload feeds all three themes; only the renderer differs.
+        "theme": invoice_theme(invoice),
+        "theme_label": INVOICE_THEME_LABELS[invoice_theme(invoice)],
+        # True only when a theme was explicitly chosen and stored. A NULL theme is a legacy
+        # invoice and keeps the historical layout byte-for-byte.
+        "theme_explicit": invoice.theme is not None,
+        "signature_assets_configured": bool(
+            signatory.get("signature_image") or signatory.get("stamp_image")
+        ),
+        "signature": {
+            "signed": bool(invoice.signed),
+            "signed_by_name": signed_by_name,
+            "signed_at": invoice.signed_at.isoformat() if invoice.signed_at else None,
+            "invalidated_at": (
+                invoice.signature_invalidated_at.isoformat()
+                if invoice.signature_invalidated_at else None
+            ),
+            # Configured assets (never hard-coded); None when the company has not uploaded them.
+            "signature_image": signatory.get("signature_image"),
+            "stamp_image": signatory.get("stamp_image"),
+        },
     }
 
 
@@ -605,12 +688,33 @@ def _build_invoice_a4_pdf_v2(payload: dict) -> BytesIO:
     return output
 
 
+<<<<<<< HEAD
 def build_invoice_a4_pdf(payload: dict, template: str | None = None) -> BytesIO:
+=======
+def _build_themed_invoice_a4(payload: dict) -> BytesIO:
+    """Render the selected PNG-reference design from the canonical ERP payload."""
+    from app.modules.operations.invoice_theme_renderer import build_reference_invoice_pdf
+
+    # Ship the official horizontal brand asset with the backend as well as the UI.
+    # An explicitly configured company logo continues to take precedence.
+    horizontal = Path(__file__).resolve().parents[2] / "assets" / "invoice-logo.png"
+    logo = _resolve_logo_path() if settings.invoice_logo_path.strip() else (
+        horizontal if horizontal.is_file() else _resolve_logo_path()
+    )
+    return build_reference_invoice_pdf(payload, logo)
+
+
+def build_invoice_a4_pdf(payload: dict) -> BytesIO:
+>>>>>>> 174c0fba15985a1a49d771807ff205580c8e0398
     """Shared NakshaTech A4 renderer for project and standalone adapters.
 
     The renderer formats only the canonical document payload. It does not query,
     recalculate, or mutate any accounting source.
     """
+    # V8.7 THEME DISPATCH — an explicitly stored theme renders through the themed builder;
+    # a NULL theme (legacy invoice) keeps the historical layout unchanged.
+    if payload.get("theme_explicit"):
+        return _build_themed_invoice_a4(payload)
     output = BytesIO()
     styles = getSampleStyleSheet()
     # Optional presentation-only themes. No values in the financial payload are modified.

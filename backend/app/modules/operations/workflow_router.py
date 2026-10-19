@@ -1083,6 +1083,48 @@ def workflow_area_files(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
+@router.post("/ortho/projects/{project_id}/assign-files")
+def workflow_assign_project_files(
+    project_id: int,
+    payload: WorkflowFileAllocation,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """ATOMIC project-scope allocation: selected physical files may span several
+    Lots / Codes / Areas and are assigned to one Production employee in ONE action."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    try:
+        summary = production_allocation.assign_project_files(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            item_ids=payload.item_ids,
+            production_user_id=payload.production_user_id,
+            production_target_date=payload.production_target_date,
+            qc_user_id=payload.qc_user_id,
+            qc_target_date=payload.qc_target_date,
+            qa_user_id=payload.qa_user_id,
+            qa_target_date=payload.qa_target_date,
+            supply_date=payload.supply_date,
+            note=payload.note,
+            reassign=payload.reassign,
+        )
+        _audit(request, db, auth, "WORKFLOW_PROJECT_FILES_ALLOCATED", "project", project_id, {
+            "item_ids": payload.item_ids, "assigned_files": summary["assigned_files"],
+            "work_packages": summary["work_packages"],
+            "production_target_date": str(payload.production_target_date),
+            "qc_target_date": str(payload.qc_target_date),
+            "qa_target_date": str(payload.qa_target_date),
+        })
+        db.commit()
+        return summary
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
 @router.post("/ortho/work-packages/{work_package_id}/assign-files")
 def workflow_assign_files(
     work_package_id: int,

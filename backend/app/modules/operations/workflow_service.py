@@ -44,7 +44,8 @@ from app.modules.finance.service import (
 )
 from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
 from app.modules.notifications.service import create_global_notification, resolve_recipient_users
-from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectReworkCycle
+from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectInvoice, ProjectReworkCycle
+from app.modules.operations.lifecycle_schemas import InvoiceClose
 from app.modules.operations.lifecycle_service import (
     CLOSED as LIFECYCLE_CLOSED,
     REWORK_OPEN,
@@ -52,6 +53,7 @@ from app.modules.operations.lifecycle_service import (
     REWORK_RESUBMITTED,
     _transition as lifecycle_transition,
     assert_finance_closable,
+    close_invoice,
     enter_feedback_lifecycle,
     record_project_closed_timeline,
     sync_rework_cycle_with_packages,
@@ -1922,6 +1924,11 @@ def finance_close_project(db: Session, *, actor: User, project_id: int, payload:
     legacy_closure = workflow.status == WORKFLOW_FINANCE_CLOSURE_PENDING
     assert_finance_closable(db, workflow=workflow)
     project = _project(db, project_id)
+    # Finance's authorized project closure also finalizes invoices whose balance
+    # is resolved by approved Bad Debt. Approval by itself never closes them.
+    for invoice in db.scalars(select(ProjectInvoice).where(ProjectInvoice.project_id == project_id)).all():
+        if invoice.status != "INVOICE_CLOSED":
+            close_invoice(db, actor=actor, invoice_id=invoice.id, payload=InvoiceClose(comments=payload.remarks))
     workflow.finance_closed_at = utc_now()
     workflow.finance_closure_remarks = payload.remarks.strip()
     _event(
