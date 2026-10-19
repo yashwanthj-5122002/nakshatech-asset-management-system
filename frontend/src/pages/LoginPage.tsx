@@ -166,12 +166,17 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
   }, [employeeMode])
 
   useEffect(() => {
+    const routeNotice = (location.state as { notice?: string } | null)?.notice
+    if (routeNotice) {
+      setNotice(routeNotice)
+      return
+    }
     const message = sessionStorage.getItem('management_password_changed')
     if (message) {
       setNotice(message)
       sessionStorage.removeItem('management_password_changed')
     }
-  }, [])
+  }, [location.state])
 
   async function submit(event: FormEvent) {
     event.preventDefault()

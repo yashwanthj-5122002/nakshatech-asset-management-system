@@ -95,7 +95,7 @@ from app.modules.employee_portal.service import (
     can_handle_ticket,
     can_view_ticket,
     confirm_totp_for_user,
-    create_or_replace_authenticator,
+    create_or_reuse_pending_authenticator,
     create_ticket_notifications,
     decode_temporary_subject,
     deliver_ticket_lifecycle_emails,
@@ -339,7 +339,7 @@ def complete_registration(
     else:
         access.is_default = True
 
-    _credential, uri, qr = create_or_replace_authenticator(db, user)
+    _credential, uri, qr = create_or_reuse_pending_authenticator(db, user)
     record_audit(
         db,
         event_type="ACCOUNT_REGISTRATION_COMPLETED",

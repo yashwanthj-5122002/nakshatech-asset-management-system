@@ -16,6 +16,7 @@ interface AuthContextValue {
   user: AuthUser | null
   needsBranchSelection: boolean
   pendingAuthenticatorSetup: PendingAuthenticatorSetup | null
+  clearPendingAuthenticatorSetup: () => void
   login: (role: Role | undefined, email: string, password: string, remember: boolean, accessMode?: 'employee_support') => Promise<AuthLoginResponse>
   acceptAuthResponse: (result: AuthLoginResponse, remember?: boolean) => void
   confirmRegistrationAuthenticator: (code: string) => Promise<AuthLoginResponse>
@@ -63,6 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPendingAuthenticatorSetup(pending)
     if (pending) sessionStorage.setItem('asset_pending_authenticator_setup', JSON.stringify(pending))
     else sessionStorage.removeItem('asset_pending_authenticator_setup')
+  }
+
+  function clearPendingAuthenticatorSetup() {
+    savePendingAuthenticatorSetup(null)
   }
 
   function acceptAuthResponse(result: AuthLoginResponse, remember = false) {
@@ -171,6 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       needsBranchSelection,
       pendingAuthenticatorSetup,
+      clearPendingAuthenticatorSetup,
       login,
       acceptAuthResponse,
       confirmRegistrationAuthenticator,

@@ -1,10 +1,11 @@
-import { Download, Eye, FilePlus2, Plus, Printer, RefreshCcw, Trash2, X } from 'lucide-react'
+import { Download, Eye, FilePlus2, Pencil, Plus, Printer, RefreshCcw, Trash2, X } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiBlob, apiFetch, downloadFile } from '../../../lib/api'
 import type { InvoiceDocumentPayload } from '../../operations/lifecycle-types'
 import { formatMoney } from '../../operations/lifecycle-types'
 import { InvoiceA4Document } from '../components/InvoiceA4Document'
+import { InvoiceTemplateSelector, invoiceTemplateQuery, type InvoiceTemplate } from '../components/InvoiceTemplateSelector'
 import '../finance-expenses.css'
 import '../invoice-document.css'
 import '../../operations/operations.css'
@@ -15,6 +16,17 @@ type BankForm = { bank_name: string; account_name: string; account_number: strin
 type ItemForm = { id: string; description: string; detail: string; hsn_sac: string; quantity: string; unit: string; rate: string }
 type TaxMode = 'none' | 'cgst_sgst' | 'igst'
 type HistoryRow = { id: number; invoice_number: string; invoice_date: string; party: string; total: number; created_by: string; created_at: string }
+type PartySnapshot = { company_name: string; address: string | null; gstin: string | null; pan: string | null; email: string | null; phone: string | null }
+type SellerSnapshot = PartySnapshot & { msme_registration: string | null; website: string | null }
+type BankSnapshot = { bank_name: string | null; account_name: string | null; account_number: string | null; ifsc_code: string | null; swift_code: string | null; bank_address: string | null }
+type StandaloneInvoiceEditPayload = {
+  invoice_number: string; invoice_date: string; terms: string | null; due_date: string | null
+  reference_work_order: string | null; place_of_supply: string | null
+  seller: SellerSnapshot; bill_to: PartySnapshot; ship_to: PartySnapshot; bank: BankSnapshot
+  line_items: Array<{ sequence: number; description: string; detail: string | null; hsn_sac: string | null; quantity: number | string; unit: string; rate: number | string; tax_percent: number | string; tax_amount: number | string; amount: number | string }>
+  tax_mode: TaxMode; cgst_percent: number | string; sgst_percent: number | string; igst_percent: number | string
+  notes: string | null; terms_conditions: string | null; authorized_signatory_name: string | null; qr_data: string | null
+}
 
 const blankParty = (): PartyForm => ({ company_name: '', address: '', gstin: '', pan: '', email: '', phone: '' })
 const blankItem = (): ItemForm => ({ id: crypto.randomUUID(), description: '', detail: '', hsn_sac: '', quantity: '1', unit: 'Nos', rate: '0' })
@@ -37,6 +49,8 @@ export function GenerateInvoicePage() {
   const [qrData, setQrData] = useState('')
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [preview, setPreview] = useState<InvoiceDocumentPayload | null>(null)
+  const [template, setTemplate] = useState<InvoiceTemplate>('modern_teal')
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -97,9 +111,13 @@ export function GenerateInvoicePage() {
         sgst_percent: taxMode === 'cgst_sgst' ? Number(taxes.sgst) : 0, igst_percent: taxMode === 'igst' ? Number(taxes.igst) : 0,
         notes: clean(notes), terms_conditions: clean(termsConditions), authorized_signatory_name: clean(signatory), qr_data: clean(qrData),
       }
-      const result = await apiFetch<InvoiceDocumentPayload>('/finance/generated-invoices', { method: 'POST', body: JSON.stringify(body) })
+      const result = await apiFetch<InvoiceDocumentPayload>(
+        editingInvoiceId ? `/finance/generated-invoices/${editingInvoiceId}` : '/finance/generated-invoices',
+        { method: editingInvoiceId ? 'PUT' : 'POST', body: JSON.stringify(body) },
+      )
       setPreview(result)
-      setNotice(`Invoice ${result.invoice.invoice_number} generated and saved in standalone history.`)
+      setNotice(editingInvoiceId ? `Invoice ${result.invoice.invoice_number} updated.` : `Invoice ${result.invoice.invoice_number} generated and saved in standalone history.`)
+      setEditingInvoiceId(null)
       await loadHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invoice could not be generated')
@@ -113,9 +131,36 @@ export function GenerateInvoicePage() {
     finally { setBusy('') }
   }
 
+  async function editInvoice(id: number) {
+    setBusy(`edit-${id}`); setError(''); setNotice('')
+    try {
+      const saved = await apiFetch<StandaloneInvoiceEditPayload>(`/finance/generated-invoices/${id}/edit`)
+      const partyForm = (party: PartySnapshot): PartyForm => ({
+        company_name: party.company_name || '', address: party.address || '', gstin: party.gstin || '',
+        pan: party.pan || '', email: party.email || '', phone: party.phone || '',
+      })
+      setInvoice({ invoice_number: saved.invoice_number, invoice_date: saved.invoice_date, terms: saved.terms || '', due_date: saved.due_date || '', reference_work_order: saved.reference_work_order || '', place_of_supply: saved.place_of_supply || '' })
+      setSeller({ ...partyForm(saved.seller), msme_registration: saved.seller.msme_registration || '', website: saved.seller.website || '' })
+      const bill = partyForm(saved.bill_to); const ship = partyForm(saved.ship_to)
+      setBillTo(bill); setShipTo(ship); setSameAsBill(JSON.stringify(bill) === JSON.stringify(ship))
+      setBank({
+        bank_name: saved.bank.bank_name || '', account_name: saved.bank.account_name || '',
+        account_number: saved.bank.account_number || '', ifsc_code: saved.bank.ifsc_code || '',
+        swift_code: saved.bank.swift_code || '', bank_address: saved.bank.bank_address || '',
+      })
+      setItems(saved.line_items.map(item => ({ id: crypto.randomUUID(), description: item.description, detail: item.detail || '', hsn_sac: item.hsn_sac || '', quantity: String(item.quantity), unit: item.unit, rate: String(item.rate) })))
+      setTaxMode(saved.tax_mode); setTaxes({ cgst: String(saved.cgst_percent), sgst: String(saved.sgst_percent), igst: String(saved.igst_percent) })
+      setNotes(saved.notes || ''); setTermsConditions(saved.terms_conditions || '')
+      setSignatory(saved.authorized_signatory_name || ''); setQrData(saved.qr_data || '')
+      setEditingInvoiceId(id); setPreview(null)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) { setError(err instanceof Error ? err.message : 'Invoice could not be opened for editing') }
+    finally { setBusy('') }
+  }
+
   async function downloadInvoice(id: number, number: string) {
     setBusy(`download-${id}`); setError('')
-    try { await downloadFile(`/finance/generated-invoices/${id}/document.pdf?download=true`, `${number}_A4_Invoice.pdf`) }
+    try { await downloadFile(`/finance/generated-invoices/${id}/document.pdf?download=true&${invoiceTemplateQuery(template)}`, `${number}_${template}_A4_Invoice.pdf`) }
     catch (err) { setError(err instanceof Error ? err.message : 'Invoice PDF could not be downloaded') }
     finally { setBusy('') }
   }
@@ -126,7 +171,7 @@ export function GenerateInvoicePage() {
     printWindow.opener = null; printWindow.document.body.textContent = 'Preparing A4 invoice for print...'
     setBusy(`print-${id}`); setError('')
     try {
-      const blob = await apiBlob(`/finance/generated-invoices/${id}/document.pdf`)
+      const blob = await apiBlob(`/finance/generated-invoices/${id}/document.pdf?${invoiceTemplateQuery(template)}`)
       const url = URL.createObjectURL(blob)
       printWindow.onload = () => { printWindow.focus(); printWindow.print(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000) }
       printWindow.location.href = url
@@ -181,11 +226,12 @@ export function GenerateInvoicePage() {
         <label className="finance-field"><span>Authorized Signatory Name</span><input value={signatory} onChange={event => setSignatory(event.target.value)}/></label>
         <label className="finance-field"><span>Optional QR Data</span><input value={qrData} onChange={event => setQrData(event.target.value)} placeholder="Payment URL, UPI or reference text"/></label>
       </div></section>
-      <div className="standalone-form-actions"><button className="operations-button" type="submit" disabled={busy === 'generate'}><FilePlus2 size={16}/> {busy === 'generate' ? 'Generating…' : 'Generate & Preview Invoice'}</button></div>
+      <div className="standalone-form-actions"><button className="operations-button" type="submit" disabled={busy === 'generate'}><FilePlus2 size={16}/> {busy === 'generate' ? 'Saving…' : editingInvoiceId ? 'Save Invoice Changes' : 'Generate & Preview Invoice'}</button>{editingInvoiceId && <button className="operations-button secondary" type="button" onClick={() => setEditingInvoiceId(null)}>Cancel Edit</button>}</div>
     </form>
     <section className="finance-panel"><div className="finance-panel-header"><div><span className="finance-panel-kicker">STANDALONE HISTORY</span><h2>Previously generated invoices</h2><p>These documents stay separate from project billing and all accounting calculations.</p></div></div>
-      {history.length === 0 ? <div className="finance-empty-state">No standalone invoices have been generated yet.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Invoice</th><th>Date</th><th>Party</th><th>Total</th><th>Created By</th><th>Created At</th><th>Actions</th></tr></thead><tbody>{history.map(row => <tr key={row.id}><td><strong>{row.invoice_number}</strong></td><td>{row.invoice_date}</td><td>{row.party}</td><td><strong>{formatMoney(row.total)}</strong></td><td>{row.created_by}</td><td>{new Date(row.created_at).toLocaleString('en-IN')}</td><td><div className="finance-inline-actions"><button type="button" onClick={() => void viewInvoice(row.id)} disabled={busy === `view-${row.id}`}><Eye size={14}/> View</button><button type="button" onClick={() => void downloadInvoice(row.id, row.invoice_number)}><Download size={14}/> PDF</button><button type="button" onClick={() => void printInvoice(row.id)}><Printer size={14}/> Print</button></div></td></tr>)}</tbody></table></div>}
+      <InvoiceTemplateSelector value={template} onChange={setTemplate} label="Format for history PDF and Print actions"/>
+      {history.length === 0 ? <div className="finance-empty-state">No standalone invoices have been generated yet.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Invoice</th><th>Date</th><th>Party</th><th>Total</th><th>Created By</th><th>Created At</th><th>Actions</th></tr></thead><tbody>{history.map(row => <tr key={row.id}><td><strong>{row.invoice_number}</strong></td><td>{row.invoice_date}</td><td>{row.party}</td><td><strong>{formatMoney(row.total)}</strong></td><td>{row.created_by}</td><td>{new Date(row.created_at).toLocaleString('en-IN')}</td><td><div className="finance-inline-actions"><button type="button" onClick={() => void viewInvoice(row.id)} disabled={busy === `view-${row.id}`}><Eye size={14}/> View</button><button type="button" onClick={() => void editInvoice(row.id)} disabled={busy === `edit-${row.id}`}><Pencil size={14}/> Edit</button><button type="button" onClick={() => void downloadInvoice(row.id, row.invoice_number)}><Download size={14}/> PDF</button><button type="button" onClick={() => void printInvoice(row.id)}><Printer size={14}/> Print</button></div></td></tr>)}</tbody></table></div>}
     </section>
-    {preview && <div className="invoice-preview-backdrop" role="presentation" onMouseDown={() => setPreview(null)}><section className="invoice-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="standalone-preview-title" onMouseDown={event => event.stopPropagation()}><header className="invoice-preview-toolbar"><div><span>A4 STANDALONE INVOICE PREVIEW</span><h2 id="standalone-preview-title">{preview.invoice.invoice_number}</h2><p>Saved Finance-only document · no project or accounting links</p></div><div className="invoice-preview-actions"><button type="button" onClick={() => void downloadInvoice(preview.invoice.id, preview.invoice.invoice_number)}><Download size={16}/> Download PDF</button><button type="button" onClick={() => void printInvoice(preview.invoice.id)}><Printer size={16}/> Print</button><button type="button" className="invoice-preview-close" onClick={() => setPreview(null)} aria-label="Close invoice preview"><X size={19}/></button></div></header><div className="invoice-preview-scroll-area"><InvoiceA4Document invoice={preview}/></div></section></div>}
+    {preview && <div className="invoice-preview-backdrop" role="presentation" onMouseDown={() => setPreview(null)}><section className="invoice-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="standalone-preview-title" onMouseDown={event => event.stopPropagation()}><header className="invoice-preview-toolbar"><div><span>A4 STANDALONE INVOICE PREVIEW</span><h2 id="standalone-preview-title">{preview.invoice.invoice_number}</h2><p>Saved Finance-only document · no project or accounting links</p></div><div className="invoice-preview-actions"><button type="button" onClick={() => void downloadInvoice(preview.invoice.id, preview.invoice.invoice_number)}><Download size={16}/> Download PDF</button><button type="button" onClick={() => void printInvoice(preview.invoice.id)}><Printer size={16}/> Print</button><button type="button" className="invoice-preview-close" onClick={() => setPreview(null)} aria-label="Close invoice preview"><X size={19}/></button></div></header><div className="invoice-preview-scroll-area"><InvoiceA4Document invoice={preview} template={template}/></div></section></div>}
   </div>
 }

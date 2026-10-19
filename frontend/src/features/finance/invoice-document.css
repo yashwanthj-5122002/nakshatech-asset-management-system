@@ -103,3 +103,62 @@
   .invoice-a4-parties section+section{border-left:0;border-top:1px solid #cbd5e1}
   .invoice-a4-totals{grid-template-columns:1fr}
 }
+
+
+/* TAX INVOICE DESIGN GALLERY — Presentation only. All existing invoice fields remain unchanged. */
+.invoice-template-picker{padding:16px;border:1px solid #c8d9e7;border-radius:14px;background:#f5f9fc;margin:14px 0;color:#163450}
+.invoice-template-picker__intro{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.invoice-template-picker__intro strong{font-size:.85rem}
+.invoice-template-picker__intro span{color:#617a8e;font-size:.72rem}
+.invoice-template-picker__options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.invoice-template-choice{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0;border:2px solid #cbdbe5;border-radius:12px;background:#fff;padding:10px 8px;cursor:pointer;color:#12314e;transition:box-shadow .18s,border-color .18s,transform .18s}
+.invoice-template-choice:focus-visible{outline:3px solid #0b9cc2;outline-offset:2px}
+.invoice-template-choice[aria-pressed="true"]{border-color:#147dcc;box-shadow:0 0 0 3px #1289d326;transform:translateY(-2px)}
+.invoice-template-choice__name{font-weight:800;font-size:.74rem;text-align:center;line-height:1.3}
+.invoice-template-choice__thumb{--template-dark:#075547;--template-accent:#bb933e;display:grid;align-content:start;gap:4px;width:100%;max-width:170px;aspect-ratio:1.5;background:linear-gradient(135deg,#fff,#eff7f5);border:1px solid #cbdbe5;border-radius:5px;padding:10px;overflow:hidden}
+.invoice-template-choice__thumb i{height:10px;border-radius:2px;background:var(--template-dark)}
+.invoice-template-choice__thumb i:last-child{margin-top:auto;height:7px;background:var(--template-accent)}
+.invoice-template-choice__thumb b{font-size:.64rem;color:var(--template-dark);text-align:center;letter-spacing:.07em}
+.invoice-template-choice__thumb em{height:6px;background:linear-gradient(90deg,#d5e5eb 70%,transparent 70%);border-radius:2px}
+.invoice-template-choice--modern_teal .invoice-template-choice__thumb{--template-dark:#087e99;--template-accent:#15bfcd}
+.invoice-template-choice--geospatial_blue .invoice-template-choice__thumb{--template-dark:#094675;--template-accent:#079bd2}
+.invoice-template-picker--compact{margin:0;padding:8px 12px;background:transparent;border-color:rgba(255,255,255,.26);color:#fff;flex:1 1 100%}
+.invoice-template-picker--compact .invoice-template-picker__intro{margin-bottom:7px}
+.invoice-template-picker--compact .invoice-template-picker__intro strong{font-size:.73rem}
+.invoice-template-picker--compact .invoice-template-picker__intro span{color:#c2dfef}
+.invoice-template-picker--compact .invoice-template-choice{flex-direction:row;justify-content:center;gap:7px;padding:6px;border-color:#89a8bc}
+.invoice-template-picker--compact .invoice-template-choice__thumb{width:34px;height:27px;padding:3px;gap:2px}
+.invoice-template-picker--compact .invoice-template-choice__thumb b{font-size:4px}
+.invoice-template-picker--compact .invoice-template-choice__thumb i{height:3px}
+.invoice-template-picker--compact .invoice-template-choice__thumb em{height:2px}
+.invoice-template-picker--compact .invoice-template-choice__name{font-size:.65rem}
+.invoice-preview-toolbar{flex-wrap:wrap}
+.invoice-preview-actions{flex-wrap:wrap}
+/* The three document styles preserve every existing field and business amount. */
+.invoice-a4-theme-green_gold{--tax-ink:#075244;--tax-accent:#bd9137;--tax-pale:#e8f1eb;--tax-rule:#b6d0c2}
+.invoice-a4-theme-modern_teal{--tax-ink:#075b75;--tax-accent:#00a8bb;--tax-pale:#e9f6f8;--tax-rule:#b4dce2}
+.invoice-a4-theme-geospatial_blue{--tax-ink:#063a67;--tax-accent:#0f9bd0;--tax-pale:#eaf4fc;--tax-rule:#c1d8e8}
+.invoice-a4-sheet[class*="invoice-a4-theme-"]{background:#fff;color:#112f45;border-top:8px solid var(--tax-ink);border-bottom:11px solid var(--tax-ink)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"]::before{content:"";height:4px;position:absolute;top:0;left:0;right:0;background:var(--tax-accent);z-index:2}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-brand{border-bottom:3px solid var(--tax-accent)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-brand h1,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-header-strip>div:first-child strong{color:var(--tax-ink)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-header-strip,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-parties,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-totals th,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-totals td{border-color:var(--tax-rule)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-header-strip>div:first-child,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-parties section:first-child{background:var(--tax-pale)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-meta span,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-parties span,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-totals>div:first-child span,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-remittance span,
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-notes span{color:var(--tax-ink)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-table th{background:var(--tax-ink);border-bottom-color:var(--tax-accent);color:#fff}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-totals tr:last-child{background:var(--tax-pale);color:var(--tax-ink)}
+.invoice-a4-sheet[class*="invoice-a4-theme-"] .invoice-a4-signature{color:var(--tax-ink)}
+.invoice-a4-theme-green_gold{background-image:radial-gradient(ellipse at 95% 19%,#bfddcf4a,transparent 35%)}
+.invoice-a4-theme-green_gold .invoice-a4-watermark img{opacity:.035;filter:grayscale(1) sepia(.5) hue-rotate(110deg)}
+.invoice-a4-theme-modern_teal{background-image:repeating-radial-gradient(ellipse 220px 85px at 92% 41%,transparent 0 12px, #26a1b00d 13px 14px,transparent 15px 28px)}
+.invoice-a4-theme-geospatial_blue{background-image:repeating-radial-gradient(ellipse 260px 105px at 95% 35%,transparent 0 16px,#1692b90a 17px 18px,transparent 19px 32px)}
+@media(max-width:760px){.invoice-template-picker__options{gap:6px}.invoice-template-choice{padding:5px}.invoice-template-choice__name{font-size:.59rem}.invoice-template-picker--compact .invoice-template-choice__thumb{display:none}}

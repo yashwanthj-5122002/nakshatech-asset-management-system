@@ -1,15 +1,16 @@
 import type { InvoiceDocumentPayload } from '../../operations/lifecycle-types'
 import { formatDate, formatMoney } from '../../operations/lifecycle-types'
+import type { InvoiceTemplate } from './InvoiceTemplateSelector'
 
 function Details({ values }: { values: Array<[string, string | null | undefined]> }) {
   return <>{values.filter(([, value]) => value).map(([label, value]) => <p key={label}><strong>{label}:</strong> {value}</p>)}</>
 }
 
-export function InvoiceA4Document({ invoice }: { invoice: InvoiceDocumentPayload }) {
+export function InvoiceA4Document({ invoice, template }: { invoice: InvoiceDocumentPayload; template?: InvoiceTemplate }) {
   const standalone = invoice.document_source === 'standalone_invoice'
   const taxColumns = standalone
 
-  return <div className={`invoice-a4-sheet ${standalone ? 'invoice-a4-standalone' : 'invoice-a4-project'}`}>
+  return <div className={`invoice-a4-sheet ${standalone ? 'invoice-a4-standalone' : 'invoice-a4-project'} ${template ? `invoice-a4-theme-${template}` : ''}`}>
     <div className="invoice-a4-watermark" aria-hidden="true"><img src="/nakshatech-logo.png" alt=""/></div>
     <div className="invoice-a4-brand">
       <img src="/nakshatech-logo.png" alt="NakshaTech" className="invoice-a4-logo" onError={event => { (event.currentTarget as HTMLImageElement).style.display = 'none' }}/>

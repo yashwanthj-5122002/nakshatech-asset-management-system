@@ -4,10 +4,12 @@ import os
 from pathlib import Path
 import tempfile
 import sys
+from datetime import datetime, timedelta, timezone
 import uuid
 
+import jwt
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -29,16 +31,198 @@ os.environ["SEED_MANAGEMENT_SECONDARY_EMAIL"] = "chethan@nakshatech.com"
 os.environ["SEED_MANAGEMENT_SECONDARY_PASSWORD"] = "ChethanTemporary@2026"
 os.environ["SEED_IT_EMAIL"] = "it-support@nakshatech.com"
 os.environ["SEED_IT_PASSWORD"] = "ITTemporary@2026"
+os.environ["SEED_FINANCE_PASSWORD"] = "FinanceTemporary@2026"
 os.environ["SEED_DRONE_EMAIL"] = "drone@nakshatech.com"
 os.environ["SEED_DRONE_PASSWORD"] = "DroneRegression@2026"
 
+from app.core.config import settings  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.entities import User  # noqa: E402
 from app.modules.employee_portal.models import AuthenticatorCredential, Branch, SupportTicket  # noqa: E402
 from app.modules.employee_portal.service import decrypt_totp_secret, totp_code  # noqa: E402
+from app.modules.employee_portal.service import create_or_reuse_pending_authenticator  # noqa: E402
+from app.modules.employee_portal.service import ensure_default_branch  # noqa: E402
 from app.services.seed import ensure_management_accounts  # noqa: E402
+
+
+def test_pending_authenticator_setup_retry_keeps_same_qr_secret() -> None:
+    with TestClient(app) as client:
+        email = f"mfa.retry.{uuid.uuid4().hex[:8]}@nakshatech.com"
+        password = "RetryEnrollment@2026"
+        with SessionLocal() as db:
+            user = User(
+                email=email,
+                full_name="MFA Retry Test",
+                password_hash=hash_password(password),
+                role="employee",
+                branch="Head Office",
+                email_verified=True,
+                account_status="pending_mfa",
+                mfa_required=True,
+                is_active=False,
+            )
+            db.add(user)
+            db.commit()
+
+        responses = [
+            client.post(
+                "/api/auth/login",
+                json={"role": "employee", "email": email, "password": password},
+            )
+            for _ in range(2)
+        ]
+        assert all(response.status_code == 200 for response in responses)
+        first, retry = (response.json() for response in responses)
+        assert first["mfa_setup_required"] is True
+        assert retry["mfa_setup_required"] is True
+        assert first["otpauth_uri"] == retry["otpauth_uri"]
+
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None
+            credential, uri, _qr = create_or_reuse_pending_authenticator(db, user)
+            assert uri == first["otpauth_uri"]
+            secret = decrypt_totp_secret(credential.encrypted_secret)
+            assert totp_code(secret)
+            assert credential.is_confirmed is False
+
+        confirmation = client.post(
+            "/api/auth/mfa/confirm",
+            json={
+                "mfa_setup_token": retry["mfa_setup_token"],
+                "code": _authenticator_code(email),
+            },
+        )
+        assert confirmation.status_code == 200, confirmation.text
+        assert confirmation.json()["access_token"]
+
+
+def test_finance_expired_mfa_setup_can_resume_and_complete_secure_activation() -> None:
+    email = "finance@nakshatech.com"
+    temporary_password = settings.seed_finance_password
+    with TestClient(app) as client:
+        # Reproduce the prior local override's unsafe persisted state in the
+        # isolated test database. Normal startup seeding must restore MFA setup.
+        with SessionLocal() as db:
+            ensure_management_accounts(db)
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None
+            db.execute(delete(AuthenticatorCredential).where(AuthenticatorCredential.user_id == user.id))
+            user.password_hash = hash_password(temporary_password)
+            user.account_status = "active"
+            user.is_active = True
+            user.mfa_required = False
+            user.must_change_password = False
+            user.email_verified = True
+            db.commit()
+            ensure_management_accounts(db)
+
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None
+            assert user.account_status == "pending_mfa"
+            assert user.is_active is False
+            assert user.mfa_required is True
+            assert user.must_change_password is True
+
+        first_login = client.post(
+            "/api/auth/login",
+            json={"role": "finance", "email": email, "password": temporary_password},
+        )
+        assert first_login.status_code == 200, first_login.text
+        first_payload = first_login.json()
+        assert first_payload["mfa_setup_required"] is True
+        assert first_payload["password_change_required"] is False
+        assert first_payload["access_token"] is None
+
+        expired_claims = jwt.decode(
+            first_payload["mfa_setup_token"],
+            options={"verify_signature": False, "verify_exp": False},
+        )
+        expired_claims["exp"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+        expired_token = jwt.encode(expired_claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+        expired_confirm = client.post(
+            "/api/auth/mfa/confirm",
+            json={"mfa_setup_token": expired_token, "code": _authenticator_code(email)},
+        )
+        assert expired_confirm.status_code == 401
+        assert "expired" in expired_confirm.json()["detail"].lower()
+
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None
+            credential = db.scalar(
+                select(AuthenticatorCredential).where(AuthenticatorCredential.user_id == user.id)
+            )
+            assert user.account_status == "pending_mfa"
+            assert user.is_active is False
+            assert user.mfa_required is True
+            assert user.must_change_password is True
+            assert credential is not None and credential.is_confirmed is False
+
+        resumed_login = client.post(
+            "/api/auth/login",
+            json={"role": "finance", "email": email, "password": temporary_password},
+        )
+        assert resumed_login.status_code == 200, resumed_login.text
+        resumed_payload = resumed_login.json()
+        assert resumed_payload["mfa_setup_required"] is True
+        assert resumed_payload["mfa_setup_token"] != expired_token
+        assert resumed_payload["otpauth_uri"] == first_payload["otpauth_uri"]
+
+        verified = client.post(
+            "/api/auth/mfa/confirm",
+            json={
+                "mfa_setup_token": resumed_payload["mfa_setup_token"],
+                "code": _authenticator_code(email),
+            },
+        )
+        assert verified.status_code == 200, verified.text
+        verified_payload = verified.json()
+        assert verified_payload["password_change_required"] is True
+        assert verified_payload["password_change_token"]
+        assert verified_payload["access_token"] is None
+
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None
+            credential = db.scalar(
+                select(AuthenticatorCredential).where(AuthenticatorCredential.user_id == user.id)
+            )
+            assert user.account_status == "pending_password_change"
+            assert user.is_active is False
+            assert user.mfa_required is False
+            assert user.must_change_password is True
+            assert credential is not None and credential.is_confirmed is True
+
+        permanent_password = "FinancePermanent@2026"
+        completed = client.post(
+            "/api/auth/privileged/complete-setup",
+            json={
+                "password_change_token": verified_payload["password_change_token"],
+                "new_password": permanent_password,
+                "confirm_password": permanent_password,
+            },
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.json()["access_token"]
+        assert completed.json()["user"]["email"] == email
+        assert completed.json()["user"]["role"] == "finance"
+
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None
+            assert user.account_status == "active"
+            assert user.is_active is True
+            assert user.mfa_required is False
+            assert user.must_change_password is False
+
+        finance_api = client.get(
+            "/api/finance/clients",
+            headers={"Authorization": f"Bearer {completed.json()['access_token']}"},
+        )
+        assert finance_api.status_code == 200, finance_api.text
 
 
 def _authenticator_code(email: str) -> str:
@@ -117,6 +301,10 @@ def _activate_privileged_account(
 
 def test_privileged_authentication_admin_correction_and_management_ticket_oversight() -> None:
     with TestClient(app) as client:
+        with SessionLocal() as db:
+            ensure_management_accounts(db)
+            ensure_default_branch(db)
+
         management_accounts = client.get("/api/auth/privileged/accounts?role=management")
         assert management_accounts.status_code == 200, management_accounts.text
         assert [item["email"] for item in management_accounts.json()["accounts"]] == [
@@ -219,11 +407,21 @@ def test_privileged_authentication_admin_correction_and_management_ticket_oversi
             json={
                 "role": "admin",
                 "email": "admin@nakshatech.com",
-                "password": os.environ["SEED_ADMIN_PASSWORD"],
+                "password": settings.seed_admin_password,
             },
         )
         assert admin_login.status_code == 200, admin_login.text
         assert admin_login.json()["user"]["role"] == "admin"
+        assert admin_login.json()["mfa_setup_required"] is True
+        admin_mfa = client.post(
+            "/api/auth/mfa/confirm",
+            json={
+                "mfa_setup_token": admin_login.json()["mfa_setup_token"],
+                "code": _authenticator_code("admin@nakshatech.com"),
+            },
+        )
+        assert admin_mfa.status_code == 200, admin_mfa.text
+        assert admin_mfa.json()["access_token"]
 
         unauthorized_software = client.post(
             "/api/auth/login",
@@ -239,7 +437,7 @@ def test_privileged_authentication_admin_correction_and_management_ticket_oversi
             client,
             role="management",
             email="vinod@nakshatech.com",
-            temporary_password=os.environ["SEED_MANAGEMENT_PASSWORD"],
+            temporary_password=settings.seed_management_password,
             permanent_password="VinodPermanent@2026",
             completion_path="/api/auth/management/complete-setup",
         )
@@ -247,21 +445,21 @@ def test_privileged_authentication_admin_correction_and_management_ticket_oversi
             client,
             role="management",
             email="chethan@nakshatech.com",
-            temporary_password=os.environ["SEED_MANAGEMENT_SECONDARY_PASSWORD"],
+            temporary_password=settings.seed_management_secondary_password,
             permanent_password="ChethanPermanent@2026",
         )
         software = _activate_privileged_account(
             client,
             role="software_team",
             email="software.team@nakshatech.com",
-            temporary_password=os.environ["SEED_SOFTWARE_TEAM_PASSWORD"],
+            temporary_password=settings.seed_software_team_password,
             permanent_password="SoftwarePermanent@2026",
         )
         it_support = _activate_privileged_account(
             client,
             role="it",
             email="it-support@nakshatech.com",
-            temporary_password=os.environ["SEED_IT_PASSWORD"],
+            temporary_password=settings.seed_it_password,
             permanent_password="ITPermanent@2026",
         )
 
@@ -298,7 +496,7 @@ def test_privileged_authentication_admin_correction_and_management_ticket_oversi
         chethan_headers = {"Authorization": f"Bearer {chethan['access_token']}"}
         software_headers = {"Authorization": f"Bearer {software['access_token']}"}
         it_headers = {"Authorization": f"Bearer {it_support['access_token']}"}
-        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+        admin_headers = {"Authorization": f"Bearer {admin_mfa.json()['access_token']}"}
 
         page_view = client.post(
             "/api/audit/page-view",

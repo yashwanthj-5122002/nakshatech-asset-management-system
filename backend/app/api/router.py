@@ -78,7 +78,7 @@ from app.services.approval_notification_service import (
     notify_management_approval_required,
 )
 from app.modules.employee_portal.service import (
-    create_or_replace_authenticator,
+    create_or_reuse_pending_authenticator,
     ensure_allowed_email,
     get_confirmed_authenticator,
     issue_access_for_user,
@@ -587,7 +587,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
                 password_change_token=password_token,
             )
 
-        _credential, uri, qr = create_or_replace_authenticator(db, user)
+        _credential, uri, qr = create_or_reuse_pending_authenticator(db, user)
         user.account_status = "pending_mfa"
         user.is_active = False
         user.mfa_required = True
@@ -610,7 +610,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         )
 
     if user.email_verified and user.account_status == "pending_mfa":
-        _credential, uri, qr = create_or_replace_authenticator(db, user)
+        _credential, uri, qr = create_or_reuse_pending_authenticator(db, user)
         setup_token = create_temporary_token(user.email, "mfa_setup", role=user.role, extra={"uid": user.id})
         return LoginResponse(
             user=response_user,

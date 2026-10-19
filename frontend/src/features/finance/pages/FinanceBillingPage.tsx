@@ -1,12 +1,14 @@
-import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Plus, Printer, RefreshCcw, Trash2, Wallet, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Pencil, Plus, Printer, RefreshCcw, Save, Trash2, Wallet, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
+import { useAuth } from '../../../context/AuthContext'
 import { StatCard } from '../../../components/StatCard'
 import { apiBlob, apiFetch, downloadFile } from '../../../lib/api'
 import type { CurrencyPayload } from '../../commercial/types'
 import { FinanceBillingBasis, type InvoiceLinks, type RecommendationApply } from '../../commercial/components/FinanceBillingBasis'
 import { InvoiceA4Document } from '../components/InvoiceA4Document'
+import { InvoiceTemplateSelector, invoiceTemplateQuery, type InvoiceTemplate } from '../components/InvoiceTemplateSelector'
 import {
   BadDebtRow,
   InvoiceRow,
@@ -30,6 +32,7 @@ type LineItemForm = { sequence: number; description: string; hsn_sac: string; un
 type GstMode = 'none' | 'cgst_sgst' | 'igst'
 type BadDebtFormState = { proposed_amount: string; reason: string; collection_attempts: string; last_followup_date: string; finance_remarks: string }
 type RecoveryFormState = { amount: string; payment_date: string; payment_reference: string; payment_mode: string; remarks: string }
+type DraftDetailsForm = { payment_terms: string; po_wo_reference: string; notes: string; work_order_date: string; dispatch_details: string; dispatch_date: string; place_of_supply: string }
 
 function blankBadDebtForm(): BadDebtFormState {
   return { proposed_amount: '', reason: '', collection_attempts: '', last_followup_date: '', finance_remarks: '' }
@@ -64,6 +67,8 @@ function lineItemAmount(item: LineItemForm): number {
 }
 
 export function FinanceBillingPage() {
+  const { user } = useAuth()
+  const canEditDraft = user?.role === 'finance' || user?.role === 'admin'
   const [searchParams] = useSearchParams()
   const requestedProjectId = Number(searchParams.get('project') || 0) || null
   const requestedInvoiceId = Number(searchParams.get('invoice') || 0) || null
@@ -76,6 +81,9 @@ export function FinanceBillingPage() {
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
   const [preview, setPreview] = useState<InvoiceDocumentPayload | null>(null)
+  const [template, setTemplate] = useState<InvoiceTemplate>('modern_teal')
+  const [draftEditInvoiceId, setDraftEditInvoiceId] = useState<number | null>(null)
+  const [draftDetails, setDraftDetails] = useState<DraftDetailsForm>({ payment_terms: '', po_wo_reference: '', notes: '', work_order_date: '', dispatch_details: '', dispatch_date: '', place_of_supply: '' })
   const [badDebts, setBadDebts] = useState<BadDebtRow[]>([])
   const [badDebtForm, setBadDebtForm] = useState<Record<number, BadDebtFormState>>({})
   const [recoveryForm, setRecoveryForm] = useState<Record<number, RecoveryFormState>>({})
@@ -352,11 +360,42 @@ export function FinanceBillingPage() {
     }
   }
 
+  async function startDraftEdit(invoiceId: number) {
+    setBusy(`edit-draft-${invoiceId}`); setError('')
+    try {
+      const saved = await apiFetch<InvoiceDocumentPayload>(`/operations/lifecycle/invoices/${invoiceId}/document`)
+      const invoice = saved.invoice
+      setDraftDetails({
+        payment_terms: invoice.payment_terms || '', po_wo_reference: invoice.po_wo_reference || '',
+        notes: invoice.notes || '', work_order_date: invoice.work_order_date || '',
+        dispatch_details: invoice.dispatch_details || '', dispatch_date: invoice.dispatch_date || '',
+        place_of_supply: invoice.place_of_supply || '',
+      })
+      setDraftEditInvoiceId(invoiceId)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Invoice draft could not be loaded for editing') }
+    finally { setBusy('') }
+  }
+
+  async function saveDraftEdit(invoiceId: number) {
+    await run(`save-draft-${invoiceId}`, async () => {
+      await apiFetch(`/operations/lifecycle/invoices/${invoiceId}/draft-details`, { method: 'PATCH', body: JSON.stringify({
+        payment_terms: draftDetails.payment_terms || null,
+        po_wo_reference: draftDetails.po_wo_reference || null,
+        notes: draftDetails.notes || null,
+        work_order_date: draftDetails.work_order_date || null,
+        dispatch_details: draftDetails.dispatch_details || null,
+        dispatch_date: draftDetails.dispatch_date || null,
+        place_of_supply: draftDetails.place_of_supply || null,
+      }) })
+      setDraftEditInvoiceId(null)
+    }, 'Draft invoice details saved')
+  }
+
   async function downloadInvoice(invoiceId: number, invoiceNumber: string) {
     setBusy(`download-${invoiceId}`)
     setError('')
     try {
-      await downloadFile(`/operations/lifecycle/invoices/${invoiceId}/document.pdf?download=true`, `${invoiceNumber}_A4_Invoice.pdf`)
+      await downloadFile(`/operations/lifecycle/invoices/${invoiceId}/document.pdf?download=true&${invoiceTemplateQuery(template)}`, `${invoiceNumber}_${template}_A4_Invoice.pdf`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invoice PDF could not be downloaded')
     } finally {
@@ -376,7 +415,7 @@ export function FinanceBillingPage() {
     setBusy(`print-${invoiceId}`)
     setError('')
     try {
-      const blob = await apiBlob(`/operations/lifecycle/invoices/${invoiceId}/document.pdf`)
+      const blob = await apiBlob(`/operations/lifecycle/invoices/${invoiceId}/document.pdf?${invoiceTemplateQuery(template)}`)
       const url = URL.createObjectURL(blob)
       printWindow.onload = () => {
         printWindow.focus()
@@ -405,6 +444,7 @@ export function FinanceBillingPage() {
     />
     {error && <div className="operations-alert error">{error}</div>}
     {notice && <div className="operations-alert success">{notice}</div>}
+    <InvoiceTemplateSelector value={template} onChange={setTemplate} label="Project invoice format for preview, PDF and print" compact/>
 
     {dashboard && <section className="operations-stats-grid">
       <StatCard icon={CheckCircle2} label="Ready For Billing" value={dashboard.summary.ready_for_billing} tone="green"/>
@@ -550,10 +590,22 @@ export function FinanceBillingPage() {
                 <button className="operations-button secondary" disabled={busy === `preview-${invoice.id}`} onClick={() => void previewInvoice(invoice.id)}><Eye size={15}/> A4 Preview</button>
                 <button className="operations-button secondary" disabled={busy === `download-${invoice.id}`} onClick={() => void downloadInvoice(invoice.id, invoice.invoice_number)}><Download size={15}/> Download PDF</button>
                 <button className="operations-button secondary" disabled={busy === `print-${invoice.id}`} onClick={() => void printInvoice(invoice.id)}><Printer size={15}/> Print</button>
+                {canEditDraft && invoice.stored_status === 'INVOICE_DRAFT' && <button className="operations-button secondary" disabled={busy === `edit-draft-${invoice.id}`} onClick={() => void startDraftEdit(invoice.id)}><Pencil size={15}/> Edit Draft Details</button>}
                 {invoice.stored_status === 'INVOICE_DRAFT' && <button className="operations-button" disabled={busy === `raise-${invoice.id}`} onClick={() => void run(`raise-${invoice.id}`, () => raiseInvoice(invoice.id), 'Invoice raised')}>Raise Invoice</button>}
                 {invoice.status === 'PAYMENT_OVERDUE' && invoice.stored_status !== 'PAYMENT_OVERDUE' && <button className="operations-button warning" disabled={busy === `overdue-${invoice.id}`} onClick={() => void run(`overdue-${invoice.id}`, () => markOverdue(invoice.id), 'Invoice marked overdue')}>Mark Overdue</button>}
                 {invoice.stored_status === 'PAYMENT_RECEIVED' && <button className="operations-button success" disabled={busy === `close-${invoice.id}`} onClick={() => void run(`close-${invoice.id}`, () => closeInvoice(invoice.id), 'Invoice closed')}>Close Invoice</button>}
               </div>
+              {draftEditInvoiceId === invoice.id && <div className="operations-daily-form">
+                <div className="operations-note operations-span-2"><strong>EDIT DRAFT DETAILS</strong> · Financial values, GST, FX and invoice number are locked.</div>
+                <label className="operations-field"><span>Payment Terms</span><input value={draftDetails.payment_terms} onChange={e => setDraftDetails({ ...draftDetails, payment_terms: e.target.value })}/></label>
+                <label className="operations-field"><span>PO / Work Order Reference</span><input value={draftDetails.po_wo_reference} onChange={e => setDraftDetails({ ...draftDetails, po_wo_reference: e.target.value })}/></label>
+                <label className="operations-field"><span>Work Order Date</span><input type="date" value={draftDetails.work_order_date} onChange={e => setDraftDetails({ ...draftDetails, work_order_date: e.target.value })}/></label>
+                <label className="operations-field"><span>Dispatch Details</span><input value={draftDetails.dispatch_details} onChange={e => setDraftDetails({ ...draftDetails, dispatch_details: e.target.value })}/></label>
+                <label className="operations-field"><span>Dispatch Date</span><input type="date" value={draftDetails.dispatch_date} onChange={e => setDraftDetails({ ...draftDetails, dispatch_date: e.target.value })}/></label>
+                <label className="operations-field"><span>Place of Supply</span><input value={draftDetails.place_of_supply} onChange={e => setDraftDetails({ ...draftDetails, place_of_supply: e.target.value })}/></label>
+                <label className="operations-field operations-span-2"><span>Notes</span><textarea rows={2} value={draftDetails.notes} onChange={e => setDraftDetails({ ...draftDetails, notes: e.target.value })}/></label>
+                <div className="operations-actions operations-span-2"><button className="operations-button" disabled={busy === `save-draft-${invoice.id}`} onClick={() => void saveDraftEdit(invoice.id)}><Save size={15}/> Save Draft Details</button><button className="operations-button secondary" onClick={() => setDraftEditInvoiceId(null)}>Cancel</button></div>
+              </div>}
               {PAYABLE.has(invoice.stored_status) && invoice.collectible_balance > 0 && <div className="operations-daily-form">
                 <label className="operations-field"><span>Payment Reference</span><input value={pay.payment_reference} onChange={e => setPaymentForm({ ...paymentForm, [invoice.id]: { ...pay, payment_reference: e.target.value } })}/></label>
                 <label className="operations-field"><span>Payment Date</span><input type="date" value={pay.payment_date} onChange={e => setPaymentForm({ ...paymentForm, [invoice.id]: { ...pay, payment_date: e.target.value } })}/></label>
@@ -652,7 +704,7 @@ export function FinanceBillingPage() {
             <button type="button" className="invoice-preview-close" onClick={() => setPreview(null)} aria-label="Close invoice preview"><X size={19}/></button>
           </div>
         </header>
-        <div className="invoice-preview-scroll-area"><InvoiceA4Document invoice={preview}/></div>
+        <div className="invoice-preview-scroll-area"><InvoiceA4Document invoice={preview} template={template}/></div>
         {/*
           ERP-ONLY settlement panel (STEP 12).
           This is a Finance screen aid and is deliberately NOT part of the printable

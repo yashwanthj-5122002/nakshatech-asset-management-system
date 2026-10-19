@@ -27,5 +27,3 @@ git restore -- frontend/src/components/WelcomeAssetScene.tsx
 docker compose up -d --build frontend
 
 VALIDATION: Source-level modifications inspected. Full TypeScript build NOT completed in the authoring environment because npm ci timed out. Verify compile using Docker command above.
-
-shreeyansh

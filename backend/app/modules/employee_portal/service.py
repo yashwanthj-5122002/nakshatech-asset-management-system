@@ -772,6 +772,21 @@ def create_or_replace_authenticator(db: Session, user: User) -> tuple[Authentica
     return credential, uri, build_qr_data_uri(uri)
 
 
+def create_or_reuse_pending_authenticator(db: Session, user: User) -> tuple[AuthenticatorCredential, str, str]:
+    """Keep one QR secret stable until first-time enrollment is confirmed.
+
+    Pending users may retry sign-in to resume setup. Rotating the secret on each
+    retry invalidates the authenticator entry they already scanned, so only create
+    a new secret when no unconfirmed credential exists.
+    """
+    credential = db.scalar(select(AuthenticatorCredential).where(AuthenticatorCredential.user_id == user.id))
+    if credential is not None and not credential.is_confirmed:
+        secret = decrypt_totp_secret(credential.encrypted_secret)
+        uri = provisioning_uri(secret, user.email)
+        return credential, uri, build_qr_data_uri(uri)
+    return create_or_replace_authenticator(db, user)
+
+
 def verify_totp_for_user(db: Session, user: User, code: str) -> bool:
     credential = db.scalar(select(AuthenticatorCredential).where(AuthenticatorCredential.user_id == user.id))
     if not credential:
