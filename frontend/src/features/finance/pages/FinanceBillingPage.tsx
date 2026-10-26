@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Plus, Printer, RefreshCcw, Trash2, Wallet, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { StatCard } from '../../../components/StatCard'
@@ -30,6 +30,7 @@ type LineItemForm = { sequence: number; description: string; hsn_sac: string; un
 type GstMode = 'none' | 'cgst_sgst' | 'igst'
 type BadDebtFormState = { proposed_amount: string; reason: string; collection_attempts: string; last_followup_date: string; finance_remarks: string }
 type RecoveryFormState = { amount: string; payment_date: string; payment_reference: string; payment_mode: string; remarks: string }
+type MiniInvoicePreview = { invoiceId: number; invoiceNumber: string; theme: string; url: string }
 
 function blankBadDebtForm(): BadDebtFormState {
   return { proposed_amount: '', reason: '', collection_attempts: '', last_followup_date: '', finance_remarks: '' }
@@ -45,6 +46,15 @@ function badDebtStatusMeta(status: BadDebtRow['status']): { label: string; tone:
     case 'APPROVED': return { label: 'Bad Debt / Written Off', tone: 'danger' }
     case 'REJECTED': return { label: 'Bad Debt Rejected', tone: 'danger' }
     case 'RECOVERED': return { label: 'Bad Debt Recovered', tone: 'success' }
+  }
+}
+
+/** Human-readable labels for the three persisted invoice theme keys (keys are never renamed). */
+function invoiceThemeLabel(theme: string | null | undefined): string {
+  switch (theme) {
+    case 'blue_topographic': return 'Theme 2 — Blue Topographic'
+    case 'green_gold_premium': return 'Theme 3 — Green Gold Premium'
+    default: return 'Theme 1 — Blue Classic'
   }
 }
 type AutoFillResult = {
@@ -80,8 +90,20 @@ export function FinanceBillingPage() {
   const [badDebtForm, setBadDebtForm] = useState<Record<number, BadDebtFormState>>({})
   const [recoveryForm, setRecoveryForm] = useState<Record<number, RecoveryFormState>>({})
 
+  // --- V8.7.x COMPACT THEME PREVIEW ------------------------------------------------------
+  // ONE small A4 panel per page, fed by the SAME backend PDF used by
+  // A4 Preview / Download / Print (GET .../invoices/{id}/document.pdf).
+  // Fetched ONLY when the user clicks Theme Preview or changes a theme — never
+  // automatically for every invoice card.
+  const [miniPreview, setMiniPreview] = useState<MiniInvoicePreview | null>(null)
+  const [miniPreviewLoadingId, setMiniPreviewLoadingId] = useState<number | null>(null)
+  const [miniPreviewError, setMiniPreviewError] = useState('')
+  const [miniPreviewErrorId, setMiniPreviewErrorId] = useState<number | null>(null)
+  const miniPreviewUrlRef = useRef<string | null>(null) // current Blob URL (single source for cleanup)
+  const miniPreviewSeqRef = useRef(0) // drops stale / out-of-order PDF fetches
+
   const [currencies, setCurrencies] = useState<CurrencyPayload | null>(null)
-  const [invoiceForm, setInvoiceForm] = useState({ invoice_number: '', invoice_date: '', due_date: '', amount: '', tax_amount: '0', tax_percent: '0', payment_terms: '', po_wo_reference: '', currency: 'INR', notes: '', fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '' })
+  const [invoiceForm, setInvoiceForm] = useState({ invoice_number: '', invoice_date: '', due_date: '', amount: '', tax_amount: '0', tax_percent: '0', payment_terms: '', po_wo_reference: '', currency: 'INR', notes: '', fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '', theme: 'blue_classic' })
   const noLinks: InvoiceLinks = { estimate_revision_id: null, billing_basis_id: null, billed_quantity: null, billed_milestone_id: null }
   const [links, setLinks] = useState<InvoiceLinks>(noLinks)
   const [basisTick, setBasisTick] = useState(0)
@@ -200,6 +222,17 @@ export function FinanceBillingPage() {
     return () => window.clearTimeout(timer)
   }, [detail, requestedInvoiceId])
 
+  // Blob URL cleanup on unmount: revoke ONCE when the Billing page unmounts.
+  // The URL is NEVER revoked on re-render or on miniPreview change — that was what
+  // made the inline preview vanish. Deps must stay [].
+  useEffect(() => () => {
+    miniPreviewSeqRef.current += 1
+    if (miniPreviewUrlRef.current) {
+      URL.revokeObjectURL(miniPreviewUrlRef.current)
+      miniPreviewUrlRef.current = null
+    }
+  }, [])
+
   const projects = useMemo(() => {
     const rows = dashboard?.projects ?? []
     const term = search.trim().toLowerCase()
@@ -207,7 +240,7 @@ export function FinanceBillingPage() {
     return rows.filter(row => row.project_code.toLowerCase().includes(term) || (row.client_name || '').toLowerCase().includes(term) || (row.client_id || '').toLowerCase().includes(term))
   }, [dashboard, search])
 
-  async function run(key: string, action: () => Promise<unknown>, successMessage: string) {
+  async function run(key: string, action: () => Promise<unknown>, successMessage: string): Promise<boolean> {
     setBusy(key)
     setError('')
     setNotice('')
@@ -217,8 +250,77 @@ export function FinanceBillingPage() {
       if (selectedId) loadDetail(selectedId)
       loadDashboard()
       loadBadDebts()
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed')
+      return false
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // --- V8.7.x compact theme preview: Blob URL lifecycle + backend PDF fetch ----------------
+  /**
+   * Fetch the REAL backend PDF (the same document.pdf used by A4 Preview / Download / Print)
+   * as a Blob and show it in the small inline panel. The backend renderer stays the single
+   * visual source of truth — nothing is duplicated in React.
+   *
+   * The currently displayed preview stays visible until the NEW PDF is ready; only then is
+   * the previous Blob URL revoked and swapped. A sequence guard drops out-of-order fetches
+   * (e.g. rapid Theme Preview clicks on two invoices) so only the latest request wins.
+   */
+  async function openMiniPreview(invoiceId: number, invoiceNumber: string, theme: string) {
+    const seq = ++miniPreviewSeqRef.current
+    setMiniPreviewLoadingId(invoiceId)
+    setMiniPreviewError('')
+    setMiniPreviewErrorId(null)
+    try {
+      const blob = await apiBlob(`/operations/lifecycle/invoices/${invoiceId}/document.pdf`)
+      const nextUrl = URL.createObjectURL(blob)
+      if (seq !== miniPreviewSeqRef.current) { URL.revokeObjectURL(nextUrl); return } // superseded: drop it
+      if (miniPreviewUrlRef.current) URL.revokeObjectURL(miniPreviewUrlRef.current) // revoke PREVIOUS URL only now
+      miniPreviewUrlRef.current = nextUrl
+      setMiniPreview({ invoiceId, invoiceNumber, theme, url: nextUrl })
+    } catch (err) {
+      if (seq !== miniPreviewSeqRef.current) return
+      setMiniPreviewError(err instanceof Error ? err.message : 'Theme preview could not be generated')
+      setMiniPreviewErrorId(invoiceId)
+    } finally {
+      if (seq === miniPreviewSeqRef.current) setMiniPreviewLoadingId(null)
+    }
+  }
+
+  /** Explicit close: revoke the Blob URL and clear the panel. The only user action (besides
+   *  opening another invoice's preview or unmounting) that removes the preview. */
+  function closeMiniPreview() {
+    miniPreviewSeqRef.current += 1 // cancels any in-flight mini-preview fetch
+    if (miniPreviewUrlRef.current) {
+      URL.revokeObjectURL(miniPreviewUrlRef.current)
+      miniPreviewUrlRef.current = null
+    }
+    setMiniPreview(null)
+    setMiniPreviewError('')
+    setMiniPreviewErrorId(null)
+  }
+
+  /**
+   * Theme selector flow: PATCH the persisted theme through the existing endpoint first,
+   * refresh invoice state, and ONLY THEN fetch the new PDF — so the thumbnail can never
+   * show the previous theme. On save failure the existing error behaviour is kept and the
+   * preview is never refreshed with unpersisted data.
+   */
+  async function changeInvoiceTheme(invoiceId: number, invoiceNumber: string, theme: string) {
+    setBusy(`theme-${invoiceId}`)
+    setError('')
+    setNotice('')
+    try {
+      await apiFetch(`/operations/lifecycle/invoices/${invoiceId}`, { method: 'PATCH', body: JSON.stringify({ theme }) })
+      setNotice('Invoice theme updated')
+      if (selectedId) loadDetail(selectedId)
+      loadDashboard()
+      await openMiniPreview(invoiceId, invoiceNumber, theme)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invoice theme update failed')
     } finally {
       setBusy('')
     }
@@ -250,6 +352,8 @@ export function FinanceBillingPage() {
         payment_terms: invoiceForm.payment_terms.trim() || null,
         po_wo_reference: invoiceForm.po_wo_reference.trim() || null,
         notes: invoiceForm.notes.trim() || null,
+        // V8.7: stored on the invoice so the selected A4 design is remembered on reload.
+        theme: invoiceForm.theme,
         fx_rate_to_inr: invoiceForm.fx_rate_to_inr.trim() ? Number(invoiceForm.fx_rate_to_inr) : null,
         fx_rate_mode: invoiceForm.fx_rate_to_inr.trim() ? invoiceForm.fx_rate_mode : null,
         fx_override_reason: invoiceForm.fx_rate_to_inr.trim() ? invoiceForm.fx_override_reason.trim() || null : null,
@@ -269,7 +373,7 @@ export function FinanceBillingPage() {
     })
     setLinks(noLinks)
     setBasisTick(v => v + 1)
-    setInvoiceForm({ invoice_number: '', invoice_date: '', due_date: '', amount: '', tax_amount: '0', tax_percent: '0', payment_terms: '', po_wo_reference: '', currency: 'INR', notes: '', fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '' })
+    setInvoiceForm({ invoice_number: '', invoice_date: '', due_date: '', amount: '', tax_amount: '0', tax_percent: '0', payment_terms: '', po_wo_reference: '', currency: 'INR', notes: '', fx_rate_to_inr: '', fx_rate_mode: 'MANUAL_OVERRIDE', fx_override_reason: '', theme: 'blue_classic' })
     resetInvoiceFormExtras()
   }
 
@@ -344,12 +448,55 @@ export function FinanceBillingPage() {
     setBusy(`preview-${invoiceId}`)
     setError('')
     try {
-      setPreview(await apiFetch<InvoiceDocumentPayload>(`/operations/lifecycle/invoices/${invoiceId}/document`))
+      // V8.7: the preview IS the backend-rendered document, so VIEW / PREVIEW / DOWNLOAD / PRINT
+      // can never disagree about the invoice design (theme + signed state included).
+      const blob = await apiBlob(`/operations/lifecycle/invoices/${invoiceId}/document.pdf`)
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener')
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invoice preview could not be generated')
     } finally {
       setBusy('')
     }
+  }
+
+  const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<Record<string, string>>({})
+
+  /** Open EDIT INVOICE pre-filled from the EXISTING backend invoice (never a blank form). */
+  function openEditInvoice(invoice: Record<string, unknown>) {
+    setError('')
+    setEditInvoiceId(Number(invoice.id))
+    setEditForm({
+      invoice_date: String(invoice.invoice_date ?? ''),
+      due_date: String(invoice.due_date ?? ''),
+      amount: String(invoice.amount ?? ''),
+      tax_amount: String(invoice.tax_amount ?? ''),
+      payment_terms: String(invoice.payment_terms ?? ''),
+      po_wo_reference: String(invoice.po_wo_reference ?? ''),
+      place_of_supply: String(invoice.place_of_supply ?? ''),
+      dispatch_details: String(invoice.dispatch_details ?? ''),
+      notes: String(invoice.notes ?? ''),
+      theme: String(invoice.theme || 'blue_classic'),
+    })
+  }
+
+  /** Save edits through the existing backend PATCH (same invoice record, never a duplicate). */
+  async function saveEditInvoice(invoiceId: number) {
+    const body: Record<string, unknown> = { theme: editForm.theme || 'blue_classic' }
+    for (const key of ['invoice_date', 'due_date', 'payment_terms', 'po_wo_reference',
+      'place_of_supply', 'dispatch_details', 'notes'] as const) {
+      if (editForm[key] !== undefined) body[key] = editForm[key].trim() || null
+    }
+    if (editForm.amount !== undefined && editForm.amount !== '') body.amount = Number(editForm.amount)
+    if (editForm.tax_amount !== undefined && editForm.tax_amount !== '') body.tax_amount = Number(editForm.tax_amount)
+    const saved = await run(`edit-${invoiceId}`, () => apiFetch(
+      `/operations/lifecycle/invoices/${invoiceId}`, { method: 'PATCH', body: JSON.stringify(body) },
+    ), 'Invoice updated (same invoice number)')
+    setEditInvoiceId(null)
+    // If the compact theme preview is open for this invoice, refresh it from the persisted theme.
+    if (saved && miniPreview?.invoiceId === invoiceId) void openMiniPreview(invoiceId, miniPreview.invoiceNumber, editForm.theme || 'blue_classic')
   }
 
   async function downloadInvoice(invoiceId: number, invoiceNumber: string) {
@@ -495,6 +642,15 @@ export function FinanceBillingPage() {
             <label className="operations-field"><span>Dispatch Details</span><input value={workOrderForm.dispatch_details} onChange={e => setWorkOrderForm({ ...workOrderForm, dispatch_details: e.target.value })}/></label>
             <label className="operations-field"><span>Dispatch Date</span><input type="date" value={workOrderForm.dispatch_date} onChange={e => setWorkOrderForm({ ...workOrderForm, dispatch_date: e.target.value })}/></label>
             <label className="operations-field"><span>Destination / Place of Supply</span><input value={workOrderForm.place_of_supply} onChange={e => setWorkOrderForm({ ...workOrderForm, place_of_supply: e.target.value })}/></label>
+            {/* V8.7 A4 presentation theme — bound to the existing invoiceForm.theme and sent
+                through the existing create payload; stored on the invoice (remembered on reload). */}
+            <label className="operations-field"><span>Invoice Theme</span>
+              <select value={invoiceForm.theme} onChange={e => setInvoiceForm({ ...invoiceForm, theme: e.target.value })}>
+                <option value="blue_classic">Theme 1 — Blue Classic</option>
+                <option value="blue_topographic">Theme 2 — Blue Topographic</option>
+                <option value="green_gold_premium">Theme 3 — Green Gold Premium</option>
+              </select>
+            </label>
             {invoiceForm.currency !== 'INR' && <><label className="operations-field"><span>Manual FX to INR (optional)</span><input type="number" min={0.00000001} step="0.00000001" value={invoiceForm.fx_rate_to_inr} onChange={e => setInvoiceForm({ ...invoiceForm, fx_rate_to_inr: e.target.value })}/><small>Leave blank for automatic invoice-date reference rate.</small></label>{invoiceForm.fx_rate_to_inr && <><label className="operations-field"><span>FX Mode</span><select value={invoiceForm.fx_rate_mode} onChange={e => setInvoiceForm({ ...invoiceForm, fx_rate_mode: e.target.value })}><option value="MANUAL_OVERRIDE">Manual Override</option><option value="CONTRACT_RATE">Contract Rate</option><option value="BANK_REALIZATION_RATE">Bank Realization Rate</option><option value="OTHER">Other</option></select></label><label className="operations-field"><span>FX Override Reason *</span><input required value={invoiceForm.fx_override_reason} onChange={e => setInvoiceForm({ ...invoiceForm, fx_override_reason: e.target.value })}/></label></>}</>}
 
             <div className="operations-note operations-span-2"><strong>LINE ITEMS</strong> · Taxable total: {taxableAmount.toFixed(2)} {invoiceForm.currency}</div>
@@ -552,8 +708,88 @@ export function FinanceBillingPage() {
                 <button className="operations-button secondary" disabled={busy === `print-${invoice.id}`} onClick={() => void printInvoice(invoice.id)}><Printer size={15}/> Print</button>
                 {invoice.stored_status === 'INVOICE_DRAFT' && <button className="operations-button" disabled={busy === `raise-${invoice.id}`} onClick={() => void run(`raise-${invoice.id}`, () => raiseInvoice(invoice.id), 'Invoice raised')}>Raise Invoice</button>}
                 {invoice.status === 'PAYMENT_OVERDUE' && invoice.stored_status !== 'PAYMENT_OVERDUE' && <button className="operations-button warning" disabled={busy === `overdue-${invoice.id}`} onClick={() => void run(`overdue-${invoice.id}`, () => markOverdue(invoice.id), 'Invoice marked overdue')}>Mark Overdue</button>}
-                {invoice.stored_status === 'PAYMENT_RECEIVED' && <button className="operations-button success" disabled={busy === `close-${invoice.id}`} onClick={() => void run(`close-${invoice.id}`, () => closeInvoice(invoice.id), 'Invoice closed')}>Close Invoice</button>}
+                {/* V8.7 invoice theme + authorised signature */}
+                <select value={invoice.theme || 'blue_classic'} disabled={busy === `theme-${invoice.id}`}
+                  onChange={(e) => void changeInvoiceTheme(invoice.id, invoice.invoice_number, e.target.value)}>
+                  <option value="blue_classic">Theme 1 — Blue Classic</option>
+                  <option value="blue_topographic">Theme 2 — Blue Topographic</option>
+                  <option value="green_gold_premium">Theme 3 — Green Gold Premium</option>
+                </select>
+                {/* Theme Preview is UNCONDITIONAL: every existing invoice (Draft, Raised,
+                    Payment Pending, Partially Paid, Overdue, CLOSED) can preview its theme. */}
+                <button type="button" className="operations-button secondary" disabled={miniPreviewLoadingId === invoice.id}
+                  onClick={() => void openMiniPreview(invoice.id, invoice.invoice_number, invoice.theme || 'blue_classic')}>
+                  <Eye size={15}/> {miniPreviewLoadingId === invoice.id ? 'Loading…' : 'Theme Preview'}
+                </button>
+                {invoice.signed
+                  ? <span className="sr-status success">SIGNED{invoice.signed_by_name ? ` by ${invoice.signed_by_name}` : ''}{invoice.signed_at ? ` · ${String(invoice.signed_at).slice(0, 16).replace('T', ' ')}` : ''}</span>
+                  : invoice.signature_invalidated_at
+                    ? <span className="sr-status warning">UNSIGNED — previous signature invalidated</span>
+                    : <span className="sr-status danger">UNSIGNED</span>}
+                {!invoice.signed && <button className="operations-button success" disabled={busy === `sign-${invoice.id}`} onClick={() => void run(`sign-${invoice.id}`, () => apiFetch(`/operations/lifecycle/invoices/${invoice.id}/sign`, { method: 'POST' }), 'Invoice signed')}>Sign Invoice</button>}
+                <button className="operations-button secondary" disabled={busy === `edit-${invoice.id}`}
+                  onClick={() => openEditInvoice(invoice as unknown as Record<string, unknown>)}>Edit Invoice</button>
+                {invoice.can_close_invoice && <button className="operations-button success" disabled={busy === `close-${invoice.id}`} onClick={() => void run(`close-${invoice.id}`, () => closeInvoice(invoice.id), 'Invoice closed')}>Close Invoice</button>}
               </div>
+              {/* V8.7.x SELECTED THEME PREVIEW — a small A4 thumbnail of the SAME backend PDF
+                  (GET .../invoices/{id}/document.pdf), rendered ONLY from persistent miniPreview
+                  state. It stays visible until the user clicks Close, opens another invoice's
+                  preview, or the Billing page unmounts — it never vanishes on re-render or
+                  data refresh. Positioned after the action row and BEFORE the Edit Invoice /
+                  Payment / Bad Debt sections. The full [A4 Preview] button above is untouched. */}
+              {(miniPreview?.invoiceId === invoice.id || miniPreviewErrorId === invoice.id) && (
+                <section className="invoice-theme-mini-preview" aria-label="Selected invoice theme preview">
+                  <header className="invoice-theme-mini-header">
+                    <div>
+                      <span>SELECTED THEME</span>
+                      <strong>{miniPreview?.invoiceId === invoice.id ? invoiceThemeLabel(miniPreview.theme) : 'Preview unavailable'}</strong>
+                    </div>
+                    <button type="button" className="invoice-theme-mini-close" onClick={closeMiniPreview} aria-label="Close theme preview"><X size={16}/></button>
+                  </header>
+                  {miniPreview?.invoiceId === invoice.id
+                    ? <button type="button" className="invoice-theme-mini-paper" onClick={() => void previewInvoice(invoice.id)} title="Open full A4 preview">
+                        {/* Real backend PDF; pointer-events:none keeps the embedded viewer from
+                            stealing scroll/focus — the paper button handles the click and opens
+                            the EXISTING full A4 preview. */}
+                        <iframe src={`${miniPreview.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`} title={`${miniPreview.invoiceNumber} selected invoice theme`} tabIndex={-1}/>
+                      </button>
+                    : <div className="invoice-theme-mini-failure">Preview unavailable{miniPreviewError ? ` — ${miniPreviewError}` : ''}</div>}
+                  <div className="invoice-theme-mini-actions">
+                    <button type="button" className="operations-button secondary" onClick={() => void previewInvoice(invoice.id)}><Eye size={15}/> Open A4 Preview</button>
+                    <button type="button" className="operations-button secondary" onClick={closeMiniPreview}><X size={15}/> Close</button>
+                  </div>
+                </section>
+              )}
+              {/* V8.7 EDIT INVOICE — pre-filled from the existing record; saves via backend PATCH. */}
+              {editInvoiceId === invoice.id && (
+                <div className="operations-daily-form">
+                  <label className="operations-field"><span>Invoice Date</span><input type="date" value={editForm.invoice_date ?? ''} onChange={e => setEditForm({ ...editForm, invoice_date: e.target.value })}/></label>
+                  <label className="operations-field"><span>Due Date</span><input type="date" value={editForm.due_date ?? ''} onChange={e => setEditForm({ ...editForm, due_date: e.target.value })}/></label>
+                  <label className="operations-field"><span>Amount</span><input type="number" step="0.01" value={editForm.amount ?? ''} onChange={e => setEditForm({ ...editForm, amount: e.target.value })}/></label>
+                  <label className="operations-field"><span>Tax Amount</span><input type="number" step="0.01" value={editForm.tax_amount ?? ''} onChange={e => setEditForm({ ...editForm, tax_amount: e.target.value })}/></label>
+                  <label className="operations-field"><span>Payment Terms</span><input value={editForm.payment_terms ?? ''} onChange={e => setEditForm({ ...editForm, payment_terms: e.target.value })}/></label>
+                  <label className="operations-field"><span>PO / WO Reference</span><input value={editForm.po_wo_reference ?? ''} onChange={e => setEditForm({ ...editForm, po_wo_reference: e.target.value })}/></label>
+                  <label className="operations-field"><span>Place of Supply</span><input value={editForm.place_of_supply ?? ''} onChange={e => setEditForm({ ...editForm, place_of_supply: e.target.value })}/></label>
+                  <label className="operations-field"><span>Dispatch Details</span><input value={editForm.dispatch_details ?? ''} onChange={e => setEditForm({ ...editForm, dispatch_details: e.target.value })}/></label>
+                  <label className="operations-field"><span>Notes</span><input value={editForm.notes ?? ''} onChange={e => setEditForm({ ...editForm, notes: e.target.value })}/></label>
+                  <label className="operations-field"><span>Invoice Theme</span>
+                    <select value={editForm.theme ?? 'blue_classic'} onChange={e => setEditForm({ ...editForm, theme: e.target.value })}>
+                      <option value="blue_classic">Theme 1 — Blue Classic</option>
+                      <option value="blue_topographic">Theme 2 — Blue Topographic</option>
+                      <option value="green_gold_premium">Theme 3 — Green Gold Premium</option>
+                    </select>
+                  </label>
+                  <div className="operations-actions">
+                    <button className="operations-button" disabled={busy === `edit-${invoice.id}`} onClick={() => void saveEditInvoice(invoice.id)}>Save Changes</button>
+                    <button className="operations-button secondary" onClick={() => setEditInvoiceId(null)}>Cancel</button>
+                  </div>
+                  <div className="operations-note">
+                    Financial fields are refused by the backend once a payment or Bad Debt case exists;
+                    the invoice number and record are never duplicated. A material change to a signed
+                    invoice clears its signature (re-sign afterwards).
+                  </div>
+                </div>
+              )}
               {PAYABLE.has(invoice.stored_status) && invoice.collectible_balance > 0 && <div className="operations-daily-form">
                 <label className="operations-field"><span>Payment Reference</span><input value={pay.payment_reference} onChange={e => setPaymentForm({ ...paymentForm, [invoice.id]: { ...pay, payment_reference: e.target.value } })}/></label>
                 <label className="operations-field"><span>Payment Date</span><input type="date" value={pay.payment_date} onChange={e => setPaymentForm({ ...paymentForm, [invoice.id]: { ...pay, payment_date: e.target.value } })}/></label>

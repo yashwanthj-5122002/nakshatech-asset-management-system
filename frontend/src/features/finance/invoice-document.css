@@ -91,6 +91,160 @@
 .invoice-a4-sheet footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:30px;padding-top:12px;border-top:1px solid #cbd5e1;font-size:.66rem;color:#64748b}
 .invoice-a4-footer-logo{height:20px;width:auto;object-fit:contain;opacity:.85}
 
+/* V8.7.x — inline SELECTED THEME mini preview.
+   A ~210px A4-ratio thumbnail of the SAME backend PDF (blob URL from document.pdf).
+   Thumbnail only: the browser PDF viewer toolbar/navigation is hidden via iframe params
+   and pointer-events:none on the iframe, and the full-size [A4 Preview] remains the
+   detailed inspection path. The panel is driven purely by persistent miniPreview state,
+   so it never vanishes on re-render — only on explicit Close / replace / unmount. */
+.invoice-theme-mini-preview {
+  width: min(260px, 100%);
+  margin: 14px 0 6px auto;
+  padding: 12px;
+
+  display: grid;
+  gap: 10px;
+
+  border: 1px solid #d7e4ec;
+  border-radius: 14px;
+
+  background: #f8fbfd;
+
+  box-shadow:
+    0 10px 26px rgba(15,35,55,.09),
+    0 2px 8px rgba(15,35,55,.05);
+}
+
+.invoice-theme-mini-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.invoice-theme-mini-header > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.invoice-theme-mini-header span {
+  font-size: .62rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #168ca2;
+}
+
+.invoice-theme-mini-header strong {
+  color: #102a43;
+  font-size: .8rem;
+  line-height: 1.3;
+}
+
+.invoice-theme-mini-close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+
+  display: grid;
+  place-items: center;
+
+  padding: 0;
+
+  border: 1px solid #d7e4ec;
+  border-radius: 8px;
+
+  background: #fff;
+  color: #52677a;
+
+  cursor: pointer;
+}
+
+.invoice-theme-mini-close:hover {
+  background: #eef6fa;
+  color: #082a4a;
+}
+
+.invoice-theme-mini-paper {
+  position: relative;
+
+  width: 210px;
+  max-width: 100%;
+
+  aspect-ratio: 210 / 297;
+
+  justify-self: center;
+
+  padding: 0;
+
+  overflow: hidden;
+
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+
+  background: #fff;
+
+  box-shadow: 0 6px 18px rgba(15,35,55,.17);
+
+  cursor: pointer;
+}
+
+.invoice-theme-mini-paper iframe {
+  position: absolute;
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
+  border: 0;
+
+  background: #fff;
+
+  pointer-events: none;
+}
+
+.invoice-theme-mini-failure {
+  width: 210px;
+  max-width: 100%;
+  justify-self: center;
+  padding: 14px 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 3px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: .72rem;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.invoice-theme-mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+}
+
+.invoice-theme-mini-actions .operations-button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: .72rem;
+}
+
+@media(max-width:760px) {
+  .invoice-theme-mini-preview {
+    width: min(240px,100%);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .invoice-theme-mini-paper,
+  .invoice-theme-mini-failure {
+    width: min(200px,100%);
+  }
+}
+
 @media(max-width:760px){
   .invoice-preview-backdrop{padding:0}
   .invoice-preview-dialog{width:100vw;height:100vh;max-height:none;border-radius:0}

@@ -308,3 +308,665 @@
 @media (max-width: 760px) {
   .operations-status-stack { justify-content: flex-start; }
 }
+
+/* ===== V8.1 Production Tracking / Daily Activity ===== */
+.pt-toolbar { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; margin-bottom:14px; }
+.pt-toolbar .operations-field { min-width:200px; flex:1; }
+.pt-clear { margin-bottom:2px; }
+.pt-report-box { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+.pt-report-box .operations-field { min-width:210px; }
+.pt-table-wrap { max-height:min(66vh,640px); overflow:auto; }
+.pt-table { min-width:1080px; }
+.pt-table thead th { position:sticky; top:0; z-index:3; }
+.pt-table .pt-sticky-1, .pt-table .pt-sticky-2 { position:sticky; background:#f8fafc; z-index:2; }
+.pt-table thead .pt-sticky-1, .pt-table thead .pt-sticky-2 { z-index:4; }
+.pt-table .pt-sticky-1 { left:0; min-width:110px; }
+.pt-table .pt-sticky-2 { left:110px; min-width:130px; box-shadow:1px 0 0 #edf1f5; }
+.pt-table tbody tr.pt-row { cursor:pointer; }
+.pt-table tbody tr.pt-row:hover td { background:#f4f9ff; }
+.pt-table tbody tr.pt-row:hover .pt-sticky-1, .pt-table tbody tr.pt-row:hover .pt-sticky-2 { background:#f4f9ff; }
+.pt-stage-group { display:flex; flex-wrap:wrap; gap:4px; max-width:340px; }
+.pt-stage-group .operations-status { font-size:10px; padding:3px 7px; }
+.pt-progress { min-width:90px; margin-bottom:4px; }
+.pt-over { color:#a72a2a; font-weight:800; }
+.pt-rework { margin-left:6px; font-size:10px; }
+.pt-remarks { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#64748b; }
+
+.pt-drawer { position:fixed; top:0; right:0; height:100vh; width:min(560px,96vw); background:var(--surface,#fff); border-left:1px solid var(--border-color,#e2e8f0); box-shadow:-18px 0 40px rgba(15,23,42,.16); z-index:60; display:flex; flex-direction:column; }
+.pt-drawer-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:18px 20px 14px; border-bottom:1px solid var(--border-color,#edf1f5); }
+.pt-drawer-head h3 { margin:4px 0 0; font-size:1.05rem; }
+.pt-drawer-close { border:0; background:transparent; cursor:pointer; color:#637083; padding:6px; border-radius:8px; }
+.pt-drawer-close:hover { background:#eef4fa; color:#102a43; }
+.pt-drawer-body { flex:1; overflow:auto; padding:16px 20px 24px; display:grid; gap:8px; align-content:start; }
+.pt-drawer-body h4 { margin:14px 0 6px; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:#637083; display:flex; align-items:center; gap:6px; }
+.pt-drawer-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.pt-drawer-kpis > div { background:rgba(148,163,184,.09); border-radius:10px; padding:10px 12px; }
+.pt-drawer-kpis span, .pt-drawer-kpis strong { display:block; }
+.pt-drawer-kpis span { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+.pt-drawer-kpis strong { font-size:.95rem; color:#102a43; margin-top:3px; }
+.pt-stage-table { min-width:0; }
+.pt-drawer-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.pt-drawer-grid > div { padding:9px 11px; border:1px solid #edf1f5; border-radius:10px; }
+.pt-drawer-grid span, .pt-drawer-grid strong { display:block; }
+.pt-drawer-grid span { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+.pt-drawer-grid strong { font-size:.86rem; color:#1e293b; margin-top:2px; overflow-wrap:anywhere; }
+.pt-drawer-text { margin:0; font-size:.87rem; color:#334155; line-height:1.55; overflow-wrap:anywhere; }
+.pt-drawer-loading { display:flex; align-items:center; gap:8px; color:#64748b; font-size:.85rem; }
+.pt-drawer-loading .spin { animation:pt-spin 1s linear infinite; }
+@keyframes pt-spin { to { transform:rotate(360deg); } }
+.pt-drawer-foot { border-top:1px solid var(--border-color,#edf1f5); padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; }
+.pt-history { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.pt-history li { border:1px solid #edf1f5; border-radius:10px; padding:9px 11px; }
+.pt-history span { display:block; font-size:.83rem; color:#1e293b; }
+.pt-history small { display:block; margin-top:3px; color:#64748b; }
+@media (max-width:760px) {
+  .pt-table .pt-sticky-1, .pt-table .pt-sticky-2 { position:static; }
+  .pt-drawer-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .pt-drawer-grid { grid-template-columns:1fr; }
+}
+
+/* ===== V8.2 file/tile tracking (area detail drawer) ===== */
+.pt-drawer-wide { width:min(1180px,97vw); }
+.pt-deadline-bar { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; padding:10px 12px; border:1px solid #edf1f5; border-radius:10px; background:#f8fafc; }
+.pt-deadline-bar span { display:block; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+.pt-deadline-bar strong { display:block; font-size:.88rem; color:#1e293b; margin-top:3px; }
+.pt-inline-actions { margin-top:6px; }
+.pt-inline-form { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:12px; border:1px dashed #cbd5e1; border-radius:10px; background:#f8fafc; margin-top:8px; }
+.pt-stack-form { flex-direction:column; align-items:stretch; }
+.pt-form-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+.pt-form-row .operations-field { min-width:170px; flex:1; }
+.pt-form-row textarea { width:100%; }
+.pt-file-controls { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+.pt-upload-label { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+.pt-assign-bar { align-items:center; }
+.pt-assign-label { font-size:.82rem; font-weight:700; color:#334155; }
+.pt-assign-bar select { border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; background:#fff; font-size:.84rem; }
+.pt-stop-form { border:1px solid #fcd9a0; background:#fff8ec; border-radius:12px; padding:14px; display:grid; gap:10px; }
+.pt-delay-box { border:1px solid #e2e8f0; background:#fff; border-radius:10px; padding:10px 12px; display:grid; gap:8px; }
+.pt-delay-box > strong { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:#637083; }
+.pt-file-table-wrap { max-height:none; overflow-x:auto; }
+.pt-file-table { min-width:980px; }
+.pt-file-table th { position:sticky; top:0; }
+.pt-file-table td { vertical-align:top; }
+.pt-file-table td small { display:block; color:#64748b; line-height:1.5; }
+.pt-file-table td strong { display:block; color:#102a43; }
+.pt-row-inactive { opacity:.6; }
+.pt-item-actions { display:flex; flex-wrap:wrap; gap:6px; max-width:230px; }
+.pt-item-actions .operations-button { font-size:.76rem; padding:6px 9px; }
+.pt-open-note { display:block; max-width:210px; color:#8a5b08; line-height:1.5; }
+.pt-file-rollups { margin-left:10px; font-weight:600; color:#64748b; text-transform:none; letter-spacing:0; }
+@media (max-width:900px) {
+  .pt-deadline-bar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .pt-drawer-wide { width:100vw; }
+}
+
+/* ===== V8.3 Team Lead Excel master + allocation + readiness ===== */
+.pt-master-panel header { align-items:flex-start; gap:14px; }
+.pt-preview { margin-top:12px; border:1px dashed #cbd5e1; border-radius:12px; padding:14px; background:#f8fafc; display:grid; gap:10px; }
+.pt-preview-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.pt-preview-head span { font-size:.8rem; color:#64748b; }
+.pt-preview-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
+.pt-preview-grid > div { background:#fff; border:1px solid #edf1f5; border-radius:9px; padding:8px 10px; }
+.pt-preview-grid span { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+.pt-preview-grid strong { display:block; margin-top:2px; color:#102a43; }
+.pt-preview-planned { display:flex; gap:10px; align-items:baseline; font-size:.86rem; }
+.pt-preview-planned strong { text-transform:uppercase; font-size:.72rem; letter-spacing:.05em; color:#637083; }
+.pt-preview-conflicts { margin:0; padding-left:18px; font-size:.8rem; color:#8a5b08; display:grid; gap:4px; }
+
+.pt-stage-targets { display:flex; flex-wrap:wrap; gap:12px; padding:8px 12px; border:1px solid #edf1f5; border-radius:10px; background:#fff; font-size:.8rem; color:#475569; }
+.pt-stage-targets strong { color:#102a43; }
+
+.pt-alloc { border:1px solid #dbe6f3; background:#f7fbff; border-radius:12px; padding:12px 14px; display:grid; gap:10px; }
+.pt-alloc h4 { margin:0; }
+.pt-alloc-summary, .pt-readiness-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+.pt-alloc-summary > div, .pt-readiness-grid > div { background:#fff; border:1px solid #edf1f5; border-radius:9px; padding:8px 10px; }
+.pt-alloc-summary span, .pt-readiness-grid span { display:block; font-size:.67rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+.pt-alloc-summary strong, .pt-readiness-grid strong { display:block; margin-top:2px; color:#102a43; font-size:.85rem; }
+.pt-alloc-files { display:grid; gap:6px; max-height:200px; overflow:auto; border:1px solid #edf1f5; border-radius:10px; padding:10px 12px; background:#fff; }
+.pt-alloc-file-actions { display:flex; gap:8px; }
+/* V8.4 Team Lead per-employee Production assignment cards */
+.pt-alloc-assignment { border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; background:#fff; display:grid; gap:8px; }
+.pt-alloc-assignment-head { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; }
+.pt-alloc-assignment-head span { font-size:.78rem; color:#64748b; }
+.pt-alloc-file-list { display:grid; gap:6px; max-height:220px; overflow:auto; border:1px solid #edf1f5; border-radius:10px; padding:10px 12px; background:#fbfdff; }
+.pt-alloc-total { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; font-size:.86rem; }
+.pt-alloc-total > strong { text-transform:uppercase; font-size:.72rem; letter-spacing:.05em; color:#637083; }
+.pt-span { flex:2 1 320px; }
+/* V8.6 compact "Files" combobox — opens UPWARD and stays above later panels */
+
+.pt-alloc-panel {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+}
+
+.pt-alloc-panel .pt-alloc,
+.pt-alloc-panel .pt-alloc-assignment,
+.pt-alloc-panel .pt-form-row {
+  overflow: visible;
+}
+
+.pt-files-field {
+  position: relative;
+  z-index: 50;
+  min-width: 0;
+}
+
+.pt-files-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+
+  border: 1px solid #d9e2ec;
+  border-radius: 10px;
+  padding: 10px 11px;
+
+  background: #fff;
+  color: #102a43;
+
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pt-files-trigger:disabled {
+  background: #f4f7fa;
+  color: #8a94a3;
+  cursor: not-allowed;
+}
+
+.pt-files-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pt-files-trigger > i {
+  flex: 0 0 auto;
+  font-style: normal;
+  color: #64748b;
+}
+
+/*
+ * FILE PICKER
+ *
+ * IMPORTANT:
+ * Opens UPWARD from the Files field.
+ */
+.pt-files-pop {
+  position: absolute;
+
+  top: auto;
+  bottom: calc(100% + 6px);
+
+  right: 0;
+  left: auto;
+
+  z-index: 1000;
+
+  width: min(500px, calc(100vw - 32px));
+  min-width: min(420px, calc(100vw - 32px));
+  max-width: min(500px, calc(100vw - 32px));
+
+  max-height: min(340px, calc(100vh - 140px));
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+
+  box-sizing: border-box;
+
+  background: #fff;
+
+  border: 1px solid #d9e2ec;
+  border-radius: 12px;
+
+  box-shadow:
+    0 -18px 42px rgba(15, 23, 42, 0.20),
+    0 -3px 10px rgba(15, 23, 42, 0.08);
+
+  padding: 10px 12px;
+
+  display: grid;
+  gap: 6px;
+
+  font-weight: 400;
+}
+
+.pt-files-search {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+
+  padding: 8px 10px;
+
+  background: #fff;
+
+  font: inherit;
+}
+
+.pt-files-group {
+  margin: 6px 0 0;
+
+  font-size: 0.7rem;
+  font-weight: 700;
+
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  color: #64748b;
+}
+
+.pt-files-remark {
+  color: #64748b;
+  font-style: italic;
+}
+
+/* Sticky footer inside dropdown */
+.pt-files-foot {
+  position: sticky;
+  bottom: -1px;
+  z-index: 2;
+
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 8px;
+
+  align-items: center;
+  justify-content: space-between;
+
+  border-top: 1px solid #edf1f5;
+
+  background: #fff;
+
+  padding: 8px 0 2px;
+
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+
+  color: #637083;
+}
+
+.pt-files-foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pt-files-foot-actions .operations-button {
+  min-height: 32px;
+  font-size: 0.74rem;
+  padding: 6px 10px;
+}
+
+/* V8.6 files-picker rows */
+.pt-files-row {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 8px;
+
+  min-width: 0;
+
+  font-weight: 400;
+  cursor: pointer;
+
+  padding: 3px 2px;
+  border-radius: 6px;
+}
+
+.pt-files-row:hover {
+  background: #f6f9fd;
+}
+
+/*
+ * Keep checkbox compact.
+ * Prevent normal form-input sizing from making checkbox huge.
+ */
+.pt-files-field .pt-files-row input[type="checkbox"],
+.pt-files-pop input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+
+  min-width: 16px;
+  min-height: 16px;
+
+  max-width: 16px;
+  max-height: 16px;
+
+  flex: 0 0 16px;
+
+  padding: 0;
+  margin: 1px 0 0;
+
+  border-radius: 3px;
+
+  accent-color: #0b3c74;
+}
+
+.pt-files-text {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  display: grid;
+  gap: 1px;
+}
+
+.pt-files-primary {
+  min-width: 0;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  color: #102a43;
+}
+
+.pt-files-secondary {
+  min-width: 0;
+
+  color: #64748b;
+
+  font-size: 0.7rem;
+  line-height: 1.25;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pt-files-note {
+  min-width: 0;
+
+  color: #94a3b8;
+
+  font-size: 0.68rem;
+  font-style: italic;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* Readiness */
+
+.pt-readiness {
+  border: 1px solid #edf1f5;
+  border-radius: 12px;
+
+  padding: 12px 14px;
+
+  display: grid;
+  gap: 10px;
+}
+
+.pt-readiness h4 {
+  margin: 0;
+
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pt-auto-files {
+  display: grid;
+  gap: 3px;
+
+  padding: 8px 10px;
+
+  border: 1px dashed #cbd5e1;
+  border-radius: 9px;
+
+  background: #f8fafc;
+}
+
+.pt-auto-files span {
+  font-size: 0.7rem;
+
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  color: #64748b;
+}
+
+.pt-auto-files strong {
+  font-size: 0.8rem;
+
+  color: #35516b;
+  font-weight: 600;
+}
+
+
+/* ===== Work allocation lives in Project Operations (/ortho) ===== */
+
+.pt-alloc-panel > header {
+  align-items: flex-start;
+}
+
+.pt-auto-tag {
+  font-size: 0.75rem;
+  color: #207446;
+  font-weight: 700;
+}
+
+/*
+ * Legacy panel appears BELOW ImportedAllocationPanel.
+ * Keep it below the Files popup.
+ */
+.operations-legacy {
+  position: relative;
+  z-index: 1;
+}
+
+.operations-legacy > details > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #35516b;
+  padding: 4px 0;
+}
+
+.operations-legacy > details[open] > summary {
+  margin-bottom: 10px;
+}
+
+
+/* ===== Project Operations: assigned file list for imported (file-based) areas ===== */
+
+.operations-item-list {
+  margin-top: 10px;
+
+  display: grid;
+  gap: 6px;
+
+  border: 1px solid #edf1f5;
+  border-radius: 10px;
+
+  padding: 10px 12px;
+
+  background: #f8fafc;
+}
+
+.operations-item-list > strong {
+  font-size: 0.72rem;
+
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  color: #637083;
+}
+
+.operations-item-row {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 10px;
+
+  align-items: center;
+
+  font-size: 0.84rem;
+  color: #334155;
+
+  border-top: 1px solid #edf1f5;
+
+  padding-top: 6px;
+}
+
+.operations-item-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.operations-item-row strong {
+  color: #102a43;
+}
+
+.operations-item-block {
+  border-top: 1px solid #edf1f5;
+
+  padding-top: 8px;
+
+  display: grid;
+  gap: 6px;
+}
+
+.operations-item-block:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.operations-readiness {
+  margin-top: 10px;
+
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 10px;
+
+  align-items: center;
+
+  font-size: 0.82rem;
+  color: #334155;
+}
+
+.operations-readiness > strong {
+  font-size: 0.72rem;
+
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  color: #637083;
+}
+
+
+/* ===== File-level Daily Activity controls
+   (shared by /ortho and Production Tracking) ===== */
+
+.isa-controls {
+  display: grid;
+  gap: 6px;
+}
+
+.isa-controls .isa-stage {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 10px;
+
+  align-items: center;
+
+  font-size: 0.8rem;
+
+  color: #475569;
+}
+
+.isa-stage-name {
+  min-width: 78px;
+
+  font-weight: 700;
+  color: #102a43;
+}
+
+.isa-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.isa-strong {
+  color: #102a43;
+  font-weight: 600;
+}
+
+.isa-wait {
+  color: #8a5b08;
+  font-weight: 600;
+}
+
+.isa-open {
+  color: #8a5b08;
+}
+
+.isa-actions {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 6px;
+}
+
+.isa-actions .operations-button {
+  font-size: 0.76rem;
+  padding: 6px 9px;
+}
+
+.isa-form {
+  border: 1px solid #fcd9a0;
+  background: #fff8ec;
+
+  border-radius: 10px;
+
+  padding: 10px 12px;
+
+  display: grid;
+  gap: 8px;
+}
+
+.isa-form > strong {
+  font-size: 0.84rem;
+  color: #102a43;
+}
+
+.isa-compact .isa-stage {
+  font-size: 0.76rem;
+}
+
+
+/* ===== Responsive Files dropdown ===== */
+
+@media (max-width: 760px) {
+  .pt-files-pop {
+    top: auto;
+    bottom: calc(100% + 6px);
+
+    right: 0;
+    left: auto;
+
+    width: min(460px, calc(100vw - 28px));
+    min-width: min(320px, calc(100vw - 28px));
+    max-width: calc(100vw - 28px);
+
+    max-height: min(320px, calc(100vh - 120px));
+  }
+}

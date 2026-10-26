@@ -181,6 +181,40 @@ class InvoiceBillingSnapshotOverride(BaseModel):
         return value
 
 
+class InvoiceUpdate(BaseModel):
+    """Safe edit of an EXISTING invoice (never a duplicate). Only provided fields change.
+
+    ``theme``/``notes``/``payment_terms`` are presentation-only; the remaining fields are
+    MATERIAL — they are refused once payments or a Bad Debt case exist, and they invalidate a
+    previous signature so it can never represent changed financial content.
+    """
+
+    theme: Literal["blue_classic", "blue_topographic", "green_gold_premium"] | None = None
+    notes: str | None = Field(default=None, max_length=10_000)
+    payment_terms: str | None = Field(default=None, max_length=255)
+    po_wo_reference: str | None = Field(default=None, max_length=160)
+    place_of_supply: str | None = Field(default=None, max_length=160)
+    invoice_date: date | None = None
+    due_date: date | None = None
+    work_order_date: date | None = None
+    dispatch_date: date | None = None
+    dispatch_details: str | None = Field(default=None, max_length=255)
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=16, decimal_places=2)
+    tax_amount: Decimal | None = Field(default=None, ge=0, max_digits=16, decimal_places=2)
+    cgst_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
+    cgst_amount: Decimal | None = Field(default=None, ge=0, max_digits=16, decimal_places=2)
+    sgst_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
+    sgst_amount: Decimal | None = Field(default=None, ge=0, max_digits=16, decimal_places=2)
+    igst_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
+    igst_amount: Decimal | None = Field(default=None, ge=0, max_digits=16, decimal_places=2)
+
+
+class InvoiceSign(BaseModel):
+    """Optional remarks recorded with the authorised-signatory approval."""
+
+    remarks: str | None = Field(default=None, max_length=2000)
+
+
 class InvoiceDraftCreate(_InvoiceFxFields):
     invoice_number: str = Field(min_length=1, max_length=100)
     invoice_date: date
@@ -197,6 +231,9 @@ class InvoiceDraftCreate(_InvoiceFxFields):
     billing_basis_id: int | None = Field(default=None, gt=0)
     billed_quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
     billed_milestone_id: int | None = Field(default=None, gt=0)
+    # V8.7 A4 presentation theme chosen by Finance. Stored on the invoice so it is restored
+    # on reload; omitted/NULL keeps the legacy classic design.
+    theme: Literal["blue_classic", "blue_topographic", "green_gold_premium"] | None = None
 
     # --- Invoice Generation V2 (additive; all optional, legacy behaviour when omitted) ----
     entry_mode: Literal["auto_fill", "manual"] | None = None

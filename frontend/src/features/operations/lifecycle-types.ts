@@ -171,6 +171,7 @@ export type InvoiceRow = {
   invoice_number: string
   status: string
   stored_status: string
+  can_close_invoice?: boolean
   invoice_date: string
   due_date: string
   amount: number
@@ -181,6 +182,12 @@ export type InvoiceRow = {
   collectible_balance: number
   days_overdue?: number
   bad_debt: BadDebtRow | null
+  // V8.7 invoice presentation theme + authorised signature state.
+  theme?: string | null
+  signed?: boolean
+  signed_by_name?: string | null
+  signed_at?: string | null
+  signature_invalidated_at?: string | null
   currency: string
   tax_percent: number | null
   payment_terms: string | null

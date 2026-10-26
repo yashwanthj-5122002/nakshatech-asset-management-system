@@ -36,6 +36,8 @@ from app.modules.operations.lifecycle_schemas import (
     InvoiceDraftCreate,
     InvoicePaymentCreate,
     InvoiceRaise,
+    InvoiceSign,
+    InvoiceUpdate,
     ManualFeedbackResponseCreate,
     NoFeedbackRecommendation,
     ProjectMessageCreate,
@@ -68,6 +70,8 @@ from app.modules.operations.lifecycle_service import (
     record_manual_feedback_response,
     recommend_no_feedback_closure,
     record_invoice_payment,
+    sign_invoice,
+    update_invoice,
     reconcile_rework_cycle,
     resubmit_rework,
     send_feedback_reminder,
@@ -652,6 +656,55 @@ def bad_debt_register(
     return list_bad_debts(db)
 
 
+@router.patch("/invoices/{invoice_id}")
+def invoice_update(
+    invoice_id: int,
+    payload: InvoiceUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Safe edit of an EXISTING invoice (theme + permitted fields). Never creates a duplicate."""
+    _roles(auth, "finance", "admin")
+    try:
+        invoice = update_invoice(db, actor=auth.user, invoice_id=invoice_id, payload=payload)
+        _audit(request, db, auth, "PROJECT_INVOICE_UPDATED", "project_invoice", invoice_id, {
+            "project_id": invoice.project_id,
+            "theme": invoice.theme,
+            "signed": bool(invoice.signed),
+            "fields": sorted(payload.model_dump(exclude_unset=True, exclude_none=True)),
+        })
+        db.commit()
+        return _invoice_payload(db, invoice)
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
+@router.post("/invoices/{invoice_id}/sign")
+def invoice_sign(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+    payload: InvoiceSign | None = None,
+):
+    """Authorised-signatory approval (visual signature + company stamp). Backend-authorized."""
+    _roles(auth, "finance", "admin")
+    try:
+        invoice = sign_invoice(db, actor=auth.user, invoice_id=invoice_id, payload=payload)
+        _audit(request, db, auth, "PROJECT_INVOICE_SIGNED", "project_invoice", invoice_id, {
+            "project_id": invoice.project_id,
+            "signed_by_id": invoice.signed_by_id,
+            "signed_at": invoice.signed_at.isoformat() if invoice.signed_at else None,
+        })
+        db.commit()
+        return _invoice_payload(db, invoice)
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
 @router.post("/invoices/{invoice_id}/bad-debt")
 def bad_debt_propose(
     invoice_id: int,
@@ -684,7 +737,15 @@ def bad_debt_decision(
         row = decide_bad_debt(db, actor=auth.user, invoice_id=invoice_id, payload=payload)
         _audit(request, db, auth, "PROJECT_INVOICE_BAD_DEBT_DECISION", "project_invoice", invoice_id, {"project_id": row.project_id, "bad_debt_id": row.id, "decision": row.status})
         db.commit()
-        return {"id": row.id, "project_id": row.project_id, "invoice_id": row.invoice_id, "status": row.status}
+        # Dual-approval progress so the UI can show "1 of 2 approvals complete" without refetching.
+        from app.modules.operations.lifecycle_service import _bad_debt_approval_payload
+        return {
+            "id": row.id,
+            "project_id": row.project_id,
+            "invoice_id": row.invoice_id,
+            "status": row.status,
+            "approvals": _bad_debt_approval_payload(db, row),
+        }
     except Exception as exc:
         db.rollback()
         raise _error(exc) from exc

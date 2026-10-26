@@ -30,6 +30,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
+import { ProductionTrackingPanel, type TrackingSummary } from '../components/ProductionTrackingPanel'
 import {
   BadDebtRow,
   ChangeRequestRow,
@@ -98,7 +99,8 @@ export function ManagementProject360Page() {
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterCategory>('all')
-  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'deliveries' | 'actions' | 'timeline' | 'chat'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'production' | 'invoices' | 'deliveries' | 'actions' | 'timeline' | 'chat'>('overview')
+  const [tracking, setTracking] = useState<TrackingSummary | null>(null)
   const [badDebts, setBadDebts] = useState<BadDebtRow[]>([])
   const [badDebtDecision, setBadDebtDecision] = useState<Record<number, { decision: 'approved' | 'rejected'; comments: string }>>({})
   const [chatText, setChatText] = useState('')
@@ -140,6 +142,15 @@ export function ManagementProject360Page() {
   useEffect(() => { loadDashboard(); if (isManagement) void apiFetch<BadDebtRow[]>('/operations/lifecycle/bad-debts').then(setBadDebts).catch(() => setBadDebts([])) }, [])
   useEffect(() => { if (selectedId) loadDetail(selectedId) }, [selectedId])
   useEffect(() => { if (searchParams.get('tab') === 'actions') setActiveTab('actions') }, [searchParams])
+
+  // V8.1 Production Tracking tab: read-only consolidated production / QC / QA /
+  // delivery status for this project, fetched only when the tab is opened.
+  useEffect(() => {
+    if (activeTab !== 'production' || !selectedId) return
+    void apiFetch<TrackingSummary>(`/operations/workflow/production-tracking?project_id=${selectedId}`)
+      .then(setTracking)
+      .catch(() => setTracking(null))
+  }, [activeTab, selectedId])
 
   // Deep link from the Bad Debt proposal notification:
   // /management/project-360/<project_id>?tab=actions&invoice=<invoice_id>
@@ -530,6 +541,14 @@ export function ManagementProject360Page() {
                   <FileText size={15} /> Overview & Scope
                 </button>
 
+                <button
+                  type="button"
+                  className={`p360-tab-btn ${activeTab === 'production' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('production')}
+                >
+                  <Activity size={15} /> Production
+                </button>
+
                 {isManagement && (
                   <button
                     type="button"
@@ -633,6 +652,55 @@ export function ManagementProject360Page() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {/* TAB 1B: PRODUCTION TRACKING (V8.1 read-only consolidated status) */}
+              {activeTab === 'production' && (
+                <div className="p360-tab-content">
+                  {!tracking ? (
+                    <div className="p360-table-card">
+                      <div className="p360-table-title">Production Tracking</div>
+                      <div style={{ padding: 16, fontSize: '0.88rem', color: '#475569' }}>Loading production tracking…</div>
+                    </div>
+                  ) : !tracking.projects.length ? (
+                    <div className="p360-table-card">
+                      <div className="p360-table-title">Production Tracking</div>
+                      <div style={{ padding: 16, fontSize: '0.88rem', color: '#475569' }}>No production-tracking rows for this project yet — rows appear once the Team Lead allocates work packages.</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p360-fin-kpis">
+                        <div className="p360-fin-kpi">
+                          <span className="p360-fin-kpi-label">Work Packages</span>
+                          <span className="p360-fin-kpi-value blue">{tracking.projects[0].packages}</span>
+                        </div>
+                        <div className="p360-fin-kpi">
+                          <span className="p360-fin-kpi-label">Production %</span>
+                          <span className="p360-fin-kpi-value green">{tracking.projects[0].production_progress_percent}%</span>
+                        </div>
+                        <div className="p360-fin-kpi">
+                          <span className="p360-fin-kpi-label">Workflow %</span>
+                          <span className="p360-fin-kpi-value blue">{tracking.projects[0].workflow_progress_percent}%</span>
+                        </div>
+                        <div className="p360-fin-kpi">
+                          <span className="p360-fin-kpi-label">Rework / Blocked</span>
+                          <span className="p360-fin-kpi-value orange">{tracking.projects[0].rework_packages} / {tracking.projects[0].blocked_packages}</span>
+                        </div>
+                      </div>
+                      <div className="p360-table-card">
+                        <div className="p360-table-title">
+                          <span>Production / QC / QA / Delivery Status</span>
+                          <span className="p360-sidebar-count">{tracking.projects[0].packages} packages</span>
+                        </div>
+                        <ProductionTrackingPanel
+                          projects={tracking.projects}
+                          showProjectColumn={false}
+                          viewerMode={tracking.viewer_mode}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

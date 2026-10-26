@@ -330,6 +330,28 @@ class WorkflowDeliveryRequest(BaseModel):
     remarks: str | None = Field(default=None, max_length=5000)
 
 
+# --- V8.1 shared production tracking (additive payloads; existing payloads untouched) -----------
+class WorkflowStageUpdate(BaseModel):
+    """Generic status update for an optional additional stage (Import / DXF /
+    Inspection / Upload). Production / QC / QA / Delivery keep their own payloads."""
+
+    stage: Literal["import", "dxf", "inspection", "upload"]
+    status: str = Field(min_length=1, max_length=30)
+    remarks: str | None = Field(default=None, max_length=5000)
+    dxf_user_id: int | None = Field(default=None, gt=0)
+
+
+class WorkflowPackageGeneralUpdate(BaseModel):
+    """Team Lead / PM edits of non-quantity package context (Lot/Batch, Supply Date, Remarks).
+
+    A field sent as ``null`` is left unchanged; an empty string clears the value.
+    """
+
+    lot_batch: str | None = Field(default=None, max_length=120)
+    supply_date: date | None = None
+    remarks: str | None = Field(default=None, max_length=5000)
+
+
 class WorkflowOperationalCompletion(BaseModel):
     completion_date: date
     final_delivery_reference: str | None = Field(default=None, max_length=255)
@@ -366,3 +388,122 @@ class ProjectWorkstreamConfig(BaseModel):
 class ProjectWorkstreamStatusUpdate(BaseModel):
     status: ProjectWorkstreamStatus
     notes: str | None = Field(default=None, max_length=5000)
+
+
+# --- V8.2 optional FILE / TILE / ITEM tracking (additive payloads; existing payloads untouched) --
+class WorkflowItemEntry(BaseModel):
+    item_number: str = Field(min_length=1, max_length=120)
+    item_name: str | None = Field(default=None, max_length=255)
+    sequence_no: int | None = Field(default=None, ge=0)
+    planned_quantity: Decimal | None = Field(default=None, ge=0)
+    planned_unit: str | None = Field(default=None, max_length=30)
+    production_user_id: int | None = Field(default=None, gt=0)
+    qc_user_id: int | None = Field(default=None, gt=0)
+    qa_user_id: int | None = Field(default=None, gt=0)
+
+    @field_validator("item_number", "item_name", "planned_unit", mode="before")
+    @classmethod
+    def strip_item_text(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class WorkflowItemsCreate(BaseModel):
+    items: list[WorkflowItemEntry] = Field(min_length=1, max_length=5000)
+
+
+class WorkflowItemsGenerate(BaseModel):
+    prefix: str = Field(default="FILE", min_length=1, max_length=40)
+    start: int = Field(default=1, ge=1)
+    count: int = Field(default=1, ge=1, le=5000)
+    padding: int = Field(default=3, ge=1, le=10)
+    extension: str | None = Field(default=None, max_length=16)
+
+
+class WorkflowItemsAssign(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=5000)
+    production_user_id: int | None = Field(default=None, gt=0)
+    qc_user_id: int | None = Field(default=None, gt=0)
+    qa_user_id: int | None = Field(default=None, gt=0)
+
+    @field_validator("item_ids")
+    @classmethod
+    def unique_item_ids(cls, value):
+        return list(dict.fromkeys(value))
+
+
+class WorkflowItemUpdate(BaseModel):
+    """Partial update: a field absent from the payload is left unchanged; an
+    explicitly ``null`` assignee clears the assignment (via model_fields_set)."""
+
+    item_number: str | None = Field(default=None, min_length=1, max_length=120)
+    item_name: str | None = Field(default=None, max_length=255)
+    planned_quantity: Decimal | None = Field(default=None, ge=0)
+    planned_unit: str | None = Field(default=None, max_length=30)
+    production_user_id: int | None = Field(default=None, gt=0)
+    qc_user_id: int | None = Field(default=None, gt=0)
+    qa_user_id: int | None = Field(default=None, gt=0)
+    is_active: bool | None = None
+
+
+class WorkflowItemActivityStart(BaseModel):
+    stage: Literal["production", "qc", "qa"]
+
+
+class WorkflowItemActivityStop(BaseModel):
+    """End a file stage session.
+
+    ``finalize`` distinguishes "SAVE DAILY PROGRESS" (end this work session only —
+    the physical file is NOT finished) from "COMPLETE PRODUCTION" (end the session
+    AND finalize the file so QC unlocks). QC/QA always finalize their decision.
+    """
+
+    status: str | None = Field(default=None, max_length=40)
+    quantity_completed: Decimal | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, max_length=30)
+    files_completed: int | None = Field(default=None, ge=0)
+    remarks: str | None = Field(default=None, max_length=5000)
+    delay_category: str | None = Field(default=None, max_length=80)
+    affected_item_id: int | None = Field(default=None, gt=0)
+    delay_reason: str | None = Field(default=None, max_length=255)
+    system_malfunction: bool = False
+    delay_remarks: str | None = Field(default=None, max_length=5000)
+    finalize: bool = True
+
+
+class WorkflowItemDelivery(BaseModel):
+    remarks: str | None = Field(default=None, max_length=5000)
+    reference: str | None = Field(default=None, max_length=255)
+
+
+class WorkflowPackageTimelineUpdate(BaseModel):
+    """Team Lead / PM sets the production target + buffer for one area.
+
+    The ORIGINAL ``target_date`` is never modified; ``production_target_date`` is
+    a separate additive field and ``buffer_days`` defaults to the global setting.
+    """
+
+    production_target_date: date | None = None
+    buffer_days: int | None = Field(default=None, ge=0, le=365)
+
+
+# --- V8.3 Team Lead Excel-driven allocation (additive payloads) ---------------------------------
+class WorkflowFileAllocation(BaseModel):
+    """Allocate selected files of one area with the three required stage targets."""
+
+    item_ids: list[int] = Field(min_length=1, max_length=5000)
+    production_user_id: int = Field(gt=0)
+    production_target_date: date
+    qc_user_id: int = Field(gt=0)
+    qc_target_date: date
+    qa_user_id: int = Field(gt=0)
+    qa_target_date: date
+    supply_date: date | None = None
+    note: str | None = Field(default=None, max_length=5000)
+    # V8.4: take over an UNSTARTED file owned by another employee (no history). Default
+    # off so the normal allocation can never silently steal an assigned file.
+    reassign: bool = False
+
+    @field_validator("item_ids")
+    @classmethod
+    def unique_allocation_item_ids(cls, value):
+        return list(dict.fromkeys(value))

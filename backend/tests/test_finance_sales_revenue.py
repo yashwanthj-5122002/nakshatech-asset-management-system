@@ -157,6 +157,8 @@ def test_only_closed_fully_paid_invoice_appears_in_revenue():
         revenue = next(item for item in payload["revenue_events"] if item["project_id"] == project.id)
         assert row["sales_visible"] is False
         assert row["closed_revenue_inr"] == 100000.0
+        assert row["cash_received_inr"] == 100000.0
+        assert row["bad_debt_inr"] == payload["kpi_summary"]["bad_debt_inr"] == 0.0
         assert revenue["revenue_amount_inr"] == 100000.0
         assert revenue["finance_invoice_number"] == invoice.invoice_number
         assert revenue["department_code"] == "lidar"

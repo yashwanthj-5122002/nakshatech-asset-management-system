@@ -48,6 +48,10 @@ from app.modules.operations.models import ProjectWorkflow
 
 
 def _user(db, email: str, role: str) -> User:
+    # Idempotent: the two authorized Bad Debt approvers are shared by every test.
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing is not None:
+        return existing
     row = User(
         email=email,
         full_name=email.split("@", 1)[0],
@@ -63,10 +67,30 @@ def _user(db, email: str, role: str) -> User:
     return row
 
 
+# The two authorized management approvers (identity comes from
+# app.core.management_access → vinod@ / chethan@; never a hard-coded id).
+VINOD_EMAIL = "vinod@nakshatech.com"
+CHETHAN_EMAIL = "chethan@nakshatech.com"
+
+
+def _approve_both(db, invoice_id: int, comments: str = "Approved after collection review"):
+    """DUAL approval: the write-off only becomes effective after BOTH approvers agree."""
+    first = decide_bad_debt(
+        db, actor=_user(db, VINOD_EMAIL, "management"), invoice_id=invoice_id,
+        payload=BadDebtDecision(decision="approved", comments=comments))
+    db.flush()
+    assert first.status == "PROPOSED", "one approval must not finalize the write-off"
+    second = decide_bad_debt(
+        db, actor=_user(db, CHETHAN_EMAIL, "management"), invoice_id=invoice_id,
+        payload=BadDebtDecision(decision="approved", comments=comments))
+    db.flush()
+    return second
+
+
 def _overdue_invoice(db, suffix: str, due_days: int = 5):
     bd = _user(db, f"bd.baddebt.{suffix}@nakshatech.com", "bd")
     finance = _user(db, f"finance.baddebt.{suffix}@nakshatech.com", "finance")
-    management = _user(db, f"management.baddebt.{suffix}@nakshatech.com", "management")
+    management = _user(db, VINOD_EMAIL, "management")
     client = FinanceClient(
         client_code=f"BD-{suffix}",
         client_name=f"Bad Debt Client {suffix}",
@@ -149,12 +173,7 @@ def test_bad_debt_is_separate_from_payment_and_revenue_and_removes_collectible_o
         assert proposal.status == "PROPOSED"
         assert proposal.proposed_amount == Decimal("6000")
 
-        approved = decide_bad_debt(
-            db,
-            actor=management,
-            invoice_id=invoice.id,
-            payload=BadDebtDecision(decision="approved", comments="Approved after collection review"),
-        )
+        approved = _approve_both(db, invoice.id, "Approved after collection review")
         db.flush()
         assert approved.status == "APPROVED"
         assert approved.approved_amount == Decimal("6000")
@@ -446,12 +465,7 @@ def test_partial_bad_debt_write_off_never_exceeds_the_collectible_balance():
         )
         assert proposal.proposed_amount == Decimal("3000")
 
-        approved = decide_bad_debt(
-            db,
-            actor=management,
-            invoice_id=invoice.id,
-            payload=BadDebtDecision(decision="approved", comments="Approved the disputed portion only"),
-        )
+        approved = _approve_both(db, invoice.id, "Approved the disputed portion only")
         db.flush()
         assert approved.status == "APPROVED"
         assert approved.approved_amount == Decimal("3000")
@@ -483,12 +497,7 @@ def test_approved_partial_bad_debt_keeps_collectible_payment_and_recovery_separa
                 proposed_amount=Decimal("3000"),
             ),
         )
-        decide_bad_debt(
-            db,
-            actor=management,
-            invoice_id=invoice.id,
-            payload=BadDebtDecision(decision="approved", comments="Approve partial write-off only"),
-        )
+        _approve_both(db, invoice.id, "Approve partial write-off only")
         db.flush()
         assert proposal.approved_amount == Decimal("3000")
 
@@ -581,12 +590,7 @@ def test_recovery_books_real_cash_partial_then_full_and_preserves_history():
             ),
         )
         assert proposal.proposed_amount == Decimal("6000")
-        approved = decide_bad_debt(
-            db,
-            actor=management,
-            invoice_id=invoice.id,
-            payload=BadDebtDecision(decision="approved", comments="Approved write-off after review"),
-        )
+        approved = _approve_both(db, invoice.id, "Approved write-off after review")
         db.flush()
         assert approved.status == "APPROVED"
         assert approved.approved_amount == Decimal("6000")
@@ -697,7 +701,8 @@ def test_recovery_books_real_cash_partial_then_full_and_preserves_history():
         assert row.status == "RECOVERED"
         assert row.recovered_amount == Decimal("6000")
         assert row.approved_amount == Decimal("6000")  # history never rewritten
-        assert row.reviewed_by_id == management.id
+        # Dual approval: the FINAL reviewer recorded on the case is the second approver.
+        assert row.reviewed_by_id == _user(db, CHETHAN_EMAIL, "management").id
         assert _approved_bad_debt_remaining(db, invoice.id) == Decimal("0")
 
         payments = list(
@@ -768,6 +773,18 @@ def _build_bad_debt_app():
             db.add(user)
             db.flush()
             ids[role] = user.id
+        # The two authorized Bad Debt approvers (dual approval requirement).
+        for key, email in (("vinod", VINOD_EMAIL), ("chethan", CHETHAN_EMAIL)):
+            approver = User(
+                email=email,
+                full_name=key.title(),
+                password_hash="test-only",
+                role="management",
+                is_active=True,
+            )
+            db.add(approver)
+            db.flush()
+            ids[key] = approver.id
         db.commit()
 
     app = FastAPI()
@@ -963,13 +980,25 @@ def test_bad_debt_endpoints_happy_path_for_finance_and_management():
     assert "already pending" in resp.json()["detail"]
 
     # Management decides.
-    management = _client_for_role(app, TestingSession, "management", ids)
-    resp = management.post(
+    # DUAL APPROVAL: Vinod Sir approves first — the write-off is still pending.
+    vinod = _client_for_role(app, TestingSession, "vinod", ids)
+    resp = vinod.post(
+        f"/api/lifecycle/invoices/{invoice_id}/bad-debt/decision",
+        json={"decision": "approved", "comments": "Approved after collection review"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "PROPOSED"
+    assert resp.json()["approvals"]["approved_count"] == 1
+
+    # Chethan approves — now the write-off becomes effective (exactly once).
+    chethan = _client_for_role(app, TestingSession, "chethan", ids)
+    resp = chethan.post(
         f"/api/lifecycle/invoices/{invoice_id}/bad-debt/decision",
         json={"decision": "approved", "comments": "Approved after collection review"},
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "APPROVED"
+    assert resp.json()["approvals"]["approved_count"] == 2
 
     # Finance records a real recovery.
     resp = finance.post(

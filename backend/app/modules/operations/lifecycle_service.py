@@ -19,6 +19,7 @@ from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
 from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects
 from app.modules.notifications.service import create_global_notification
+from app.core.management_access import MANAGEMENT_EMAILS
 from app.modules.operations.lifecycle_models import (
     ProjectChangeRequest,
     ProjectDeliveryVersion,
@@ -29,6 +30,7 @@ from app.modules.operations.lifecycle_models import (
     ProjectInvoiceLineItem,
     ProjectInvoicePayment,
     ProjectInvoiceBadDebt,
+    ProjectInvoiceBadDebtApproval,
     ProjectMessage,
     ProjectReworkCycle,
     ProjectTimelineEvent,
@@ -1306,6 +1308,8 @@ def create_invoice_draft(
         notes=(payload.notes or "").strip() or None,
         created_by_id=actor.id,
         entry_mode=payload.entry_mode,
+        # V8.7: the chosen A4 presentation theme is STORED on the invoice (NULL = legacy classic).
+        theme=(_normalize_theme(payload.theme) if getattr(payload, "theme", None) else None),
         cgst_percent=payload.cgst_percent,
         cgst_amount=payload.cgst_amount,
         sgst_percent=payload.sgst_percent,
@@ -1493,7 +1497,8 @@ def record_invoice_payment(
     invoice = db.get(ProjectInvoice, invoice_id)
     if invoice is None:
         raise ValueError("Invoice not found")
-    if invoice.status not in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE}:
+    closed_recovery = _allow_bad_debt_recovery and invoice.status == INVOICE_CLOSED
+    if not closed_recovery and invoice.status not in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE}:
         raise ValueError("Payments can only be recorded against an open raised invoice")
     total_due = _invoice_total_due(invoice)
     paid_before = _payment_total(db, invoice.id)
@@ -1550,22 +1555,23 @@ def record_invoice_payment(
         paid_after == 0 and new_status != PAYMENT_PENDING
     ):
         raise ValueError("Inconsistent invoice payment status calculation")
-    invoice.status = new_status
+    invoice.status = INVOICE_CLOSED if closed_recovery else new_status
     complete = new_status == INVOICE_CLOSED
-    if complete:
+    if complete and not closed_recovery:
         invoice.closed_by_id = actor.id
         invoice.closed_at = utc_now()
     workflow = _workflow(db, invoice.project_id)
-    _transition(
-        db,
-        workflow=workflow,
-        actor=actor,
-        status=new_status,
-        event_type="invoice_payment_received" if complete else "invoice_partial_payment",
-        title="Payment Received" if complete else "Partial Payment",
-        comments=f"{invoice.currency} {payload.amount} ({payload.payment_reference})",
-    )
-    if complete:
+    if not closed_recovery:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=new_status,
+            event_type="invoice_payment_received" if complete else "invoice_partial_payment",
+            title="Payment Received" if complete else "Partial Payment",
+            comments=f"{invoice.currency} {payload.amount} ({payload.payment_reference})",
+        )
+    if complete and not closed_recovery:
         _maybe_finance_closure_pending(db, actor=actor, workflow=workflow, exclude_invoice_id=invoice.id)
     project = _project(db, invoice.project_id)
     _notify(
@@ -1619,6 +1625,83 @@ BAD_DEBT_APPROVED = "APPROVED"
 BAD_DEBT_REJECTED = "REJECTED"
 BAD_DEBT_RECOVERED = "RECOVERED"
 
+# ---------------------------------------------------------------------------
+# DUAL management approval for Bad Debt (Vinod Sir AND Chethan).
+#
+# The two approvers are NOT hard-coded numeric employee ids: they are the two
+# authorized MANAGEMENT accounts already defined by the platform
+# (``app.core.management_access.MANAGEMENT_ACCOUNTS`` / ``MANAGEMENT_EMAILS``).
+# Only the email is used as the identity key, and the configuration is validated
+# loudly — if those addresses are not authorized management accounts the feature
+# refuses to guess.
+# ---------------------------------------------------------------------------
+BAD_DEBT_APPROVER_EMAILS: dict[str, str] = {
+    "vinod": "vinod@nakshatech.com",
+    "chethan": "chethan@nakshatech.com",
+}
+BAD_DEBT_APPROVER_LABELS: dict[str, str] = {
+    "vinod": "Vinod Sir",
+    "chethan": "Chethan",
+}
+
+
+def _assert_bad_debt_approver_configuration() -> None:
+    missing = [addr for addr in BAD_DEBT_APPROVER_EMAILS.values() if addr not in MANAGEMENT_EMAILS]
+    if missing:
+        raise RuntimeError(
+            "Bad Debt approver configuration is ambiguous — these addresses are not authorized "
+            "management accounts: " + ", ".join(missing)
+        )
+
+
+def bad_debt_approver_key(actor: User) -> str:
+    """Resolve the authenticated user to 'vinod' / 'chethan', else refuse."""
+    _assert_bad_debt_approver_configuration()
+    email = (actor.email or "").strip().lower()
+    for key, address in BAD_DEBT_APPROVER_EMAILS.items():
+        if email == address:
+            return key
+    raise PermissionError(
+        "Only the authorized management approvers (Vinod Sir / Chethan) can decide a Bad Debt proposal"
+    )
+
+
+def _current_bad_debt_approvals(db: Session, row: ProjectInvoiceBadDebt) -> dict[str, ProjectInvoiceBadDebtApproval]:
+    """Latest decision per approver within the CURRENT proposal cycle (append-only)."""
+    rows = list(db.scalars(select(ProjectInvoiceBadDebtApproval).where(
+        ProjectInvoiceBadDebtApproval.bad_debt_id == row.id,
+        ProjectInvoiceBadDebtApproval.decided_at >= row.proposed_at,
+    ).order_by(ProjectInvoiceBadDebtApproval.decided_at.asc(), ProjectInvoiceBadDebtApproval.id.asc())).all())
+    latest: dict[str, ProjectInvoiceBadDebtApproval] = {}
+    for approval in rows:
+        latest[approval.approver_key] = approval
+    return latest
+
+
+def _bad_debt_approval_payload(db: Session, row: ProjectInvoiceBadDebt | None) -> dict:
+    """Dual-approval status for UI/reporting (never mixes pending with approved)."""
+    if row is None:
+        return {"required_approvers": [], "decisions": [], "approved_count": 0, "required_count": len(BAD_DEBT_APPROVER_EMAILS)}
+    decisions = _current_bad_debt_approvals(db, row)
+    return {
+        "required_approvers": [
+            {"key": key, "label": BAD_DEBT_APPROVER_LABELS[key]} for key in BAD_DEBT_APPROVER_EMAILS
+        ],
+        "decisions": [
+            {
+                "approver_key": key,
+                "approver_label": BAD_DEBT_APPROVER_LABELS.get(key, key),
+                "approver_name": _user_display_name(db, approval.approver_user_id),
+                "decision": approval.decision,
+                "comment": approval.comment,
+                "decided_at": approval.decided_at.isoformat() if approval.decided_at else None,
+            }
+            for key, approval in decisions.items()
+        ],
+        "approved_count": sum(1 for a in decisions.values() if a.decision == "approved"),
+        "required_count": len(BAD_DEBT_APPROVER_EMAILS),
+    }
+
 
 def _bad_debt_row(db: Session, invoice_id: int) -> ProjectInvoiceBadDebt | None:
     return db.scalar(select(ProjectInvoiceBadDebt).where(ProjectInvoiceBadDebt.invoice_id == invoice_id))
@@ -1636,10 +1719,136 @@ def _invoice_cash_balance(db: Session, invoice: ProjectInvoice) -> Decimal:
 
 
 def _approved_bad_debt_remaining(db: Session, invoice_id: int) -> Decimal:
-    row = _bad_debt_row(db, invoice_id)
+    return approved_bad_debt_remaining(_bad_debt_row(db, invoice_id))
+
+
+def approved_bad_debt_remaining(row: ProjectInvoiceBadDebt | None) -> Decimal:
+    """Shared balance resolution for approved write-offs; never a payment amount."""
     if row is None or row.status != BAD_DEBT_APPROVED:
         return Decimal("0")
     return max(Decimal(row.approved_amount or 0) - Decimal(row.recovered_amount or 0), Decimal("0"))
+
+
+def _normalize_theme(value: str | None) -> str:
+    """Local re-export of the theme normalizer (avoids a circular import at module load)."""
+    from app.modules.operations.invoice_documents import normalize_invoice_theme
+    return normalize_invoice_theme(value)
+
+
+# Fields whose change alters the APPROVED FINANCIAL CONTENT of a signed invoice. A change to
+# any of these invalidates a previous signature; presentation-only fields (theme, notes,
+# payment terms) do not.
+INVOICE_MATERIAL_FIELDS: tuple[str, ...] = (
+    "amount", "tax_amount", "invoice_date", "due_date", "cgst_percent", "cgst_amount",
+    "sgst_percent", "sgst_amount", "igst_percent", "igst_amount", "po_wo_reference",
+    "place_of_supply", "work_order_date", "dispatch_date", "dispatch_details",
+)
+
+INVOICE_EDITABLE_FIELDS: tuple[str, ...] = INVOICE_MATERIAL_FIELDS + (
+    "theme", "notes", "payment_terms",
+)
+
+
+def update_invoice(
+    db: Session, *, actor: User, invoice_id: int, payload: "InvoiceUpdate"
+) -> ProjectInvoice:
+    """Safe edit of an EXISTING invoice (never a duplicate). Editing financial content is
+    blocked once money or accounting history exists; a material change to a signed invoice
+    invalidates the previous signature so it can never represent changed content."""
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    if invoice.status in {INVOICE_CLOSED, PAYMENT_RECEIVED, "INVOICE_CANCELLED"}:
+        raise ValueError("A closed or cancelled invoice cannot be edited")
+
+    payments = db.scalar(select(func.count(ProjectInvoicePayment.id)).where(
+        ProjectInvoicePayment.invoice_id == invoice_id
+    )) or 0
+    bad_debt = _bad_debt_row(db, invoice_id)
+    financial_history = bool(payments) or bad_debt is not None
+
+    provided = payload.model_dump(exclude_unset=True, exclude_none=True)
+    material_requested = [f for f in INVOICE_MATERIAL_FIELDS if f in provided]
+    # Theme-only (or presentation-only) edits stay possible; money-affecting edits do not.
+    if financial_history and material_requested:
+        if payments:
+            raise ValueError(
+                "Financial fields cannot be edited after a payment has been recorded "
+                "(edit only the theme, notes or payment terms)"
+            )
+        raise ValueError(
+            "Financial fields cannot be edited while a Bad Debt case exists on this invoice "
+            "(edit only the theme, notes or payment terms)"
+        )
+
+    changed_material: list[str] = []
+    for field in INVOICE_EDITABLE_FIELDS:
+        if field not in provided:
+            continue
+        value = provided[field]
+        if field == "theme":
+            value = _normalize_theme(value) if value else None
+        if getattr(invoice, field) != value:
+            setattr(invoice, field, value)
+            if field in INVOICE_MATERIAL_FIELDS:
+                changed_material.append(field)
+    invoice.updated_at = utc_now()
+
+    if changed_material and invoice.signed:
+        # The previous sign-off no longer represents the edited content.
+        previous_by, previous_at = invoice.signed_by_id, invoice.signed_at
+        invoice.signed = False
+        invoice.signed_by_id = None
+        invoice.signed_at = None
+        invoice.signature_invalidated_at = utc_now()
+        add_timeline_event(
+            db, project_id=invoice.project_id, event_type="invoice_signature_invalidated",
+            title=f"Invoice signature invalidated · {invoice.invoice_number}",
+            status=invoice.status, actor_user_id=actor.id,
+            details=(
+                f"Material edit invalidated the signature by user {previous_by} at {previous_at}. "
+                f"Changed: {', '.join(changed_material)}."
+            ),
+        )
+    db.flush()
+    add_timeline_event(
+        db, project_id=invoice.project_id, event_type="invoice_updated",
+        title=f"Invoice updated · {invoice.invoice_number}", status=invoice.status,
+        actor_user_id=actor.id,
+        details=f"Fields: {', '.join(sorted(provided)) or 'none'}"
+                + (f" · signature invalidated ({', '.join(changed_material)})" if changed_material and not invoice.signed else ""),
+    )
+    db.flush()
+    return invoice
+
+
+def sign_invoice(db: Session, *, actor: User, invoice_id: int, payload: "InvoiceSign | None" = None) -> ProjectInvoice:
+    """Record the AUTHORISED SIGNATORY approval (visual signature + company stamp).
+
+    This is an application approval signature, NOT a statutory cryptographic DSC signature.
+    Authorization is enforced by the caller (Finance/Admin roles); repeated calls are
+    idempotent so a double click never rewrites the original sign-off time.
+    """
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    if invoice.status == "INVOICE_CANCELLED":
+        raise ValueError("A cancelled invoice cannot be signed")
+    if invoice.signed:
+        return invoice  # idempotent: keep the original signer/timestamp
+    invoice.signed = True
+    invoice.signed_by_id = actor.id
+    invoice.signed_at = utc_now()
+    invoice.signature_invalidated_at = None
+    add_timeline_event(
+        db, project_id=invoice.project_id, event_type="invoice_signed",
+        title=f"Invoice signed · {invoice.invoice_number}", status=invoice.status,
+        actor_user_id=actor.id,
+        details=(payload.remarks if payload is not None else None)
+                or f"Authorised signatory: {actor.full_name}",
+    )
+    db.flush()
+    return invoice
 
 
 def propose_bad_debt(
@@ -1724,50 +1933,137 @@ def propose_bad_debt(
 def decide_bad_debt(
     db: Session, *, actor: User, invoice_id: int, payload: BadDebtDecision
 ) -> ProjectInvoiceBadDebt:
+    """Record ONE authorized management decision on a pending Bad Debt proposal.
+
+    DUAL APPROVAL: the write-off becomes effective only when BOTH management
+    approvers (Vinod Sir AND Chethan) approve. A single approval leaves the case
+    pending (no financial effect). Either approver rejecting rejects the case.
+    Repeated or concurrent calls are idempotent — one decision per approver per
+    proposal cycle, so the financial effect is applied exactly once.
+    """
     invoice = db.get(ProjectInvoice, invoice_id)
     if invoice is None:
         raise ValueError("Invoice not found")
-    row = _bad_debt_row(db, invoice_id)
-    if row is None or row.status != BAD_DEBT_PROPOSED:
+    approver_key = bad_debt_approver_key(actor)
+    # Serialize concurrent decisions for this invoice (double-click / two approvers).
+    row = db.scalar(select(ProjectInvoiceBadDebt).where(
+        ProjectInvoiceBadDebt.invoice_id == invoice_id).with_for_update())
+    if row is None:
         raise ValueError("A pending Bad Debt proposal is required")
-    balance = _invoice_cash_balance(db, invoice)
+    decisions = _current_bad_debt_approvals(db, row)
+    if approver_key in decisions:
+        # Idempotent replay: this approver already decided in the current cycle (even if
+        # the case has since been finalized) — return the authoritative state untouched.
+        return row
+    if row.status not in {BAD_DEBT_PROPOSED}:
+        raise ValueError("A pending Bad Debt proposal is required")
+    if payload.decision not in {"approved", "rejected"}:
+        raise ValueError("Decision must be approved or rejected")
+    if payload.decision == "rejected" and not (payload.comments or "").strip():
+        raise ValueError("A rejection reason is required")
+
     if payload.decision == "approved":
-        # Management can only ever write off what Finance actually proposed,
-        # capped by what is still collectible at decision time.
-        approved_amount = min(Decimal(row.proposed_amount or 0), balance)
-        if approved_amount <= 0:
-            raise ValueError("Invoice is already fully settled")
-        row.status = BAD_DEBT_APPROVED
-        row.approved_amount = approved_amount
-    else:
+        balance = _invoice_cash_balance(db, invoice)
+        if Decimal(row.proposed_amount or 0) > balance:
+            # Never trust the proposal snapshot — the client may have paid while the
+            # proposal was pending. Refuse (no silent shrink, no negative balance).
+            raise ValueError(
+                "The collectible balance changed after this proposal "
+                f"({invoice.currency} {balance} remaining) — amend or resubmit the Bad Debt proposal"
+            )
+
+    db.add(ProjectInvoiceBadDebtApproval(
+        bad_debt_id=row.id,
+        invoice_id=invoice.id,
+        project_id=invoice.project_id,
+        approver_key=approver_key,
+        approver_user_id=actor.id,
+        approver_email=(actor.email or "").strip().lower(),
+        decision=payload.decision,
+        comment=(payload.comments or "").strip() or None,
+    ))
+    db.flush()
+    decisions = _current_bad_debt_approvals(db, row)
+
+    if any(a.decision == "rejected" for a in decisions.values()):
         row.status = BAD_DEBT_REJECTED
         row.approved_amount = None
+    elif len(decisions) == len(BAD_DEBT_APPROVER_EMAILS) and all(
+        a.decision == "approved" for a in decisions.values()
+    ):
+        # BOTH approvals present -> the write-off becomes effective exactly once.
+        row.status = BAD_DEBT_APPROVED
+        row.approved_amount = Decimal(row.proposed_amount or 0)
+    # else: still PROPOSED (awaiting the remaining approval) — no financial effect.
+
     row.reviewed_by_id = actor.id
     row.reviewed_at = utc_now()
-    row.decision_reason = payload.comments.strip()
+    row.decision_reason = (payload.comments or "").strip() or row.decision_reason
     db.flush()
+
     project = _project(db, invoice.project_id)
+    approver_label = BAD_DEBT_APPROVER_LABELS.get(approver_key, approver_key)
+    final = row.status in {BAD_DEBT_APPROVED, BAD_DEBT_REJECTED}
     add_timeline_event(
         db,
         project_id=invoice.project_id,
-        event_type="bad_debt_approved" if row.status == BAD_DEBT_APPROVED else "bad_debt_rejected",
-        title=("Bad Debt Approved" if row.status == BAD_DEBT_APPROVED else "Bad Debt Rejected") + f" · {invoice.invoice_number}",
+        event_type=(
+            "bad_debt_approved" if row.status == BAD_DEBT_APPROVED
+            else "bad_debt_rejected" if row.status == BAD_DEBT_REJECTED
+            else "bad_debt_decision_recorded"
+        ),
+        title=(
+            f"Bad Debt {'Approved' if row.status == BAD_DEBT_APPROVED else 'Rejected'}" if final
+            else f"Bad Debt approval {approver_label} recorded"
+        ) + f" · {invoice.invoice_number}",
         status=PAYMENT_OVERDUE,
         actor_user_id=actor.id,
         details=row.decision_reason,
     )
-    _notify(
-        db,
-        project=project,
-        event_type="lifecycle.bad_debt.approved" if row.status == BAD_DEBT_APPROVED else "lifecycle.bad_debt.rejected",
-        title=("Bad Debt approved" if row.status == BAD_DEBT_APPROVED else "Bad Debt rejected") + f": {project.project_code}",
-        message=f"Invoice {invoice.invoice_number}: {row.decision_reason}",
-        target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
-        recipient_roles=["finance"],
-        dedupe_key=f"lifecycle:bad-debt:decision:{invoice.id}:{row.status}:{int(row.reviewed_at.timestamp())}",
-    )
+    if final:
+        _notify(
+            db,
+            project=project,
+            event_type="lifecycle.bad_debt.approved" if row.status == BAD_DEBT_APPROVED else "lifecycle.bad_debt.rejected",
+            title=("Bad Debt approved" if row.status == BAD_DEBT_APPROVED else "Bad Debt rejected") + f": {project.project_code}",
+            message=f"Invoice {invoice.invoice_number}: {row.decision_reason}",
+            target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
+            recipient_roles=["finance"],
+            dedupe_key=f"lifecycle:bad-debt:final:{invoice.id}:{row.status}",
+        )
+    else:
+        # Still pending: tell management the remaining approval is awaited, and tell
+        # Finance that a decision was recorded. Dedupe key includes the approval so
+        # repeated calls never spam.
+        _notify(
+            db,
+            project=project,
+            event_type="lifecycle.bad_debt.partially_approved",
+            title=f"Bad Debt awaiting final approval: {project.project_code}",
+            message=(
+                f"{approver_label} recorded a decision on invoice {invoice.invoice_number}. "
+                f"{len(decisions)} of {len(BAD_DEBT_APPROVER_EMAILS)} required approvals recorded."
+            ),
+            target_url=f"/management/project-360/{project.id}?tab=actions&invoice={invoice.id}",
+            recipient_roles=["management"],
+            dedupe_key=f"lifecycle:bad-debt:partial:{invoice.id}:{approver_key}",
+        )
+        _notify(
+            db,
+            project=project,
+            event_type="lifecycle.bad_debt.partially_approved",
+            title=f"Bad Debt decision recorded: {project.project_code}",
+            message=(
+                f"{approver_label} recorded a decision on invoice {invoice.invoice_number}. "
+                f"{len(decisions)} of {len(BAD_DEBT_APPROVER_EMAILS)} required approvals recorded."
+            ),
+            target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
+            recipient_roles=["finance"],
+            dedupe_key=f"lifecycle:bad-debt:partial:{invoice.id}:{approver_key}",
+        )
     if (
         row.status == BAD_DEBT_APPROVED
+        and invoice.status != INVOICE_CLOSED
         and _approved_bad_debt_remaining(db, invoice.id) >= _invoice_cash_balance(db, invoice)
     ):
         # A partial write-off must never make the project look closure-ready
@@ -1829,13 +2125,14 @@ def record_bad_debt_recovery(
     row.status = BAD_DEBT_RECOVERED if recovered_after >= approved else BAD_DEBT_APPROVED
     db.flush()
 
-    # ``record_invoice_payment`` necessarily moved the workflow back through a
-    # payment status. If the still-unpaid cash balance remains fully covered by
+    # For an open invoice, ``record_invoice_payment`` moved the workflow through
+    # a payment status. If the still-unpaid cash balance remains fully covered by
     # the still-approved write-off, restore Finance Closure Pending eligibility.
     # This keeps a partial recovery from accidentally making an already-approved
     # write-off project appear open again.
     if (
         row.status == BAD_DEBT_APPROVED
+        and invoice.status != INVOICE_CLOSED
         and _approved_bad_debt_remaining(db, invoice.id) >= _invoice_cash_balance(db, invoice)
     ):
         _maybe_finance_closure_pending(
@@ -1852,7 +2149,9 @@ def record_bad_debt_recovery(
         project_id=invoice.project_id,
         event_type="bad_debt_recovered",
         title=f"Bad Debt Recovery · {invoice.invoice_number}",
-        status=PAYMENT_OVERDUE if unrecovered_after > 0 else PAYMENT_RECEIVED,
+        status=INVOICE_CLOSED if invoice.status == INVOICE_CLOSED else (
+            PAYMENT_OVERDUE if unrecovered_after > 0 else PAYMENT_RECEIVED
+        ),
         actor_user_id=actor.id,
         details=(
             f"{invoice.currency} {amount} recovered. Written off {invoice.currency} {approved}, "
@@ -1922,6 +2221,11 @@ def list_bad_debts(db: Session) -> list[dict]:
             "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
             "reviewed_by_name": _user_display_name(db, row.reviewed_by_id),
             "decision_reason": row.decision_reason,
+            "approvals": _bad_debt_approval_payload(db, row),
+            "final_approved_at": (
+                row.reviewed_at.isoformat()
+                if row.status == BAD_DEBT_APPROVED and row.reviewed_at else None
+            ),
         })
     return result
 
@@ -1934,8 +2238,8 @@ def close_invoice(
         raise ValueError("Invoice not found")
     total_due = _invoice_total_due(invoice)
     paid = _payment_total(db, invoice.id)
-    if paid < total_due:
-        raise ValueError("Full payment is required before invoice closure")
+    if paid + _approved_bad_debt_remaining(db, invoice.id) < total_due:
+        raise ValueError("Full payment or Management-approved Bad Debt is required before invoice closure")
     if invoice.status == INVOICE_CLOSED:
         if invoice.closed_at is None:
             invoice.closed_at = utc_now()
@@ -1947,6 +2251,15 @@ def close_invoice(
     invoice.closed_by_id = actor.id
     invoice.closed_at = utc_now()
     workflow = _workflow(db, invoice.project_id)
+    if (workflow.status or "").upper() == CLOSED and workflow.finance_closed_at is not None:
+        # Complete an invoice omitted by a historical Finance project closure
+        # without reopening that genuinely closed project or rewriting its history.
+        add_timeline_event(
+            db, project_id=invoice.project_id, event_type="invoice_closed",
+            title=f"Invoice Closed {invoice.invoice_number}", status=INVOICE_CLOSED,
+            actor_user_id=actor.id, details=payload.comments,
+        )
+        return invoice
     _transition(
         db,
         workflow=workflow,
@@ -2032,7 +2345,7 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
     if row.status != INVOICE_DRAFT:
         derived = compute_invoice_payment_status(invoice_total=due, paid_total=paid)
         remaining = due - paid
-        if derived == INVOICE_CLOSED:
+        if row.status == INVOICE_CLOSED or derived == INVOICE_CLOSED:
             effective_status = INVOICE_CLOSED
         elif (
             remaining > 0
@@ -2072,6 +2385,8 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
         "reviewed_at": bad_debt.reviewed_at.isoformat() if bad_debt.reviewed_at else None,
         "reviewed_by_name": _user_display_name(db, bad_debt.reviewed_by_id),
         "decision_reason": bad_debt.decision_reason,
+        # Dual-approval progress (Vinod Sir AND Chethan) for the Billing/Management UI.
+        "approvals": _bad_debt_approval_payload(db, bad_debt),
     }
     return {
         "id": row.id,
@@ -2086,8 +2401,22 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
         "paid_amount": float(paid),
         "balance": float(cash_balance),
         "collectible_balance": float(collectible_balance),
+        "can_close_invoice": (
+            row.status in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE, PAYMENT_RECEIVED}
+            and paid <= due
+            and collectible_balance == 0
+        ),
         "days_overdue": max((date.today() - row.due_date).days, 0) if cash_balance > 0 and row.due_date < date.today() else 0,
         "bad_debt": bad_debt_payload,
+        # V8.7 presentation + authorised signature state (read by Finance Billing/Preview).
+        "theme": row.theme,
+        "signed": bool(row.signed),
+        "signed_by_id": row.signed_by_id,
+        "signed_by_name": _user_display_name(db, row.signed_by_id),
+        "signed_at": row.signed_at.isoformat() if row.signed_at else None,
+        "signature_invalidated_at": (
+            row.signature_invalidated_at.isoformat() if row.signature_invalidated_at else None
+        ),
         "currency": row.currency,
         "tax_percent": float(row.tax_percent) if row.tax_percent is not None else None,
         "payment_terms": row.payment_terms,
