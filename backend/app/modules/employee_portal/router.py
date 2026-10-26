@@ -394,6 +394,30 @@ def confirm_registration_mfa(
     if not user or int(claims.get("uid", 0)) != user.id:
         raise HTTPException(status_code=401, detail="The authenticator setup session is invalid")
     credential = db.scalar(select(AuthenticatorCredential).where(AuthenticatorCredential.user_id == user.id))
+    if settings.local_test_auth_bypass:
+        # A browser may retain a first-time setup session after local testing is
+        # switched to shared-password access. Complete that stale route without
+        # requiring a code that belongs to an obsolete local enrollment.
+        if credential is not None:
+            db.delete(credential)
+        user.account_status = "active"
+        user.is_active = True
+        user.mfa_required = False
+        user.must_change_password = False
+        record_audit(
+            db,
+            event_type="LOCAL_TEST_AUTHENTICATOR_BYPASSED",
+            request=request,
+            user=user,
+            module="authentication",
+        )
+        db.commit()
+        token, _session = issue_access_for_user(db, user=user, request=request)
+        return LoginResponse(
+            access_token=token,
+            user=_user_response(db, user),
+            branch_selection_required=user.role == EMPLOYEE_ROLE,
+        )
     if not credential or credential.is_confirmed:
         raise HTTPException(status_code=401, detail="The authenticator setup session is no longer valid")
 

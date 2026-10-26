@@ -1738,10 +1738,20 @@ def _normalize_theme(value: str | None) -> str:
 # Fields whose change alters the APPROVED FINANCIAL CONTENT of a signed invoice. A change to
 # any of these invalidates a previous signature; presentation-only fields (theme, notes,
 # payment terms) do not.
+GST_SPLIT_FIELDS: tuple[str, ...] = (
+    "cgst_percent", "cgst_amount", "sgst_percent", "sgst_amount", "igst_percent", "igst_amount",
+)
+
+# Split fields that must be cleared when an edit switches the invoice to a GST type.
+_GST_MODE_CLEARS: dict[str, tuple[str, ...]] = {
+    "none": GST_SPLIT_FIELDS,
+    "cgst_sgst": ("igst_percent", "igst_amount"),
+    "igst": ("cgst_percent", "cgst_amount", "sgst_percent", "sgst_amount"),
+}
+
 INVOICE_MATERIAL_FIELDS: tuple[str, ...] = (
-    "amount", "tax_amount", "invoice_date", "due_date", "cgst_percent", "cgst_amount",
-    "sgst_percent", "sgst_amount", "igst_percent", "igst_amount", "po_wo_reference",
-    "place_of_supply", "work_order_date", "dispatch_date", "dispatch_details",
+    "amount", "tax_amount", "tax_percent", "invoice_date", "due_date", *GST_SPLIT_FIELDS,
+    "po_wo_reference", "place_of_supply", "work_order_date", "dispatch_date", "dispatch_details",
 )
 
 INVOICE_EDITABLE_FIELDS: tuple[str, ...] = INVOICE_MATERIAL_FIELDS + (
@@ -1768,7 +1778,27 @@ def update_invoice(
     financial_history = bool(payments) or bad_debt is not None
 
     provided = payload.model_dump(exclude_unset=True, exclude_none=True)
-    material_requested = [f for f in INVOICE_MATERIAL_FIELDS if f in provided]
+    gst_mode = provided.pop("gst_mode", None)
+    if gst_mode is not None:
+        for field in _GST_MODE_CLEARS[gst_mode]:
+            provided[field] = None
+    # Only fields whose value actually changes count, so re-sending unchanged values
+    # (e.g. a theme-only edit after a payment) is not treated as a financial edit.
+    material_requested = [
+        f for f in INVOICE_MATERIAL_FIELDS if f in provided and getattr(invoice, f) != provided[f]
+    ]
+
+    # The GST split must still reconcile to the tax amount after the edit.
+    effective = {f: provided.get(f, getattr(invoice, f)) for f in ("tax_amount", *GST_SPLIT_FIELDS)}
+    split = [effective[f] for f in ("cgst_amount", "sgst_amount", "igst_amount")]
+    if any(value is not None for value in split):
+        cgst, sgst, igst = (Decimal(value or 0) for value in split)
+        if igst > 0 and (cgst > 0 or sgst > 0):
+            raise ValueError("IGST cannot be combined with CGST/SGST on the same invoice")
+        if abs(cgst + sgst + igst - Decimal(effective["tax_amount"] or 0)) > Decimal("0.01"):
+            raise ValueError(
+                f"CGST + SGST + IGST ({cgst + sgst + igst}) must equal the tax amount ({effective['tax_amount']})"
+            )
     # Theme-only (or presentation-only) edits stay possible; money-affecting edits do not.
     if financial_history and material_requested:
         if payments:
@@ -2419,6 +2449,10 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
         ),
         "currency": row.currency,
         "tax_percent": float(row.tax_percent) if row.tax_percent is not None else None,
+        **{
+            field: float(getattr(row, field)) if getattr(row, field) is not None else None
+            for field in GST_SPLIT_FIELDS
+        },
         "payment_terms": row.payment_terms,
         "po_wo_reference": row.po_wo_reference,
         "fx_snapshot_id": row.fx_snapshot_id,

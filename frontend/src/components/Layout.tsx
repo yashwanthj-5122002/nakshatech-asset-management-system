@@ -4,6 +4,9 @@ import {
   BarChart3,
   Bell,
   Building2,
+  CalendarDays,
+  CalendarCheck2,
+  Clock3,
   Boxes,
   ChevronDown,
   ClipboardCheck,
@@ -71,6 +74,8 @@ interface NavGroupDefinition {
 const navGroups: NavGroupDefinition[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'support', label: 'Employee Support' },
+  { id: 'leave', label: 'Leave' },
+  { id: 'attendance', label: 'Attendance' },
   { id: 'management', label: 'Management' },
   { id: 'business', label: 'Business Development' },
   { id: 'ortho', label: 'Ortho' },
@@ -86,6 +91,7 @@ const managementNavGroups: NavGroupDefinition[] = [
   { id: 'operations', label: 'Operations & Fleet' },
   { id: 'finance', label: 'Finance & Revenue' },
   { id: 'governance', label: 'Governance & Audit' },
+  { id: 'attendance', label: 'HRMS Attendance' },
 ]
 
 const adminNavGroups: NavGroupDefinition[] = [
@@ -93,10 +99,18 @@ const adminNavGroups: NavGroupDefinition[] = [
   { id: 'operations', label: 'Operations & Fleet' },
   { id: 'finance', label: 'Finance & Revenue' },
   { id: 'governance', label: 'Governance & Audit' },
+  { id: 'attendance', label: 'HRMS Attendance' },
   { id: 'admin', label: 'System Administration' },
 ]
 
 const navItems: NavItem[] = [
+  // Shared employee self-service: available to every signed-in department/role.
+  { to: '/hrms/leave/balance', label: 'Leave Balance', icon: CalendarDays, roles: ['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee'], group: 'leave' },
+  { to: '/hrms/leave/apply', label: 'Leave Application', icon: CalendarCheck2, roles: ['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee'], group: 'leave' },
+  { to: '/hrms/leave/calendar', label: 'My Leave Calendar', icon: CalendarDays, roles: ['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee'], group: 'leave' },
+  { to: '/hrms/leave/holidays', label: 'Holiday Calendar', icon: CalendarDays, roles: ['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee'], group: 'leave' },
+  { to: '/hrms/attendance', label: 'My Attendance / Check-in', icon: Clock3, roles: ['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee'], group: 'attendance', managementGroup: 'attendance', managementLabel: 'My Attendance' },
+  { to: '/hrms/hr', label: 'HR Leave & Attendance Dashboard', icon: CalendarCheck2, roles: ['hr', 'admin'], group: 'hr', managementGroup: 'attendance', managementLabel: 'HR Leave & Attendance' },
   { to: '/support', label: 'Support Dashboard', icon: LifeBuoy, roles: ['employee'], group: 'support' },
   { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
   { to: '/expenses/new', label: 'New Project Expense', icon: FileCheck2, roles: ['employee'], group: 'support' },
@@ -203,13 +217,14 @@ const ADMIN_SIDEBAR_PATHS = ['/admin', '/admin/client-master', '/future', '/soft
 function canShowInSidebar(role: Role, item: NavItem): boolean {
   if (role === 'management' || role === 'admin') {
     const inManagementSuite = Boolean(item.managementGroup) || (role === 'admin' && ADMIN_SIDEBAR_PATHS.includes(item.to))
-    return inManagementSuite && canViewItem(role, item)
+    return (item.to.startsWith('/hrms/leave/') || inManagementSuite) && canViewItem(role, item)
   }
   return canViewItem(role, item)
 }
 
 function navigationGroupForItem(role: Role, item: NavItem): string {
   if (role === 'management' || role === 'admin') {
+    if (item.to.startsWith('/hrms/leave/')) return 'attendance'
     if (item.managementGroup) return item.managementGroup
     if (role === 'admin') return 'admin'
   }
@@ -423,7 +438,20 @@ function LayoutShell({ children }: { children: ReactNode }) {
                   </section>
                 )
               })
-            : available.map(renderNavItem)}
+            : available.map((item, index) => {
+                if (item.group !== 'leave' && item.group !== 'attendance') return renderNavItem(item)
+                const previous = available[index - 1]
+                if (previous?.group === item.group) return null
+                const groupName = item.group === 'leave' ? 'Leave' : 'Attendance'
+                const links = available.filter(link => link.group === item.group)
+                const open = openGroups[item.group] ?? location.pathname.startsWith(`/hrms/${item.group}`)
+                return <section className={`sidebar-nav-group ${open ? 'open' : ''}`} key={item.group}>
+                  <button type="button" className="sidebar-group-toggle" aria-expanded={open} onClick={() => setOpenGroups(current => ({ ...current, [item.group]: !open }))}>
+                    <span>{groupName}</span><ChevronDown size={14}/>
+                  </button>
+                  {open && <div className="sidebar-group-items">{links.map(renderNavItem)}</div>}
+                </section>
+              })}
         </nav>
         <div className="sidebar-footer">
           <button

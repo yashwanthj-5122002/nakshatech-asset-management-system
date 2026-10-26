@@ -148,6 +148,9 @@ class Settings(BaseSettings):
     totp_issuer: str = "NakshaTech CRM"
     totp_encryption_key: str = ""
     totp_valid_window: int = 1
+    # Local test instances may use a shared test password without first-time
+    # authenticator enrollment. Production explicitly rejects this setting.
+    local_test_auth_bypass: bool = False
 
     # Purchase approval email channel. PURCHASE_APPROVAL_PUBLIC_URL may point to
     # a LAN/staging URL during UAT so a test colleague can open the secure link.
@@ -260,6 +263,8 @@ class Settings(BaseSettings):
         # remains deterministic even when multiple unsafe settings are present.
         if self.seed_operations_test_users_enabled:
             raise RuntimeError("SEED_OPERATIONS_TEST_USERS_ENABLED must be false in production")
+        if self.local_test_auth_bypass:
+            raise RuntimeError("LOCAL_TEST_AUTH_BYPASS must be false in production")
         if self.enable_test_employee_seed:
             raise RuntimeError("ENABLE_TEST_EMPLOYEE_SEED must be false in production")
         if self.enable_uat_2026_controls:

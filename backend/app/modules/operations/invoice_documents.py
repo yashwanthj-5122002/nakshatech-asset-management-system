@@ -688,9 +688,6 @@ def _build_invoice_a4_pdf_v2(payload: dict) -> BytesIO:
     return output
 
 
-<<<<<<< HEAD
-def build_invoice_a4_pdf(payload: dict, template: str | None = None) -> BytesIO:
-=======
 def _build_themed_invoice_a4(payload: dict) -> BytesIO:
     """Render the selected PNG-reference design from the canonical ERP payload."""
     from app.modules.operations.invoice_theme_renderer import build_reference_invoice_pdf
@@ -704,8 +701,7 @@ def _build_themed_invoice_a4(payload: dict) -> BytesIO:
     return build_reference_invoice_pdf(payload, logo)
 
 
-def build_invoice_a4_pdf(payload: dict) -> BytesIO:
->>>>>>> 174c0fba15985a1a49d771807ff205580c8e0398
+def build_invoice_a4_pdf(payload: dict, template: str | None = None) -> BytesIO:
     """Shared NakshaTech A4 renderer for project and standalone adapters.
 
     The renderer formats only the canonical document payload. It does not query,

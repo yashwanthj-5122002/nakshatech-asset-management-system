@@ -79,6 +79,11 @@
 .rosette-hero__division:is(:hover,:focus-visible) .rosette-hero__division-label, .rosette-hero__division--active .rosette-hero__division-label { border-color: #37d7ee; background: linear-gradient(145deg,#074361ed,#062d4fed); box-shadow: 0 0 22px #02bded26; }
 .rosette-hero--webgl .rosette-hero__division { width: auto; min-width: 80px; min-height: 44px; padding: 0; }
 .rosette-hero--webgl .rosette-hero__division-label { min-height: 44px; }
+/* Hide the legacy CSS scene while WebGL loads; show it only if WebGL fails. */
+.rosette-hero--loading :is(.rosette-hero__division,.rosette-hero__hub,.rosette-hero__orbit,.rosette-hero__connections) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 .rosette-hero--webgl :is(.rosette-hero__satellite,.rosette-hero__hub,.rosette-hero__orbit,.rosette-hero__connections) { display: none; }
 .rosette-hero__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(100%,470px); min-height: 64px; margin: 6px auto 0; padding: 10px 12px; border: 1px solid #3fbddf47; border-radius: 11px; background: linear-gradient(145deg,#03182ae6,#030f1dc7); box-shadow: 0 15px 34px #0000003d,inset 0 1px 0 #ffffff0a; backdrop-filter: blur(14px) saturate(122%); }
 .rosette-hero__detail { min-width: 0; display: flex; align-items: center; gap: 10px; }

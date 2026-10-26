@@ -56,6 +56,7 @@ import { ExpenseClaimCreatePage } from './features/finance/pages/ExpenseClaimCre
 import { ExpenseClaimsPage } from './features/finance/pages/ExpenseClaimsPage'
 import { ExpenseClaimDetailPage } from './features/finance/pages/ExpenseClaimDetailPage'
 import { AdvanceSettlementPage } from './features/finance/pages/AdvanceSettlementPage'
+import { AttendancePage, LeavePage, HRManagementPage } from './features/hrms/HRMSPages'
 import { FinanceDashboardPage } from './features/finance/pages/FinanceDashboardPage'
 import { FinanceClaimsPage } from './features/finance/pages/FinanceClaimsPage'
 import { FinanceReportsPage } from './features/finance/pages/FinanceReportsPage'
@@ -105,6 +106,12 @@ export default function App() {
       <Route path="/forgot-password" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <ForgotPasswordPage />} />
       <Route path="/verify-authenticator" element={<AuthenticatorPage />} />
       <Route path="/select-branch" element={<BranchSelectionPage />} />
+      <Route path="/hrms/leave/balance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="balance" /></WithLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/apply" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="apply" /></WithLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/calendar" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="calendar" /></WithLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/holidays" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="holidays" /></WithLayout></ProtectedRoute>} />
+      <Route path="/hrms/attendance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><AttendancePage /></WithLayout></ProtectedRoute>} />
+      <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
       <Route path="/travel-km" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmClaimsPage /></WithLayout></ProtectedRoute>} />
