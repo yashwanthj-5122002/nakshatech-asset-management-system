@@ -57,8 +57,17 @@ def _temporary_passwords_by_role() -> dict[str, tuple[str, ...]]:
     }
 
 
+def _activate_local_test_account(user: User, password: str) -> None:
+    """Keep local test accounts ready for shared-password integration testing."""
+    user.password_hash = hash_password(password)
+    user.account_status = "active"
+    user.is_active = True
+    user.mfa_required = False
+    user.must_change_password = False
+
+
 def _ensure_admin_role(db: Session) -> None:
-    """Correct the historic role collision while keeping first-time MFA required."""
+    """Correct the historic role collision and configure Admin access."""
     email = ADMIN_ACCOUNT.email
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None:
@@ -76,6 +85,8 @@ def _ensure_admin_role(db: Session) -> None:
                 must_change_password=False,
                 is_active=False,
             )
+            if settings.local_test_auth_bypass:
+                _activate_local_test_account(user, configured_password)
             db.add(user)
         return
 
@@ -85,6 +96,9 @@ def _ensure_admin_role(db: Session) -> None:
     user.full_name = user.full_name or ADMIN_ACCOUNT.full_name
     user.branch = user.branch or "Head Office"
     user.email_verified = True
+    if settings.local_test_auth_bypass:
+        _activate_local_test_account(user, settings.seed_admin_password.strip())
+        return
     confirmed_authenticator = db.scalar(
         select(AuthenticatorCredential.id).where(
             AuthenticatorCredential.user_id == user.id,
@@ -147,6 +161,8 @@ def ensure_privileged_accounts(db: Session) -> None:
                     must_change_password=True,
                     is_active=False,
                 )
+                if settings.local_test_auth_bypass:
+                    _activate_local_test_account(user, temporary_password)
                 db.add(user)
                 continue
 
@@ -155,6 +171,9 @@ def ensure_privileged_accounts(db: Session) -> None:
             user.role = role
             user.branch = user.branch or "Head Office"
             user.email_verified = True
+            if settings.local_test_auth_bypass:
+                _activate_local_test_account(user, temporary_password)
+                continue
 
             if created_or_converted or legacy_department_account or user.account_status in {
                 "disabled_management_access",

@@ -201,6 +201,9 @@ class InvoiceUpdate(BaseModel):
     dispatch_details: str | None = Field(default=None, max_length=255)
     amount: Decimal | None = Field(default=None, gt=0, max_digits=16, decimal_places=2)
     tax_amount: Decimal | None = Field(default=None, ge=0, max_digits=16, decimal_places=2)
+    tax_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
+    # Switching GST type clears the split fields that no longer apply ("none" clears all).
+    gst_mode: Literal["none", "cgst_sgst", "igst"] | None = None
     cgst_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)
     cgst_amount: Decimal | None = Field(default=None, ge=0, max_digits=16, decimal_places=2)
     sgst_percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=6, decimal_places=2)

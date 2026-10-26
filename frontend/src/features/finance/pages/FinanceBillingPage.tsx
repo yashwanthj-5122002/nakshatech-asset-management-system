@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Plus, Printer, RefreshCcw, Trash2, Wallet, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Inbox, Pencil, Plus, Printer, RefreshCcw, Trash2, Wallet, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -91,8 +91,6 @@ export function FinanceBillingPage() {
   const [search, setSearch] = useState('')
   const [preview, setPreview] = useState<InvoiceDocumentPayload | null>(null)
   const [template, setTemplate] = useState<InvoiceTemplate>('modern_teal')
-  const [draftEditInvoiceId, setDraftEditInvoiceId] = useState<number | null>(null)
-  const [draftDetails, setDraftDetails] = useState<DraftDetailsForm>({ payment_terms: '', po_wo_reference: '', notes: '', work_order_date: '', dispatch_details: '', dispatch_date: '', place_of_supply: '' })
   const [badDebts, setBadDebts] = useState<BadDebtRow[]>([])
   const [badDebtForm, setBadDebtForm] = useState<Record<number, BadDebtFormState>>({})
   const [recoveryForm, setRecoveryForm] = useState<Record<number, RecoveryFormState>>({})
@@ -139,6 +137,14 @@ export function FinanceBillingPage() {
     return { cgst: 0, sgst: 0, igst: 0, total: Number(invoiceForm.tax_amount) || 0 }
   }, [gstMode, gstPercents, taxableAmount, invoiceForm.tax_amount])
 
+  // GSTIN starts with the 2-digit state code: same state → CGST+SGST, different → IGST.
+  const suggestedGstMode = useMemo<GstMode | null>(() => {
+    const sellerState = autoFillData?.company.gstin?.trim().slice(0, 2)
+    const buyerState = autoFillData?.client.gstin?.trim().slice(0, 2)
+    if (!sellerState || !buyerState || !/^\d{2}$/.test(sellerState) || !/^\d{2}$/.test(buyerState)) return null
+    return sellerState === buyerState ? 'cgst_sgst' : 'igst'
+  }, [autoFillData])
+
   useEffect(() => {
     if (!lineItems.length) return
     setInvoiceForm(form => (form.amount === lineItemTotal.toFixed(2) ? form : { ...form, amount: lineItemTotal.toFixed(2) }))
@@ -146,8 +152,10 @@ export function FinanceBillingPage() {
 
   useEffect(() => {
     if (gstMode === 'none') return
-    setInvoiceForm(form => (form.tax_amount === gstBreakdown.total.toFixed(2) ? form : { ...form, tax_amount: gstBreakdown.total.toFixed(2) }))
-  }, [gstMode, gstBreakdown.total])
+    const taxAmount = gstBreakdown.total.toFixed(2)
+    const taxPercent = String(gstMode === 'igst' ? Number(gstPercents.igst) || 0 : (Number(gstPercents.cgst) || 0) + (Number(gstPercents.sgst) || 0))
+    setInvoiceForm(form => (form.tax_amount === taxAmount && form.tax_percent === taxPercent ? form : { ...form, tax_amount: taxAmount, tax_percent: taxPercent }))
+  }, [gstMode, gstBreakdown.total, gstPercents])
 
   function addLineItem() {
     setLineItems(items => [...items, blankLineItem((items[items.length - 1]?.sequence || 0) + 1)])
@@ -470,34 +478,70 @@ export function FinanceBillingPage() {
 
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<Record<string, string>>({})
+  const [editInitial, setEditInitial] = useState<Record<string, string>>({})
+
+  const editGst = useMemo(() => {
+    const taxable = Number(editForm.amount) || 0
+    const share = (percent: string | undefined) => Math.round(taxable * (Number(percent) || 0) / 100 * 100) / 100
+    if (editForm.gst_mode === 'cgst_sgst') {
+      const cgst = share(editForm.cgst_percent), sgst = share(editForm.sgst_percent)
+      return { cgst, sgst, igst: 0, total: Math.round((cgst + sgst) * 100) / 100 }
+    }
+    if (editForm.gst_mode === 'igst') {
+      const igst = share(editForm.igst_percent)
+      return { cgst: 0, sgst: 0, igst, total: igst }
+    }
+    return { cgst: 0, sgst: 0, igst: 0, total: Number(editForm.tax_amount) || 0 }
+  }, [editForm])
 
   /** Open EDIT INVOICE pre-filled from the EXISTING backend invoice (never a blank form). */
   function openEditInvoice(invoice: Record<string, unknown>) {
     setError('')
     setEditInvoiceId(Number(invoice.id))
-    setEditForm({
+    const gstMode = invoice.igst_amount != null ? 'igst' : (invoice.cgst_amount != null || invoice.sgst_amount != null) ? 'cgst_sgst' : 'none'
+    const form = {
       invoice_date: String(invoice.invoice_date ?? ''),
       due_date: String(invoice.due_date ?? ''),
       amount: String(invoice.amount ?? ''),
       tax_amount: String(invoice.tax_amount ?? ''),
+      tax_percent: String(invoice.tax_percent ?? ''),
+      gst_mode: gstMode,
+      cgst_percent: String(invoice.cgst_percent ?? '9'),
+      sgst_percent: String(invoice.sgst_percent ?? '9'),
+      igst_percent: String(invoice.igst_percent ?? '18'),
       payment_terms: String(invoice.payment_terms ?? ''),
       po_wo_reference: String(invoice.po_wo_reference ?? ''),
       place_of_supply: String(invoice.place_of_supply ?? ''),
       dispatch_details: String(invoice.dispatch_details ?? ''),
       notes: String(invoice.notes ?? ''),
       theme: String(invoice.theme || 'blue_classic'),
-    })
+    }
+    setEditForm(form)
+    setEditInitial(form)
   }
 
-  /** Save edits through the existing backend PATCH (same invoice record, never a duplicate). */
+  /** Save edits through the existing backend PATCH (same invoice record, never a duplicate).
+   *  Only changed fields are sent, so a theme/notes edit after a payment is not refused. */
   async function saveEditInvoice(invoiceId: number) {
+    const changed = (key: string) => (editForm[key] ?? '') !== (editInitial[key] ?? '')
     const body: Record<string, unknown> = { theme: editForm.theme || 'blue_classic' }
     for (const key of ['invoice_date', 'due_date', 'payment_terms', 'po_wo_reference',
       'place_of_supply', 'dispatch_details', 'notes'] as const) {
-      if (editForm[key] !== undefined) body[key] = editForm[key].trim() || null
+      if (changed(key)) body[key] = editForm[key].trim() || null
     }
-    if (editForm.amount !== undefined && editForm.amount !== '') body.amount = Number(editForm.amount)
-    if (editForm.tax_amount !== undefined && editForm.tax_amount !== '') body.tax_amount = Number(editForm.tax_amount)
+    const taxChanged = ['amount', 'tax_amount', 'tax_percent', 'gst_mode', 'cgst_percent', 'sgst_percent', 'igst_percent'].some(changed)
+    if (taxChanged) {
+      if (editForm.amount !== '') body.amount = Number(editForm.amount)
+      body.gst_mode = editForm.gst_mode
+      body.tax_amount = editGst.total
+      if (editForm.gst_mode === 'cgst_sgst') {
+        Object.assign(body, { cgst_percent: Number(editForm.cgst_percent) || 0, cgst_amount: editGst.cgst, sgst_percent: Number(editForm.sgst_percent) || 0, sgst_amount: editGst.sgst, tax_percent: (Number(editForm.cgst_percent) || 0) + (Number(editForm.sgst_percent) || 0) })
+      } else if (editForm.gst_mode === 'igst') {
+        Object.assign(body, { igst_percent: Number(editForm.igst_percent) || 0, igst_amount: editGst.igst, tax_percent: Number(editForm.igst_percent) || 0 })
+      } else if (editForm.tax_percent !== '') {
+        body.tax_percent = Number(editForm.tax_percent)
+      }
+    }
     const saved = await run(`edit-${invoiceId}`, () => apiFetch(
       `/operations/lifecycle/invoices/${invoiceId}`, { method: 'PATCH', body: JSON.stringify(body) },
     ), 'Invoice updated (same invoice number)')
@@ -679,7 +723,7 @@ export function FinanceBillingPage() {
             {!lineItems.length && <label className="operations-field"><span>Amount (no line items entered)</span><input type="number" min={0} step="0.01" value={invoiceForm.amount} onChange={e => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}/></label>}
 
             <div className="operations-note operations-span-2"><strong>TAX SUMMARY</strong></div>
-            <label className="operations-field"><span>GST Type</span><select value={gstMode} onChange={e => setGstMode(e.target.value as GstMode)}><option value="none">Single combined tax (legacy)</option><option value="cgst_sgst">CGST + SGST</option><option value="igst">IGST</option></select></label>
+            <label className="operations-field"><span>GST Type</span><select value={gstMode} onChange={e => setGstMode(e.target.value as GstMode)}><option value="cgst_sgst">CGST + SGST (same state)</option><option value="igst">IGST (other state)</option><option value="none">Single combined tax / No GST</option></select>{suggestedGstMode && suggestedGstMode !== gstMode && <small>Suggested from GSTIN state codes: {suggestedGstMode === 'igst' ? 'IGST (inter-state)' : 'CGST + SGST (intra-state)'}</small>}</label>
             {gstMode === 'cgst_sgst' && <>
               <label className="operations-field"><span>CGST %</span><input type="number" min={0} max={100} step="0.01" value={gstPercents.cgst} onChange={e => setGstPercents({ ...gstPercents, cgst: e.target.value })}/><small>{gstBreakdown.cgst.toFixed(2)} {invoiceForm.currency}</small></label>
               <label className="operations-field"><span>SGST %</span><input type="number" min={0} max={100} step="0.01" value={gstPercents.sgst} onChange={e => setGstPercents({ ...gstPercents, sgst: e.target.value })}/><small>{gstBreakdown.sgst.toFixed(2)} {invoiceForm.currency}</small></label>
@@ -714,7 +758,7 @@ export function FinanceBillingPage() {
                 <button className="operations-button secondary" disabled={busy === `preview-${invoice.id}`} onClick={() => void previewInvoice(invoice.id)}><Eye size={15}/> A4 Preview</button>
                 <button className="operations-button secondary" disabled={busy === `download-${invoice.id}`} onClick={() => void downloadInvoice(invoice.id, invoice.invoice_number)}><Download size={15}/> Download PDF</button>
                 <button className="operations-button secondary" disabled={busy === `print-${invoice.id}`} onClick={() => void printInvoice(invoice.id)}><Printer size={15}/> Print</button>
-                {canEditDraft && invoice.stored_status === 'INVOICE_DRAFT' && <button className="operations-button secondary" disabled={busy === `edit-draft-${invoice.id}`} onClick={() => void startDraftEdit(invoice.id)}><Pencil size={15}/> Edit Draft Details</button>}
+                {canEditDraft && invoice.stored_status === 'INVOICE_DRAFT' && <button className="operations-button secondary" disabled={busy === `edit-${invoice.id}`} onClick={() => openEditInvoice(invoice as unknown as Record<string, unknown>)}><Pencil size={15}/> Edit Draft Details</button>}
                 {invoice.stored_status === 'INVOICE_DRAFT' && <button className="operations-button" disabled={busy === `raise-${invoice.id}`} onClick={() => void run(`raise-${invoice.id}`, () => raiseInvoice(invoice.id), 'Invoice raised')}>Raise Invoice</button>}
                 {invoice.status === 'PAYMENT_OVERDUE' && invoice.stored_status !== 'PAYMENT_OVERDUE' && <button className="operations-button warning" disabled={busy === `overdue-${invoice.id}`} onClick={() => void run(`overdue-${invoice.id}`, () => markOverdue(invoice.id), 'Invoice marked overdue')}>Mark Overdue</button>}
                 {/* V8.7 invoice theme + authorised signature */}
@@ -775,7 +819,24 @@ export function FinanceBillingPage() {
                   <label className="operations-field"><span>Invoice Date</span><input type="date" value={editForm.invoice_date ?? ''} onChange={e => setEditForm({ ...editForm, invoice_date: e.target.value })}/></label>
                   <label className="operations-field"><span>Due Date</span><input type="date" value={editForm.due_date ?? ''} onChange={e => setEditForm({ ...editForm, due_date: e.target.value })}/></label>
                   <label className="operations-field"><span>Amount</span><input type="number" step="0.01" value={editForm.amount ?? ''} onChange={e => setEditForm({ ...editForm, amount: e.target.value })}/></label>
-                  <label className="operations-field"><span>Tax Amount</span><input type="number" step="0.01" value={editForm.tax_amount ?? ''} onChange={e => setEditForm({ ...editForm, tax_amount: e.target.value })}/></label>
+                  <label className="operations-field"><span>GST Type</span>
+                    <select value={editForm.gst_mode ?? 'none'} onChange={e => setEditForm({ ...editForm, gst_mode: e.target.value })}>
+                      <option value="cgst_sgst">CGST + SGST (same state)</option>
+                      <option value="igst">IGST (other state)</option>
+                      <option value="none">Single combined tax / No GST</option>
+                    </select>
+                  </label>
+                  {editForm.gst_mode === 'cgst_sgst' && <>
+                    <label className="operations-field"><span>CGST %</span><input type="number" min={0} max={100} step="0.01" value={editForm.cgst_percent ?? ''} onChange={e => setEditForm({ ...editForm, cgst_percent: e.target.value })}/><small>{editGst.cgst.toFixed(2)} {invoice.currency}</small></label>
+                    <label className="operations-field"><span>SGST %</span><input type="number" min={0} max={100} step="0.01" value={editForm.sgst_percent ?? ''} onChange={e => setEditForm({ ...editForm, sgst_percent: e.target.value })}/><small>{editGst.sgst.toFixed(2)} {invoice.currency}</small></label>
+                  </>}
+                  {editForm.gst_mode === 'igst' && <label className="operations-field"><span>IGST %</span><input type="number" min={0} max={100} step="0.01" value={editForm.igst_percent ?? ''} onChange={e => setEditForm({ ...editForm, igst_percent: e.target.value })}/><small>{editGst.igst.toFixed(2)} {invoice.currency}</small></label>}
+                  {(editForm.gst_mode ?? 'none') === 'none'
+                    ? <>
+                      <label className="operations-field"><span>Tax Amount</span><input type="number" step="0.01" value={editForm.tax_amount ?? ''} onChange={e => setEditForm({ ...editForm, tax_amount: e.target.value })}/></label>
+                      <label className="operations-field"><span>Tax %</span><input type="number" min={0} max={100} step="0.01" value={editForm.tax_percent ?? ''} onChange={e => setEditForm({ ...editForm, tax_percent: e.target.value })}/></label>
+                    </>
+                    : <div className="operations-note">Tax Amount: <strong>{editGst.total.toFixed(2)} {invoice.currency}</strong> (calculated from Amount)</div>}
                   <label className="operations-field"><span>Payment Terms</span><input value={editForm.payment_terms ?? ''} onChange={e => setEditForm({ ...editForm, payment_terms: e.target.value })}/></label>
                   <label className="operations-field"><span>PO / WO Reference</span><input value={editForm.po_wo_reference ?? ''} onChange={e => setEditForm({ ...editForm, po_wo_reference: e.target.value })}/></label>
                   <label className="operations-field"><span>Place of Supply</span><input value={editForm.place_of_supply ?? ''} onChange={e => setEditForm({ ...editForm, place_of_supply: e.target.value })}/></label>
