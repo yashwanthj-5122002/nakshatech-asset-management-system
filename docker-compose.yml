@@ -52,6 +52,9 @@ services:
       DOCS_ENABLED: "true"
       ENABLE_BACKGROUND_WATCHER: "true"
       SEED_DEFAULT_USERS: "true"
+      # Local integration testing can use the configured shared test password.
+      # Production rejects this setting in backend configuration.
+      LOCAL_TEST_AUTH_BYPASS: ${LOCAL_TEST_AUTH_BYPASS:-false}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALGORITHM: HS256

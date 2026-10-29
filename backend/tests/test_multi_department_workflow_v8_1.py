@@ -414,8 +414,11 @@ def test_multi_department_test_employee_seed_is_forbidden_in_production(monkeypa
 
 def test_existing_fifteen_ortho_employee_fixtures_normalized_to_ortho_department():
     with SessionLocal() as db:
-        rows = list(db.scalars(select(User).where(User.email.like("employee%.test@nakshatech.com"))).all())
+        rows = list(db.scalars(select(User).where(User.email.like("ortho.employee%.test@nakshatech.com"))).all())
         if not rows:
             pytest.skip("V8.1 Ortho employee test seed is not enabled in this environment")
         assert len(rows) == 15
+        assert {row.email for row in rows} == {
+            f"ortho.employee{number:02d}.test@nakshatech.com" for number in range(1, 16)
+        }
         assert all(row.department == "Ortho" and row.role == "employee" for row in rows)

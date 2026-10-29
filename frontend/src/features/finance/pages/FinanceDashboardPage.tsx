@@ -37,6 +37,7 @@ import { useAuth } from '../../../context/AuthContext'
 import { apiFetch } from '../../../lib/api'
 import type { FinanceBreakdownItem, FinanceDashboard } from '../../../types'
 import { financeClaimTypeLabels, financeStatusLabels, financeStatusTone, formatInr } from '../finance-utils'
+import type { BadDebtRow } from '../../operations/lifecycle-types'
 import { FinanceCommercialSummary } from '../../commercial/components/FinanceCommercialSummary'
 import type { CommercialAnalytics, CommercialSummary } from '../../commercial/types'
 import { FinanceCommandCenter } from './FinanceCommandCenter'
@@ -252,6 +253,7 @@ export function FinanceDashboardPage() {
   const [data, setData] = useState<FinanceDashboard | null>(null)
   const [workflow, setWorkflow] = useState<WorkflowDashboard | null>(null)
   const [commercial, setCommercial] = useState<CommercialAnalytics | null>(null)
+  const [badDebts, setBadDebts] = useState<BadDebtRow[]>([])
   const [activeTab, setActiveTab] = useState<ActiveTab>('queue')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -274,11 +276,13 @@ export function FinanceDashboardPage() {
       apiFetch<FinanceDashboard>('/finance/dashboard'),
       apiFetch<WorkflowDashboard>('/operations/workflow/finance/dashboard'),
       apiFetch<CommercialAnalytics>('/commercial/management/analytics').catch(() => null),
+      apiFetch<BadDebtRow[]>('/operations/lifecycle/bad-debts').catch(() => [] as BadDebtRow[]),
     ])
-      .then(([finData, wfData, commData]) => {
+      .then(([finData, wfData, commData, badDebtRows]) => {
         setData(finData)
         setWorkflow(wfData)
         setCommercial(commData)
+        setBadDebts(badDebtRows)
         if (requestedProjectId && wfData.projects.some(row => row.id === requestedProjectId)) {
           setReviewId(requestedProjectId)
           setActiveTab('queue')
@@ -398,6 +402,25 @@ export function FinanceDashboardPage() {
     value: c.amount,
     color: CHART_COLORS[i % CHART_COLORS.length],
   }))
+
+  // Bad Debt exposure by lifecycle stage (amounts in each invoice's own currency)
+  const badDebtSummary = useMemo(() => {
+    const sum = (rows: BadDebtRow[], pick: (row: BadDebtRow) => number) => rows.reduce((s, row) => s + (pick(row) || 0), 0)
+    const proposed = badDebts.filter(row => row.status === 'PROPOSED')
+    const approved = badDebts.filter(row => row.status === 'APPROVED')
+    const rejected = badDebts.filter(row => row.status === 'REJECTED')
+    const recoveredRows = badDebts.filter(row => row.status === 'APPROVED' || row.status === 'RECOVERED')
+    return {
+      segments: [
+        { label: 'Awaiting Management', value: sum(proposed, row => row.proposed_amount), color: '#d97706' },
+        { label: 'Written Off (unrecovered)', value: sum(approved, row => Math.max((row.approved_amount ?? 0) - (row.recovered_amount || 0), 0)), color: '#dc2626' },
+        { label: 'Recovered', value: sum(recoveredRows, row => row.recovered_amount), color: '#16a34a' },
+        { label: 'Rejected (still collecting)', value: sum(rejected, row => row.proposed_amount), color: '#64748b' },
+      ],
+      counts: { proposed: proposed.length, approved: approved.length, recovered: badDebts.filter(row => row.status === 'RECOVERED').length, rejected: rejected.length },
+      mixedCurrency: badDebts.some(row => row.currency && row.currency !== 'INR'),
+    }
+  }, [badDebts])
 
   // Monthly trend data
   const monthlyTrend = (commercial?.monthly ?? []).slice(-7).map((m: {
@@ -850,6 +873,55 @@ export function FinanceDashboardPage() {
                 <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#15803d' }}>{formatInr(data?.paid_amount ?? 0)}</div>
               </div>
             </div>
+          </div>
+
+          {/* Chart 3: Bad Debt exposure (separate from Revenue) */}
+          <div className="fin-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="fin-card-header">
+              <h3 className="fin-card-title"><AlertTriangle size={16} /> Bad Debt Exposure</h3>
+              <span className="fin-card-subtitle">Overdue invoices escalated for write-off · never Revenue</span>
+            </div>
+            {badDebts.length > 0 ? (
+              <DonutChart segments={badDebtSummary.segments} size={150} centerLabel={`${badDebts.length} Case${badDebts.length === 1 ? '' : 's'}`} />
+            ) : (
+              <div className="nk-empty"><p>No Bad Debt cases yet. Overdue invoices can be proposed for Bad Debt from Billing &amp; Invoices.</p></div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+              <div>
+                <span className="fin-kpi-label">Awaiting Management</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#b45309' }}>{badDebtSummary.counts.proposed}</div>
+              </div>
+              <div>
+                <span className="fin-kpi-label">Written Off</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#b91c1c' }}>{badDebtSummary.counts.approved}</div>
+              </div>
+              <div>
+                <span className="fin-kpi-label">Fully Recovered</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#15803d' }}>{badDebtSummary.counts.recovered}</div>
+              </div>
+              <div>
+                <span className="fin-kpi-label">Rejected</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#475569' }}>{badDebtSummary.counts.rejected}</div>
+              </div>
+            </div>
+            {badDebts.length > 0 && (
+              <table className="fin-table" style={{ marginTop: 12 }}>
+                <thead><tr><th>Project</th><th>Invoice</th><th>Status</th><th>Proposed</th><th>Unrecovered</th><th></th></tr></thead>
+                <tbody>
+                  {[...badDebts].sort((a, b) => b.proposed_at.localeCompare(a.proposed_at)).slice(0, 5).map(row => (
+                    <tr key={row.id}>
+                      <td>{row.project_code || row.project_id}</td>
+                      <td>{row.invoice_number || row.invoice_id}</td>
+                      <td>{label(row.status.toLowerCase())}</td>
+                      <td>{formatInr(row.proposed_amount)}</td>
+                      <td>{row.status === 'APPROVED' ? formatInr(Math.max((row.approved_amount ?? 0) - (row.recovered_amount || 0), 0)) : '—'}</td>
+                      <td><Link className="finance-inline-link" to={`/finance/billing?project=${row.project_id}&invoice=${row.invoice_id}`}>Open</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {badDebtSummary.mixedCurrency && <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '8px 0 0' }}>Some cases are in foreign currency and are shown in their invoice currency. See Sales → Bad Debt for INR-converted totals.</p>}
           </div>
 
           {/* Project-wise Spend Breakdown */}

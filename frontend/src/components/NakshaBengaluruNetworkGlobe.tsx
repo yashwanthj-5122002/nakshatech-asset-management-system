@@ -703,7 +703,7 @@ export function NakshaBengaluruNetworkGlobe() {
 
       <div className="naksha-login-globe-city-chip">
         <MapPin size={14} aria-hidden="true" />
-        <span>Bengaluru · Global Hub</span>
+        <span></span>
       </div>
 
       <div className="naksha-login-globe-source">
