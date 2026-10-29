@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
+from datetime import date
+
+from pydantic import BaseModel, Field, model_validator
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -21,7 +25,7 @@ from app.modules.finance.attachments import (
     store_finance_attachment,
     validate_finance_attachment_bytes,
 )
-from app.modules.operations.lifecycle_models import ProjectFeedbackAttachment, ProjectReworkCycle
+from app.modules.operations.lifecycle_models import ProjectFeedbackAttachment, ProjectReworkCycle, ProjectInvoice
 from app.modules.operations.invoice_documents import build_invoice_a4_pdf, invoice_document_payload
 from app.modules.operations.lifecycle_schemas import (
     BadDebtDecision,
@@ -531,6 +535,53 @@ def invoice_create(
         raise _error(exc) from exc
 
 
+class DraftInvoiceDetailsEdit(BaseModel):
+    """Nonfinancial metadata ONLY. Money, GST, FX, invoice identity and issued rows are immutable."""
+    payment_terms: str | None = Field(default=None, max_length=255)
+    po_wo_reference: str | None = Field(default=None, max_length=160)
+    notes: str | None = Field(default=None, max_length=10000)
+    work_order_date: date | None = None
+    dispatch_details: str | None = Field(default=None, max_length=255)
+    dispatch_date: date | None = None
+    place_of_supply: str | None = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def clean(self):
+        for name in ("payment_terms", "po_wo_reference", "notes", "dispatch_details", "place_of_supply"):
+            value = getattr(self, name)
+            if value is not None:
+                setattr(self, name, value.strip() or None)
+        return self
+
+
+@router.patch("/invoices/{invoice_id}/draft-details")
+def edit_project_invoice_draft_details(
+    invoice_id: int,
+    payload: DraftInvoiceDetailsEdit,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, "finance", "admin")
+    row = db.get(ProjectInvoice, invoice_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if row.status != "INVOICE_DRAFT" or row.raised_at is not None or row.fx_locked:
+        raise HTTPException(status_code=409, detail="Only unraised, unlocked invoice drafts can be edited")
+    before = {name: getattr(row, name) for name in payload.model_fields_set}
+    for name in payload.model_fields_set:
+        setattr(row, name, getattr(payload, name))
+    changed = [key for key in before if before[key] != getattr(row, key)]
+    try:
+        _audit(request, db, auth, "PROJECT_INVOICE_DRAFT_DETAILS_EDITED", "project_invoice", invoice_id,
+               {"project_id": row.project_id, "fields": changed})
+        db.commit()
+        return invoice_document_payload(db, invoice_id)
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
 @router.get("/invoices/{invoice_id}/document")
 def invoice_document_preview(
     invoice_id: int,
@@ -558,6 +609,7 @@ def invoice_document_pdf(
     invoice_id: int,
     request: Request,
     download: bool = Query(default=False),
+    template: Literal["green_gold", "modern_teal", "geospatial_blue"] | None = Query(default=None),
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
@@ -565,11 +617,11 @@ def invoice_document_pdf(
     _roles(auth, "finance", "management", "admin")
     try:
         payload = invoice_document_payload(db, invoice_id)
-        output = build_invoice_a4_pdf(payload)
+        output = build_invoice_a4_pdf(payload, template=template)
         event = "INVOICE_DOWNLOADED" if download else "INVOICE_GENERATED"
         _audit(
             request, db, auth, event, "project_invoice", invoice_id,
-            {"project_id": payload["invoice"]["project_id"], "format": "pdf", "download": download},
+            {"project_id": payload["invoice"]["project_id"], "format": "pdf", "download": download, "template": template or "classic"},
         )
         db.commit()
     except Exception as exc:
@@ -578,11 +630,12 @@ def invoice_document_pdf(
 
     safe_number = re.sub(r"[^A-Za-z0-9._-]+", "_", payload["invoice"]["invoice_number"]).strip("._") or f"invoice-{invoice_id}"
     disposition = "attachment" if download else "inline"
+    template_name = template or "classic"
     return StreamingResponse(
         output,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'{disposition}; filename="{safe_number}_A4_Invoice.pdf"',
+            "Content-Disposition": f'{disposition}; filename="{safe_number}_{template_name}_A4_Invoice.pdf"',
             "Cache-Control": "private, no-store, max-age=0",
             "X-Content-Type-Options": "nosniff",
         },

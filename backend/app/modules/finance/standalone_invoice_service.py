@@ -98,6 +98,96 @@ def get_standalone_invoice(db: Session, invoice_id: int) -> StandaloneInvoice:
     return row
 
 
+def standalone_invoice_edit_payload(db: Session, invoice_id: int) -> dict:
+    """Round-trip the original, saved form parameters, not reconstructed PDF strings."""
+    row = get_standalone_invoice(db, invoice_id)
+    return {
+        "invoice_number": row.invoice_number,
+        "invoice_date": row.invoice_date.isoformat(),
+        "terms": row.terms,
+        "due_date": row.due_date.isoformat() if row.due_date else None,
+        "reference_work_order": row.reference_work_order,
+        "place_of_supply": row.place_of_supply,
+        "seller": dict(row.seller_snapshot or {}),
+        "bill_to": dict(row.bill_to_snapshot or {}),
+        "ship_to": dict(row.ship_to_snapshot or {}),
+        "bank": dict(row.bank_snapshot or {}),
+        "line_items": [{
+            "sequence": item.sequence, "description": item.description,
+            "detail": item.detail, "hsn_sac": item.hsn_sac, "quantity": item.quantity,
+            "unit": item.unit, "rate": item.rate,
+            "tax_percent": item.tax_percent, "tax_amount": item.tax_amount,
+            "amount": item.amount,
+        } for item in row.line_items],
+        "tax_mode": row.tax_mode,
+        "cgst_percent": row.cgst_percent, "sgst_percent": row.sgst_percent,
+        "igst_percent": row.igst_percent,
+        "notes": row.notes, "terms_conditions": row.terms_conditions,
+        "authorized_signatory_name": row.authorized_signatory_name, "qr_data": row.qr_data,
+    }
+
+
+def update_standalone_invoice(db: Session, *, invoice_id: int, payload: StandaloneInvoiceCreate) -> StandaloneInvoice:
+    """Edit a standalone Finance-only invoice using EXACTLY the creation schema and GST rules.
+
+    Invoice number is immutable after first save. No project invoice, advance,
+    payment, or accounting records are touched.
+    """
+    row = get_standalone_invoice(db, invoice_id)
+    if payload.invoice_number.strip() != row.invoice_number:
+        raise ValueError("Saved invoice numbers cannot be changed. Create a new invoice if a new number is required")
+
+    subtotal = _money(sum((item.amount for item in payload.line_items), Decimal("0")))
+    total_item_tax = _money(sum((item.tax_amount for item in payload.line_items), Decimal("0")))
+    cgst = sgst = igst = Decimal("0.00")
+    if payload.tax_mode == "cgst_sgst":
+        cgst = _money(sum((item.amount * payload.cgst_percent / Decimal("100") for item in payload.line_items), Decimal("0")))
+        sgst = _money(sum((item.amount * payload.sgst_percent / Decimal("100") for item in payload.line_items), Decimal("0")))
+    elif payload.tax_mode == "igst":
+        igst = _money(sum((item.amount * payload.igst_percent / Decimal("100") for item in payload.line_items), Decimal("0")))
+    if _money(cgst + sgst + igst) != total_item_tax:
+        raise ValueError("Line-item tax does not reconcile to the selected GST breakdown")
+    total = _money(subtotal + total_item_tax)
+
+    row.invoice_date = payload.invoice_date
+    row.terms = payload.terms
+    row.due_date = payload.due_date
+    row.reference_work_order = payload.reference_work_order
+    row.place_of_supply = payload.place_of_supply
+    row.seller_snapshot = payload.seller.model_dump(mode="json")
+    row.bill_to_snapshot = payload.bill_to.model_dump(mode="json")
+    row.ship_to_snapshot = payload.ship_to.model_dump(mode="json")
+    row.bank_snapshot = payload.bank.model_dump(mode="json")
+    row.notes = payload.notes
+    row.terms_conditions = payload.terms_conditions
+    row.tax_mode = payload.tax_mode
+    row.subtotal = subtotal
+    row.taxable_amount = subtotal
+    row.cgst_percent = payload.cgst_percent
+    row.cgst_amount = cgst
+    row.sgst_percent = payload.sgst_percent
+    row.sgst_amount = sgst
+    row.igst_percent = payload.igst_percent
+    row.igst_amount = igst
+    row.total = total
+    row.balance_due = total
+    row.amount_in_words = amount_in_words(total, "INR")
+    row.authorized_signatory_name = payload.authorized_signatory_name
+    row.qr_data = payload.qr_data
+
+    row.line_items.clear()
+    db.flush()  # Clears old per-invoice sequence constraints before reinserting rows.
+    for item in sorted(payload.line_items, key=lambda value: value.sequence):
+        row.line_items.append(StandaloneInvoiceLineItem(
+            sequence=item.sequence, description=item.description, detail=item.detail,
+            hsn_sac=item.hsn_sac, quantity=item.quantity, unit=item.unit,
+            rate=item.rate, tax_percent=item.tax_percent,
+            tax_amount=item.tax_amount, amount=item.amount,
+        ))
+    db.flush()
+    return row
+
+
 def standalone_invoice_document_payload(db: Session, invoice_id: int) -> dict:
     row = get_standalone_invoice(db, invoice_id)
     seller = dict(row.seller_snapshot or {})

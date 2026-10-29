@@ -44,6 +44,8 @@ from app.modules.commercial.router import router as commercial_router
 from app.modules.commercial.schema_compat import ensure_commercial_schema_compatibility
 from app.modules.travel_km import models as travel_km_models  # noqa: F401
 from app.modules.travel_km.router import router as travel_km_router
+from app.modules.hrms import models as hrms_models  # noqa: F401
+from app.modules.hrms.router import router as hrms_router
 from app.modules.operations import models as operations_models  # noqa: F401
 from app.modules.operations.router import router as operations_router
 from app.modules.operations.production_schema_compat import ensure_production_tracking_schema_compatibility
@@ -585,6 +587,7 @@ app.include_router(business_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
 app.include_router(commercial_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
+app.include_router(hrms_router, prefix=settings.api_prefix)
 app.include_router(operations_router, prefix=settings.api_prefix)
 app.include_router(uat_2026_router, prefix=settings.api_prefix)
 

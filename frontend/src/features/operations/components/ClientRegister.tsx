@@ -26,16 +26,18 @@ export type RegisterClientProject = {
   start_date?: string | null; end_date?: string | null; status: string
 }
 
-export function ClientRegisterPanel({ register, onView, onCreateProject, onCreateClient, readOnly = false, loading = false }: {
+export function ClientRegisterPanel({ register, onView, onCreateProject, onCreatePilot, onCreateClient, readOnly = false, loading = false }: {
   register: ClientRegisterState<RegisterClient>
   onView: (clientId: number) => void
   onCreateProject?: (clientId: number) => void
+  onCreatePilot?: (clientId: number) => void
   onCreateClient?: () => void
   readOnly?: boolean
   loading?: boolean
 }) {
   const panelRef = useRef<HTMLElement>(null)
   const createProject = !readOnly ? onCreateProject : undefined
+  const createPilot = !readOnly ? onCreatePilot : undefined
   const createClient = !readOnly ? onCreateClient : undefined
   const rows = register.pageRows
   const goToPage = (page: number) => { register.setPage(page); panelRef.current?.scrollIntoView({ block: 'start' }) }
@@ -43,8 +45,8 @@ export function ClientRegisterPanel({ register, onView, onCreateProject, onCreat
     <ClientRegisterToolbar register={register} loading={loading} />
     {loading && <div className="operations-empty">Loading clients...</div>}
     {!loading && rows.length > 0 && (register.view === 'excel'
-      ? <ClientExcelView rows={rows} onView={onView} onCreateProject={createProject} />
-      : <ClientCardView rows={rows} onView={onView} onCreateProject={createProject} />)}
+      ? <ClientExcelView rows={rows} onView={onView} onCreateProject={createProject} onCreatePilot={createPilot} />
+      : <ClientCardView rows={rows} onView={onView} onCreateProject={createProject} onCreatePilot={createPilot} />)}
     {!loading && !rows.length && (register.totalCount === 0
       ? <div className="nk-empty"><span className="nk-empty-icon"><Building2 size={22} /></span><h3>No clients registered yet</h3><p>Clients are the starting point for every project in this register. Register the first client to begin creating and tracking project work.</p>{createClient && <div className="nk-empty-action"><button className="operations-button" onClick={createClient}>New Client</button></div>}</div>
       : <div className="nk-empty"><span className="nk-empty-icon"><Search size={22} /></span><h3>No matching clients</h3><p>Nothing matches “{register.query}”. Try another Client ID, name, country or contact, or clear the search to see the full Client Register.</p><div className="nk-empty-action"><button type="button" className="operations-button secondary" onClick={register.clearSearch}>Clear search</button></div></div>)}
@@ -80,10 +82,10 @@ export function ClientRegisterToolbar({ register, loading = false }: { register:
   </div>
 }
 
-type ClientViewProps = { rows: RegisterClient[]; onView: (clientId: number) => void; onCreateProject?: (clientId: number) => void }
+type ClientViewProps = { rows: RegisterClient[]; onView: (clientId: number) => void; onCreateProject?: (clientId: number) => void; onCreatePilot?: (clientId: number) => void }
 
-export function ClientCardView({ rows, onView, onCreateProject }: ClientViewProps) {
-  return <div className="operations-client-grid">{rows.map(row => <article key={row.id} className="operations-client-card"><div><Building2 size={22} /><span className="operations-status">{row.client_code}</span></div><h3>{row.client_name}</h3><p><MapPin size={14} />{row.location || row.country || 'Location not recorded'}</p><p><UserRound size={14} />{row.contact_person_name || 'Contact not recorded'}</p><strong>{row.project_count} Project{row.project_count === 1 ? '' : 's'}</strong><div className="operations-actions"><button className="operations-button secondary" onClick={() => onView(row.id)}>View Client</button>{onCreateProject && <button className="operations-button" onClick={() => onCreateProject(row.id)}><FolderPlus size={15} /> Create Project</button>}</div></article>)}</div>
+export function ClientCardView({ rows, onView, onCreateProject, onCreatePilot }: ClientViewProps) {
+  return <div className="operations-client-grid">{rows.map(row => <article key={row.id} className="operations-client-card"><div><Building2 size={22} /><span className="operations-status">{row.client_code}</span></div><h3>{row.client_name}</h3><p><MapPin size={14} />{row.location || row.country || 'Location not recorded'}</p><p><UserRound size={14} />{row.contact_person_name || 'Contact not recorded'}</p><strong>{row.project_count} Project{row.project_count === 1 ? '' : 's'}</strong><div className="operations-actions"><button className="operations-button secondary" onClick={() => onView(row.id)}>View Client</button>{onCreateProject && <button className="operations-button" onClick={() => onCreateProject(row.id)}><FolderPlus size={15} /> Create Project</button>}{onCreatePilot && <button className="operations-button secondary" onClick={() => onCreatePilot(row.id)}><FolderPlus size={15} /> Create Pilot</button>}</div></article>)}</div>
 }
 
 function formatCreated(value?: string | null) {
@@ -96,9 +98,9 @@ function cell(value?: string | null) {
   return value ? <span title={value}>{value}</span> : <span className="client-excel-empty">—</span>
 }
 
-export function ClientExcelView({ rows, onView, onCreateProject }: ClientViewProps) {
+export function ClientExcelView({ rows, onView, onCreateProject, onCreatePilot }: ClientViewProps) {
   return <div className="operations-table-wrap client-excel-wrap"><table className="operations-table client-excel-table">
-    <thead><tr><th>Client ID</th><th>Client Name</th><th>Country</th><th>Location</th><th>Contact Person</th><th>Phone</th><th>Email</th><th className="client-excel-num">Projects</th><th>Created</th><th>Action</th></tr></thead>
+    <thead><tr><th>Client ID</th><th>Client Name</th><th>Country</th><th>Country</th><th>Contact Person</th><th>Phone</th><th>Email</th><th className="client-excel-num">Projects</th><th>Created</th><th>Action</th></tr></thead>
     <tbody>{rows.map(row => <tr key={row.id}>
       <td className="client-excel-id">{row.client_code}</td>
       <td className="client-excel-name">{cell(row.client_name)}</td>
@@ -109,7 +111,7 @@ export function ClientExcelView({ rows, onView, onCreateProject }: ClientViewPro
       <td className="client-excel-wide">{cell(row.contact_person_email || row.client_email || row.organization_email)}</td>
       <td className="client-excel-num">{row.project_count}</td>
       <td>{formatCreated(row.created_at)}</td>
-      <td className="client-excel-actions"><button className="operations-button secondary" onClick={() => onView(row.id)}>View Client</button>{onCreateProject && <button className="operations-button" onClick={() => onCreateProject(row.id)}><FolderPlus size={14} /> Create Project</button>}</td>
+      <td className="client-excel-actions"><button className="operations-button secondary" onClick={() => onView(row.id)}>View Client</button>{onCreateProject && <button className="operations-button" onClick={() => onCreateProject(row.id)}><FolderPlus size={14} /> Create Project</button>}{onCreatePilot && <button className="operations-button secondary" onClick={() => onCreatePilot(row.id)}><FolderPlus size={14} /> Create Pilot</button>}</td>
     </tr>)}</tbody>
   </table></div>
 }
@@ -128,8 +130,8 @@ export function BackToClientsButton({ onClick }: { onClick: () => void }) {
   return <button className="operations-button secondary" onClick={onClick}><ArrowLeft size={15} /> Back to Clients</button>
 }
 
-export function ClientDetailPanel({ client, readOnly = false, onCreateProject }: { client: RegisterClient; readOnly?: boolean; onCreateProject?: () => void }) {
-  return <section className="operations-panel"><header><div><span className="operations-kicker">{client.client_code}</span><h2>{client.client_name}</h2><p>{client.location || client.country || 'Location not recorded'}</p></div>{!readOnly && onCreateProject && <button className="operations-button" onClick={onCreateProject}><FolderPlus size={15} /> Create Project</button>}</header>
+export function ClientDetailPanel({ client, readOnly = false, onCreateProject, onCreatePilot }: { client: RegisterClient; readOnly?: boolean; onCreateProject?: () => void; onCreatePilot?: () => void }) {
+  return <section className="operations-panel"><header><div><span className="operations-kicker">{client.client_code}</span><h2>{client.client_name}</h2><p>{client.location || client.country || 'Location not recorded'}</p></div>{!readOnly && onCreateProject && <button className="operations-button" onClick={onCreateProject}><FolderPlus size={15} /> Create Project</button>}{!readOnly && onCreatePilot && <button className="operations-button secondary" onClick={onCreatePilot}><FolderPlus size={15} /> Create Pilot</button>}</header>
     <div className="operations-detail-grid operations-client-detail-grid"><div><span>GST</span><strong>{client.gst_number || '—'}</strong></div><div><span>Client Email</span><strong>{client.client_email || '—'}</strong></div><div><span>Organization Email</span><strong>{client.organization_email || '—'}</strong></div><div><span>Contact Person</span><strong>{client.contact_person_name || '—'}</strong></div><div><span>Contact Email</span><strong>{client.contact_person_email || '—'}</strong></div><div><span>Contact Phone</span><strong>{client.contact_person_phone || '—'}</strong></div><div><span>BD Person</span><strong>{client.bd_name || client.source_person_name || '—'}</strong></div><div><span>Audit</span><strong>Created by {client.created_by_name || 'System'} · Updated by {client.updated_by_name || 'System'}</strong></div></div>
   </section>
 }

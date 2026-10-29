@@ -1,5 +1,12 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 type ApiValidationIssue = {
   loc?: unknown
   msg?: unknown
@@ -79,7 +86,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store', ...options, headers })
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Request failed' }))
-    throw new Error(apiErrorMessage(error))
+    throw new ApiError(response.status, apiErrorMessage(error))
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

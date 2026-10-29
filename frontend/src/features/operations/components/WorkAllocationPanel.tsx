@@ -102,7 +102,7 @@ type ProdAssignment = {
 }
 
 function fmtQty(value: number | null | undefined): string {
-  if (value === null || value === undefined) return 'â€”'
+  if (value === null || value === undefined) return '”'
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000)
 }
 
@@ -145,9 +145,9 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
       }
       setNotice(
         `Imported ${summary.created_items} file(s) into ${summary.created_packages} new area(s)`
-        + (summary.skipped_existing ? ` Â· ${summary.skipped_existing} already present (skipped)` : '')
+        + (summary.skipped_existing ? ` A· ${summary.skipped_existing} already present (skipped)` : '')
         + (summary.conflicts.length
-          ? ` Â· ${summary.conflicts.length} with existing work history (skipped, never overwritten)`
+          ? ` A· ${summary.conflicts.length} with existing work history (skipped, never overwritten)`
           : '')
         + '.',
       )
@@ -165,13 +165,13 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
     <section className="operations-panel pt-master-panel">
       <header>
         <div>
-          <span className="operations-kicker">TEAM LEAD Â· STEP 1 Â· WORK FILE MASTER</span>
-          <h2>Upload the work file master (Excel)</h2>
+          <span className="operations-kicker">TEAM LEAD "A", STEP 1 "A" WORK FILE MASTER</span>
+          <h2>Upload the work file  (Excel)</h2>
           <p>
-            Columns: MARCHE LOTTO 3 Â· CODE Â· AREA NAME Â· FILE NUMBER Â· PLANNED LENGTH Â· UOM Â·
-            REMARKS (optional) Â· FILE NAME (optional). For count-based areas use TOTAL FILES instead
-            of FILE NUMBER â€” the ERP then creates File 1..N for that Lot/Code/Area (no per-file
-            length is invented). You will see a preview first â€” nothing is saved until you confirm,
+            Columns: MARCHE LOTTO 3 , CODE , AREA NAME , FILE NUMBER , PLANNED LENGTH , UOM 
+            REMARKS (optional) · FILE NAME (optional). For count-based areas use TOTAL FILES instead
+            of FILE NUMBER ” the ERP then creates File 1..N for that Lot/Code/Area (no per-file
+            length is invented). You will see a preview first ” nothing is saved until you confirm,
             and files that already have work history are never overwritten.
           </p>
         </div>
@@ -215,14 +215,14 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
             <span>
               {preview.planned_by_unit.length
                 ? preview.planned_by_unit.map((g) => `${g.quantity} ${g.unit}`).join(' + ')
-                : 'â€”'}
+                : '”'}
             </span>
           </div>
           {preview.conflicts.length > 0 && (
             <ul className="pt-preview-conflicts">
               {preview.conflicts.slice(0, 10).map((c) => (
                 <li key={`${c.row}-${c.item_number}`}>
-                  Row {c.row} Â· {c.lot} / {c.code} / {c.area_name} Â· file {c.item_number} â€” {c.reason}
+                  Row {c.row} A· {c.lot} / {c.code} / {c.area_name} A, file {c.item_number} ” {c.reason}
                 </li>
               ))}
             </ul>
@@ -233,7 +233,7 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
               Cancel
             </button>
             <button type="button" className="operations-button" disabled={busy} onClick={confirmMaster}>
-              {busy ? 'Importingâ€¦' : 'Confirm Import'}
+              {busy ? 'Importing¦' : 'Confirm Import'}
             </button>
           </div>
         </div>

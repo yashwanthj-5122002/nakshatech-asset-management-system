@@ -742,3 +742,7 @@ router.include_router(workflow_router)
 # V8.1 post-operational client feedback, rework, billing, payment and closure lifecycle.
 from app.modules.operations.lifecycle_router import router as lifecycle_router
 router.include_router(lifecycle_router)
+
+# Isolated client-data Pilot Projects; no changes to paid-project routers.
+from app.modules.operations.pilot_router import router as pilot_router
+router.include_router(pilot_router)

@@ -701,7 +701,7 @@ def _build_themed_invoice_a4(payload: dict) -> BytesIO:
     return build_reference_invoice_pdf(payload, logo)
 
 
-def build_invoice_a4_pdf(payload: dict) -> BytesIO:
+def build_invoice_a4_pdf(payload: dict, template: str | None = None) -> BytesIO:
     """Shared NakshaTech A4 renderer for project and standalone adapters.
 
     The renderer formats only the canonical document payload. It does not query,
@@ -713,11 +713,16 @@ def build_invoice_a4_pdf(payload: dict) -> BytesIO:
         return _build_themed_invoice_a4(payload)
     output = BytesIO()
     styles = getSampleStyleSheet()
-    navy = colors.HexColor("#082A4A")
-    cyan = colors.HexColor("#08A8C4")
-    line = colors.HexColor("#CAD9E2")
-    pale = colors.HexColor("#EFF9FB")
-    muted = colors.HexColor("#52677A")
+    # Optional presentation-only themes. No values in the financial payload are modified.
+    palettes = {
+        "green_gold": ("#075244", "#BD9137", "#B6D0C2", "#E8F1EB", "#435C55"),
+        "modern_teal": ("#075B75", "#00A8BB", "#B4DCE2", "#E9F6F8", "#496976"),
+        "geospatial_blue": ("#063A67", "#0F9BD0", "#C1D8E8", "#EAF4FC", "#52677A"),
+    }
+    if template is not None and template not in palettes:
+        raise ValueError("Unsupported invoice template")
+    palette = palettes.get(template) or ("#082A4A", "#08A8C4", "#CAD9E2", "#EFF9FB", "#52677A")
+    navy, cyan, line, pale, muted = (colors.HexColor(value) for value in palette)
     body = ParagraphStyle("A4Body", parent=styles["BodyText"], fontSize=7.5, leading=9.2, textColor=navy)
     small = ParagraphStyle("A4Small", parent=body, fontSize=6.7, leading=8.2, textColor=muted)
     label = ParagraphStyle("A4Label", parent=small, fontName="Helvetica-Bold", textColor=cyan, spaceAfter=1.5)
@@ -739,6 +744,24 @@ def build_invoice_a4_pdf(payload: dict) -> BytesIO:
         return " ".join(str(value or fallback).split())
 
     def page_brand(canvas, doc):  # noqa: ANN001
+        canvas.saveState()
+        if template is not None:
+            page_w, page_h = A4
+            # Top and bottom vector bands: the original A4 layout remains identical.
+            canvas.setFillColor(navy)
+            canvas.rect(0, page_h - 3.4 * mm, page_w, 3.4 * mm, stroke=0, fill=1)
+            canvas.rect(0, 0, page_w, 3.2 * mm, stroke=0, fill=1)
+            canvas.setFillColor(cyan)
+            canvas.rect(0, page_h - 4.1 * mm, page_w, 0.7 * mm, stroke=0, fill=1)
+            canvas.rect(0, 3.2 * mm, page_w, 0.5 * mm, stroke=0, fill=1)
+            # Thin, decorative contour arcs: decorative only and away from live invoice data.
+            canvas.setStrokeColor(line)
+            canvas.setLineWidth(0.32)
+            for offset in range(4):
+                y = page_h - (13 + offset * 2.5) * mm
+                canvas.bezier(147 * mm, y, 165 * mm, y + 4 * mm, 195 * mm, y - 5 * mm,
+                              211 * mm, y + 2 * mm)
+        canvas.restoreState()
         canvas.saveState()
         if logo_path:
             try:
@@ -897,7 +920,8 @@ def build_invoice_a4_pdf(payload: dict) -> BytesIO:
         widths = [9, 64, 19, 16, 14, 29, 35]
     items = Table(item_rows, colWidths=[value * mm for value in widths], repeatRows=1)
     items.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), pale), ("TEXTCOLOR", (0, 0), (-1, 0), navy),
+        ("BACKGROUND", (0, 0), (-1, 0), navy if template else pale),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white if template else navy),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 4.2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4.2), ("LEFTPADDING", (0, 0), (-1, -1), 3.5),
@@ -908,7 +932,7 @@ def build_invoice_a4_pdf(payload: dict) -> BytesIO:
         ("LINEBELOW", (0, 0), (-1, -1), 0.4, line),
         ("LINEAFTER", (0, 0), (-2, -1), 0.25, line),
         ("BOX", (0, 0), (-1, -1), 0.4, line),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.7, colors.HexColor("#08A8C4")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.7, cyan),
     ]))
 
     total_rows = []

@@ -57,41 +57,64 @@ def _temporary_passwords_by_role() -> dict[str, tuple[str, ...]]:
     }
 
 
+def _activate_local_test_account(user: User, password: str) -> None:
+    """Keep local test accounts ready for shared-password integration testing."""
+    user.password_hash = hash_password(password)
+    user.account_status = "active"
+    user.is_active = True
+    user.mfa_required = False
+    user.must_change_password = False
+
+
 def _ensure_admin_role(db: Session) -> None:
-    """Correct the historic Admin/Software-Team collision without changing its password."""
+    """Correct the historic role collision and configure Admin access."""
     email = ADMIN_ACCOUNT.email
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None:
         configured_password = settings.seed_admin_password.strip()
         if configured_password:
-            db.add(
-                User(
-                    email=email,
-                    full_name=ADMIN_ACCOUNT.full_name,
-                    password_hash=hash_password(configured_password),
-                    role=ADMIN_ROLE,
-                    branch="Head Office",
-                    email_verified=True,
-                    account_status="active",
-                    mfa_required=False,
-                    must_change_password=False,
-                    is_active=True,
-                )
+            user = User(
+                email=email,
+                full_name=ADMIN_ACCOUNT.full_name,
+                password_hash=hash_password(configured_password),
+                role=ADMIN_ROLE,
+                branch="Head Office",
+                email_verified=True,
+                account_status="pending_mfa",
+                mfa_required=True,
+                must_change_password=False,
+                is_active=False,
             )
+            if settings.local_test_auth_bypass:
+                _activate_local_test_account(user, configured_password)
+            db.add(user)
         return
 
-    # Preserve the existing password hash. The screenshot's role-mismatch error
-    # proves the credential was valid and only the stored role was wrong.
+    # Preserve the existing password hash while correcting the historic role.
     user.email = email
     user.role = ADMIN_ROLE
     user.full_name = user.full_name or ADMIN_ACCOUNT.full_name
     user.branch = user.branch or "Head Office"
     user.email_verified = True
-    if user.account_status == "disabled_privileged_access":
+    if settings.local_test_auth_bypass:
+        _activate_local_test_account(user, settings.seed_admin_password.strip())
+        return
+    confirmed_authenticator = db.scalar(
+        select(AuthenticatorCredential.id).where(
+            AuthenticatorCredential.user_id == user.id,
+            AuthenticatorCredential.is_confirmed.is_(True),
+        )
+    )
+    if confirmed_authenticator is None:
+        if user.is_active or not user.mfa_required or not user.must_change_password:
+            user.token_version = (user.token_version or 0) + 1
+        user.account_status = "pending_mfa"
+        user.is_active = False
+        user.must_change_password = False
+        user.mfa_required = True
+    elif user.account_status == "disabled_privileged_access":
         user.account_status = "active"
         user.is_active = True
-        user.must_change_password = False
-        user.mfa_required = False
 
 
 def ensure_privileged_accounts(db: Session) -> None:
@@ -124,7 +147,7 @@ def ensure_privileged_accounts(db: Session) -> None:
                         AuthenticatorCredential.is_confirmed.is_(True),
                     )
                 ))
-            legacy_department_account = role in {SOFTWARE_TEAM_ROLE, IT_ROLE, FINANCE_ROLE, HR_ROLE} and not confirmed_authenticator
+            legacy_department_account = not confirmed_authenticator
             if user is None:
                 user = User(
                     email=email,
@@ -138,6 +161,8 @@ def ensure_privileged_accounts(db: Session) -> None:
                     must_change_password=True,
                     is_active=False,
                 )
+                if settings.local_test_auth_bypass:
+                    _activate_local_test_account(user, temporary_password)
                 db.add(user)
                 continue
 
@@ -146,6 +171,9 @@ def ensure_privileged_accounts(db: Session) -> None:
             user.role = role
             user.branch = user.branch or "Head Office"
             user.email_verified = True
+            if settings.local_test_auth_bypass:
+                _activate_local_test_account(user, temporary_password)
+                continue
 
             if created_or_converted or legacy_department_account or user.account_status in {
                 "disabled_management_access",
@@ -210,6 +238,7 @@ def _operations_test_account_specs() -> list[tuple[str, str, str, str, str, str,
         (settings.seed_bd_manager_email, "BD Manager Test", settings.seed_bd_manager_password, BD_ROLE, "Business Development", "Manager", "TEST-BD-MGR"),
         (settings.seed_ortho_pm_email, "Ortho Project Manager Test", settings.seed_ortho_pm_password, ORTHO_ROLE, "Ortho", "Project Manager", "TEST-ORTHO-PM"),
         (settings.seed_employee_test_email, "Employee Test", settings.seed_employee_test_password, "employee", "Employee", "Employee", "TEST-EMPLOYEE-001"),
+        (settings.seed_drone_email, "Drone Department Test", settings.seed_drone_password, "drone", "Drone", "Drone Team", "TEST-DRONE-PM"),
     ]
 
 
@@ -262,7 +291,13 @@ def ensure_operations_test_accounts(db: Session) -> None:
             raise RuntimeError(f"Test password must be at least 10 characters for {email}")
 
         user = db.scalar(select(User).where(func.lower(User.email) == email))
-        if user is not None and user.employee_id not in {employee_id, "TEST-BD-EMP" if employee_id == "TEST-EMPLOYEE-001" else employee_id}:
+        is_existing_drone_account = (
+            role == "drone"
+            and user is not None
+            and (user.role or "").strip().lower() == "drone"
+            and (user.department or "").strip().lower() in {"", "drone"}
+        )
+        if user is not None and user.employee_id not in {employee_id, "TEST-BD-EMP" if employee_id == "TEST-EMPLOYEE-001" else employee_id} and not is_existing_drone_account:
             raise RuntimeError(
                 f"Refusing to repurpose existing user {email}: the address is not a managed V7 test fixture"
             )
@@ -313,14 +348,18 @@ def ensure_v81_test_employee_accounts(db: Session) -> None:
         raise RuntimeError("TEST_EMPLOYEE_SEED_PASSWORD must contain at least 10 characters")
 
     for number in range(1, 16):
-        email = f"employee{number}.test@nakshatech.com"
+        # Keep Ortho fixtures consistent with the other department login convention.
+        # Existing V8.1 accounts are migrated in place by employee_id, preserving their
+        # user IDs and all project/member relationships.
+        email = f"ortho.employee{number:02d}.test@nakshatech.com"
+        legacy_email = f"employee{number}.test@nakshatech.com"
         employee_id = f"NT-TEST-EMP-{number:03d}"
         full_name = f"Employee {number}"
         by_email = db.scalar(select(User).where(func.lower(User.email) == email))
         by_employee_id = db.scalar(select(User).where(User.employee_id == employee_id))
         if by_email is not None and by_email.employee_id not in {None, employee_id}:
             raise RuntimeError(f"Refusing to repurpose existing user {email}")
-        if by_employee_id is not None and by_employee_id.email.strip().lower() != email:
+        if by_employee_id is not None and by_employee_id.email.strip().lower() not in {email, legacy_email}:
             raise RuntimeError(f"Refusing to repurpose existing Employee ID {employee_id}")
         user = by_email or by_employee_id
         if user is None:
@@ -438,10 +477,10 @@ def ensure_multi_department_pm_accounts(db: Session) -> None:
 
 
 def ensure_multi_department_test_employee_accounts(db: Session) -> None:
-    """Idempotently provision 15 test Employee accounts each for LiDAR, Mobile Mapping, Laser
-    Scanning and Civil (60 total), generalizing ensure_v81_test_employee_accounts.
+    """Idempotently provision 15 test Employee accounts each for Ortho, LiDAR, Mobile Mapping,
+    Laser Scanning, Civil and Drone.
 
-    All 60 remain generic role=employee; PM assigns their project-specific operational role
+    All seeded staff remain generic role=employee; PM assigns their project-specific operational role
     (Team Lead/Production/QC/QA) per project, exactly like the existing Ortho 15.
     """
     if not settings.enable_test_employee_seed:
@@ -458,15 +497,17 @@ def ensure_multi_department_test_employee_accounts(db: Session) -> None:
         DEPARTMENT_MOBILE_MAPPING: "mobilemapping",
         DEPARTMENT_LASER_SCANNING: "laserscanning",
         DEPARTMENT_CIVIL: "civil",
+        "Drone": "drone",
     }
     codes = {
         DEPARTMENT_LIDAR: "LIDAR",
         DEPARTMENT_MOBILE_MAPPING: "MOBILEMAPPING",
         DEPARTMENT_LASER_SCANNING: "LASERSCANNING",
         DEPARTMENT_CIVIL: "CIVIL",
+        "Drone": "DRONE",
     }
     for department_code, slug in slugs.items():
-        department_label = DEPARTMENT_LABELS[department_code]
+        department_label = "Drone" if department_code == "Drone" else DEPARTMENT_LABELS[department_code]
         code = codes[department_code]
         for number in range(1, 16):
             email = f"{slug}.employee{number:02d}.test@nakshatech.com"
