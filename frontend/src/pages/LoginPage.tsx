@@ -210,9 +210,10 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
       <div className="final-login-shell final-login-shell--globe" ref={shellRef}>
         <header className="final-login-header">
           <Link className="final-login-brand" to="/" aria-label="Return to NakshaTech Asset Management welcome page">
-            <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" />
-            <span className="final-login-brand-divider" aria-hidden="true" />
-            <span className="final-login-product-name">Asset Management System</span>
+            <span className="naksha-brand-stack">
+              <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" />
+              <span className="naksha-brand-tagline">INSPIRING GEOSPATIAL STANDARDS</span>
+            </span>
           </Link>
         </header>
 

@@ -1,18 +1,26 @@
-import { ArrowLeft, Camera, LocateFixed, MailPlus, MapPin, Save } from 'lucide-react'
-import { type FormEvent, useEffect, useState } from 'react'
+import { ArrowLeft, Camera, MailPlus, MapPin, Save } from 'lucide-react'
+import exifr from 'exifr'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
-import type { CapturedGps, TravelKmClaim, TravelKmProjectGeofence } from '../travel-km-types'
+import type { TravelKmClaim, TravelKmProjectGeofence } from '../travel-km-types'
 import { EmailRecipientChips, isValidTravelEmail } from '../EmailRecipientChips'
-import { captureLiveGps, displayDate } from '../travel-km-utils'
 import '../travel-km.css'
 
 type ProjectOption = { id: number; project_number: string; project_name: string; task?: string | null; lifecycle_status: string; claim_allowed: boolean; claim_block_reason?: string | null }
 
-function gpsText(gps: CapturedGps | null) {
-  if (!gps) return 'Not captured'
-  return `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)} · accuracy ${gps.accuracy == null ? 'N/A' : `${Math.round(gps.accuracy)} m`}`
+/** Photo GPS comes only from the image EXIF metadata; no browser location permission is used. */
+type PhotoGps = { latitude: number; longitude: number; capturedAt: string; timeLabel: string }
+
+function localStamp(value: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
+}
+
+function photoTimeLabel(value: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
 }
 
 export function TravelKmCreatePage() {
@@ -22,13 +30,16 @@ export function TravelKmCreatePage() {
   const [travelDate, setTravelDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [purpose, setPurpose] = useState('')
   const [startKm, setStartKm] = useState('')
-  const [startGps, setStartGps] = useState<CapturedGps | null>(null)
   const [photo, setPhoto] = useState<File | null>(null)
+  const [photoGps, setPhotoGps] = useState<PhotoGps | null>(null)
+  const [photoGpsState, setPhotoGpsState] = useState<'idle' | 'reading' | 'missing'>('idle')
+  const [photoGpsNote, setPhotoGpsNote] = useState('')
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const photoRequestRef = useRef(0)
   const [reportingManagerEmail, setReportingManagerEmail] = useState('')
   const [toEmails, setToEmails] = useState<string[]>([])
   const [ccEmails, setCcEmails] = useState<string[]>([])
   const [projectGeofence, setProjectGeofence] = useState<TravelKmProjectGeofence | null>(null)
-  const [gpsBusy, setGpsBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState('')
@@ -57,11 +68,36 @@ export function TravelKmCreatePage() {
     return () => { cancelled = true }
   }, [projectId])
 
-  async function captureGps() {
-    setGpsBusy(true); setError('')
-    try { setStartGps(await captureLiveGps()) }
-    catch (err) { setError(err instanceof Error ? err.message : 'Could not capture live GPS') }
-    finally { setGpsBusy(false) }
+  async function readPhotoGps(file: File | null) {
+    const request = ++photoRequestRef.current
+    setPhoto(file)
+    setPhotoGps(null)
+    setPhotoGpsNote('')
+    if (!file) { setPhotoGpsState('idle'); return }
+    setPhotoGpsState('reading')
+    try {
+      const gps = await exifr.gps(file)
+      if (request !== photoRequestRef.current) return
+      const latitude = Number(gps?.latitude)
+      const longitude = Number(gps?.longitude)
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        setPhotoGpsState('missing')
+        setPhotoGpsNote(`${file.name}: no GPS tag found. Use the original camera photo with location tagging enabled.`)
+        return
+      }
+      const exif = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']) as { DateTimeOriginal?: unknown; CreateDate?: unknown } | undefined
+      if (request !== photoRequestRef.current) return
+      const takenAt = exif?.DateTimeOriginal ?? exif?.CreateDate
+      const stamp = takenAt instanceof Date && Number.isFinite(takenAt.getTime())
+        ? takenAt
+        : new Date(file.lastModified || Date.now())
+      setPhotoGps({ latitude, longitude, capturedAt: localStamp(stamp), timeLabel: photoTimeLabel(stamp) })
+      setPhotoGpsState('idle')
+    } catch {
+      if (request !== photoRequestRef.current) return
+      setPhotoGpsState('missing')
+      setPhotoGpsNote(`${file.name}: GPS metadata could not be read from this photo.`)
+    }
   }
 
   async function submit(event: FormEvent) {
@@ -72,21 +108,20 @@ export function TravelKmCreatePage() {
     if (!isValidTravelEmail(reportingManagerEmail)) return setError('Enter a valid Reporting Manager email address.')
     if (toEmails.length === 0) return setError('Add at least one TO email recipient. The Reporting Manager is included automatically as well.')
     if (!(Number(startKm) >= 0)) return setError('Enter a valid Start KM.')
-    if (!startGps) return setError('Capture live Start GPS before creating the claim.')
     if (!photo) return setError('Capture or select the Start odometer photo.')
     if (photo.size > 15 * 1024 * 1024) return setError('Start odometer photo must be 15 MB or smaller.')
+    if (!photoGps) return setError('The Start odometer photo has no GPS tag. Use the original camera photo with location tagging enabled.')
     setLoading(true); setError('')
     let createdClaimId: number | null = null
     try {
       const claim = await apiFetch<TravelKmClaim>('/travel-km/claims', { method: 'POST', body: JSON.stringify({
         project_id: Number(projectId), travel_date: travelDate, purpose_description: purpose.trim(), start_km: Number(startKm),
-        start_latitude: startGps.latitude, start_longitude: startGps.longitude, start_accuracy_m: startGps.accuracy, start_captured_at: startGps.capturedAt,
+        start_latitude: photoGps.latitude, start_longitude: photoGps.longitude, start_accuracy_m: null, start_captured_at: photoGps.capturedAt,
         email_routing: { reporting_manager_email: reportingManagerEmail.trim().toLowerCase(), to_emails: toEmails, cc_emails: ccEmails },
       }) })
       createdClaimId = claim.id
       const form = new FormData(); form.append('file', photo)
-      const params = new URLSearchParams({ phase: 'start', latitude: String(startGps.latitude), longitude: String(startGps.longitude), captured_at: startGps.capturedAt })
-      if (startGps.accuracy != null) params.set('accuracy_m', String(startGps.accuracy))
+      const params = new URLSearchParams({ phase: 'start', latitude: String(photoGps.latitude), longitude: String(photoGps.longitude), captured_at: photoGps.capturedAt })
       await apiFetch(`/travel-km/claims/${claim.id}/attachments?${params.toString()}`, { method: 'POST', body: form })
       navigate(`/travel-km/${claim.id}`)
     } catch (err) {
@@ -102,7 +137,7 @@ export function TravelKmCreatePage() {
   if (initialLoading) return <div className="travel-km-page"><div className="travel-km-panel travel-km-empty">Loading Projects...</div></div>
 
   return <div className="travel-km-page">
-    <DashboardHeader eyebrow="EMPLOYEE TRAVEL & KM · START JOURNEY" title="Create Travel Claim" description="Use live GPS and a geo-tagged odometer image at the start of project travel. The server records the captured coordinates and timestamp with the evidence." actions={<Link className="travel-km-secondary" to="/travel-km"><ArrowLeft size={16}/> My Claims</Link>} />
+    <DashboardHeader eyebrow="EMPLOYEE TRAVEL & KM · START JOURNEY" title="Create Travel Claim" description="Attach a geo-tagged odometer image at the start of project travel. GPS coordinates and the photo time are read from the image EXIF metadata, so no live location permission is requested." actions={<Link className="travel-km-secondary" to="/travel-km"><ArrowLeft size={16}/> My Claims</Link>} />
     {error && <div className="travel-km-error">{error}</div>}
     <form className="travel-km-panel travel-km-form" onSubmit={submit}>
       <div><span className="travel-km-kicker">STEP 1 · PROJECT & PURPOSE</span><h2>Travel Information</h2><p>Select the ongoing Project ID maintained by Finance/Admin. The linked client is resolved automatically in the background. Completed, on-hold, inactive and upcoming projects remain visible for reference but cannot be used for a new claim.</p></div>
@@ -126,8 +161,8 @@ export function TravelKmCreatePage() {
       <div><span className="travel-km-kicker">STEP 3 · START ODOMETER</span><h2>Start Journey Evidence</h2></div>
       <div className="travel-km-form-grid">
         <label className="travel-km-field"><span>Start KM *</span><input type="number" min="0" step="0.01" value={startKm} onChange={e => setStartKm(e.target.value)} placeholder="Example: 25420" required /></label>
-        <div className="travel-km-gps-card"><div className="travel-km-inline"><MapPin size={16}/><strong>Live Start GPS</strong></div><span>{gpsText(startGps)}</span><span>{startGps ? `Captured ${displayDate(startGps.capturedAt)}` : 'Allow precise location access on this device.'}</span><button className="travel-km-secondary" type="button" onClick={() => void captureGps()} disabled={gpsBusy}><LocateFixed size={15}/>{gpsBusy ? 'Capturing GPS...' : startGps ? 'Recapture Start GPS' : 'Capture Start GPS'}</button></div>
-        <label className="travel-km-field full"><span>Start Odometer Photo *</span><div className="travel-km-photo-input"><Camera size={18}/><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => setPhoto(e.target.files?.[0] || null)} /></div><small>{photo ? `${photo.name} · ${(photo.size / 1024 / 1024).toFixed(2)} MB` : 'Use the phone camera where possible. EXIF GPS is checked when present, while live GPS is always stored separately.'}</small></label>
+        <div className="travel-km-gps-card"><div className="travel-km-inline"><MapPin size={16}/><strong>Geo-Tagged Images</strong><span>{photoGps ? `${photoGps.latitude.toFixed(6)}, ${photoGps.longitude.toFixed(6)}` : photoGpsState === 'reading' ? 'Reading GPS tags...' : photo ? 'No GPS tag in photo' : 'No photo selected'}</span><span>{photoGps ? `Photo time ${photoGps.timeLabel}` : 'Upload the original odometer photo with GPS location tags enabled.'}</span><button className="travel-km-secondary" type="button" onClick={() => photoInputRef.current?.click()} disabled={photoGpsState === 'reading'}><Camera size={15}/>{photoGpsState === 'reading' ? 'Reading GPS...' : photo ? 'Replace Photo' : 'Add Geo-Tagged Photo'}</button></div>{photoGpsNote && <small>{photoGpsNote}</small>}</div>
+        <label className="travel-km-field full"><span>Start Odometer Photo *</span><div className="travel-km-photo-input"><Camera size={18}/><input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={e => void readPhotoGps(e.target.files?.[0] || null)} /></div><small>{photo ? `${photo.name} · ${(photo.size / 1024 / 1024).toFixed(2)} MB${photoGps ? ' · GPS tag found' : photoGpsState === 'missing' ? ' · no GPS tag' : ''}` : 'Choose the original odometer photo from the gallery (taken with location tagging enabled). GPS coordinates and photo time are read from the image EXIF metadata, so no precise location permission is required.'}</small></label>
       </div>
       <div className="travel-km-actions"><button className="travel-km-primary" type="submit" disabled={loading || openProjectCount === 0}><Save size={16}/>{loading ? 'Creating Claim...' : 'Start Travel Claim'}</button></div>
     </form>

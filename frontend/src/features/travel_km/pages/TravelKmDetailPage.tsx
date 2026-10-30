@@ -269,7 +269,7 @@ export function TravelKmDetailPage() {
   async function saveMissingStartEvidence() {
     if (!claim) return
     if (!startReplacePhoto) return setError('Capture or select the Start odometer photo.')
-    if (!startReplaceGps) return setError('Capture fresh live Start GPS before uploading the Start odometer evidence.')
+    if (!startReplaceGps) return setError('Capture fresh Geo-Tagged Images before uploading the Start odometer evidence.')
     if (startReplacePhoto.size > 15 * 1024 * 1024) return setError('Start odometer photo must be 15 MB or smaller.')
     setBusy('start-evidence'); setError('')
     try {

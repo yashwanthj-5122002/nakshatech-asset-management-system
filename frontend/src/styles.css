@@ -3028,6 +3028,36 @@ td strong { color: #173960; }
   gap: clamp(13px, 1.35vw, 22px);
 }
 
+/* Shared Welcome/Login lockup: tagline under the NAKSHATECH wordmark.
+   In nakshatech-horizontal-light.png the wordmark starts at 29.54% of the
+   width and its baseline sits ~5.6% of the width above the image bottom, so
+   both offsets are percentages of the stack (= rendered logo) width. */
+.naksha-brand-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.naksha-brand-tagline {
+  box-sizing: border-box;
+  width: 0;
+  min-width: 100%;
+  margin-top: calc(-5.6% + 3px);
+  padding-left: 29.54%;
+  color: #9dd9e8;
+  font-size: clamp(9px, calc(.3vw + 5.5px), 11px);
+  font-weight: 600;
+  letter-spacing: .1em;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .naksha-brand-tagline { font-size: 8px; letter-spacing: .07em; }
+}
+
 .final-login-brand img {
   width: clamp(238px, 23.5vw, 385px);
   max-height: 72px;
