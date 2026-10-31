@@ -147,6 +147,7 @@ const navItems: NavItem[] = [
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/ortho', label: 'Project Operations', icon: FolderKanban, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho' },
   { to: '/production-tracking', label: 'Production Tracking', icon: Activity, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho', managementGroup: 'operations', managementLabel: 'Production Tracking' },
+  { to: '/payables', label: 'Payables', icon: FileCheck2, roles: ['admin', 'finance', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Payables' }, // NAKSHA_PAYABLES_NAV
   { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Dashboard' },
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
@@ -364,7 +365,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const isAdmin = currentUser.role === 'admin'
   const activeNavGroups = isManagement ? managementNavGroups : isAdmin ? adminNavGroups : navGroups
 
-  const visibleItems = navItems.filter(item => canShowInSidebar(currentUser.role, item))
+  const visibleItems = navItems.filter(item =>
+    (item.to !== '/payables' || currentUser.role !== 'management' || ['vinod@nakshatech.com', 'chethan@nakshatech.com'].includes(currentUser.email.toLowerCase())) &&
+    canShowInSidebar(currentUser.role, item)
+  ) // NAKSHA_PAYABLES_MANAGER_VISIBILITY
 
   const available = currentUser.role === 'it'
     ? [

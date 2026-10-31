@@ -61,7 +61,7 @@
 //   )
 // }
 import { Building2, MapPin, ShieldCheck } from 'lucide-react'
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
 import { roleHomePath } from '../../../lib/roles'
@@ -82,9 +82,10 @@ export function BranchSelectionPage() {
   const [selected, setSelected] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    void loadBranches()
+  const autoSelectionStarted = useRef(false)
+  const isEmployee = String(user?.role).toLowerCase() === 'employee'
+/*  useEffect(() => {
+  //  void loadBranches()
       .then(items => {
         setBranches(items)
 
@@ -99,7 +100,65 @@ export function BranchSelectionPage() {
             : 'Could not load branches',
         )
       })
-  }, [])
+  }, [])*/
+  useEffect(() => {
+  if (!user || autoSelectionStarted.current) return
+  autoSelectionStarted.current = true
+
+  async function openWorkspace() {
+    setLoading(true)
+    setError('')
+
+    try {
+      const items = await loadBranches()
+      setBranches(items)
+
+      if (items[0]) {
+        setSelected(String(items[0].id))
+      }
+
+      // Preserve the selection screen for other roles.
+      if (!isEmployee) return
+
+      if (!needsBranchSelection && user?.selected_branch_id) {
+        navigate(roleHomePath(user.role), { replace: true })
+        return
+      }
+
+      // Prefer the employee's existing branch, then the sole
+      // available branch, then Head Office.
+      const branch =
+        items.find(item => item.id === user?.selected_branch_id) ??
+        (items.length === 1 ? items[0] : undefined) ??
+        items.find(item => item.code.toUpperCase() === 'HO')
+
+      if (!branch) {
+        throw new Error(
+          'No default branch is available. Please select your branch below.'
+        )
+      }
+
+      const result = await selectBranch(branch.id)
+      const role = result.user?.role ?? user?.role
+
+      if (!role || result.branch_selection_required) {
+        throw new Error('Could not complete branch selection. Please try again.')
+      }
+
+      navigate(roleHomePath(role), { replace: true })
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not open your dashboard'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  void openWorkspace()
+}, [])
 
   if (!user) {
     return <Navigate to="/login" replace />
@@ -140,7 +199,13 @@ export function BranchSelectionPage() {
       setLoading(false)
     }
   }
-
+if (isEmployee && !error) {
+  return (
+    <main role="status" style={{ padding: '32px' }}>
+      Opening your dashboard...
+    </main>
+  )
+}
   return (
     <AuthFlowShell
       eyebrow="BRANCH CONTEXT"

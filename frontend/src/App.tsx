@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { PayablesListPage, PayableNewPage, PayableDetailPage } from './features/payables/PayablesPage' // NAKSHA_PAYABLES_IMPORT
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { StrictProtectedRoute } from './components/StrictProtectedRoute'
@@ -168,6 +169,10 @@ export default function App() {
       <Route path="/ortho" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><OrthoDashboardPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/production-tracking" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><ProductionTrackingPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/ortho/project-360/:projectId" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'mobile_mapping', 'laser_scanning', 'civil', 'management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></StrictProtectedRoute>} />
+      {/* NAKSHA_PAYABLES_ROUTES: independent module; existing paths untouched */}
+      <Route path="/payables" element={<ProtectedRoute roles={['admin','finance','management']}><WithLayout><PayablesListPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/payables/new" element={<ProtectedRoute roles={['admin','finance']}><WithLayout><PayableNewPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/payables/:id" element={<ProtectedRoute roles={['admin','finance','management']}><WithLayout><PayableDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/reports" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceReportsPage /></WithLayout></ProtectedRoute>} />
