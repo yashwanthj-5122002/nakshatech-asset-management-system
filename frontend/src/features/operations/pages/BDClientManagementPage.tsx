@@ -1,4 +1,4 @@
-import { Building2, FolderKanban, Plus, RefreshCcw, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Building2, CheckCircle2, FolderKanban, Plus, RefreshCcw, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -38,10 +38,14 @@ export function BDClientManagementPage(){
   const [showClientForm,setShowClientForm]=useState(false);const [showProjectForm,setShowProjectForm]=useState(false)
   const [clientForm,setClientForm]=useState<ClientForm>(emptyClient);const [projectForm,setProjectForm]=useState<ProjectForm>(emptyProject)
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('')
+  // Alerts are shown as a short-lived floating popup instead of an inline banner that shifts the page.
+  const [alertVisible,setAlertVisible]=useState(false);const [alertSeq,setAlertSeq]=useState(0)
+  function showError(message:string){setError(message);setAlertVisible(true);setAlertSeq(value=>value+1)}
+  function clearError(){setError('');setAlertVisible(false)}
   const [commercial,setCommercial]=useState<CommercialFormState>(emptyCommercialForm);const [docs,setDocs]=useState<PendingDocument[]>([]);const [currencies,setCurrencies]=useState<CurrencyPayload|null>(null)
   const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''})
   useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
-  function load(){setError('');void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>setError(err instanceof Error?err.message:'Unable to load clients'))}
+  function load(){clearError();void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>showError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
 
 
@@ -59,8 +63,8 @@ export function BDClientManagementPage(){
   const conversionPrompt=conversionPilotId===null?pilots.find(p=>p.conversion_eligible&&!p.conversion_deferred)??null:null
   async function createPilot(){
     if(!selected)return
-    if(!delivery.performing_department_code){setError('Select the performing department.');return}
-    setBusy(true);setError('');setNotice('')
+    if(!delivery.performing_department_code){showError('Select the performing department.');return}
+    setBusy(true);clearError();setNotice('')
     try{
       const result=await apiFetch<Pilot>('/operations/pilots',{method:'POST',body:JSON.stringify({
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,
@@ -74,14 +78,14 @@ export function BDClientManagementPage(){
       setShowPilotForm(false);setProjectForm(emptyProject);setPilotDataRef('Client-provided sample');setPilotPercentage('2')
       setNotice(`${result.project_code} created as a non-billable pilot. Assign a Project Manager from BD Project Management.`)
       load();loadPilots()
-    }catch(err){setError(err instanceof Error?err.message:'Unable to create pilot')}finally{setBusy(false)}
+    }catch(err){showError(err instanceof Error?err.message:'Unable to create pilot')}finally{setBusy(false)}
   }
   async function pilotAction(id:number,action:'deliver'|'feedback'|'defer',body?:unknown){
-    setBusy(true);setError('')
+    setBusy(true);clearError()
     try{await apiFetch(`/operations/pilots/${id}/${action}`,{method:'POST',...(body!==undefined?{body:JSON.stringify(body)}:{})})
       setNotice(action==='deliver'?'Pilot delivery recorded. You can now record client feedback.':action==='feedback'?'Client feedback recorded.':'Conversion postponed; pilot remains available.')
       loadPilots()
-    }catch(err){setError(err instanceof Error?err.message:'Pilot operation failed')}finally{setBusy(false)}
+    }catch(err){showError(err instanceof Error?err.message:'Pilot operation failed')}finally{setBusy(false)}
   }
 
   const [searchParams] = useSearchParams()
@@ -95,11 +99,17 @@ export function BDClientManagementPage(){
    const handle = window.setTimeout(() => setNotice(''), 6000)
    return () => window.clearTimeout(handle)
   }, [notice])
+
+  useEffect(() => {
+   if (!error || !alertVisible) return
+   const handle = window.setTimeout(() => setAlertVisible(false), 7000)
+   return () => window.clearTimeout(handle)
+  }, [error, alertSeq, alertVisible])
   const selected=data?.clients.find(row=>row.id===selectedId)??null
   const projects=(data?.projects??[]).filter(row=>row.client_id===selectedId).map(row=>({...row,status:row.workflow_status}))
 
   async function createClient(event:FormEvent){
-    event.preventDefault();setBusy(true);setError('');setNotice('')
+    event.preventDefault();setBusy(true);clearError();setNotice('')
     try{
       const saved=await apiFetch<Client>('/operations/workflow/bd/clients',{method:'POST',body:JSON.stringify({
         client_code:clientForm.client_code,client_name:clientForm.client_name,client_email:clientForm.client_email||null,
@@ -108,15 +118,15 @@ export function BDClientManagementPage(){
         contact_person_phone:clientForm.contact_person_phone||null,bd_name:clientForm.bd_name||null,country:'India',source_team:'bd_team',is_active:true,
       })})
       setClientForm(emptyClient);setShowClientForm(false);setSelectedId(saved.id);setNotice(`Client ID ${saved.client_code} created.`);load()
-    }catch(err){setError(err instanceof Error?err.message:'Unable to create client')}finally{setBusy(false)}
+    }catch(err){showError(err instanceof Error?err.message:'Unable to create client')}finally{setBusy(false)}
   }
 
   async function createProject(submit:boolean){
     if(!selected)return
-    setError('');setNotice('')
-    if(!delivery.performing_department_code){setError('Select the Performing Department before saving or submitting this project.');return}
+    clearError();setNotice('')
+    if(!delivery.performing_department_code){showError('Select the Performing Department before saving or submitting this project.');return}
     const problems=commercialFormProblems(commercial)
-    if(problems.length){setError(problems[0]);return}
+    if(problems.length){showError(problems[0]);return}
     setBusy(true)
     try{
       // Project + Commercial Revision 1 are created in ONE request/transaction: either both exist or neither does.
@@ -133,7 +143,7 @@ export function BDClientManagementPage(){
           await apiFetch(`/operations/pilots/${conversionPilotId}/link-paid`,{method:'POST',body:JSON.stringify({paid_project_id:result.project_id})})
           setConversionPilotId(null);loadPilots()
         }catch(linkErr){
-          setError(`${result.project_code} was CREATED as a paid project, but its pilot link failed. Paid Project ID: ${result.project_id}. Reason: ${linkErr instanceof Error?linkErr.message:'Unknown error'}. Do not create a duplicate project.`)
+          showError(`${result.project_code} was CREATED as a paid project, but its pilot link failed. Paid Project ID: ${result.project_id}. Reason: ${linkErr instanceof Error?linkErr.message:'Unknown error'}. Do not create a duplicate project.`)
           load();return
         }
       }
@@ -142,13 +152,13 @@ export function BDClientManagementPage(){
       if(docs.length&&revisionId)failed=await uploadRevisionDocuments(result.project_id,revisionId,docs)
       if(failed.length){
         setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setShowProjectForm(false);load()
-        setError(`${result.project_code} was saved as a Draft with its commercial details, but ${failed.length} document(s) could not be uploaded (${failed.join(', ')}). Attach them from Project Management, then submit to Finance.`)
+        showError(`${result.project_code} was saved as a Draft with its commercial details, but ${failed.length} document(s) could not be uploaded (${failed.join(', ')}). Attach them from Project Management, then submit to Finance.`)
         return
       }
       if(submit)await apiFetch(`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
       setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''});setShowProjectForm(false)
       setNotice(`${result.project_code} ${submit?'and its Commercial Revision 1 were submitted to Finance':'saved as Draft with Commercial Revision 1'}.`);load()
-    }catch(err){setError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}
+    }catch(err){showError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}
   }
 
   return <div className="operations-page">
@@ -156,7 +166,10 @@ export function BDClientManagementPage(){
       <div><span>Clients on record</span><strong>{data?.clients.length ?? 0}</strong></div>
       <div><span>Projects linked</span><strong>{data?.projects.length ?? 0}</strong></div>
     </>} actions={<><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button><button className="operations-button" onClick={()=>setShowClientForm(true)}><Plus size={16}/> New Client</button></>} meta={<><span className="nk-meta-chip"><Building2 size={14}/> {data?.clients.length ?? 0} clients on record</span><span className="nk-meta-chip"><FolderKanban size={14}/> Project creation starts from a selected Client ID</span><span className="nk-meta-chip"><ShieldCheck size={14}/> Client ID entered manually · duplicates rejected</span></>}/>
-    {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
+    {(notice||(error&&alertVisible))&&<div className="operations-toast-stack">
+      {notice&&<div className="operations-toast success" role="status" aria-live="polite"><CheckCircle2 size={16}/><div>{notice}</div><button type="button" className="operations-toast-close" aria-label="Dismiss message" onClick={()=>setNotice('')}><X size={14}/></button></div>}
+      {error&&alertVisible&&<div className="operations-toast error" role="alert" aria-live="assertive"><AlertTriangle size={16}/><div>{error}</div><button className="operations-button secondary" type="button" onClick={load}><RefreshCw size={14}/> Retry</button><button type="button" className="operations-toast-close" aria-label="Dismiss error" onClick={()=>setAlertVisible(false)}><X size={14}/></button></div>}
+    </div>}
 
     {showClientForm&&<section className="operations-panel"><header><div><span className="operations-kicker">NEW CLIENT</span><h2>Client Details</h2><p>Client ID is manually entered and duplicate IDs are rejected by the backend.</p></div></header><form className="operations-form-grid" onSubmit={createClient}>
       <label className="operations-field"><span>Client Organization Name </span><input required value={clientForm.client_name} onChange={e=>setClientForm({...clientForm,client_name:e.target.value})}/></label>

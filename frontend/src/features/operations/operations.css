@@ -71,6 +71,20 @@
 .operations-alert { border-radius:10px; padding:10px 12px; font-weight:700; }
 .operations-alert.success { background:#e9f8ef; color:#207446; border:1px solid #bfe6ce; }
 .operations-alert.error { background:#ffebeb; color:#a72a2a; border:1px solid #f2c0c0; }
+
+/* Floating, self-dismissing alert popup: keeps Retry/status messages out of the page flow. */
+.operations-toast-stack { position:fixed; top:74px; right:22px; z-index:1500; display:grid; gap:10px; width:min(470px,calc(100vw - 32px)); pointer-events:none; }
+.operations-toast { pointer-events:auto; display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; border:1px solid transparent; box-shadow:0 20px 45px rgba(15,23,42,.18); font-size:.82rem; font-weight:700; line-height:1.45; animation:operations-toast-in 180ms ease-out; }
+.operations-toast > div { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.operations-toast > svg { flex:0 0 auto; }
+.operations-toast.success { background:#e9f8ef; border-color:#bfe6ce; color:#1c6b43; }
+.operations-toast.error { background:#ffebeb; border-color:#f2c0c0; color:#a72a2a; }
+.operations-toast .operations-button { flex:0 0 auto; }
+.operations-toast-close { flex:0 0 auto; display:grid; place-items:center; padding:4px; border:0; border-radius:8px; background:transparent; color:inherit; opacity:.7; cursor:pointer; }
+.operations-toast-close:hover { opacity:1; background:rgba(15,23,42,.08); }
+@keyframes operations-toast-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .operations-toast { animation:none; } }
+@media (max-width:720px) { .operations-toast-stack { top:auto; bottom:16px; right:16px; left:16px; width:auto; } }
 .operations-stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
 .operations-current-project { border-color:#cddded; }
 .operations-current-project-row { display:grid; grid-template-columns:minmax(260px,.8fr) minmax(300px,1.2fr); gap:18px; align-items:center; }

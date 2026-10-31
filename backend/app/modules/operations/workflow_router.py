@@ -6,6 +6,8 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, File, HTTPException,Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
+from typing import Literal
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
@@ -43,7 +45,7 @@ from app.modules.operations.schemas import (
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
 )
-from app.modules.operations import production_allocation, production_items
+from app.modules.operations import production_allocation, production_items, assignment_review
 from app.modules.operations.models import WorkPackageItem
 from app.modules.operations.workflow_service import (
     ADMIN_ROLE,
@@ -162,6 +164,30 @@ def workflow_bd_project_register(
 ):
     _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return bd_dashboard(db, actor=auth.user, role=_role(auth))
+
+
+@router.get("/bd/project-tracking")
+def workflow_bd_project_tracking(
+    project_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Read-only tracking for BD projects, scoped to the existing BD register.
+
+    Does not grant BD access to employee/PM mutation or file activity routes.
+    A user-controlled project_id may narrow but never widen the authorized set.
+    """
+    _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    register = bd_dashboard(db, actor=auth.user, role=_role(auth))
+    allowed_ids = {int(p["id"]) for p in register.get("projects", []) if p.get("id") is not None}
+    # The existing BD register decides project visibility, including department boundaries.
+    if project_id is not None:
+        allowed_ids.intersection_update({project_id})
+    return tracking_summary(
+        db, actor=auth.user, role=_role(auth),
+        authorized_bd_project_ids=allowed_ids if _role(auth) == BD_ROLE else None,
+        project_id=project_id,
+    )
 
 
 @router.get("/bd/client-register")
@@ -835,6 +861,82 @@ def workflow_update_item(
     return {"id": updated.id, "item_number": updated.item_number, "is_active": updated.is_active,
             "production_user_id": updated.production_user_id, "qc_user_id": updated.qc_user_id,
             "qa_user_id": updated.qa_user_id}
+
+
+class AssignmentReviewRework(BaseModel):
+    item_id: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/start")
+def workflow_assignment_review_start(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.start_review(
+            db, actor=auth.user, role=_role(auth), package_id=work_package_id, stage=stage
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_STARTED", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_ids": [i["item_id"] for i in result["started"]]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/complete")
+def workflow_assignment_review_complete(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.complete_review(
+            db, actor=auth.user, package_id=work_package_id, stage=stage
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_COMPLETED", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_ids": [i["item_id"] for i in result["completed"]]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/rework")
+def workflow_assignment_review_rework(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    payload: AssignmentReviewRework,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.send_file_to_rework(
+            db, actor=auth.user, package_id=work_package_id, stage=stage,
+            item_id=payload.item_id, reason=payload.reason
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_REWORK", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_id": payload.item_id, "activity_id": result["activity_id"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
 
 
 @router.post("/ortho/items/{work_package_item_id}/activity/start", status_code=status.HTTP_201_CREATED)

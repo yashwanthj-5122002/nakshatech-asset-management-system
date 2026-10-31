@@ -68,6 +68,7 @@ import { TravelKmStaffDashboardPage } from './features/travel_km/pages/TravelKmS
 import { BDDashboardPage } from './features/operations/pages/BDDashboardPage'
 import { BDClientManagementPage } from './features/operations/pages/BDClientManagementPage'
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
+import { BDProjectTrackingPage } from './features/operations/pages/BDProjectTrackingPage'
 import { NotificationsPage } from './features/operations/pages/NotificationsPage'
 import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPage'
 import { ProductionTrackingPage } from './features/operations/pages/ProductionTrackingPage'
@@ -162,6 +163,7 @@ export default function App() {
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/tracking" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectTrackingPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/feedback" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientFeedbackPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin', 'management']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin', 'software_team']}><WithLayout><NotificationsPage /></WithLayout></ProtectedRoute>} />

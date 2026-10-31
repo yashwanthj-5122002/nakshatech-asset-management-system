@@ -142,6 +142,7 @@ const navItems: NavItem[] = [
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/bd/tracking', label: 'Project Tracking', icon: Activity, roles: ['bd'], group: 'business' },
   { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin', 'management'], group: 'business', managementGroup: 'finance', managementLabel: 'Commercial Estimates' },
   { to: '/bd/feedback', label: 'Client Feedback', icon: FileCheck2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
