@@ -219,11 +219,11 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
 
         <section className="final-login-copy" aria-labelledby="login-page-title">
           <h1 id="login-page-title">
-            <span>One Platform.</span>
-            <strong>Complete Asset Control.</strong>
+            <span>0ne Platform.</span>
+            <strong>MANY SOLUTIONS.</strong>
           </h1>
           <span className="final-login-copy-rule" aria-hidden="true" />
-          <p>Track assets, ownership, operations, requests, and lifecycle activity across NakshaTech.</p>
+          <p>.'</p>
         </section>
 
         <LoginGlobeLoadBoundary>
@@ -236,7 +236,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
           <form className="final-login-panel" ref={panelRef} onSubmit={submit}>
             <Link className="final-login-back" to="/">
               <ArrowLeft size={17} aria-hidden="true" />
-              <span>Back to welcome</span>
+              <span>Back 2 Welcome Page</span>
             </Link>
 
             <div className="final-login-heading">
@@ -245,14 +245,15 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
               <p>
                 {employeeMode
                   ? 'Legacy Employee Support access is retained for backward compatibility.'
-                  : 'Use your NakshaTech email and password. Your workspace opens automatically from your assigned account role.'}
+                  : ''
+                 }
               </p>
             </div>
 
            
 
             <label className="final-login-field" htmlFor="login-email">
-              <span>Official Email or Employee ID</span>
+              <span>Official Email / Employee ID</span>
               <div className="final-login-input-shell">
                 <User size={19} aria-hidden="true" />
                 <input
@@ -317,7 +318,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
               <Link to="/register">Create employee account with organization email</Link>
             </div>
 
-            <footer>© {new Date().getFullYear()} NakshaTech. All rights reserved.</footer>
+            <footer>© {new Date().getFullYear()} NakshaTech .  All rights reserved.</footer>
           </form>
         </section>
       </div>

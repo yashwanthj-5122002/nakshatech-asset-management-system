@@ -20,11 +20,11 @@ interface Props {
 // realistic perspective overlap instead of a flat edge-on line at 90 degrees.
 const nodes = [
   { key: 'gis', arm: [0, 1, 0], label: 'GIS /\nMOBILE MAPPING' },
-  { key: 'ortho', arm: [0.82, 0.53, -0.48], label: 'LASER\nSCANNING' },
-  { key: 'drone', arm: [0.82, -0.53, -0.28], label: 'SOFTWARE\nTEAM' },
-  { key: 'survey', arm: [0, -1, 0], label: 'PHOTOGRAMMETRY\n& SURVEY' },
-  { key: 'civil', arm: [-0.82, -0.53, 0.48], label: 'CIVIL' },
-  { key: 'lidar', arm: [-0.82, 0.53, 0.28], label: 'LiDAR\n& ORTHO' },
+  { key: 'ortho', arm: [0.82, 0.53, -0.48], label: 'SURVEY \nDRONE DATA MANAGEMENT' },
+  { key: 'drone', arm: [0.82, -0.53, -0.28], label: 'POINT CLOUD\nCLASSIFICATION' },
+  { key: 'survey', arm: [0, -1, 0], label: '3D MODULING\n SCANN TO BIM' },
+  { key: 'civil', arm: [-0.82, -0.53, 0.48], label: 'DIGITIZATION \nFEATURE CORRECTION' },
+  { key: 'lidar', arm: [-0.82, 0.53, 0.28], label: 'ORTHO \nPHOTO GENERATION' },
 ]
 
 // NAKSHA_TRACKBALL_XY_V1: free 360-degree drag on X and Y (quaternion), plus press-to-spin.

@@ -5,11 +5,11 @@ import type { AssetNodePosition } from './WelcomeAssetScene'
 const AssetScene = lazy(() => import('./WelcomeAssetScene'))
 const divisions = [
   { key: 'gis_mobile', label: 'GIS / MOBILE MAPPING', detail: 'Spatial intelligence and field capture', icon: Layers3, x: 50, y: 20 },
-  { key: 'lidar_ortho', label: 'LiDAR & ORTHO', detail: 'Depth and precision imagery', icon: Grid3X3, x: 80, y: 32 },
-  { key: 'laser_scanning', label: 'LASER SCANNING', detail: 'High-accuracy scan workflows', icon: ScanLine, x: 80, y: 66 },
+  { key: 'lidar_ortho', label: ' ORTHO PHOTO GENERATION', detail: 'Depth and precision imagery', icon: Grid3X3, x: 80, y: 32 },
+  { key: 'laser_scanning', label: 'POINT CLOUD CLASSIFICATIONG', detail: 'High-accuracy scan workflows', icon: ScanLine, x: 80, y: 66 },
   { key: 'photogrammetry_survey', label: 'PHOTOGRAMMETRY & SURVEY', detail: 'Ground and image-based measurement', icon: Ruler, x: 50, y: 80 },
-  { key: 'civil', label: 'CIVIL', detail: 'Built environments and engineering', icon: HardHat, x: 20, y: 66 },
-  { key: 'software_team', label: 'SOFTWARE TEAM', detail: 'Platform and product engineering', icon: Plane, x: 20, y: 32 },
+  { key: 'civil', label: 'DIGITIZATION/FEATURE CORRECTION', detail: 'Built environments and engineering', icon: HardHat, x: 20, y: 66 },
+  { key: 'software_team', label: 'SURVEY/DRONE DATA MANAGMENT', detail: 'Platform and product engineering', icon: Plane, x: 20, y: 32 },
 ]
 
 function CubeFaces({ hub = false }: { hub?: boolean }) {
@@ -100,7 +100,7 @@ export function MetalRosetteHero() {
         <svg className="rosette-hero__connections" viewBox="0 0 600 600" fill="none" aria-hidden="true">
           {divisions.map(({ key, x, y }, index) => (
             <g key={key}>
-              <path d={`M300 294 L${x * 6} ${y * 6}`} stroke="#01688e" strokeOpacity=".45" />
+              <path d={`M300 294 L${x * 6} ${y * 6}`} stroke="#90c9de" strokeOpacity=".45" />
               <path className="rosette-hero__signal" style={{ animationDelay: `${index * -.7}s` }} d={`M300 294 L${x * 6} ${y * 6}`} pathLength="100" stroke="#67e9ff" strokeWidth="1.5" strokeDasharray="4 96" />
             </g>
           ))}
