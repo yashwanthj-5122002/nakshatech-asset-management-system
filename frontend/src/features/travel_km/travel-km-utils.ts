@@ -38,6 +38,7 @@ export function displayDate(value?: string | null): string {
 
 export function verificationLabel(flag: string): string {
   const labels: Record<string, string> = {
+    photo_exif_gps: 'Photo EXIF GPS (not independently verified)',
     exif_matches_live_gps: 'EXIF + Live GPS Match',
     exif_live_gps_mismatch: 'EXIF / Live GPS Mismatch',
     low_gps_accuracy: 'Low GPS Accuracy',

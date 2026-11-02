@@ -1,4 +1,5 @@
-import { ArrowLeft, BadgeCheck, Camera, CheckCircle2, Download, Gauge, LocateFixed, Mail, MailCheck, MailWarning, MapPin, Navigation, Radio, RefreshCw, Route, Send, Settings2, ShieldCheck, Square, Target, TriangleAlert, UserCheck, XCircle } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Camera, CheckCircle2, Download, LocateFixed, Mail, MailCheck, MailWarning, MapPin, Navigation, Radio, RefreshCw, Route, Send, Settings2, ShieldCheck, Square, Target, UserCheck, XCircle } from 'lucide-react'
+import exifr from 'exifr'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -24,12 +25,12 @@ function EvidenceCard({ claim, attachment, previews }: { claim: TravelKmClaim, a
     {attachment && previews[attachment.id] ? <img src={previews[attachment.id]} alt={`${phase} odometer evidence`} /> : <div className="travel-km-evidence-placeholder">{attachment ? 'Loading secure preview...' : 'No evidence uploaded'}</div>}
     {attachment && <>
       <div className="travel-km-evidence-meta">
-        <div><small>Live GPS</small><strong>{attachment.device_latitude.toFixed(6)}, {attachment.device_longitude.toFixed(6)}</strong></div>
+        <div><small>{attachment.verification_flag === 'photo_exif_gps' ? 'Photo EXIF GPS' : 'Live GPS'}</small><strong>{attachment.device_latitude.toFixed(6)}, {attachment.device_longitude.toFixed(6)}</strong></div>
         <div><small>GPS Accuracy</small><strong>{attachment.device_accuracy_m == null ? 'N/A' : `${Math.round(attachment.device_accuracy_m)} m`}</strong></div>
         <div><small>Captured</small><strong>{displayDate(attachment.device_captured_at)}</strong></div>
         <div><small>Verification</small><strong>{verificationLabel(attachment.verification_flag)}</strong></div>
         <div><small>Image EXIF GPS</small><strong>{attachment.exif_gps_present ? 'Present' : 'Not present'}</strong></div>
-        <div><small>EXIF vs Live GPS</small><strong>{attachment.exif_device_distance_m == null ? 'N/A' : `${Math.round(attachment.exif_device_distance_m)} m`}</strong></div>
+        <div><small>{attachment.verification_flag === 'photo_exif_gps' ? 'Independent GPS Comparison' : 'EXIF vs Live GPS'}</small><strong>{attachment.verification_flag === 'photo_exif_gps' || attachment.exif_device_distance_m == null ? 'N/A' : `${Math.round(attachment.exif_device_distance_m)} m`}</strong></div>
       </div>
       <div className="travel-km-actions"><a className="travel-km-secondary" href={`https://www.google.com/maps/search/?api=1&query=${attachment.device_latitude},${attachment.device_longitude}`} target="_blank" rel="noreferrer"><MapPin size={15}/> View GPS on Map</a><a className="travel-km-secondary" href={`https://www.openstreetmap.org/?mlat=${attachment.device_latitude}&mlon=${attachment.device_longitude}#map=18/${attachment.device_latitude}/${attachment.device_longitude}&layers=M`} target="_blank" rel="noreferrer"><MapPin size={15}/> OpenStreetMap</a><button className="travel-km-secondary" onClick={() => void downloadFile(`/travel-km/claims/${claim.id}/attachments/${attachment.id}/download`, attachment.original_filename)}><Download size={15}/> Download Original</button></div>
     </>}
@@ -58,6 +59,11 @@ function LiveRoutePreview({ tracking }: { tracking: TravelKmTrackingSnapshot }) 
 }
 
 
+function endPhotoLocalStamp(value: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
+}
+
 export function TravelKmDetailPage() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -67,10 +73,22 @@ export function TravelKmDetailPage() {
   const [endKm, setEndKm] = useState('')
   const [endGps, setEndGps] = useState<CapturedGps | null>(null)
   const [endPhoto, setEndPhoto] = useState<File | null>(null)
+  const [endPhotoGpsState, setEndPhotoGpsState] = useState<'idle' | 'reading' | 'missing'>('idle')
+  const [endPhotoGpsNote, setEndPhotoGpsNote] = useState('')
+  const endPhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const endPhotoRequestRef = useRef(0)
   const [startReplacePhoto, setStartReplacePhoto] = useState<File | null>(null)
   const [endReplacePhoto, setEndReplacePhoto] = useState<File | null>(null)
   const [startReplaceGps, setStartReplaceGps] = useState<CapturedGps | null>(null)
   const [endReplaceGps, setEndReplaceGps] = useState<CapturedGps | null>(null)
+  const [startReplaceGpsState, setStartReplaceGpsState] = useState<'idle' | 'reading' | 'missing'>('idle')
+  const [endReplaceGpsState, setEndReplaceGpsState] = useState<'idle' | 'reading' | 'missing'>('idle')
+  const [startReplaceGpsNote, setStartReplaceGpsNote] = useState('')
+  const [endReplaceGpsNote, setEndReplaceGpsNote] = useState('')
+  const startReplacePhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const endReplacePhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const startReplaceRequestRef = useRef(0)
+  const endReplaceRequestRef = useRef(0)
   const [eligibleKm, setEligibleKm] = useState('')
   const [comments, setComments] = useState('')
   const [reportingManagerEmail, setReportingManagerEmail] = useState('')
@@ -228,25 +246,60 @@ export function TravelKmDetailPage() {
     finally { if (!silent) setTrackingBusy(false) }
   }
 
-  async function captureEndGps() {
-    setBusy('gps'); setError('')
-    try { setEndGps(await captureLiveGps()) }
-    catch (err) { setError(err instanceof Error ? err.message : 'Could not capture End GPS') }
-    finally { setBusy('') }
+  async function readEndPhotoGps(file: File | null) {
+    const request = ++endPhotoRequestRef.current
+    setEndPhoto(file)
+    setEndGps(null)
+    setEndPhotoGpsNote('')
+    if (!file) { setEndPhotoGpsState('idle'); return }
+    if (file.size > 15 * 1024 * 1024) {
+      setEndPhotoGpsState('missing')
+      setEndPhotoGpsNote('End odometer photo must be 15 MB or smaller.')
+      return
+    }
+    setEndPhotoGpsState('reading')
+    try {
+      const gps = await exifr.gps(file)
+      if (request !== endPhotoRequestRef.current) return
+      const latitude = Number(gps?.latitude)
+      const longitude = Number(gps?.longitude)
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+          latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        setEndPhotoGpsState('missing')
+        setEndPhotoGpsNote('No valid GPS tag found. Select the original camera photo with location tagging enabled.')
+        return
+      }
+      const exif = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']) as
+        { DateTimeOriginal?: unknown; CreateDate?: unknown } | undefined
+      if (request !== endPhotoRequestRef.current) return
+      const takenAt = exif?.DateTimeOriginal ?? exif?.CreateDate
+      if (!(takenAt instanceof Date) || !Number.isFinite(takenAt.getTime())) {
+        setEndPhotoGpsState('missing')
+        setEndPhotoGpsNote('Photo capture time is missing from EXIF metadata. Select the original camera photo.')
+        return
+      }
+      setEndGps({ latitude, longitude, accuracy: null, capturedAt: endPhotoLocalStamp(takenAt) })
+      setEndPhotoGpsState('idle')
+    } catch {
+      if (request !== endPhotoRequestRef.current) return
+      setEndPhotoGpsState('missing')
+      setEndPhotoGpsNote('Could not read GPS or capture time from this photo.')
+    }
   }
+
 
   async function saveEndJourney() {
     if (!claim) return
     if (!(Number(endKm) >= claim.start_km)) return setError('End KM must be equal to or greater than Start KM.')
-    if (!endGps) return setError('Capture live End GPS before saving the End Journey.')
-    if (!endPhoto && !endAttachment) return setError('Capture or select the End odometer photo.')
+    if (!endGps) return setError('Select an End odometer photo with valid GPS and capture-time EXIF tags.')
+    if (!endPhoto) return setError('Select the original End odometer photo before saving.')
     setBusy('end'); setError('')
     try {
       if (isWatchingGps || tracking?.tracking_active) await stopLiveTracking(true)
       let next = await apiFetch<TravelKmClaim>(`/travel-km/claims/${claim.id}/end`, { method: 'PUT', body: JSON.stringify({ end_km: Number(endKm), end_latitude: endGps.latitude, end_longitude: endGps.longitude, end_accuracy_m: endGps.accuracy, end_captured_at: endGps.capturedAt }) })
       if (endPhoto) {
         const form = new FormData(); form.append('file', endPhoto)
-        const params = new URLSearchParams({ phase: 'end', latitude: String(endGps.latitude), longitude: String(endGps.longitude), captured_at: endGps.capturedAt })
+        const params = new URLSearchParams({ phase: 'end', gps_source: 'photo_exif', latitude: String(endGps.latitude), longitude: String(endGps.longitude), captured_at: endGps.capturedAt })
         if (endGps.accuracy != null) params.set('accuracy_m', String(endGps.accuracy))
         await apiFetch(`/travel-km/claims/${claim.id}/attachments?${params.toString()}`, { method: 'POST', body: form })
         next = await apiFetch<TravelKmClaim>(`/travel-km/claims/${claim.id}`)
@@ -257,24 +310,68 @@ export function TravelKmDetailPage() {
   }
 
 
-  async function captureReplacementGps(phase: 'start' | 'end') {
-    setBusy(`gps-${phase}`); setError('')
+  async function readReplacementPhotoGps(phase: 'start' | 'end', file: File | null) {
+    const isStart = phase === 'start'
+    const request = isStart ? ++startReplaceRequestRef.current : ++endReplaceRequestRef.current
+    const isLatest = () => request === (isStart ? startReplaceRequestRef.current : endReplaceRequestRef.current)
+    const setPhoto = isStart ? setStartReplacePhoto : setEndReplacePhoto
+    const setGps = isStart ? setStartReplaceGps : setEndReplaceGps
+    const setState = isStart ? setStartReplaceGpsState : setEndReplaceGpsState
+    const setNote = isStart ? setStartReplaceGpsNote : setEndReplaceGpsNote
+
+    setPhoto(file)
+    setGps(null)
+    setNote('')
+    if (!file) { setState('idle'); return }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setState('missing')
+      setNote('Only JPG, PNG, and WebP original odometer photos are accepted.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setState('missing')
+      setNote('Odometer photo must be 15 MB or smaller.')
+      return
+    }
+    setState('reading')
     try {
-      const gps = await captureLiveGps()
-      if (phase === 'start') setStartReplaceGps(gps); else setEndReplaceGps(gps)
-    } catch (err) { setError(err instanceof Error ? err.message : `Could not capture ${phase} GPS`) }
-    finally { setBusy('') }
+      const photoGps = await exifr.gps(file)
+      if (!isLatest()) return
+      const latitude = Number(photoGps?.latitude)
+      const longitude = Number(photoGps?.longitude)
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+          latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        setState('missing')
+        setNote('No valid GPS tag found. Select the original camera photo with location tagging enabled.')
+        return
+      }
+      const metadata = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']) as
+        { DateTimeOriginal?: unknown; CreateDate?: unknown } | undefined
+      if (!isLatest()) return
+      const takenAt = metadata?.DateTimeOriginal ?? metadata?.CreateDate
+      if (!(takenAt instanceof Date) || !Number.isFinite(takenAt.getTime())) {
+        setState('missing')
+        setNote('Photo capture time is missing from EXIF metadata. Select the original camera photo.')
+        return
+      }
+      setGps({ latitude, longitude, accuracy: null, capturedAt: endPhotoLocalStamp(takenAt) })
+      setState('idle')
+    } catch {
+      if (!isLatest()) return
+      setState('missing')
+      setNote('Could not read GPS coordinates and capture time from the selected photo.')
+    }
   }
 
   async function saveMissingStartEvidence() {
     if (!claim) return
     if (!startReplacePhoto) return setError('Capture or select the Start odometer photo.')
-    if (!startReplaceGps) return setError('Capture fresh Geo-Tagged Images before uploading the Start odometer evidence.')
+    if (!startReplaceGps) return setError('Select a Start odometer photo with valid GPS and capture-time EXIF tags.')
     if (startReplacePhoto.size > 15 * 1024 * 1024) return setError('Start odometer photo must be 15 MB or smaller.')
     setBusy('start-evidence'); setError('')
     try {
       const form = new FormData(); form.append('file', startReplacePhoto)
-      const params = new URLSearchParams({ phase: 'start', latitude: String(startReplaceGps.latitude), longitude: String(startReplaceGps.longitude), captured_at: startReplaceGps.capturedAt })
+      const params = new URLSearchParams({ phase: 'start', gps_source: 'photo_exif', latitude: String(startReplaceGps.latitude), longitude: String(startReplaceGps.longitude), captured_at: startReplaceGps.capturedAt })
       if (startReplaceGps.accuracy != null) params.set('accuracy_m', String(startReplaceGps.accuracy))
       await apiFetch(`/travel-km/claims/${claim.id}/attachments?${params.toString()}`, { method: 'POST', body: form })
       applyClaim(await apiFetch<TravelKmClaim>(`/travel-km/claims/${claim.id}`))
@@ -291,7 +388,7 @@ export function TravelKmDetailPage() {
       { phase: 'end', file: endReplacePhoto, gps: endReplaceGps },
     ]
     for (const item of replacements) {
-      if (item.file && !item.gps) return setError(`Capture live ${item.phase} GPS before replacing the ${item.phase} odometer image.`)
+      if (item.file && !item.gps) return setError(`Select an original ${item.phase} photo with valid GPS and capture-time EXIF tags.`)
       if (item.file && item.file.size > 15 * 1024 * 1024) return setError(`${item.phase === 'start' ? 'Start' : 'End'} odometer photo must be 15 MB or smaller.`)
     }
     setBusy('corrections'); setError('')
@@ -300,12 +397,18 @@ export function TravelKmDetailPage() {
       for (const item of replacements) {
         if (!item.file || !item.gps) continue
         const form = new FormData(); form.append('file', item.file)
-        const params = new URLSearchParams({ phase: item.phase, latitude: String(item.gps.latitude), longitude: String(item.gps.longitude), captured_at: item.gps.capturedAt })
+        const params = new URLSearchParams({ phase: item.phase, gps_source: 'photo_exif', latitude: String(item.gps.latitude), longitude: String(item.gps.longitude), captured_at: item.gps.capturedAt })
         if (item.gps.accuracy != null) params.set('accuracy_m', String(item.gps.accuracy))
         await apiFetch(`/travel-km/claims/${claim.id}/attachments?${params.toString()}`, { method: 'POST', body: form })
       }
       next = await apiFetch<TravelKmClaim>(`/travel-km/claims/${claim.id}`)
-      applyClaim(next); setStartReplacePhoto(null); setEndReplacePhoto(null); setStartReplaceGps(null); setEndReplaceGps(null)
+            applyClaim(next)
+      setStartReplacePhoto(null); setEndReplacePhoto(null)
+      setStartReplaceGps(null); setEndReplaceGps(null)
+      setStartReplaceGpsState('idle'); setEndReplaceGpsState('idle')
+      setStartReplaceGpsNote(''); setEndReplaceGpsNote('')
+      if (startReplacePhotoInputRef.current) startReplacePhotoInputRef.current.value = ''
+      if (endReplacePhotoInputRef.current) endReplacePhotoInputRef.current.value = ''
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save employee corrections') }
     finally { setBusy('') }
   }
@@ -421,22 +524,6 @@ export function TravelKmDetailPage() {
       <article className="travel-km-stat"><span>Allowance @ ₹5/KM</span><strong>{money(claim.final_allowance ?? claim.calculated_allowance)}</strong><small>Final eligible KM: {km(claim.final_eligible_km ?? claim.odometer_km)}</small></article>
     </section>
 
-    <section className="travel-km-panel travel-km-smart-panel">
-      <div className="travel-km-smart-header"><div className="travel-km-inline"><Gauge size={19}/><div><span className="travel-km-kicker">V5 · SMART JOURNEY VERIFICATION</span><h2>Evidence Confidence Score</h2></div></div>{verification && <span className={`travel-km-smart-outcome ${verification.outcome}`}>{verification.outcome_label}</span>}</div>
-      {!verification ? <div className="travel-km-empty">Calculating journey evidence...</div> : <>
-        <div className="travel-km-smart-summary"><div className="travel-km-score-ring"><strong>{verification.score == null ? '—' : verification.score}</strong><span>/ 100</span></div><div><strong>{verification.score == null ? 'Complete End Journey evidence to generate the final score.' : `${verification.outcome_label} · ${verification.score}/100`}</strong><p>{verification.snapshot_locked ? `Submission snapshot locked ${displayDate(verification.generated_at)}.` : 'Live preview updates as GPS and evidence are collected.'}</p><small>{verification.scoring_note}</small></div></div>
-        <div className="travel-km-smart-metrics">
-          <div><small>Tracked Route</small><strong>{km(verification.route.route_distance_km)}</strong></div>
-          <div><small>Odometer vs Route</small><strong>{verification.route.variance_percent == null ? 'Pending' : `${verification.route.variance_percent.toFixed(1)}%`}</strong></div>
-          <div><small>GPS Points</small><strong>{verification.route.point_count}</strong></div>
-          <div><small>Median Accuracy</small><strong>{verification.route.median_accuracy_m == null ? 'N/A' : `${Math.round(verification.route.median_accuracy_m)} m`}</strong></div>
-          <div><small>Largest GPS Gap</small><strong>{verification.route.max_gap_seconds == null ? 'N/A' : verification.route.max_gap_seconds < 60 ? `${Math.round(verification.route.max_gap_seconds)} sec` : `${Math.round(verification.route.max_gap_seconds / 60)} min`}</strong></div>
-          <div><small>GPS Jumps Filtered</small><strong>{verification.route.discarded_segments}</strong></div>
-        </div>
-        <div className="travel-km-score-components">{verification.components.map(component => <div className="travel-km-score-row" key={component.key}><div><span>{component.label}</span><strong>{component.earned}/{component.available}</strong></div><div className="travel-km-score-track"><i style={{width: `${component.available ? (component.earned / component.available) * 100 : 0}%`}}/></div></div>)}</div>
-        {verification.flags.length > 0 ? <div className="travel-km-smart-flags">{verification.flags.map(flag => <div className={`travel-km-smart-flag ${flag.severity}`} key={`${flag.code}-${flag.message}`}><TriangleAlert size={15}/><span>{flag.message}</span></div>)}</div> : <div className="travel-km-smart-clear"><CheckCircle2 size={16}/> No review flags in the current evidence set.</div>}
-      </>}
-    </section>
 
     <section className="travel-km-panel travel-km-geofence-panel">
       <div className="travel-km-inline"><Target size={19}/><div><span className="travel-km-kicker">PROJECT / SITE GEOFENCE</span><h2>{staffView && projectGeofence?.configured ? projectGeofence.site_name : 'Assigned Project Site'}</h2></div></div>
@@ -452,35 +539,84 @@ export function TravelKmDetailPage() {
       {user?.role === 'admin' && <div className="travel-km-geofence-admin"><div className="travel-km-inline"><Settings2 size={16}/><strong>Admin · Configure Project Site</strong></div><p>This is project-level master data. Management remains read-only. A submitted verification snapshot stays locked; configuration changes apply to draft/future submissions.</p><div className="travel-km-form-grid"><label className="travel-km-field full"><span>Site Name *</span><input value={geofenceSiteName} onChange={e => setGeofenceSiteName(e.target.value)} placeholder="Example: Arkavathi Survey Site"/></label><label className="travel-km-field"><span>Latitude *</span><input type="number" step="0.000001" value={geofenceLatitude} onChange={e => setGeofenceLatitude(e.target.value)} placeholder="12.971600"/></label><label className="travel-km-field"><span>Longitude *</span><input type="number" step="0.000001" value={geofenceLongitude} onChange={e => setGeofenceLongitude(e.target.value)} placeholder="77.594600"/></label><label className="travel-km-field"><span>Radius (metres) *</span><input type="number" min="50" max="10000" step="10" value={geofenceRadius} onChange={e => setGeofenceRadius(e.target.value)}/></label><label className="travel-km-field travel-km-checkbox-field"><span>Active</span><input type="checkbox" checked={geofenceActive} onChange={e => setGeofenceActive(e.target.checked)}/></label></div><div className="travel-km-actions"><button type="button" className="travel-km-secondary" onClick={() => void saveProjectGeofence()} disabled={busy === 'geofence'}><Target size={15}/>{busy === 'geofence' ? 'Saving Site...' : 'Save Project Geofence'}</button></div></div>}
     </section>
 
-    <section className="travel-km-panel travel-km-live-panel">
-      <div className="travel-km-live-header"><div className="travel-km-inline"><Radio size={18}/><div><span className="travel-km-kicker">REAL-TIME JOURNEY GPS</span><h2>Live GPS Tracking</h2></div></div><span className={`travel-km-live-badge ${tracking?.live_now ? 'is-live' : tracking?.tracking_active ? 'is-waiting' : ''}`}>{tracking?.live_now ? '● LIVE' : tracking?.tracking_active ? 'Waiting for phone' : 'Stopped'}</span></div>
-      <p>Tracking starts only when the employee taps <strong>Start Live GPS Tracking</strong> and grants phone location permission. It is limited to this active Travel/KM journey and stops when End Journey is saved.</p>
-      {user?.role === 'employee' && claim.permissions.can_edit && !claim.end_captured_at && <div className="travel-km-actions">
-        {!isWatchingGps ? <button type="button" className="travel-km-primary" onClick={() => void startLiveTracking()} disabled={trackingBusy}><LocateFixed size={16}/>{trackingBusy ? 'Starting GPS...' : tracking?.tracking_active ? 'Resume Live GPS' : 'Start Live GPS Tracking'}</button> : <button type="button" className="travel-km-danger" onClick={() => void stopLiveTracking()} disabled={trackingBusy}><Square size={15}/> Stop Live GPS</button>}
-      </div>}
-      <div className="travel-km-live-grid">
-        <div><small>GPS Points</small><strong>{tracking?.point_count ?? 0}</strong></div>
-        <div><small>Tracked Route Distance</small><strong>{km(tracking?.route_distance_km)}</strong></div>
-        <div><small>Last GPS Update</small><strong>{tracking?.last_point ? displayDate(tracking.last_point.captured_at) : 'Waiting'}</strong></div>
-        <div><small>Latest Accuracy</small><strong>{tracking?.last_point?.accuracy_m == null ? 'N/A' : `${Math.round(tracking.last_point.accuracy_m)} m`}</strong></div>
-      </div>
-      {tracking && <LiveRoutePreview tracking={tracking}/>}
-      {tracking?.last_point && <div className="travel-km-actions"><a className="travel-km-secondary" href={`https://www.google.com/maps/search/?api=1&query=${tracking.last_point.latitude},${tracking.last_point.longitude}`} target="_blank" rel="noreferrer"><MapPin size={15}/> Open Latest GPS on Map</a><a className="travel-km-secondary" href={`https://www.openstreetmap.org/?mlat=${tracking.last_point.latitude}&mlon=${tracking.last_point.longitude}#map=18/${tracking.last_point.latitude}/${tracking.last_point.longitude}&layers=M`} target="_blank" rel="noreferrer"><MapPin size={15}/> OpenStreetMap</a></div>}
-      <div className="travel-km-tracking-note"><ShieldCheck size={16}/><span>{tracking?.foreground_tracking_note || 'For reliable browser tracking, keep the Travel/KM page open. Mobile browsers can pause GPS when the phone is locked or the browser is suspended.'}</span></div>
-    </section>
 
     <section className="travel-km-panel"><span className="travel-km-kicker">TRAVEL DETAILS</span><h2>Claim & Project Information</h2><div className="travel-km-evidence-meta" style={{marginTop:12}}><div><small>Employee</small><strong>{claim.employee_name} · {claim.employee_id || 'No ID'}</strong></div><div><small>Department</small><strong>{claim.department || 'Not specified'}</strong></div><div><small>Project</small><strong>{claim.project_code} · {claim.project_name || 'Project'}</strong></div><div><small>Client</small><strong>{claim.client_name || 'Not specified'}</strong></div><div><small>Travel Date</small><strong>{claim.travel_date}</strong></div><div><small>Purpose</small><strong>{claim.purpose_description}</strong></div><div><small>Start GPS</small><strong>{claim.start_latitude.toFixed(6)}, {claim.start_longitude.toFixed(6)} · {claim.start_accuracy_m == null ? 'accuracy N/A' : `${Math.round(claim.start_accuracy_m)} m`}</strong></div><div><small>End GPS</small><strong>{claim.end_latitude == null ? 'Pending' : `${claim.end_latitude.toFixed(6)}, ${claim.end_longitude?.toFixed(6)} · ${claim.end_accuracy_m == null ? 'accuracy N/A' : `${Math.round(claim.end_accuracy_m)} m`}`}</strong></div></div></section>
 
-    {claim.permissions.can_edit && !startAttachment && <section className="travel-km-panel travel-km-form"><div><span className="travel-km-kicker">EMPLOYEE · START EVIDENCE RECOVERY</span><h2>Start Odometer Evidence Required</h2><p>The draft exists, but the Start image is missing. Capture fresh live GPS and attach the Start odometer image before submission.</p></div><div className="travel-km-form-grid"><div className="travel-km-gps-card"><strong>Fresh Start GPS</strong><span>{startReplaceGps ? `${startReplaceGps.latitude.toFixed(6)}, ${startReplaceGps.longitude.toFixed(6)} · ${startReplaceGps.accuracy == null ? 'N/A' : `${Math.round(startReplaceGps.accuracy)} m`}` : 'Not captured'}</span><button className="travel-km-secondary" type="button" onClick={() => void captureReplacementGps('start')} disabled={busy === 'gps-start'}><LocateFixed size={15}/>{busy === 'gps-start' ? 'Capturing...' : 'Capture Start GPS'}</button></div><label className="travel-km-field"><span>Start Odometer Photo *</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => setStartReplacePhoto(e.target.files?.[0] || null)} /></label></div><button className="travel-km-primary" type="button" onClick={() => void saveMissingStartEvidence()} disabled={busy === 'start-evidence'}><Camera size={16}/>{busy === 'start-evidence' ? 'Uploading...' : 'Save Start Evidence'}</button></section>}
+    {claim.permissions.can_edit && !startAttachment && <section className="travel-km-panel travel-km-form"><div><span className="travel-km-kicker">EMPLOYEE · START EVIDENCE RECOVERY</span><h2>Start Odometer Evidence Required</h2><p>The draft exists, but the Start image is missing. Select the original Start odometer photo with GPS location and capture-time EXIF tags before submission.</p></div><div className="travel-km-form-grid"><div className="travel-km-gps-card">
+  <div className="travel-km-inline"><MapPin size={16}/><strong>Geo-Tagged Images</strong></div>
+  <span>{startReplaceGps ? `${startReplaceGps.latitude.toFixed(6)}, ${startReplaceGps.longitude.toFixed(6)}` : startReplaceGpsState === 'reading' ? 'Reading GPS tags...' : startReplacePhoto ? 'No valid GPS tag in photo' : 'Select the original Start odometer photo with GPS location tags enabled.'}</span>
+  {startReplaceGps && <span>Photo time {startReplaceGps.capturedAt.replace('T', ' ')}</span>}
+  {startReplaceGpsNote && <small>{startReplaceGpsNote}</small>}
+</div><label className="travel-km-field"><span>Start Odometer Photo *</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => void readReplacementPhotoGps('start', e.target.files?.[0] || null)} /></label></div><button className="travel-km-primary" type="button" onClick={() => void saveMissingStartEvidence()} disabled={busy === 'start-evidence'}><Camera size={16}/>{busy === 'start-evidence' ? 'Uploading...' : 'Save Start Evidence'}</button></section>}
 
-    {claim.permissions.can_edit && !claim.end_captured_at && <section className="travel-km-panel travel-km-form"><div><span className="travel-km-kicker">EMPLOYEE · END JOURNEY</span><h2>Capture End KM + Geo-Tagged Evidence</h2><p>The application calculates odometer KM, straight-line GPS reference, variance and ₹5/KM allowance after this step.</p></div><div className="travel-km-form-grid"><label className="travel-km-field"><span>End KM *</span><input type="number" min={claim.start_km} step="0.01" value={endKm} onChange={e => setEndKm(e.target.value)} /></label><div className="travel-km-gps-card"><strong>Live End GPS</strong><span>{endGps ? `${endGps.latitude.toFixed(6)}, ${endGps.longitude.toFixed(6)} · ${endGps.accuracy == null ? 'N/A' : `${Math.round(endGps.accuracy)} m`}` : 'Not captured'}</span><button type="button" className="travel-km-secondary" onClick={() => void captureEndGps()} disabled={busy === 'gps'}><LocateFixed size={15}/>{busy === 'gps' ? 'Capturing...' : 'Capture End GPS'}</button></div><label className="travel-km-field full"><span>End Odometer Photo *</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => setEndPhoto(e.target.files?.[0] || null)} /></label></div><button className="travel-km-primary" onClick={() => void saveEndJourney()} disabled={busy === 'end'}><Camera size={16}/>{busy === 'end' ? 'Saving...' : 'Save End Journey'}</button></section>}
+    {claim.permissions.can_edit && !claim.end_captured_at && <section className="travel-km-panel travel-km-form"><div><span className="travel-km-kicker">EMPLOYEE · END JOURNEY</span><h2>Capture End KM + Geo-Tagged Evidence</h2><p>The application calculates odometer KM, straight-line GPS reference, variance and ₹5/KM allowance after this step.</p></div><div className="travel-km-form-grid"><label className="travel-km-field"><span>End KM *</span><input type="number" min={claim.start_km} step="0.01" value={endKm} onChange={e => setEndKm(e.target.value)} /></label><div className="travel-km-gps-card">
+  <div className="travel-km-inline">
+    <MapPin size={16}/>
+    <strong>Geo-Tagged Images</strong>
+    <span>{endGps ? `${endGps.latitude.toFixed(6)}, ${endGps.longitude.toFixed(6)}` : endPhotoGpsState === 'reading' ? 'Reading GPS tags...' : endPhoto ? 'No valid GPS tag in photo' : 'No photo selected'}</span>
+    <span>{endGps ? `Photo time ${endGps.capturedAt.replace('T', ' ')}` : 'Upload the original odometer photo with GPS location tags enabled.'}</span>
+    <button className="travel-km-secondary" type="button" onClick={() => endPhotoInputRef.current?.click()} disabled={endPhotoGpsState === 'reading'}>
+      <Camera size={15}/>
+      {endPhotoGpsState === 'reading' ? 'Reading GPS...' : endPhoto ? 'Replace Photo' : 'Add Geo-Tagged Photo'}
+    </button>
+  </div>
+  {endPhotoGpsNote && <small>{endPhotoGpsNote}</small>}
+</div><label className="travel-km-field full"><span>End Odometer Photo *</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" ref={endPhotoInputRef} onChange={e => void readEndPhotoGps(e.target.files?.[0] || null)} /></label></div><button className="travel-km-primary" onClick={() => void saveEndJourney()} disabled={busy === 'end'}><Camera size={16}/>{busy === 'end' ? 'Saving...' : 'Save End Journey'}</button></section>}
 
-    <section className="travel-km-panel"><span className="travel-km-kicker">GEO-TAGGED ODOMETER PROOF</span><h2>Travel Verification Evidence</h2><p>Live device GPS is stored independently of image metadata. EXIF GPS is compared when the source image contains it.</p><div className="travel-km-evidence-grid"><EvidenceCard claim={claim} attachment={startAttachment} previews={previews}/><EvidenceCard claim={claim} attachment={endAttachment} previews={previews}/></div></section>
+    <section className="travel-km-panel"><span className="travel-km-kicker">GEO-TAGGED ODOMETER PROOF</span><h2>Travel Verification Evidence</h2><p>Evidence may use independently captured Live GPS or GPS extracted from the original photo. The verification label identifies the source; photo-derived GPS is not an independent location check.</p><div className="travel-km-evidence-grid"><EvidenceCard claim={claim} attachment={startAttachment} previews={previews}/><EvidenceCard claim={claim} attachment={endAttachment} previews={previews}/></div></section>
 
 
-    {claim.permissions.can_edit && claim.end_captured_at && <section className="travel-km-panel travel-km-form"><div><span className="travel-km-kicker">EMPLOYEE CORRECTION / RESUBMISSION</span><h2>Correct KM or Replace Geo-Tagged Evidence</h2><p>Use this section when Admin or HR sends the claim back. Any replacement photo must be paired with a fresh live GPS capture.</p></div><div className="travel-km-form-grid"><label className="travel-km-field"><span>Start KM</span><input type="number" min="0" step="0.01" value={startKmEdit} onChange={e => setStartKmEdit(e.target.value)} /></label><label className="travel-km-field"><span>End KM</span><input type="number" min={Number(startKmEdit) || 0} step="0.01" value={endKm} onChange={e => setEndKm(e.target.value)} /></label><div className="travel-km-gps-card"><strong>Replace Start Evidence</strong><span>{startReplaceGps ? `${startReplaceGps.latitude.toFixed(6)}, ${startReplaceGps.longitude.toFixed(6)}` : 'Use only if Start evidence needs correction.'}</span><button className="travel-km-secondary" type="button" onClick={() => void captureReplacementGps('start')} disabled={busy === 'gps-start'}><LocateFixed size={15}/> Capture Fresh Start GPS</button><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => setStartReplacePhoto(e.target.files?.[0] || null)} /></div><div className="travel-km-gps-card"><strong>Replace End Evidence</strong><span>{endReplaceGps ? `${endReplaceGps.latitude.toFixed(6)}, ${endReplaceGps.longitude.toFixed(6)}` : 'Use only if End evidence needs correction.'}</span><button className="travel-km-secondary" type="button" onClick={() => void captureReplacementGps('end')} disabled={busy === 'gps-end'}><LocateFixed size={15}/> Capture Fresh End GPS</button><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => setEndReplacePhoto(e.target.files?.[0] || null)} /></div></div><button className="travel-km-secondary" onClick={() => void saveCorrections()} disabled={busy === 'corrections'}><RefreshCw size={16}/>{busy === 'corrections' ? 'Saving Corrections...' : 'Save Corrections'}</button></section>}
+        {claim.permissions.can_edit && claim.end_captured_at &&
+      <section className="travel-km-panel travel-km-form">
+        <div>
+          <span className="travel-km-kicker">EMPLOYEE CORRECTION / RESUBMISSION</span>
+          <h2>Correct KM or Replace Geo-Tagged Evidence</h2>
+          <p>Correct odometer readings or replace the original evidence photographs. GPS coordinates and capture time are extracted from the photographs.</p>
+        </div>
+        <div className="travel-km-form-grid">
+          <label className="travel-km-field">
+            <span>Start KM</span>
+            <input type="number" min="0" step="0.01" value={startKmEdit} onChange={e => setStartKmEdit(e.target.value)} />
+          </label>
+          <label className="travel-km-field">
+            <span>End KM</span>
+            <input type="number" min={Number(startKmEdit) || 0} step="0.01" value={endKm} onChange={e => setEndKm(e.target.value)} />
+          </label>
 
-    {claim.permissions.can_submit && claim.end_captured_at && <section className="travel-km-panel"><span className="travel-km-kicker">EMPLOYEE SUBMISSION</span><h2>Send for Admin Verification</h2><p>Confirm both odometer photos, start/end KM, GPS locations and calculated allowance before submission. V5 freezes the current Smart Journey Verification score as an advisory audit snapshot when you submit.</p><button className="travel-km-primary" onClick={() => void submitClaim()} disabled={busy === 'submit'}><Send size={16}/>{busy === 'submit' ? 'Submitting...' : claim.status.includes('sent_back') ? 'Resubmit Claim' : 'Submit Claim'}</button></section>}
+          <div className="travel-km-gps-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+            <strong>Replace Start Evidence</strong>
+            <span>Use only if Start evidence needs correction.</span>
+            <div className="travel-km-inline"><MapPin size={16}/><strong>Geo-Tagged Images</strong></div>
+            <span>{startReplaceGps ? `${startReplaceGps.latitude.toFixed(6)}, ${startReplaceGps.longitude.toFixed(6)}` : startReplaceGpsState === 'reading' ? 'Reading GPS tags...' : startReplacePhoto ? 'No valid GPS tag in photo' : 'Photo GPS and capture time appear here.'}</span>
+            {startReplaceGps && <span>Photo time {startReplaceGps.capturedAt.replace('T', ' ')}</span>}
+            {startReplaceGpsNote && <small>{startReplaceGpsNote}</small>}
+            <button className="travel-km-secondary" style={{ width: '100%', justifyContent: 'center' }} type="button" onClick={() => startReplacePhotoInputRef.current?.click()} disabled={startReplaceGpsState === 'reading' || Boolean(busy)}>
+              <Camera size={15}/>{startReplaceGpsState === 'reading' ? 'Reading GPS...' : startReplacePhoto ? 'Replace Photo' : 'Add Geo-Tagged Photo'}
+            </button>
+            <input ref={startReplacePhotoInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} aria-label="Original Start odometer photo" onChange={e => void readReplacementPhotoGps('start', e.target.files?.[0] || null)} />
+            <small>{startReplacePhoto ? `${startReplacePhoto.name} (${(startReplacePhoto.size / 1024 / 1024).toFixed(2)} MB)` : 'Original Start odometer photo'}</small>
+          </div>
+
+          <div className="travel-km-gps-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+            <strong>Replace End Evidence</strong>
+            <span>Use only if End evidence needs correction.</span>
+            <div className="travel-km-inline"><MapPin size={16}/><strong>Geo-Tagged Images</strong></div>
+            <span>{endReplaceGps ? `${endReplaceGps.latitude.toFixed(6)}, ${endReplaceGps.longitude.toFixed(6)}` : endReplaceGpsState === 'reading' ? 'Reading GPS tags...' : endReplacePhoto ? 'No valid GPS tag in photo' : 'Photo GPS and capture time appear here.'}</span>
+            {endReplaceGps && <span>Photo time {endReplaceGps.capturedAt.replace('T', ' ')}</span>}
+            {endReplaceGpsNote && <small>{endReplaceGpsNote}</small>}
+            <button className="travel-km-secondary" style={{ width: '100%', justifyContent: 'center' }} type="button" onClick={() => endReplacePhotoInputRef.current?.click()} disabled={endReplaceGpsState === 'reading' || Boolean(busy)}>
+              <Camera size={15}/>{endReplaceGpsState === 'reading' ? 'Reading GPS...' : endReplacePhoto ? 'Replace Photo' : 'Add Geo-Tagged Photo'}
+            </button>
+            <input ref={endReplacePhotoInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} aria-label="Original End odometer photo" onChange={e => void readReplacementPhotoGps('end', e.target.files?.[0] || null)} />
+            <small>{endReplacePhoto ? `${endReplacePhoto.name} (${(endReplacePhoto.size / 1024 / 1024).toFixed(2)} MB)` : 'Original End odometer photo'}</small>
+          </div>
+        </div>
+        <button className="travel-km-secondary" style={{ width: '100%', justifyContent: 'center' }} type="button" onClick={() => void saveCorrections()} disabled={Boolean(busy) || startReplaceGpsState === 'reading' || endReplaceGpsState === 'reading'}>
+          <RefreshCw size={16}/>{busy === 'corrections' ? 'Saving Corrections...' : 'Save Corrections'}
+        </button>
+      </section>}
+
+    {claim.permissions.can_submit && claim.end_captured_at && <section className="travel-km-panel"><span className="travel-km-kicker">EMPLOYEE SUBMISSION</span><h2>Send for Admin Verification</h2><p>Confirm both odometer photos, start/end KM, photo GPS locations and calculated allowance before submission.</p><button className="travel-km-primary" onClick={() => void submitClaim()} disabled={busy === 'submit'}><Send size={16}/>{busy === 'submit' ? 'Submitting...' : claim.status.includes('sent_back') ? 'Resubmit Claim' : 'Submit Claim'}</button></section>}
 
     {(claim.permissions.can_admin_decide || claim.permissions.can_hr_decide) && <section className="travel-km-panel travel-km-review"><div className="travel-km-inline">{claim.permissions.can_admin_decide ? <ShieldCheck size={18}/> : <UserCheck size={18}/>}<div><span className="travel-km-kicker">{claim.permissions.can_admin_decide ? 'ADMIN VERIFICATION' : 'HR VERIFICATION'}</span><h2>{claim.permissions.can_admin_decide ? 'Verify Travel Evidence' : 'Verify Eligibility & Policy'}</h2></div></div><div className="travel-km-review-grid"><label className="travel-km-field"><span>Eligible KM</span><input type="number" min="0" max={claim.permissions.can_hr_decide ? claim.admin_eligible_km ?? claim.odometer_km ?? 0 : claim.odometer_km ?? 0} step="0.01" value={eligibleKm} onChange={e => setEligibleKm(e.target.value)} /></label><label className="travel-km-field"><span>Verification Remarks</span><textarea value={comments} onChange={e => setComments(e.target.value)} placeholder="Required for Send Back / Reject and whenever eligible KM is adjusted." /></label></div><div className="travel-km-actions"><button className="travel-km-primary" onClick={() => void decision(claim.permissions.can_admin_decide ? 'admin' : 'hr', 'approve')} disabled={Boolean(busy)}><CheckCircle2 size={16}/> Approve</button><button className="travel-km-warning" onClick={() => void decision(claim.permissions.can_admin_decide ? 'admin' : 'hr', 'send_back')} disabled={Boolean(busy)}><RefreshCw size={16}/> Send Back</button><button className="travel-km-danger" onClick={() => void decision(claim.permissions.can_admin_decide ? 'admin' : 'hr', 'reject')} disabled={Boolean(busy)}><XCircle size={16}/> Reject</button></div></section>}
 
