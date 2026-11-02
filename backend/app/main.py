@@ -31,6 +31,7 @@ from app.modules.data_quality.router import router as data_quality_router
 from app.modules.naksha_copilot.router import router as naksha_copilot_router
 from app.modules.agent_monitor.router import router as agent_monitor_router
 from app.modules.notifications import models as notification_models  # noqa: F401
+from app.modules.payables.router import router as payables_router  # NAKSHA_PAYABLES_INTEGRATION
 from app.modules.notifications.router import router as notification_router
 from app.modules.notifications.service import retire_obsolete_sample_notifications
 from app.modules.finance import models as finance_models  # noqa: F401
@@ -582,6 +583,7 @@ app.include_router(employee_portal_router, prefix=settings.api_prefix)
 app.include_router(data_quality_router, prefix=settings.api_prefix)
 app.include_router(naksha_copilot_router, prefix=settings.api_prefix)
 app.include_router(agent_monitor_router, prefix=settings.api_prefix)
+app.include_router(payables_router, prefix=settings.api_prefix)  # NAKSHA_PAYABLES_ROUTE
 app.include_router(notification_router, prefix=settings.api_prefix)
 app.include_router(business_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
