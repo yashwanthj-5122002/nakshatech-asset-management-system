@@ -1,5 +1,5 @@
 import { ArrowLeft, Camera, MailPlus, MapPin, Save } from 'lucide-react'
-import exifr from 'exifr'
+import * as exifr from 'exifr'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'

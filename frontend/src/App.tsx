@@ -59,6 +59,7 @@ import { ExpenseClaimDetailPage } from './features/finance/pages/ExpenseClaimDet
 import { AdvanceSettlementPage } from './features/finance/pages/AdvanceSettlementPage'
 import { AttendancePage, LeavePage, HRManagementPage } from './features/hrms/HRMSPages'
 import { FinanceDashboardPage } from './features/finance/pages/FinanceDashboardPage'
+import ProjectTrackingSalesPage from './pages/ProjectTrackingSalesPage' // NAKSHA_PTS_IMPORT
 import { FinanceClaimsPage } from './features/finance/pages/FinanceClaimsPage'
 import { FinanceReportsPage } from './features/finance/pages/FinanceReportsPage'
 import { ClientManagementPage } from './features/finance/pages/ClientManagementPage'
@@ -96,6 +97,16 @@ function ITWorkRoute() {
   return user?.role === 'management' ? <ManagementITWorkReadOnlyPage /> : <WorkFormPage />
 }
 
+function ManagementSalesAccess() {
+  const { user } = useAuth()
+  const allowed = user?.role === 'management' &&
+    ['vinod@nakshatech.com', 'chethan@nakshatech.com']
+      .includes((user.email || '').toLowerCase())
+
+  return allowed
+    ? <ProjectTrackingSalesPage />
+    : <Navigate to="/management" replace />
+}
 export default function App() {
   const { user, needsBranchSelection } = useAuth()
   return (
@@ -174,6 +185,7 @@ export default function App() {
       <Route path="/payables/new" element={<ProtectedRoute roles={['admin','finance']}><WithLayout><PayableNewPage /></WithLayout></ProtectedRoute>} />
       <Route path="/payables/:id" element={<ProtectedRoute roles={['admin','finance','management']}><WithLayout><PayableDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceDashboardPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/project-tracking-sales" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementSalesAccess /></WithLayout></ProtectedRoute>} /> // NAKSHA_PTS_ROUTE
       <Route path="/finance/claims" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/reports" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceReportsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClientRegisterPage /></WithLayout></ProtectedRoute>} />

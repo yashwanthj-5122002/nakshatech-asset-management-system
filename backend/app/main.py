@@ -37,6 +37,9 @@ from app.modules.notifications.service import retire_obsolete_sample_notificatio
 from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.finance import standalone_invoice_models as standalone_invoice_models  # noqa: F401
 from app.modules.finance.router import router as finance_router
+from app.api.dependencies import get_current_auth
+from app.routers.project_tracking_sales import build_project_tracking_router
+from app.routers.management_sales_reporting import reporting_service
 from app.modules.finance.service import ensure_finance_seed_data
 from app.modules.finance.schema_compat import ensure_finance_v2_schema_compatibility
 from app.modules.commercial import models as commercial_models  # noqa: F401
@@ -587,6 +590,7 @@ app.include_router(payables_router, prefix=settings.api_prefix)  # NAKSHA_PAYABL
 app.include_router(notification_router, prefix=settings.api_prefix)
 app.include_router(business_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
+app.include_router(build_project_tracking_router(get_current_auth, reporting_service))  # NAKSHA_PTS_BACKEND
 app.include_router(commercial_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
 app.include_router(hrms_router, prefix=settings.api_prefix)
