@@ -1,0 +1,79 @@
+/* Management Client Register live project tracking ONLY.
+   All styles are scoped to mct-*; existing Finance/BD/Operations styles are untouched. */
+.mct-view-switch { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.mct-view-switch button { display:inline-flex; gap:7px; align-items:center; border:1px solid #d3dfec; border-radius:10px; padding:9px 13px; background:#fff; color:#173a5b; font:inherit; font-size:.8rem; font-weight:750; cursor:pointer; }
+.mct-view-switch button.active { background:#104178; border-color:#104178; color:#fff; }
+.mct-inline-warning { margin:8px 0 12px; padding:10px 13px; background:#fff8e5; border:1px solid #e8c977; border-radius:10px; color:#775319; font-size:.82rem; }
+.mct-register-table { min-width:1080px; }
+.mct-expand { display:inline-flex; align-items:center; gap:6px; border:0; background:none; color:#173a5b; cursor:pointer; padding:0; font:inherit; }
+.mct-expand strong { color:#173a5b; }
+.mct-count { border:0; border-radius:7px; background:#e8f2ff; color:#075db4; padding:5px 8px; font:inherit; font-weight:700; cursor:pointer; }
+.mct-progress-cell { display:flex; align-items:center; gap:9px; min-width:135px; }
+.mct-progress-cell > span { color:#1c4065; font-size:.78rem; font-weight:700; white-space:nowrap; }
+.mct-progress { height:9px; background:#dce6f1; border-radius:99px; overflow:hidden; min-width:75px; flex:1; }
+.mct-progress > span { display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,#1687e9,#0ebbb6); transition:width .2s ease; }
+.mct-expanded-row > td { padding:10px 12px 15px !important; background:#f7fbff; }
+.mct-client-projects { border:1px solid #d9e7f6; border-radius:12px; padding:14px; background:#fff; color:#1c3653; }
+.mct-client-projects h3 { margin:0 0 12px; color:#193d67; }
+.mct-client-projects p { margin:6px 0; color:#657991; }
+.mct-projects-scroll { max-width:100%; overflow-x:auto; }
+.mct-projects-table { width:100%; min-width:940px; border-collapse:collapse; }
+.mct-projects-table th,.mct-projects-table td { padding:11px 9px; border-bottom:1px solid #e5edf5; text-align:left; font-size:.78rem; color:#1a3655; }
+.mct-projects-table th { color:#54708d; background:#edf5fc; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; }
+.mct-track-button { display:inline-flex; align-items:center; gap:7px; white-space:nowrap; border:1px solid #c7dcf0; border-radius:9px; background:#f7fbff; color:#124578; padding:8px 10px; font:inherit; font-size:.77rem; font-weight:750; cursor:pointer; }
+.mct-track-button:hover,.mct-count:hover { background:#dbeeff; }
+.mct-tracking-footer { margin-top:12px; font-size:.75rem; color:#5c718a; }
+.mct-modal-backdrop { position:fixed; inset:0; z-index:10000; background:rgba(2,12,27,.75); padding:20px; display:flex; align-items:center; justify-content:center; box-sizing:border-box; overscroll-behavior:contain; }
+.mct-modal { width:min(1320px,100%); max-width:100%; max-height:calc(100vh - 40px); max-height:calc(100dvh - 40px); overflow-x:hidden; overflow-y:auto; margin:auto; background:#09223d; border:1px solid #294f74; border-radius:16px; color:#eaf4ff; box-shadow:0 24px 75px rgba(0,0,0,.4); padding:20px; box-sizing:border-box; overscroll-behavior:contain; }
+.mct-modal-header { position:sticky; top:0; z-index:5; display:flex; align-items:flex-start; justify-content:space-between; gap:18px; border-bottom:1px solid #315576; padding:4px 0 15px; margin-bottom:16px; background:#09223d; }
+.mct-modal-header > div { min-width:0; }
+.mct-modal-header h2 { overflow-wrap:anywhere; }
+.mct-modal-header .mct-close { flex-shrink:0; }
+.mct-eyebrow { display:block; font-size:.72rem; font-weight:800; letter-spacing:.11em; color:#a5c3e3; margin-bottom:5px; }
+.mct-modal h2 { color:#fff; margin:0 0 4px; font-size:1.32rem; }
+.mct-modal-header p { margin:0; color:#b6cbe0; font-size:.83rem; }
+.mct-close { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 13px; border:1px solid #42678a; background:#133658; border-radius:10px; color:#f5faff; font:inherit; font-size:.78rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+.mct-close:hover { background:#21527f; }
+.mct-warning { padding:11px 14px; margin-bottom:13px; background:#513a16; color:#fff0cb; border:1px solid #95783e; border-radius:10px; }
+.mct-modal-metrics { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.65fr) minmax(0,1.15fr); gap:12px; margin-bottom:13px; }
+.mct-dark-card { border:1px solid #345a7d; border-radius:12px; background:#102f50; padding:16px; margin-bottom:13px; color:#eaf4ff; min-width:0; }
+.mct-modal-metrics .mct-dark-card { margin-bottom:0; }
+.mct-dark-card h3 { color:#fff; font-size:.91rem; margin:0 0 15px; }
+.mct-big-percent { display:block; font-size:2.5rem; line-height:1.15; margin:9px 0 10px; color:#fff; }
+.mct-dark-card small { display:block; font-size:.74rem; color:#b7cfe6; margin-top:8px; }
+.mct-dark-card .mct-progress { background:#355679; }
+.mct-stages-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.mct-stage { display:grid; gap:7px; border-right:1px solid #315578; padding-right:12px; }
+.mct-stage:last-child { border-right:0; }
+.mct-stage strong { color:#e9f4ff; font-size:.83rem; }
+.mct-stage > span { color:#e9f4ff; font-weight:750; font-size:.8rem; }
+.mct-project-details dl { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr); gap:8px 12px; margin:0; font-size:.78rem; }
+.mct-project-details dt { color:#aac6e1; }
+.mct-project-details dd { margin:0; color:#fff; font-weight:750; overflow-wrap:anywhere; }
+.mct-files-heading { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.mct-files-heading > span { color:#b7cfe6; font-size:.76rem; }
+/* Let the modal own vertical scrolling; the file table only scrolls horizontally on narrow screens. */
+.mct-file-scroll { max-height:none; overflow-x:auto; overflow-y:visible; border-radius:9px; }
+.mct-file-scroll table { width:100%; border-collapse:collapse; min-width:930px; }
+.mct-file-scroll th,.mct-file-scroll td { padding:10px 12px; border-bottom:1px solid #294b6c; text-align:left; vertical-align:top; font-size:.77rem; }
+.mct-file-scroll th { position:sticky; top:0; background:#1c4165; color:#fff; z-index:1; }
+.mct-file-scroll td strong { color:#f7fbff; }
+.mct-file-scroll td small { color:#a9c4de; }
+.mct-inactive { opacity:.5; }
+.mct-status { display:inline-flex; border-radius:7px; padding:5px 8px; font-size:.71rem; font-weight:750; white-space:nowrap; background:#294b70; color:#d6e9fa; }
+.mct-status.complete { background:#174e45; color:#72edbd; }
+.mct-status.active { background:#155a94; color:#bfe5ff; }
+.mct-status.rework { background:#754b23; color:#ffe0a3; }
+.mct-timeline { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.mct-timeline > div { display:grid; justify-items:center; gap:5px; position:relative; text-align:center; }
+.mct-timeline > div:before { content:''; position:absolute; height:2px; width:100%; background:#4d7192; top:11px; left:50%; }
+.mct-timeline > div:last-child:before { display:none; }
+.mct-timeline-dot { position:relative; z-index:1; width:22px; height:22px; border:3px solid #aac1d8; border-radius:50%; background:#153657; }
+.mct-timeline-dot.done { background:#0dba80; border-color:#0dba80; }
+.mct-timeline-dot.partial { background:#0877d4; border-color:#58b7ff; }
+.mct-timeline strong { font-size:.82rem; }
+.mct-timeline small { margin:0; }
+.mct-modal-footer { display:flex; justify-content:space-between; align-items:center; gap:14px; color:#acc7e0; font-size:.73rem; }
+@media(max-width:1150px){ .mct-modal-metrics { grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); } .mct-project-details { grid-column:1/-1; } }
+@media(max-width:900px){ .mct-modal-metrics { grid-template-columns:minmax(0,1fr); } .mct-project-details { grid-column:auto; } }
+@media(max-width:720px){ .mct-modal-backdrop { padding:8px; } .mct-modal { padding:12px; max-height:calc(100vh - 16px); max-height:calc(100dvh - 16px); } .mct-modal-metrics { grid-template-columns:minmax(0,1fr); } .mct-stages-grid { grid-template-columns:1fr 1fr; } .mct-project-details { grid-column:auto; } .mct-modal-header { flex-wrap:wrap; } .mct-timeline { gap:3px; } .mct-timeline strong { font-size:.72rem; } }
