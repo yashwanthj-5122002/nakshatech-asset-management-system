@@ -1,0 +1,15 @@
+/* Assignment QC/QA controls are deliberately independent of file-level Production UI. */
+.assignment-review-list { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.assignment-review { border: 1px solid #c9dfe9; border-radius: 12px; padding: 12px; background: #f6fbfe; min-width: 0; }
+.assignment-review-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.assignment-review-heading > div:first-child { display: grid; gap: 3px; }
+.assignment-review-heading strong { color: #163655; font-size: .88rem; }
+.assignment-review-heading span { color: #64748b; font-size: .78rem; }
+.assignment-review-buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.assignment-review-buttons .operations-button { white-space: nowrap; }
+.assignment-review-dropdown { display: grid; gap: 10px; padding: 12px; border: 1px solid #d5e2ee; background: #fff; border-radius: 10px; margin-top: 12px; max-width: 520px; }
+.assignment-review-dropdown .operations-field { width: 100%; }
+.assignment-review-dropdown select, .assignment-review-dropdown textarea { width: 100%; }
+.assignment-review-sent { display: grid; gap: 6px; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+.assignment-review-sent span, .assignment-review-sent small { font-size: .78rem; color: #475569; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .assignment-review { padding: 10px; } .assignment-review-buttons { width: 100%; } }

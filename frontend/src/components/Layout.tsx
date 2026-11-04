@@ -142,6 +142,7 @@ const navItems: NavItem[] = [
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/bd/tracking', label: 'Project Tracking', icon: Activity, roles: ['bd'], group: 'business' },
   { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin', 'management'], group: 'business', managementGroup: 'finance', managementLabel: 'Commercial Estimates' },
   { to: '/bd/feedback', label: 'Client Feedback', icon: FileCheck2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
@@ -149,7 +150,7 @@ const navItems: NavItem[] = [
   { to: '/production-tracking', label: 'Production Tracking', icon: Activity, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho', managementGroup: 'operations', managementLabel: 'Production Tracking' },
   { to: '/payables', label: 'Payables', icon: FileCheck2, roles: ['admin', 'finance', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Payables' }, // NAKSHA_PAYABLES_NAV
   { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Dashboard' },
-  { to: '/management/project-tracking-sales', label: 'Project Tracking and Sales', icon: BarChart3, roles: ['management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Project Tracking and Sales' }, // NAKSHA_PTS_NAV
+  { to: '/management/project-tracking', label: 'Project Tracking', icon: BarChart3, roles: ['management'], group: 'finance', managementGroup: 'operations', managementLabel: 'Project Tracking' }, // NAKSHA_PTS_NAV
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Project Register' },

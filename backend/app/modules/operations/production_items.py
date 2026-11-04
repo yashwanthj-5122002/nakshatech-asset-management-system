@@ -694,6 +694,32 @@ def open_session_for(
     return db.scalar(stmt)
 
 
+def pending_production_rework(
+    stages: dict[str, WorkPackageItemActivity],
+) -> WorkPackageItemActivity | None:
+    """Find an outstanding QC/QA rejection not yet addressed by Production.
+
+    The latest successful Production completion must be AFTER the rejection.
+    Prior rejections remain in the audit trail, but cannot reopen a corrected
+    file indefinitely. A partial/in-progress Production session is not a fix.
+    """
+    production = stages.get("production")
+    outstanding = [
+        activity
+        for review_stage in ("qc", "qa")
+        if (activity := stages.get(review_stage)) is not None
+        and activity.status in {"rejected", "rework"}
+        and activity.ended_at is not None
+        and (
+            production is None
+            or production.status != "completed"
+            or production.ended_at is None
+            or production.ended_at <= activity.ended_at
+        )
+    ]
+    return max(outstanding, key=lambda activity: activity.id) if outstanding else None
+
+
 def start_activity(
     db: Session,
     *,
@@ -716,18 +742,14 @@ def start_activity(
     # completed for that file; QA only after QC passed it.
     latest = latest_activities_by_item(db, [package.id]).get(item.id, {})
     if stage == "production":
+        if item.status == ITEM_STATUS_DELIVERED or latest.get("delivery") is not None:
+            raise ValueError("Delivered files cannot be reopened for Production rework")
+        if package.ready_for_delivery_at is not None:
+            raise ValueError("Ready-for-delivery work cannot be reopened for Production rework")
         finished = latest.get("production")
         if finished is not None and finished.status == "completed":
-            # A finalized file cannot be re-opened — EXCEPT when a QC/QA rejection left
-            # rework outstanding (the existing rework loop must still be able to redo work).
-            qc = latest.get("qc")
-            qa = latest.get("qa")
-            rework_open = (
-                (qc is not None and qc.status in {"rejected", "rework"})
-                or (qa is not None and qa.status in {"rejected", "rework"})
-            )
-            if not rework_open:
-                raise ValueError("Production is already completed for this file")
+            if pending_production_rework(latest) is None:
+                raise ValueError("Production is already completed; no outstanding QC/QA rework")
     if stage == "qc":
         production = latest.get("production")
         if production is None or production.status != "completed":
@@ -744,6 +766,23 @@ def start_activity(
         already_qa = latest.get("qa")
         if already_qa is not None and already_qa.status == "passed":
             raise ValueError("QA has already passed for this file")
+
+    # A file sent back by QC/QA cannot be reviewed again until Production has
+    # completed a newer correction attempt. Enforce this for BOTH the new
+    # assignment controls and the existing direct file-level API.
+    if stage in {"qc", "qa"}:
+        previous_review = latest.get(stage)
+        latest_production = latest.get("production")
+        if previous_review is not None and previous_review.status in {"rejected", "rework"}:
+            corrected = (
+                latest_production is not None
+                and latest_production.status == "completed"
+                and latest_production.ended_at is not None
+                and previous_review.ended_at is not None
+                and latest_production.ended_at > previous_review.ended_at
+            )
+            if not corrected:
+                raise ValueError("Production must finish the rejected file's correction before review restarts")
 
     existing = open_session_for(db, item_id=item.id, stage=stage)
     if existing is not None:
@@ -1204,6 +1243,7 @@ def build_item_rows(
         if prod is not None and prod.affected_item_id:
             affected = db.get(WorkPackageItem, prod.affected_item_id)
         open_row = open_by_item.get(item.id)
+        rework_request = pending_production_rework(per_stage)
         rows.append({
             "work_package_item_id": item.id,
             "work_package_id": item.work_package_id,
@@ -1231,6 +1271,11 @@ def build_item_rows(
             "qa_user_id": item.qa_user_id,
             "qa_user": name_of(item.qa_user_id),
             "production_status": statuses["production"],
+            "production_rework_pending": bool(rework_request) and item.status != ITEM_STATUS_DELIVERED
+                and packages[item.work_package_id].ready_for_delivery_at is None
+                and per_stage.get("delivery") is None,
+            "production_rework_source": rework_request.stage if rework_request else None,
+            "production_rework_reason": rework_request.remarks if rework_request else None,
             "qc_status": statuses["qc"],
             "qa_status": statuses["qa"],
             "delivery_status": statuses["delivery"],

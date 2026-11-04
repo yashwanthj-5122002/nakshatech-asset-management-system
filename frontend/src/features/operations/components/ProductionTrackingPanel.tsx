@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { PaginationBar } from '../../../components/PaginationBar'
+import { AssignmentReviewControls } from './AssignmentReviewControls'
 import { useAuth } from '../../../context/AuthContext'
 import { apiFetch, uploadExcel } from '../../../lib/api'
 import {
@@ -918,6 +919,8 @@ function PackageDetailDrawer({ row, readOnly, onClose }: { row: FlatTrackingRow;
             <button type="button" className="operations-button" disabled={busy} onClick={assignSelected}>Bulk Assign</button>
           </div>
         )}
+
+        {items && <AssignmentReviewControls packageId={row.work_package_id} items={items.items} myUserId={me} onChanged={loadItems} />}
 
         {items && (
           <div className="operations-table-wrap pt-file-table-wrap">

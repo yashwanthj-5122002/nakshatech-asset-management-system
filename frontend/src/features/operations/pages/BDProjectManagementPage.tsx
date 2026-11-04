@@ -1,6 +1,6 @@
 import { Pencil, RefreshCcw, RefreshCw, Send, UserRoundCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import { ProjectDetailsPanel, ProjectRegisterFilters, ProjectRegisterTable } from '../components/ProjectRegister'
@@ -76,7 +76,7 @@ export function BDProjectManagementPage(){
       <div><span>Awaiting Finance</span><strong>{data?.projects.filter(row=>row.workflow_status==='pending_finance_approval').length ?? 0}</strong></div>
       <div><span>Returned</span><strong>{data?.projects.filter(row=>row.workflow_status==='finance_returned').length ?? 0}</strong></div>
       <div><span>Draft</span><strong>{data?.projects.filter(row=>row.workflow_status==='draft').length ?? 0}</strong></div>
-    </>} actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button>} meta={<><span className="nk-meta-chip"><Send size={14}/> Correct returned projects and resubmit the same record</span><span className="nk-meta-chip"><UserRoundCheck size={14}/> PM assigned only after Finance approval</span><span className="nk-meta-chip"><Pencil size={14}/> Draft → Finance → PM → Delivery</span></>}/>
+    </>} actions={<><Link className="operations-button" to="/bd/tracking">View Project Tracking</Link><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></>} meta={<><span className="nk-meta-chip"><Send size={14}/> Correct returned projects and resubmit the same record</span><span className="nk-meta-chip"><UserRoundCheck size={14}/> PM assigned only after Finance approval</span><span className="nk-meta-chip"><Pencil size={14}/> Draft → Finance → PM → Delivery</span></>}/>
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
     {loading&&<section className="operations-panel"><div className="operations-empty"><span className="spinner"/> Loading projects…</div></section>}
     <section className="operations-panel">

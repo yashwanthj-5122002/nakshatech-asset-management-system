@@ -57,6 +57,9 @@ export type ActivityItem = {
   qc_user?: string | null
   qa_user?: string | null
   production_status: string
+  production_rework_pending?: boolean
+  production_rework_source?: string | null
+  production_rework_reason?: string | null
   qc_status: string
   qa_status: string
   delivery_status?: string
@@ -169,7 +172,7 @@ const EMPTY_PRODUCTION_DRAFT = {
 const EMPTY_REVIEW_DRAFT = { status: 'passed', remarks: '' }
 
 export function ItemStageActivityControls({
-  item, myUserId, canDeliver = false, siblings = [], onChanged, compact = false,
+  item, myUserId, canDeliver = false, siblings = [], onChanged, compact = false, showReviewActions = true,
 }: {
   item: ActivityItem
   myUserId: number
@@ -177,6 +180,7 @@ export function ItemStageActivityControls({
   siblings?: { work_package_item_id: number; item_number: string }[]
   onChanged: () => void
   compact?: boolean
+  showReviewActions?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -248,7 +252,9 @@ export function ItemStageActivityControls({
         }),
       }),
       finalize
-        ? `${item.item_number}: production COMPLETED — session quantity added, file counted once, QC now ready.`
+        ? (item.production_rework_pending
+            ? `${item.item_number}: Production rework completed. The corrected file is ready for QC/QA review.`
+            : `${item.item_number}: production COMPLETED — session quantity added, file counted once, QC now ready.`)
         : `${item.item_number}: daily progress saved — the file is still in progress; QC stays locked.`,
     )
     if (saved) { setProdDraft(EMPTY_PRODUCTION_DRAFT); setActive(null) }
@@ -280,8 +286,10 @@ export function ItemStageActivityControls({
     )
   }
 
+  const isProductionRework = item.production_rework_pending === true
   const canStartProduction = isActive && !item.open_session
-    && item.production_user_id === myUserId && item.production_status !== 'completed'
+    && item.production_user_id === myUserId
+    && (item.production_status !== 'completed' || isProductionRework)
   const canStartQc = isActive && !item.open_session && item.qc_user_id === myUserId
     && item.production_status === 'completed' && item.qc_status !== 'passed'
   const canStartQa = isActive && !item.open_session && item.qa_user_id === myUserId
@@ -369,18 +377,24 @@ export function ItemStageActivityControls({
         </div>
       )}
 
-      {/* ---- Production: my assigned file ---- */}
+      {/* ---- Production: my assigned file, including a QC/QA rework return ---- */}
+      {item.production_user_id === myUserId && isProductionRework && (
+        <div className="isa-meta isa-wait">
+          Rework requested by {item.production_rework_source?.toUpperCase() ?? 'QC/QA'}
+          {item.production_rework_reason ? `: ${item.production_rework_reason}` : ''}
+        </div>
+      )}
       {item.production_user_id === myUserId && (
         <div className="isa-actions">
           {openStage === 'production' && active !== 'production' && (
             <button type="button" className="operations-button danger" disabled={busy}
               onClick={() => setActive('production')}>
-              Complete File
+              {isProductionRework ? 'Complete Rework' : 'Complete File'}
             </button>
           )}
           {!item.open_session && canStartProduction && (
             <button type="button" className="operations-button" disabled={busy} onClick={() => start('production')}>
-              Start Work
+              {isProductionRework ? 'Start Rework' : 'Start Work'}
             </button>
           )}
         </div>
@@ -397,7 +411,7 @@ export function ItemStageActivityControls({
               QC status: {item.qc_status === 'not_started' ? 'READY FOR QC' : label(item.qc_status)}
             </div>
           )}
-          <div className="isa-actions">
+          {showReviewActions && <div className="isa-actions">
             {openStage === 'qc' && active !== 'qc' && (
               <button type="button" className="operations-button danger" disabled={busy} onClick={() => setActive('qc')}>
                 Complete QC
@@ -408,7 +422,7 @@ export function ItemStageActivityControls({
                 Start QC
               </button>
             )}
-          </div>
+          </div>}
         </>
       )}
 
@@ -423,7 +437,7 @@ export function ItemStageActivityControls({
               QA status: {item.qa_status === 'not_started' ? 'READY FOR QA' : label(item.qa_status)}
             </div>
           )}
-          <div className="isa-actions">
+          {showReviewActions && <div className="isa-actions">
             {openStage === 'qa' && active !== 'qa' && (
               <button type="button" className="operations-button danger" disabled={busy} onClick={() => setActive('qa')}>
                 Complete QA
@@ -434,7 +448,7 @@ export function ItemStageActivityControls({
                 Start QA
               </button>
             )}
-          </div>
+          </div>}
         </>
       )}
 
@@ -448,7 +462,7 @@ export function ItemStageActivityControls({
       {/* ---- Inline completion form ---- */}
       {openStage === 'production' && active === 'production' && (
         <div className="isa-form">
-          <strong>Complete file — {item.item_number}</strong>
+          <strong>{isProductionRework ? 'Complete rework' : 'Complete file'} — {item.item_number}</strong>
           <div className="pt-form-row">
             <label className="operations-field"><span>Actual Quantity *</span>
               <input type="number" min={0} step="0.001" value={prodDraft.quantity}
@@ -505,14 +519,14 @@ export function ItemStageActivityControls({
           </div>
           <div className="operations-actions">
             <button type="button" className="operations-button success" disabled={busy} onClick={() => submitProduction(true)}>
-              Complete File
+              {isProductionRework ? 'Complete Rework' : 'Complete File'}
             </button>
             <button type="button" className="operations-button secondary" onClick={() => setActive(null)}>Cancel</button>
           </div>
         </div>
       )}
 
-      {(openStage === 'qc' || openStage === 'qa') && active === openStage && (
+      {showReviewActions && (openStage === 'qc' || openStage === 'qa') && active === openStage && (
         <div className="isa-form">
           <strong>{openStage === 'qc' ? 'Complete QC' : 'Complete QA'} — {item.item_number}</strong>
           <div className="pt-form-row">

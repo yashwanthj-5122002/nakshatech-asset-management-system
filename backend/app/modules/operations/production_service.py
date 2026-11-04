@@ -324,18 +324,23 @@ def package_stage_history(db: Session, *, actor: User, role: str, work_package_i
     return rows
 
 
-def tracking_summary(db: Session, *, actor: User, role: str, project_id: int | None = None) -> dict:
+def tracking_summary(db: Session, *, actor: User, role: str, project_id: int | None = None, authorized_bd_project_ids: set[int] | None = None) -> dict:
     """Server-side production-tracking summary for Team Lead / PM / Management dashboards.
 
     Aggregation happens here (never in the browser) and N+1 queries are avoided:
     packages are bulk-loaded per project with ``selectinload`` and users are
     fetched in one batch. Employees receive only their own package rows.
     """
-    project_ids = visible_project_ids(db, actor=actor, role=role)
+    # BD may use only the IDs explicitly approved by the existing BD project
+    # register, never IDs supplied directly by a browser/API query.
+    if role == "bd":
+        project_ids = set(authorized_bd_project_ids or ())
+    else:
+        project_ids = visible_project_ids(db, actor=actor, role=role)
     if project_id is not None:
         project_ids &= {project_id}
     if not project_ids:
-        return {"projects": [], "units": known_units(), "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else "participant"}
+        return {"projects": [], "units": known_units(), "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE, "bd"} else "participant"}
 
     projects = {p.id: p for p in db.scalars(select(FinanceProject).where(FinanceProject.id.in_(project_ids))).all()}
     workflows = {w.project_id: w for w in db.scalars(select(ProjectWorkflow).where(ProjectWorkflow.project_id.in_(project_ids))).all()}
@@ -387,7 +392,7 @@ def _build_tracking_rows(db: Session, actor: User, role: str, project_ids, proje
     return {
         "projects": rows,
         "units": known_units(),
-        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if is_technical_pm_role(role) else "participant"),
+        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE, "bd"} else ("project_manager" if is_technical_pm_role(role) else "participant"),
     }
 
 

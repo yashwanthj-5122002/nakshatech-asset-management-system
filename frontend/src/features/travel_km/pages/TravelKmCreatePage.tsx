@@ -36,6 +36,14 @@ export function TravelKmCreatePage() {
   const [photoGpsNote, setPhotoGpsNote] = useState('')
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const photoRequestRef = useRef(0)
+  // Start Journey geo-tagged photo preview and actions. One file is used by the existing submit handler.
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!photo) { setPhotoPreviewUrl(null); return }
+    const url = URL.createObjectURL(photo)
+    setPhotoPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [photo])
   const [reportingManagerEmail, setReportingManagerEmail] = useState('')
   const [toEmails, setToEmails] = useState<string[]>([])
   const [ccEmails, setCcEmails] = useState<string[]>([])
@@ -161,8 +169,46 @@ export function TravelKmCreatePage() {
       <div><span className="travel-km-kicker">STEP 3 · START ODOMETER</span><h2>Start Journey Evidence</h2></div>
       <div className="travel-km-form-grid">
         <label className="travel-km-field"><span>Start KM *</span><input type="number" min="0" step="0.01" value={startKm} onChange={e => setStartKm(e.target.value)} placeholder="Example: 25420" required /></label>
-        <div className="travel-km-gps-card"><div className="travel-km-inline"><MapPin size={16}/><strong>Geo-Tagged Images</strong><span>{photoGps ? `${photoGps.latitude.toFixed(6)}, ${photoGps.longitude.toFixed(6)}` : photoGpsState === 'reading' ? 'Reading GPS tags...' : photo ? 'No GPS tag in photo' : 'No photo selected'}</span><span>{photoGps ? `Photo time ${photoGps.timeLabel}` : 'Upload the original odometer photo with GPS location tags enabled.'}</span><button className="travel-km-secondary" type="button" onClick={() => photoInputRef.current?.click()} disabled={photoGpsState === 'reading'}><Camera size={15}/>{photoGpsState === 'reading' ? 'Reading GPS...' : photo ? 'Replace Photo' : 'Add Geo-Tagged Photo'}</button></div>{photoGpsNote && <small>{photoGpsNote}</small>}</div>
-        <label className="travel-km-field full"><span>Start Odometer Photo *</span><div className="travel-km-photo-input"><Camera size={18}/><input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={e => void readPhotoGps(e.target.files?.[0] || null)} /></div><small>{photo ? `${photo.name} · ${(photo.size / 1024 / 1024).toFixed(2)} MB${photoGps ? ' · GPS tag found' : photoGpsState === 'missing' ? ' · no GPS tag' : ''}` : 'Choose the original odometer photo from the gallery (taken with location tagging enabled). GPS coordinates and photo time are read from the image EXIF metadata, so no precise location permission is required.'}</small></label>
+        <div className="travel-km-gps-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="travel-km-inline" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <MapPin size={16}/>
+            <strong>Geo-Tagged Images</strong>
+            <span>{photoGpsState === 'reading' ? 'Reading photo metadata...' : photoGps ? 'Valid geo-tagged photo' : photo ? 'Photo needs valid GPS tags' : 'No photo selected'}</span>
+          </div>
+          <span style={{ fontSize: 12 }}>Upload one original photo showing the Start odometer reading, with GPS location tagging enabled (maximum 15 MB).</span>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            aria-label="Select Start Journey geo-tagged odometer photo"
+            style={{ display: 'none' }}
+            onChange={e => void readPhotoGps(e.target.files?.[0] || null)}
+          />
+          <div className="travel-km-actions" style={{ margin: 0 }}>
+            <button
+              className="travel-km-secondary"
+              type="button"
+              disabled={photoGpsState === 'reading' || loading}
+              onClick={() => { if (photoInputRef.current) { photoInputRef.current.value = ''; photoInputRef.current.click() } }}
+            >
+              <Camera size={15}/>{photoGpsState === 'reading' ? 'Reading GPS...' : photo ? 'Replace Geo-Tagged Photo' : 'Add Geo-Tagged Photo'}
+            </button>
+          </div>
+          {photo && <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {photoPreviewUrl && <img src={photoPreviewUrl} alt="Selected Start Journey odometer evidence" style={{ width: '100%', maxHeight: 210, objectFit: 'contain', borderRadius: 10, background: 'rgba(100,116,139,0.08)' }}/>} 
+            <span style={{ fontSize: 12, overflowWrap: 'anywhere' }}>{photo.name} ({(photo.size / 1024 / 1024).toFixed(2)} MB)</span>
+            {photoGps && <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+              <span><strong>Photo GPS:</strong> {photoGps.latitude.toFixed(6)}, {photoGps.longitude.toFixed(6)}</span>
+              <span><strong>Capture time:</strong> {photoGps.timeLabel}</span>
+              <span style={{ color: '#16803c', fontWeight: 600 }}>GPS metadata found</span>
+            </div>}
+            <div className="travel-km-actions" style={{ margin: 0, flexWrap: 'wrap' }}>
+              <button className="travel-km-secondary" type="button" disabled={!photoPreviewUrl} onClick={() => { if (photoPreviewUrl) window.open(photoPreviewUrl, '_blank', 'noopener,noreferrer') }}>View Photo</button>
+              <button className="travel-km-secondary" type="button" disabled={loading} onClick={() => { void readPhotoGps(null); if (photoInputRef.current) photoInputRef.current.value = '' }}>Remove Photo</button>
+            </div>
+          </div>}
+          {photoGpsNote && <small role="alert" style={{ color: '#b42318' }}>{photoGpsNote}</small>}
+        </div>
       </div>
       <div className="travel-km-actions"><button className="travel-km-primary" type="submit" disabled={loading || openProjectCount === 0}><Save size={16}/>{loading ? 'Creating Claim...' : 'Start Travel Claim'}</button></div>
     </form>

@@ -8,7 +8,7 @@ import { apiBlob, apiFetch, downloadFile } from '../../../lib/api'
 import type { CurrencyPayload } from '../../commercial/types'
 import { FinanceBillingBasis, type InvoiceLinks, type RecommendationApply } from '../../commercial/components/FinanceBillingBasis'
 import { InvoiceA4Document } from '../components/InvoiceA4Document'
-import { InvoiceTemplateSelector, invoiceTemplateQuery, type InvoiceTemplate } from '../components/InvoiceTemplateSelector'
+import { invoiceTemplateQuery, type InvoiceTemplate } from '../components/InvoiceTemplateSelector'
 import {
   BadDebtRow,
   InvoiceRow,
@@ -603,7 +603,6 @@ export function FinanceBillingPage() {
     />
     {error && <div className="operations-alert error">{error}</div>}
     {notice && <div className="operations-alert success">{notice}</div>}
-    <InvoiceTemplateSelector value={template} onChange={setTemplate} label="Project invoice format for preview, PDF and print" compact/>
 
     {dashboard && <section className="operations-stats-grid">
       <StatCard icon={CheckCircle2} label="Ready For Billing" value={dashboard.summary.ready_for_billing} tone="green"/>

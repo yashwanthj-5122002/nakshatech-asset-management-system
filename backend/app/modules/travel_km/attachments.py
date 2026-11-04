@@ -97,8 +97,12 @@ def _extract_exif(data: bytes) -> tuple[float | None, float | None, datetime | N
             if not exif:
                 return None, None, None
             captured = None
+            try:
+                exif_dates = exif.get_ifd(34665)
+            except Exception:
+                exif_dates = {}
             for key in (36867, 36868, 306):
-                raw = exif.get(key)
+                raw = exif_dates.get(key) or exif.get(key)
                 if raw:
                     try:
                         captured = datetime.strptime(str(raw), "%Y:%m:%d %H:%M:%S")

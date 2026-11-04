@@ -11,6 +11,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.routers.management_project_tracking import router as management_project_tracking_router
 from app.api.router import router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
@@ -598,6 +599,7 @@ app.include_router(operations_router, prefix=settings.api_prefix)
 app.include_router(uat_2026_router, prefix=settings.api_prefix)
 
 
+app.include_router(management_project_tracking_router)
 @app.middleware("http")
 async def production_headers(request, call_next):
     response = await call_next(request)

@@ -26,6 +26,7 @@ import {
 } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
+import { filterAutomaticPopupQueue } from './notificationPopupPolicy'
 import {
   type FeedbackPayload,
   type NotificationSettings,
@@ -160,17 +161,19 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
     }
   }, [isAuthenticated, settings, load])
 
+  const popupQueue = useMemo(() => filterAutomaticPopupQueue(queue, user), [queue, user])
+
   const current = useMemo(() => {
     const now = Date.now()
-    const eligible = queue.filter(item => {
+    const eligible = popupQueue.filter(item => {
       if (item.is_resolved) return false
       const stamp = seenRef.current[String(item.id)]
       return stamp === undefined || now - stamp >= 24 * 60 * 60_000
     })
     return eligible[0] ?? null
-  }, [queue])
+  }, [popupQueue])
 
-  const queueRemaining = useMemo(() => queue.filter(item => !item.is_resolved).length, [queue])
+  const queueRemaining = useMemo(() => popupQueue.filter(item => !item.is_resolved).length, [popupQueue])
 
   // Record that the popup was surfaced this session (read, never resolved).
   useEffect(() => {

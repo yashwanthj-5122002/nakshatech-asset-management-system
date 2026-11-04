@@ -1,3 +1,4 @@
+import ProjectTrackingPage from './pages/ProjectTrackingPage'
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { PayablesListPage, PayableNewPage, PayableDetailPage } from './features/payables/PayablesPage' // NAKSHA_PAYABLES_IMPORT
@@ -59,7 +60,7 @@ import { ExpenseClaimDetailPage } from './features/finance/pages/ExpenseClaimDet
 import { AdvanceSettlementPage } from './features/finance/pages/AdvanceSettlementPage'
 import { AttendancePage, LeavePage, HRManagementPage } from './features/hrms/HRMSPages'
 import { FinanceDashboardPage } from './features/finance/pages/FinanceDashboardPage'
-import ProjectTrackingSalesPage from './pages/ProjectTrackingSalesPage' // NAKSHA_PTS_IMPORT
+import ProjectTrackingSalesPage from './pages/ProjectTrackingPage' // NAKSHA_PTS_IMPORT
 import { FinanceClaimsPage } from './features/finance/pages/FinanceClaimsPage'
 import { FinanceReportsPage } from './features/finance/pages/FinanceReportsPage'
 import { ClientManagementPage } from './features/finance/pages/ClientManagementPage'
@@ -70,6 +71,7 @@ import { TravelKmStaffDashboardPage } from './features/travel_km/pages/TravelKmS
 import { BDDashboardPage } from './features/operations/pages/BDDashboardPage'
 import { BDClientManagementPage } from './features/operations/pages/BDClientManagementPage'
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
+import { BDProjectTrackingPage } from './features/operations/pages/BDProjectTrackingPage'
 import { NotificationsPage } from './features/operations/pages/NotificationsPage'
 import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPage'
 import { ProductionTrackingPage } from './features/operations/pages/ProductionTrackingPage'
@@ -174,6 +176,7 @@ export default function App() {
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/tracking" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectTrackingPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/feedback" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientFeedbackPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin', 'management']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin', 'software_team']}><WithLayout><NotificationsPage /></WithLayout></ProtectedRoute>} />
@@ -213,6 +216,7 @@ export default function App() {
       <Route path="/naksha-copilot" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><NakshaCopilotPage /></WithLayout></ProtectedRoute>} />
       <Route path="/backups" element={<ProtectedRoute roles={['admin', 'management', 'it', 'drone']}><WithLayout><BackupCenterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/future" element={<ProtectedRoute roles={['admin']}><WithLayout><FutureFeaturesPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/project-tracking" element={<ProtectedRoute roles={['management']}><WithLayout><ProjectTrackingPage /></WithLayout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? (needsBranchSelection ? '/select-branch' : roleHomePath(user.role)) : '/'} replace />} />
     </Routes>
   )
