@@ -211,9 +211,17 @@ def _project_row(p: FinanceProject, data: dict[str, Any]) -> dict[str, Any]:
 
 def _active_between(p: FinanceProject, data: dict[str, Any], start: date, end: date) -> bool:
     wf = data["workflow"].get(p.id)
-    began = p.start_date or _date(p.created_at) or date.min
-    # An incomplete project remains active past its planned end date.
+
+    created = _date(p.created_at)
+    planned_start = p.start_date
+
+    # Show a registered project even when its planned start is in the future.
+    available_dates = [d for d in (created, planned_start) if d is not None]
+    began = min(available_dates) if available_dates else date.min
+
+    # Incomplete projects remain visible until operational completion.
     finished = _date(getattr(wf, "operational_completed_at", None)) or date.max
+
     return began <= end and finished >= start
 
 

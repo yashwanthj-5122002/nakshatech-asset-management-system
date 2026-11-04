@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../lib/date'
 import { CalendarDays, FileCheck2, FileUp, PlusCircle, ReceiptIndianRupee, Search, ShoppingCart } from 'lucide-react'
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -10,7 +11,7 @@ import { isFullAccessRole } from '../lib/roles'
 import type { Asset, ITPurchaseRecord, ITPurchaseRequest } from '../types'
 
 function today() {
-  return new Date().toISOString().slice(0, 10)
+  return indiaDateInput()
 }
 
 const initialForm = {

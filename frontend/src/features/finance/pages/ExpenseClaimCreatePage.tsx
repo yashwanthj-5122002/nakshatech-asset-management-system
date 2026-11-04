@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { ArrowLeft, CalendarDays, FileText, Plus, Send, Trash2, UploadCloud, X } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -18,7 +19,7 @@ interface DraftItem {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+  return indiaDateInput()
 }
 
 function newItem(): DraftItem {

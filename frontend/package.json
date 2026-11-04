@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --project tsconfig.app.json --noEmit && tsc --project tsconfig.node.json --noEmit",
     "test:finance-command-center": "node scripts/verify-finance-command-center-partial-payment.mjs",
     "test:finance-command-center:advance-alerts": "node scripts/verify-finance-command-center-advance-alerts.mjs",
     "test:finance-command-center:advance-settlement": "node scripts/verify-finance-command-center-advance-settlement.mjs",
@@ -17,7 +17,8 @@
     "test:finance-generate-invoice": "node scripts/verify-finance-generate-invoice-standalone.mjs",
     "test:notification-popup": "node scripts/verify-notification-popup.mjs",
     "test:critical-action-visibility": "node scripts/verify-critical-action-visibility.mjs",
-    "test:bd-client-feedback": "node scripts/verify-bd-client-feedback-action-center.mjs"
+    "test:bd-client-feedback": "node scripts/verify-bd-client-feedback-action-center.mjs",
+    "test:india-dates": "node scripts/verify-india-dates.mjs"
   },
   "dependencies": {
     "exifr": "^7.1.3",

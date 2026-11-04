@@ -151,13 +151,19 @@ type ExecutiveDashboardData = {
 
 /* ────────────────────────── Helpers ────────────────────────── */
 
-function formatINR(value: number): string {
-  if (Math.abs(value) >= 10_000_000) return `₹${(value / 10_000_000).toFixed(2)} Cr`
-  if (Math.abs(value) >= 100_000) return `₹${(value / 100_000).toFixed(2)} L`
-  if (Math.abs(value) >= 1_000) return `₹${(value / 1_000).toFixed(1)}K`
-  return `₹${value.toLocaleString('en-IN')}`
-}
+function formatINR(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') {
+    return '—'
+  }
 
+  const amount = Number(value)
+
+  if (!Number.isFinite(amount)) {
+    return '—'
+  }
+
+  return `₹${amount.toLocaleString('en-IN')}`
+}
 function pct(value: number, total: number): number {
   return total > 0 ? Math.round((value / total) * 100) : 0
 }
@@ -402,7 +408,12 @@ export function ManagementDashboard() {
         summary={(
           <>
             <StatCard icon={IndianRupee} label="Total Revenue" value={biz ? formatINR(biz.totals.total) : '—'} tone="green" note="Business total this month" />
-            <StatCard icon={TrendingUp} label="Net Margin" value={comm ? formatINR(comm.summary_inr.margin_inr) : '—'} tone={comm && comm.summary_inr.margin_inr >= 0 ? 'green' : 'red'} note="Billing minus direct costs" />
+            <StatCard icon={TrendingUp} label="Net Margin" value={formatINR(comm?.summary_inr?.margin_inr)}
+tone={
+  (comm?.summary_inr?.margin_inr ?? -1) >= 0
+    ? 'green'
+    : 'red'
+} note="Billing minus direct costs" />
             <StatCard icon={FolderKanban} label="Active Projects" value={lifecycle?.summary.active_projects ?? '—'} tone="blue" note="Currently in pipeline" />
           </>
         )}

@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { CircleDollarSign, RefreshCcw, Save, Send, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -15,7 +16,7 @@ import '../commercial-workflow.css'
 
 type BDDashboard = { projects: SimpleProject[] }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 const PROJECT_FLOW_STATES = ['draft', 'finance_returned', 'pending_finance_approval']
 
 /**

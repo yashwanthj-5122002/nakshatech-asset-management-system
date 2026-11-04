@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { ArrowLeft, Camera, MailPlus, MapPin, Save } from 'lucide-react'
 import * as exifr from 'exifr'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
@@ -27,7 +28,7 @@ export function TravelKmCreatePage() {
   const navigate = useNavigate()
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [projectId, setProjectId] = useState('')
-  const [travelDate, setTravelDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [travelDate, setTravelDate] = useState(() => indiaDateInput())
   const [purpose, setPurpose] = useState('')
   const [startKm, setStartKm] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)

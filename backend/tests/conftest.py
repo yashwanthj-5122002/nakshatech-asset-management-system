@@ -32,10 +32,15 @@ if str(BACKEND_ROOT) not in sys.path:
 
 PYTEST_DB = Path(tempfile.gettempdir()) / f"nakshatech_pytest_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{PYTEST_DB}"
-os.environ.setdefault("JWT_SECRET", "pytest-suite-secret-only-change-me-32-characters")
+os.environ["JWT_SECRET"] = "pytest-suite-secret-only-change-me-32-characters"
 os.environ["EMAIL_DELIVERY_MODE"] = "console"
-os.environ.setdefault("NAKSHA_COPILOT_ENABLED", "false")
-os.environ.setdefault("LOCAL_BACKUP_AGENT_ENABLED", "false")
+os.environ["LOCAL_TEST_AUTH_BYPASS"] = "false"
+os.environ["TOTP_ENCRYPTION_KEY"] = "pytest-totp-key-only-change-me-32-characters"
+os.environ["NAKSHA_COPILOT_ENABLED"] = "false"
+os.environ["LOCAL_BACKUP_AGENT_ENABLED"] = "false"
+os.environ["ENABLE_BACKGROUND_WATCHER"] = "false"
+os.environ["SEED_OPERATIONS_TEST_USERS_ENABLED"] = "false"
+os.environ["ENABLE_TEST_EMPLOYEE_SEED"] = "false"
 
 # Import the database module now, before test-module collection can import any
 # application router/service and bind the global engine to another DATABASE_URL.
@@ -44,7 +49,7 @@ from app.modules.drone import models as drone_models  # noqa: E402,F401
 
 
 @pytest.fixture(autouse=True)
-def isolated_application_database():
+def isolated_application_database(monkeypatch):
     """Give every backend test a clean application schema.
 
     Tests that create their own independent SQLAlchemy engine remain unaffected;
@@ -54,6 +59,11 @@ def isolated_application_database():
 
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    # A fresh schema must also get a fresh lifespan initialization. The runtime
+    # caches this flag per process; retaining it leaves later TestClients empty.
+    main = sys.modules.get("app.main")
+    if main is not None:
+        monkeypatch.setattr(main, "_initialized", False)
     try:
         yield
     finally:

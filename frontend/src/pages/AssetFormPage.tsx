@@ -27,7 +27,7 @@ import {
   OFFICE_LOCATION_VALUE,
   normaliseAssetEditLocation,
 } from '../lib/assetOptions'
-import { formatIndiaDateTime } from '../lib/date'
+import { formatIndiaDateTime, indiaDateInput } from '../lib/date'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import type { Asset } from '../types'
 
@@ -100,7 +100,7 @@ function emptyAssetForm(): AssetForm {
     ownership: 'NakshaTech', client_name: '', project_id: '', current_holder: '', processor: '',
     memory_gb: '', ssd: '', hdd: '', ip_address: '', mac_address: '',
     graphics_card: '', operating_system: '', antivirus: '', network_type: 'DHCP', approved_by: '',
-    price: '', remarks: '', asset_date: new Date().toISOString().slice(0, 10), location: OFFICE_LOCATION_VALUE,
+    price: '', remarks: '', asset_date: indiaDateInput(), location: OFFICE_LOCATION_VALUE,
     work_mode: 'office',
   }
 }

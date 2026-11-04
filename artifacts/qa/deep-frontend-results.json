@@ -1,0 +1,67 @@
+[
+  {
+    "script": "lint",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "build",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:finance-command-center",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:finance-command-center:advance-alerts",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:finance-command-center:advance-settlement",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:finance-command-center:invoice-document",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:finance-bad-debt",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:sales-revenue-drilldown",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:finance-generate-invoice",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:notification-popup",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:critical-action-visibility",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:bd-client-feedback",
+    "passed": true,
+    "exit_code": 0
+  },
+  {
+    "script": "test:india-dates",
+    "passed": true,
+    "exit_code": 0
+  }
+]

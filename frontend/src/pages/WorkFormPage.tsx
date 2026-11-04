@@ -7,7 +7,7 @@ import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
-import { formatIndiaDateTime } from '../lib/date'
+import { formatIndiaDateTime, indiaDateInput } from '../lib/date'
 import { isFullAccessRole } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import type {
@@ -77,7 +77,7 @@ export function WorkFormPage() {
   const [form, setForm] = useState({
     module: defaultModule, asset_id: '', title: '', work_type: 'Inspection', project: '',
     assigned_to: '', technician: user?.full_name || '', priority: 'medium', issue_description: '',
-    details: '', start_date: new Date().toISOString().slice(0, 10), expected_completion_date: '',
+    details: '', start_date: indiaDateInput(), expected_completion_date: '',
   })
   const [assetSearch, setAssetSearch] = useState('')
   const [showAssetResults, setShowAssetResults] = useState(false)
@@ -85,7 +85,7 @@ export function WorkFormPage() {
     asset_id: searchParams.get('asset') || '',
     change_type: 'replacement' as ChangeType,
     technician: user?.full_name || '',
-    replacement_date: new Date().toISOString().slice(0, 10),
+    replacement_date: indiaDateInput(),
     approved_by: '', remarks: '',
   })
   const [changeRows, setChangeRows] = useState<ChangeRow[]>([newChangeRow()])
