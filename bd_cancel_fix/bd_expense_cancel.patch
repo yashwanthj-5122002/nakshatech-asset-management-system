@@ -1,0 +1,125 @@
+--- a/backend/app/modules/commercial/schemas.py
++++ b/backend/app/modules/commercial/schemas.py
+@@ -277,6 +277,15 @@
+         return value
+ 
+ 
++class ProjectExpenseCancellation(BaseModel):
++    reason: str = Field(min_length=10, max_length=2000)
++
++    @field_validator("reason", mode="before")
++    @classmethod
++    def strip_cancellation_reason(cls, value):
++        return str(value or "").strip()
++
++
+ class ProjectExpenseDecision(BaseModel):
+     decision: Literal["approve", "return", "reject"]
+     approved_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+--- a/backend/app/modules/commercial/service.py
++++ b/backend/app/modules/commercial/service.py
+@@ -44,6 +44,7 @@
+     BillingBasisInput,
+     CommercialEstimateDecision,
+     CommercialEstimateInput,
++    ProjectExpenseCancellation,
+     ProjectExpenseDecision,
+     ProjectExpenseDeclarationInput,
+     ProjectExpenseInput,
+@@ -60,7 +61,7 @@
+ EXPENSE_EDITABLE = {"DRAFT", "RETURNED"}
+ EXPENSE_OPEN = {"DRAFT", "SUBMITTED", "RETURNED", "APPROVED"}
+ EXPENSE_FINANCE_QUEUE = {"SUBMITTED"}
+-EXPENSE_FINAL = {"REJECTED", "REIMBURSED"}
++EXPENSE_FINAL = {"REJECTED", "REIMBURSED", "CANCELLED"}
+ 
+ 
+ def _project(db: Session, project_id: int) -> FinanceProject:
+@@ -812,6 +813,38 @@
+     return row
+ 
+ 
++def cancel_project_expense(
++    db: Session, *, actor: User, role: str, expense_id: int, payload: ProjectExpenseCancellation,
++) -> ProjectExpense:
++    """Cancel an unsubmitted/unresolved expense without deleting its audit trail.
++
++    A draft is NOT an Admin KM Travel claim; its cancellation is independent.
++    This never cancels approved, reimbursed or submitted liabilities.
++    """
++    row = db.scalar(select(ProjectExpense).where(ProjectExpense.id == expense_id).with_for_update())
++    if row is None:
++        raise ValueError("Project expense not found")
++    if role.strip().lower() not in {"admin", "finance"} and row.employee_id != actor.id:
++        raise PermissionError("Only the expense owner or authorized Finance/Admin can cancel this draft")
++    if row.status not in {"DRAFT", "RETURNED"}:
++        raise ValueError("Only Draft or Returned project expenses can be cancelled")
++    if row.approved_amount is not None or row.reimbursed_at is not None or row.reimbursement_reference:
++        raise ValueError("An expense with an approval or reimbursement record cannot be cancelled")
++    if row.linked_vendor_invoice_id is not None or db.scalar(select(ProjectVendorInvoice.id).where(
++        ProjectVendorInvoice.linked_employee_expense_id == row.id,
++    ).limit(1)) is not None:
++        raise ValueError("Unlink or resolve the vendor invoice before cancelling this expense")
++    old_status = row.status
++    row.status = "CANCELLED"
++    db.add(ProjectExpenseEvent(
++        expense_id=row.id, action="CANCELLED", from_status=old_status, to_status="CANCELLED",
++        actor_id=actor.id, old_amount=row.amount, new_amount=row.amount,
++        comments=payload.reason,
++    ))
++    db.flush()
++    return row
++
++
+ def submit_project_expense(db: Session, *, actor: User, expense_id: int) -> ProjectExpense:
+     row = _expense(db, expense_id)
+     if row.employee_id != actor.id:
+--- a/backend/app/modules/commercial/router.py
++++ b/backend/app/modules/commercial/router.py
+@@ -25,6 +25,7 @@
+     CommercialEstimateDecision,
+     CommercialEstimateInput,
+     FxPreviewRequest,
++    ProjectExpenseCancellation,
+     ProjectExpenseDecision,
+     ProjectExpenseDeclarationInput,
+     ProjectExpenseInput,
+@@ -40,6 +41,7 @@
+     record_billing_basis,
+     create_estimate_revision,
+     create_project_expense,
++    cancel_project_expense,
+     create_vendor_invoice,
+     currencies_payload,
+     decide_estimate_revision,
+@@ -407,6 +409,30 @@
+         raise _error(exc) from exc
+ 
+ 
++@router.post("/expenses/{expense_id}/cancel")
++def cancel_expense(
++    expense_id: int,
++    payload: ProjectExpenseCancellation,
++    request: Request,
++    db: Session = Depends(get_db),
++    auth: CurrentAuth = Depends(get_current_auth),
++):
++    try:
++        row = cancel_project_expense(
++            db, actor=auth.user, role=_service_role(auth), expense_id=expense_id, payload=payload,
++        )
++        _audit(request, db, auth, "PROJECT_EXPENSE_CANCELLED", "project_expense", row.id, {
++            "project_id": row.project_id, "expense_code": row.expense_code, "reason": payload.reason,
++        })
++        db.commit()
++        return next(item for item in list_project_expenses(
++            db, actor=auth.user, role=_service_role(auth), project_id=row.project_id,
++        ) if item["id"] == row.id)
++    except Exception as exc:
++        db.rollback()
++        raise _error(exc) from exc
++
++
+ @router.post("/expenses/{expense_id}/submit")
+ def submit_expense(
+     expense_id: int,
