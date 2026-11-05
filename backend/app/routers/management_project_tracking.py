@@ -195,7 +195,11 @@ def _project_row(p: FinanceProject, data: dict[str, Any]) -> dict[str, Any]:
     else:
         status = "Not Started"
     start = p.start_date or _date(p.created_at)
-    return dict(
+    return dict(project_value_inr=(
+    float(wf.commercial_value)
+    if wf is not None and wf.commercial_value is not None
+    else None
+),
         id=p.id, project_code=p.project_code, project_name=p.project_name,
         client_name=client.client_name if client else p.client_name,
         client_code=client.client_code if client else None,
