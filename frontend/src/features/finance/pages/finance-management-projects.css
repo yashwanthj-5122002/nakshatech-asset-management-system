@@ -157,3 +157,12 @@
     color: #FFFFFF !important;
 }
 
+/* Management Project Register - Project Value visibility */
+.mp-table td.mp-project-value-visible,
+.mp-table td.mp-project-value-visible * {
+    color: #ffffff !important;
+    font-weight: 700;
+    opacity: 1 !important;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}

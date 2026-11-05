@@ -13,6 +13,7 @@ import type { LifecycleDashboard } from '../../operations/lifecycle-types'
 import { FinanceBillingPage } from './FinanceBillingPage'
 import '../../operations/operations.css'
 import './finance-management-projects.css'
+import './finance-management-prussian-theme.css'
 
 type ManagementClient = {
   id: number; client_code: string; client_name: string; source_person_name: string
@@ -63,13 +64,25 @@ const statusTone = (value: string) => {
   if (s === 'in_progress' || s === 'started') return 'active'
   return 'pending'
 }
+
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION START
+// Management UI presentation only. Never change incoming percentages.
+function managementProgressTone(p: number): 'red'|'orange'|'yellow'|'green' {
+  const n = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0
+  if (n < 30) return 'red'
+  if (n < 50) return 'orange'
+  if (n < 70) return 'yellow'
+  return 'green'
+}
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION END
+
 function StageTrackingBars({ tracking, compact = false }: { tracking: ProjectTracking; compact?: boolean }) {
   return <div className={compact ? 'mp-stage-tracking compact' : 'mp-stage-tracking'}>
     {STAGE_KEYS.map(stage => {
       const item = tracking.stages[stage]
       return <div className="mp-stage-track" key={stage}>
         <div className="mp-stage-track-label"><strong>{STAGE_LABELS[stage]}</strong><span>{item.completed}/{item.total} · {item.percent.toFixed(0)}%</span></div>
-        <div className="mp-progress"><span style={{ width: `${Math.min(100, Math.max(0, item.percent))}%` }}/></div>
+        <div className="mp-progress"><span className={`mp-v8-${managementProgressTone(item.percent)}`} style={{ width: `${Math.min(100, Math.max(0, item.percent))}%` }}/></div>
       </div>
     })}
   </div>
@@ -84,7 +97,7 @@ function FileTrackingTable({ detail }: { detail: TrackingDetail }) {
           {STAGE_KEYS.map(stage => {
             const raw = file[stage] || 'not_started'
             const person = stage === 'delivery' ? null : file[`${stage}_employee` as 'production_employee' | 'qc_employee' | 'qa_employee']
-            return <td key={stage}><span className={`mp-stage-badge ${statusTone(raw)}`}>{statusLabel(raw)}</span>{person && <small>{person}</small>}</td>
+            return <td key={stage}><span className={`mp-stage-badge ${statusTone(raw)}`} data-management-status={statusLabel(raw)}>{statusLabel(raw)}</span>{person && <small>{person}</small>}</td>
           })}
         </tr>)}
       </tbody></table></div>}
@@ -438,7 +451,7 @@ export function FinanceManagementProjectsPage() {
               <td><strong>{client?.client_name ?? 'Management Client'}</strong><small>{row.source_person_name}</small></td>
               <td><strong>{row.project_name}</strong><small>PM: {row.project_manager_name || 'Awaiting assignment'}</small></td>
               <td><span className="mp-department">{row.department_label}</span></td>
-              {activeTab === 'payments' || activeTab === 'invoices' ? <><td>{money(financial.invoiced_inr)}</td><td>{money(financial.received_inr)}</td><td>{money(financial.outstanding_inr)}</td></> : <><td>{projectMoney(row.project_value, row.currency)}</td><td><span className="mp-status">{stageTracking?.operational_status ?? managementStatusLabel(status, row.source_approved)}</span>{stageTracking && <small>ERP: {managementStatusLabel(status, row.source_approved)}</small>}</td><td><div className="mp-progress-label"><div className="mp-progress"><span style={{ width: `${progress}%` }}/></div>{stageTracking ? `${progress.toFixed(0)}%` : '—'}</div></td></>}
+              {activeTab === 'payments' || activeTab === 'invoices' ? <><td>{money(financial.invoiced_inr)}</td><td>{money(financial.received_inr)}</td><td>{money(financial.outstanding_inr)}</td></> : <><td className="mp-project-value-visible">  {projectMoney(row.project_value, row.currency)}</td><td><span className="mp-status">{stageTracking?.operational_status ?? managementStatusLabel(status, row.source_approved)}</span>{stageTracking && <small>ERP: {managementStatusLabel(status, row.source_approved)}</small>}</td><td><div className="mp-progress-label"><div className="mp-progress"><span className={`mp-v8-${managementProgressTone(progress)}`} style={{ width: `${progress}%` }}/></div>{stageTracking ? `${progress.toFixed(0)}%` : '—'}</div></td></>}
               <td><button type="button" className="mp-icon-button" title="View project details" aria-label={`View ${row.project_code}`} onClick={() => openDetails(row, activeTab === 'payments' || activeTab === 'invoices' ? 'billing' : activeTab === 'tracking' ? 'workflow' : 'overview')}><Eye size={17}/></button><button type="button" className="mp-icon-button" title="Open invoice and payments" aria-label={`Open invoices for ${row.project_code}`} onClick={() => openDetails(row, 'billing')}><FileText size={17}/></button></td>
             </tr>
           })}
@@ -455,7 +468,7 @@ export function FinanceManagementProjectsPage() {
       {detailTab === 'overview' && <div className="mp-detail-grid">
         <div className="mp-detail-card"><h3>Project Information</h3><dl><dt>Project Code</dt><dd>{selectedProject.project_code}</dd><dt>Client</dt><dd>{clientById.get(selectedProject.management_client_id)?.client_name ?? '—'}</dd><dt>Source</dt><dd>{selectedProject.source_person_name}</dd><dt>Department</dt><dd>{selectedProject.department_label}</dd><dt>Project Manager</dt><dd>{selectedProject.project_manager_name || 'Not assigned'}</dd><dt>Project Value</dt><dd>{projectMoney(selectedProject.project_value, selectedProject.currency)}</dd><dt>Start Date</dt><dd>{shortDate(selectedProject.start_date)}</dd><dt>Expected Delivery</dt><dd>{shortDate(selectedProject.end_date)}</dd></dl></div>
         <div className="mp-detail-card"><h3>Production & Quality Progress</h3>
-          {selectedTracking ? <><div className="mp-large-progress"><strong>{selectedTracking.work_units ? `${selectedTracking.overall_percent.toFixed(0)}%` : '—'}</strong><div className="mp-progress"><span style={{ width: `${Math.min(100, Math.max(0, selectedTracking.overall_percent))}%` }}/></div></div><p><strong>{selectedTracking.operational_status}</strong></p><StageTrackingBars tracking={selectedTracking} compact/><p>{selectedTracking.work_units} tracked work units · {selectedTracking.active_files} active files{selectedTracking.rework_count > 0 ? ` · ${selectedTracking.rework_count} rework flags` : ''}</p></> : <p>{trackingError ? 'Tracking temporarily unavailable' : 'Loading file-level tracking…'}</p>}
+          {selectedTracking ? <><div className="mp-large-progress"><strong>{selectedTracking.work_units ? `${selectedTracking.overall_percent.toFixed(0)}%` : '—'}</strong><div className="mp-progress"><span className={`mp-v8-${managementProgressTone(selectedTracking.overall_percent)}`} style={{ width: `${Math.min(100, Math.max(0, selectedTracking.overall_percent))}%` }}/></div></div><p><strong>{selectedTracking.operational_status}</strong></p><StageTrackingBars tracking={selectedTracking} compact/><p>{selectedTracking.work_units} tracked work units · {selectedTracking.active_files} active files{selectedTracking.rework_count > 0 ? ` · ${selectedTracking.rework_count} rework flags` : ''}</p></> : <p>{trackingError ? 'Tracking temporarily unavailable' : 'Loading file-level tracking…'}</p>}
           <p>Administrative ERP status: <strong>{managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</strong></p>
           {trackingError && <p className="mp-tracking-error" role="alert">Tracking refresh failed. Showing last successful data, if available.</p>}
           {trackingRefreshedAt && <p className="mp-tracking-refreshed">Last checked: {trackingRefreshedAt}</p>}
