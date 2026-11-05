@@ -13,6 +13,7 @@ import type { LifecycleDashboard } from '../../operations/lifecycle-types'
 import { FinanceBillingPage } from './FinanceBillingPage'
 import '../../operations/operations.css'
 import './finance-management-projects.css'
+import './finance-management-prussian-theme.css'
 
 type ManagementClient = {
   id: number; client_code: string; client_name: string; source_person_name: string
@@ -438,7 +439,7 @@ export function FinanceManagementProjectsPage() {
               <td><strong>{client?.client_name ?? 'Management Client'}</strong><small>{row.source_person_name}</small></td>
               <td><strong>{row.project_name}</strong><small>PM: {row.project_manager_name || 'Awaiting assignment'}</small></td>
               <td><span className="mp-department">{row.department_label}</span></td>
-              {activeTab === 'payments' || activeTab === 'invoices' ? <><td>{money(financial.invoiced_inr)}</td><td>{money(financial.received_inr)}</td><td>{money(financial.outstanding_inr)}</td></> : <><td>{projectMoney(row.project_value, row.currency)}</td><td><span className="mp-status">{stageTracking?.operational_status ?? managementStatusLabel(status, row.source_approved)}</span>{stageTracking && <small>ERP: {managementStatusLabel(status, row.source_approved)}</small>}</td><td><div className="mp-progress-label"><div className="mp-progress"><span style={{ width: `${progress}%` }}/></div>{stageTracking ? `${progress.toFixed(0)}%` : '—'}</div></td></>}
+              {activeTab === 'payments' || activeTab === 'invoices' ? <><td>{money(financial.invoiced_inr)}</td><td>{money(financial.received_inr)}</td><td>{money(financial.outstanding_inr)}</td></> : <><td className="mp-project-value-visible">  {projectMoney(row.project_value, row.currency)}</td><td><span className="mp-status">{stageTracking?.operational_status ?? managementStatusLabel(status, row.source_approved)}</span>{stageTracking && <small>ERP: {managementStatusLabel(status, row.source_approved)}</small>}</td><td><div className="mp-progress-label"><div className="mp-progress"><span style={{ width: `${progress}%` }}/></div>{stageTracking ? `${progress.toFixed(0)}%` : '—'}</div></td></>}
               <td><button type="button" className="mp-icon-button" title="View project details" aria-label={`View ${row.project_code}`} onClick={() => openDetails(row, activeTab === 'payments' || activeTab === 'invoices' ? 'billing' : activeTab === 'tracking' ? 'workflow' : 'overview')}><Eye size={17}/></button><button type="button" className="mp-icon-button" title="Open invoice and payments" aria-label={`Open invoices for ${row.project_code}`} onClick={() => openDetails(row, 'billing')}><FileText size={17}/></button></td>
             </tr>
           })}
