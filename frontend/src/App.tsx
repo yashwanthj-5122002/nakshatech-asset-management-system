@@ -82,8 +82,10 @@ import { GenerateInvoicePage } from './features/finance/pages/GenerateInvoicePag
 import { SalesRevenuePage } from './features/finance/pages/SalesRevenuePage'
 import { FinanceCommandCenter } from './features/finance/pages/FinanceCommandCenter'
 import { ManagementProject360Page } from './features/operations/pages/ManagementProject360Page'
+import { ManagementClientRegisterPage } from './features/management/ManagementClientRegisterPage'
 import { FinanceClientRegisterPage } from './features/finance/pages/FinanceClientRegisterPage'
 import { FinanceProjectRegisterPage } from './features/finance/pages/FinanceProjectRegisterPage'
+import { FinanceManagementProjectsPage } from './features/finance/pages/FinanceManagementProjectsPage'
 import { BusinessDashboardPage } from './features/business/BusinessDashboardPage'
 import { BDCommercialPage } from './features/commercial/pages/BDCommercialPage'
 import { EmployeeProjectCostsPage } from './features/commercial/pages/EmployeeProjectCostsPage'
@@ -193,6 +195,7 @@ export default function App() {
       <Route path="/finance/reports" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceReportsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClientRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/projects" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceProjectRegisterPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/management-projects" element={<StrictProtectedRoute roles={['finance']}><WithLayout><FinanceManagementProjectsPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/generate-invoice" element={<ProtectedRoute roles={['finance']}><WithLayout><GenerateInvoicePage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/sales" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="sales" /></WithLayout></ProtectedRoute>} />
@@ -205,6 +208,7 @@ export default function App() {
       <Route path="/finance/claims/:id" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/management/approvals" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/project-management" element={<StrictProtectedRoute roles={['management']}><WithLayout><ManagementClientRegisterPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/management/project-360" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
       <Route path="/management/commercial" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/project-360/:projectId" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
