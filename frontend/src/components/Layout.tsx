@@ -137,6 +137,7 @@ const navItems: NavItem[] = [
   { to: '/admin/client-master', label: 'Client Master (Admin Edit)', icon: Building2, roles: ['admin'], group: 'overview', managementLabel: 'Client Master' },
   { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Dashboard' },
   { to: '/management/approvals', label: 'Purchase Approval Centre', icon: ClipboardCheck, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Purchase Approvals' },
+  { to: '/management/project-management', label: 'Client Register', icon: FolderKanban, roles: ['management'], group: 'management', managementGroup: 'executive', managementLabel: 'Client Register' },
   { to: '/management/project-360', label: 'Project 360', icon: FolderKanban, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Project 360' },
   { to: '/management/commercial', label: 'Commercial Analytics', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Commercial Analytics' },
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
@@ -153,6 +154,7 @@ const navItems: NavItem[] = [
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Project Register' },
+  { to: '/finance/management-projects', label: 'Management Projects', icon: FolderKanban, roles: ['finance'], group: 'finance' },
   { to: '/finance/billing', label: 'Billing & Invoices', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Billing & Invoices' },
   { to: '/finance/generate-invoice', label: 'Generate Invoice', icon: FilePlus2, roles: ['finance'], group: 'finance' },
   { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Commercial Control' },
@@ -209,6 +211,7 @@ function findActiveNavItem(items: NavItem[], pathname: string): NavItem | undefi
 }
 
 function canViewItem(role: Role, item: NavItem): boolean {
+  if (item.to === '/management/project-management') return role === 'management'
   if (item.to === '/software-team') return role === 'software_team'
   if (item.to === '/admin') return role === 'admin'
   if (item.to.startsWith('/bd') || item.to === '/notifications' || item.to === '/ortho') return item.roles.includes(role)
@@ -329,6 +332,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
     if (currentRole) {
       const activeItem = findActiveNavItem(navItems.filter(item => canShowInSidebar(currentRole, item)), location.pathname)
       if (activeItem) {
+        if (currentRole === 'management' && activeItem.to === '/management/project-management') return initial
         const activeGroup = navigationGroupForItem(currentRole, activeItem)
         initial[activeGroup] = true
         return initial
@@ -341,7 +345,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || (!isFullAccessRole(user.role) && user.role !== 'management')) return
     const activeItem = findActiveNavItem(navItems.filter(item => canShowInSidebar(user.role, item)), location.pathname)
-    if (activeItem) {
+    if (activeItem && activeItem.to !== '/management/project-management') {
       const activeGroup = navigationGroupForItem(user.role, activeItem)
       setOpenGroups(current => ({ ...current, [activeGroup]: true }))
     }
@@ -421,9 +425,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
             : 'Asset Operations'}
         </span>
         <nav className={groupedNavigation ? 'grouped-navigation' : ''}>
+          {groupedNavigation && isManagement && available.filter(item => item.to === '/management/project-management').map(renderNavItem)}
           {groupedNavigation
             ? activeNavGroups.map(group => {
-                const items = available.filter(item => navigationGroupForItem(currentUser.role, item) === group.id)
+                const items = available.filter(item => item.to !== '/management/project-management' && navigationGroupForItem(currentUser.role, item) === group.id)
                 if (items.length === 0) return null
                 const isOpen = openGroups[group.id]
                 const hasActive = Boolean(activeNavItem && items.includes(activeNavItem))

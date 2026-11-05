@@ -44,6 +44,7 @@ from app.modules.commercial.schemas import (
     BillingBasisInput,
     CommercialEstimateDecision,
     CommercialEstimateInput,
+    ProjectExpenseCancellation,
     ProjectExpenseDecision,
     ProjectExpenseDeclarationInput,
     ProjectExpenseInput,
@@ -60,7 +61,7 @@ from app.modules.operations.models import OrthoWorkPackage, ProjectWorkflow, Pro
 EXPENSE_EDITABLE = {"DRAFT", "RETURNED"}
 EXPENSE_OPEN = {"DRAFT", "SUBMITTED", "RETURNED", "APPROVED"}
 EXPENSE_FINANCE_QUEUE = {"SUBMITTED"}
-EXPENSE_FINAL = {"REJECTED", "REIMBURSED"}
+EXPENSE_FINAL = {"REJECTED", "REIMBURSED", "CANCELLED"}
 
 
 def _project(db: Session, project_id: int) -> FinanceProject:
@@ -808,6 +809,38 @@ def update_project_expense(db: Session, *, actor: User, expense_id: int, payload
     row.finance_reviewed_at = None
     row.adjustment_reason = None
     db.add(ProjectExpenseEvent(expense_id=row.id, action="UPDATED", from_status=old_status, to_status="DRAFT", actor_id=actor.id, old_amount=old_amount, new_amount=row.amount))
+    db.flush()
+    return row
+
+
+def cancel_project_expense(
+    db: Session, *, actor: User, role: str, expense_id: int, payload: ProjectExpenseCancellation,
+) -> ProjectExpense:
+    """Cancel an unsubmitted/unresolved expense without deleting its audit trail.
+
+    A draft is NOT an Admin KM Travel claim; its cancellation is independent.
+    This never cancels approved, reimbursed or submitted liabilities.
+    """
+    row = db.scalar(select(ProjectExpense).where(ProjectExpense.id == expense_id).with_for_update())
+    if row is None:
+        raise ValueError("Project expense not found")
+    if role.strip().lower() not in {"admin", "finance"} and row.employee_id != actor.id:
+        raise PermissionError("Only the expense owner or authorized Finance/Admin can cancel this draft")
+    if row.status not in {"DRAFT", "RETURNED"}:
+        raise ValueError("Only Draft or Returned project expenses can be cancelled")
+    if row.approved_amount is not None or row.reimbursed_at is not None or row.reimbursement_reference:
+        raise ValueError("An expense with an approval or reimbursement record cannot be cancelled")
+    if row.linked_vendor_invoice_id is not None or db.scalar(select(ProjectVendorInvoice.id).where(
+        ProjectVendorInvoice.linked_employee_expense_id == row.id,
+    ).limit(1)) is not None:
+        raise ValueError("Unlink or resolve the vendor invoice before cancelling this expense")
+    old_status = row.status
+    row.status = "CANCELLED"
+    db.add(ProjectExpenseEvent(
+        expense_id=row.id, action="CANCELLED", from_status=old_status, to_status="CANCELLED",
+        actor_id=actor.id, old_amount=row.amount, new_amount=row.amount,
+        comments=payload.reason,
+    ))
     db.flush()
     return row
 

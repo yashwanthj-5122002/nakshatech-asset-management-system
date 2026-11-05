@@ -43,6 +43,7 @@ from app.modules.finance.service import (
     set_project_status,
 )
 from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
+from app.modules.management_projects.models import ManagementProjectLink
 from app.modules.notifications.service import create_global_notification, resolve_recipient_users
 from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectInvoice, ProjectReworkCycle
 from app.modules.operations.lifecycle_schemas import InvoiceClose
@@ -383,7 +384,10 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
     query = exclude_hidden_projects(db, query)
     if role == BD_ROLE:
-        query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
+        query = query.where(
+            ProjectWorkflow.bd_owner_user_id == actor.id,
+            FinanceProject.project_source_team != "management",
+        )
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow).where(ProjectWorkflow.project_id.in_([p.id for p in projects]))).all()} if projects else {}
     payloads = [_full_project_payload(db, project, workflows[project.id]) for project in projects]
@@ -397,7 +401,8 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
             "completion_pending": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_FINANCE_CLOSURE_PENDING),
             "closed": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_CLOSED),
         },
-        "clients": [client_payload(client) for client in list_finance_clients(db)],
+        "clients": [client_payload(client) for client in list_finance_clients(db)
+                    if role != BD_ROLE or client.source_team != "management"],
         "project_managers": project_manager_options(db),
         "project_managers_by_department": {code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS},
         "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
@@ -418,8 +423,8 @@ def create_bd_client(db: Session, *, actor: User, payload: FinanceClientCreateRe
 
 def create_bd_project(db: Session, *, actor: User, payload: WorkflowProjectCreate) -> tuple[FinanceProject, ProjectWorkflow]:
     client = db.get(FinanceClient, payload.client_id)
-    if client is None or not client.is_active:
-        raise ValueError("Select an active existing Client ID before creating the project")
+    if client is None or not client.is_active or client.source_team == "management":
+        raise ValueError("Select an active BD client ID before creating the project")
     finance_payload = FinanceClientProjectCreateRequest(
         project_code=payload.project_code,
         project_name=payload.project_name,
@@ -833,17 +838,23 @@ def _ensure_profile_and_pm_member(db: Session, *, project: FinanceProject, workf
     return profile
 
 
-def assign_project_manager(db: Session, *, actor: User, project_id: int, payload: WorkflowPMAssignment) -> tuple[ProjectWorkflow, User]:
+def assign_project_manager(
+    db: Session, *, actor: User, project_id: int, payload: WorkflowPMAssignment,
+    allow_management_finance: bool = False,
+) -> tuple[ProjectWorkflow, User]:
     workflow = _workflow(db, project_id)
-    if workflow.bd_owner_user_id != actor.id:
+    project = _project(db, project_id)
+    finance_management = allow_management_finance and (actor.role or "").lower() == "finance" and project.project_source_team == "management"
+    if not finance_management and workflow.bd_owner_user_id != actor.id:
         raise PermissionError("Only the BD owner can assign the Project Manager")
+    if allow_management_finance and not finance_management:
+        raise PermissionError("Only Finance can assign a Management Project Manager")
     if workflow.status not in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
         raise ValueError("Project Manager can be assigned only after Finance approval and before the project team starts work")
     expected_role = pm_role_for_department(workflow.performing_department_code)
     pm = db.get(User, payload.project_manager_id)
     if pm is None or not pm.is_active or pm.role != expected_role:
         raise ValueError(f"Select an active {department_label(workflow.performing_department_code)} Project Manager account")
-    project = _project(db, project_id)
     if project.master_profile is None:
         project.master_profile = FinanceProjectMasterProfile(
             project_id=project.id,
@@ -859,7 +870,7 @@ def assign_project_manager(db: Session, *, actor: User, project_id: int, payload
         project.master_profile.updated_at = utc_now()
     _ensure_profile_and_pm_member(db, project=project, workflow=workflow, actor=actor, pm=pm)
     workflow.pm_assigned_at = utc_now()
-    _event(db, workflow=workflow, actor=actor, event_type="bd_assigned_pm", to_status=WORKFLOW_PM_ASSIGNED, comments=f"PM user {pm.id}")
+    _event(db, workflow=workflow, actor=actor, event_type="finance_management_assigned_pm" if finance_management else "bd_assigned_pm", to_status=WORKFLOW_PM_ASSIGNED, comments=f"PM user {pm.id}")
     create_global_notification(
         db,
         event_type="workflow.project.pm_assigned",
@@ -890,12 +901,13 @@ def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int
     pm = db.get(User, pm_id)
     if pm is None:
         return
+    assigning_team = "Finance" if project.project_source_team == "management" else "Business Development"
     _safe_send_email(
         recipient=pm.email,
         subject=f"[{project.project_code}] {department_label(workflow.performing_department_code)} Project Manager assignment",
         body=(
             f"Hello {pm.full_name},\n\n"
-            f"Business Development assigned you as the {department_label(workflow.performing_department_code)} Project Manager.\n\n"
+            f"{assigning_team} assigned you as the {department_label(workflow.performing_department_code)} Project Manager.\n\n"
             f"Project ID: {project.project_code}\n"
             f"Client ID: {_client_code(project) or 'Not recorded'}\n"
             f"Start Date: {project.start_date.isoformat() if project.start_date else 'Not recorded'}\n"
@@ -905,7 +917,7 @@ def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int
             f"ERP Ortho Dashboard: {settings.app_public_url.rstrip('/')}/ortho\n\n"
             "Nakshatech ERP"
         ),
-        from_name="Nakshatech BD -> Ortho",
+        from_name="Nakshatech Finance -> Project Manager" if project.project_source_team == "management" else "Nakshatech BD -> Ortho",
     )
 
 
@@ -1848,8 +1860,8 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     if not _is_pm(project, actor.id):
         raise PermissionError("Only the BD-assigned Project Manager can confirm Operational Completion")
     if normalized_workflow_status(workflow.status) not in {WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}:
-        # enter_feedback_lifecycle() unconditionally resets the lifecycle to FEEDBACK_NOT_SENT; running it over an
-        # open rework / feedback / billing state would discard that state.
+        # Completion opens the BD feedback or Management approval lifecycle. Repeating it
+        # over approval, rework, feedback or billing would discard the existing state.
         raise ValueError("Operational Completion is only available while the project is In Progress")
     packages = list(db.scalars(select(OrthoWorkPackage).where(OrthoWorkPackage.project_id == project_id)).all())
     if not packages:
@@ -1881,7 +1893,11 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     project.is_active = True
     profile = db.get(OrthoProjectProfile, project_id)
     if profile:
-        profile.status = "awaiting_client_feedback"
+        profile.status = (
+            "awaiting_management_approval"
+            if db.get(ManagementProjectLink, project_id) is not None
+            else "awaiting_client_feedback"
+        )
         profile.final_delivery_at = workflow.operational_completed_at
         profile.final_delivery_by_id = actor.id
         profile.final_delivery_remarks = workflow.completion_remarks
@@ -1896,6 +1912,15 @@ def email_operational_completion(db: Session, *, project_id: int) -> None:
     owner = db.get(User, workflow.bd_owner_user_id)
     if owner:
         recipients = [*recipients, owner]
+    is_management = db.get(ManagementProjectLink, project_id) is not None
+    next_step = (
+        "The original Management source must approve this delivery before Finance can invoice.\n"
+        f"ERP: {settings.app_public_url.rstrip('/')}/management/client-register\n"
+        if is_management else
+        "The project is now waiting for a secure Client Feedback Request. "
+        "Finance Closure is unavailable until acceptance, invoicing and payment are complete.\n"
+        f"ERP: {settings.app_public_url.rstrip('/')}/bd/feedback\n"
+    )
     seen: set[int] = set()
     for user in recipients:
         if user.id in seen:
@@ -1910,9 +1935,7 @@ def email_operational_completion(db: Session, *, project_id: int) -> None:
                 f"Client ID: {_client_code(project) or 'Not recorded'}\n"
                 f"Completion Date: {workflow.completion_date.isoformat() if workflow.completion_date else 'Not recorded'}\n"
                 f"Delivery Reference: {workflow.final_delivery_reference or 'Not recorded'}\n\n"
-                "The project is now waiting for a secure Client Feedback Request. "
-                "Finance Closure is unavailable until acceptance, invoicing and payment are complete.\n"
-                f"ERP: {settings.app_public_url.rstrip('/')}/bd/feedback\n\n"
+                f"{next_step}\n"
                 "Nakshatech ERP"
             ),
             from_name="Nakshatech Operations",
