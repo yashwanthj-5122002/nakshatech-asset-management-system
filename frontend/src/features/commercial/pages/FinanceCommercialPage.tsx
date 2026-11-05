@@ -82,6 +82,19 @@ export function FinanceCommercialPage(){
     await run(`reim-${row.id}`,()=>apiFetch(`/commercial/expenses/${row.id}/reimburse`,{method:'POST',body:JSON.stringify({reimbursement_reference:reference.trim(),comments:null})}),`${row.expense_code} marked reimbursed.`)
   }
 
+  async function cancelExpense(row:ProjectExpenseRow){
+    if(!['DRAFT','RETURNED'].includes(row.status) || row.linked_vendor_invoice_id) return
+    const projectCode=projectMap.get(row.project_id)?.project_code || String(row.project_id)
+    if(!window.confirm(`Cancel expense ${row.expense_code} for project ${projectCode} (${money(row.amount)})? Only continue if this draft is invalid or abandoned. This action will be audited.`)) return
+    const reason=window.prompt('State the actual business reason for cancelling this expense (10-2000 characters):','')
+    if(reason===null) return
+    const clean=reason.trim()
+    if(clean.length<10 || clean.length>2000){setError('A cancellation reason between 10 and 2000 characters is required.');return}
+    await run(`cancel-${row.id}`,()=>apiFetch(`/commercial/expenses/${row.id}/cancel`,{
+      method:'POST',body:JSON.stringify({reason:clean})
+    }),`Expense ${row.expense_code} cancelled. The audit history is retained.`)
+  }
+
   async function uploadVendorInvoice(projectId:number,vendorId:number,file:File){const body=new FormData();body.append('owner_type','VENDOR_INVOICE');body.append('owner_id',String(vendorId));body.append('doc_type','INVOICE');body.append('file',file);await apiFetch(`/commercial/projects/${projectId}/attachments`,{method:'POST',body})}
   async function createVendor(event:FormEvent){
     event.preventDefault();if(!selectedId)return
@@ -118,6 +131,25 @@ export function FinanceCommercialPage(){
       <aside className="commercial-panel"><header><div><span className="commercial-kicker">PROJECT REGISTER</span><h2>Cost Control</h2></div></header><label className="commercial-field"><span>Search</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Project ID / client"/></label><div className="commercial-list" style={{marginTop:12}}>{filteredProjects.map(row=><button key={row.id} type="button" className={`commercial-project-button ${selectedId===row.id?'active':''}`} onClick={()=>setSelectedId(row.id)}><strong>{row.project_code}</strong><span>{row.project_name}</span><span>{row.client_code||row.client_name||'Client not linked'}</span></button>)}</div></aside>
       <main className="commercial-panel">{!selected?<div className="commercial-empty">Select a project.</div>:<><header><div><span className="commercial-kicker">{selected.project_code}</span><h2>Project Cost Snapshot</h2></div><WalletCards size={22}/></header>{summary&&<div className="commercial-kpis"><div className="commercial-kpi"><span>Approved Estimate</span><strong>{money(summary.approved_estimate_base_inr)}</strong></div><div className="commercial-kpi"><span>Billed Net</span><strong>{money(summary.billed_net_revenue_inr)}</strong></div><div className="commercial-kpi"><span>Direct Cost</span><strong>{money(summary.total_direct_cost_inr)}</strong></div><div className="commercial-kpi"><span>Actual Margin</span><strong>{money(summary.actual_margin_inr)}</strong></div></div>}<div className="commercial-note" style={{marginTop:12}}>Employee project cost: {money(summary?.employee_cost_inr)} · Vendor/subcontractor cost: {money(summary?.vendor_cost_inr)} · Realized FX G/L: {money(summary?.fx_gain_loss_inr)}</div></>}</main>
     </div>
+
+    {selected&&<section className="commercial-panel">
+      <header><div><span className="commercial-kicker">PROJECT EXPENSE REGISTER</span><h2>{selected.project_code} Project Expenses</h2><p>Includes drafts, returned expenses, approved costs and cancelled records. Drafts do not appear in the submitted Finance claims queue.</p></div></header>
+      {!selectedExpenses.length?<div className="commercial-empty">No project expenses recorded.</div>:
+        <div className="commercial-table-wrap"><table className="commercial-table">
+          <thead><tr><th>Expense</th><th>Employee</th><th>Category / Purpose</th><th>Amount</th><th>Payment Source</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>{selectedExpenses.map(row=><tr key={row.id}>
+            <td><strong>{row.expense_code}</strong><br/><small>{row.expense_date}</small></td>
+            <td>{row.employee_id}</td>
+            <td>{row.category}<br/><small>{row.purpose}</small></td>
+            <td>{money(row.amount)}</td>
+            <td>{statusLabel(row.payment_source)}</td>
+            <td><span className={`commercial-status ${statusTone(row.status)}`}>{statusLabel(row.status)}</span></td>
+            <td>{(row.status==='DRAFT'||row.status==='RETURNED')&&!row.linked_vendor_invoice_id?
+              <button type="button" className="commercial-button danger" disabled={Boolean(busy)} onClick={()=>void cancelExpense(row)}>Cancel {row.status==='DRAFT'?'Draft':'Returned'}</button>:
+              <small>{row.linked_vendor_invoice_id?'Linked vendor invoice - resolve first':'No cancellation available'}</small>}</td>
+          </tr>)}</tbody>
+        </table></div>}
+    </section>}
 
     {selected&&<section className="commercial-panel"><header><div><span className="commercial-kicker">VENDOR / SUBCONTRACTOR COST</span><h2>Record Supplier Invoice</h2><p>Foreign-currency invoices capture an immutable invoice-date FX snapshot. Employee-paid supplier bills must link to the corresponding employee cost so the expense is counted once.</p></div></header><form className="commercial-form" onSubmit={createVendor}>
       <label className="commercial-field"><span>Vendor Name *</span><input required value={vendorForm.vendor_name} onChange={e=>setVendorForm({...vendorForm,vendor_name:e.target.value})}/></label><label className="commercial-field"><span>GSTIN</span><input value={vendorForm.vendor_gstin} onChange={e=>setVendorForm({...vendorForm,vendor_gstin:e.target.value})}/></label>

@@ -26,6 +26,8 @@ import '../invoice-document.css'
 import '../../operations/operations.css'
 
 const DRAFTABLE = new Set(['READY_FOR_BILLING', 'INVOICE_DRAFT'])
+const billingStatusLabel = (value: string) => value.toUpperCase() === 'APPROVAL_PENDING'
+  ? 'Approval Pending' : lifecycleStatusLabel(value)
 const PAYABLE = new Set(['INVOICE_RAISED', 'PAYMENT_PENDING', 'PARTIALLY_PAID', 'PAYMENT_OVERDUE'])
 
 type LineItemForm = { sequence: number; description: string; hsn_sac: string; unit: string; quantity: string; rate: string }
@@ -75,14 +77,15 @@ function lineItemAmount(item: LineItemForm): number {
   return (Number(item.quantity) || 0) * (Number(item.rate) || 0)
 }
 
-export function FinanceBillingPage() {
+export function FinanceBillingPage({ embeddedProjectId }: { embeddedProjectId?: number } = {}) {
+  const embedded = embeddedProjectId != null
   const { user } = useAuth()
   const canEditDraft = user?.role === 'finance' || user?.role === 'admin'
   const [searchParams] = useSearchParams()
   const requestedProjectId = Number(searchParams.get('project') || 0) || null
   const requestedInvoiceId = Number(searchParams.get('invoice') || 0) || null
   const [dashboard, setDashboard] = useState<LifecycleDashboard | null>(null)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(embeddedProjectId ?? null)
   const [detail, setDetail] = useState<Project360 | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -208,7 +211,7 @@ export function FinanceBillingPage() {
     void apiFetch<LifecycleDashboard>('/operations/lifecycle/dashboard')
       .then(data => {
         setDashboard(data)
-        if (!selectedId && data.projects.length) {
+        if (!embedded && !selectedId && data.projects.length) {
           const requested = requestedProjectId && data.projects.some(row => row.id === requestedProjectId) ? requestedProjectId : null
           setSelectedId(requested || data.projects[0].id)
         }
@@ -221,7 +224,8 @@ export function FinanceBillingPage() {
     void apiFetch<Project360>(`/operations/lifecycle/projects/${id}`).then(setDetail).catch(err => setError(err instanceof Error ? err.message : 'Unable to load project detail'))
   }
 
-  useEffect(() => { loadDashboard(); loadBadDebts() }, [])
+  useEffect(() => { loadDashboard(); if (!embedded) loadBadDebts() }, [])
+  useEffect(() => { if (embeddedProjectId != null) setSelectedId(embeddedProjectId) }, [embeddedProjectId])
   useEffect(() => { void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(() => undefined) }, [])
   useEffect(() => { if (selectedId) loadDetail(selectedId) }, [selectedId])
 
@@ -249,7 +253,7 @@ export function FinanceBillingPage() {
   }, [])
 
   const projects = useMemo(() => {
-    const rows = dashboard?.projects ?? []
+    const rows = (dashboard?.projects ?? []).filter(row => !embedded || row.id === embeddedProjectId)
     const term = search.trim().toLowerCase()
     if (!term) return rows
     return rows.filter(row => row.project_code.toLowerCase().includes(term) || (row.client_name || '').toLowerCase().includes(term) || (row.client_id || '').toLowerCase().includes(term))
@@ -591,7 +595,7 @@ export function FinanceBillingPage() {
   }
 
   return <div className="finance-page">
-    <DashboardHeader
+    {!embedded && <DashboardHeader
       eyebrow="FINANCE · PROJECT BILLING"
       title="Billing, Invoices &amp; Payments"
       description="Draft and raise invoices once a project reaches Ready For Billing, record partial/full payments and close invoices toward Finance Closure."
@@ -600,19 +604,19 @@ export function FinanceBillingPage() {
         <span className="nk-meta-chip"><FileText size={14}/> Ready For Billing → Invoice → Payment → Closure</span>
         <span className="nk-meta-chip"><CheckCircle2 size={14}/> Partial and full payments supported</span>
       </>}
-    />
+    />}
     {error && <div className="operations-alert error">{error}</div>}
     {notice && <div className="operations-alert success">{notice}</div>}
 
-    {dashboard && <section className="operations-stats-grid">
+    {!embedded && dashboard && <section className="operations-stats-grid">
       <StatCard icon={CheckCircle2} label="Ready For Billing" value={dashboard.summary.ready_for_billing} tone="green"/>
       <StatCard icon={Wallet} label="Payment Pending" value={dashboard.summary.payment_pending} tone="orange"/>
       <StatCard icon={AlertTriangle} label="Overdue" value={dashboard.summary.overdue} tone="red"/>
       <StatCard icon={FileText} label="Closed" value={dashboard.summary.closed} tone="navy"/>
     </section>}
 
-    <div className="operations-workflow-console-grid">
-      <section className="operations-panel">
+    <div className="operations-workflow-console-grid" style={embedded ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
+      {!embedded && <section className="operations-panel">
         <header><div><span className="operations-kicker">PROJECT REGISTER</span><h2>Billing Pipeline</h2></div></header>
         <div className="operations-field operations-span-2"><input placeholder="Search Project ID or Client" value={search} onChange={e => setSearch(e.target.value)} /></div>
         {loading && <div className="operations-empty">Loading...</div>}
@@ -625,7 +629,7 @@ export function FinanceBillingPage() {
               <span>
                 <strong>{row.project_code}</strong>
                 <small>{row.client_name || row.client_id || 'Client not recorded'}</small>
-                <small className={`operations-status ${lifecycleStatusTone(row.workflow_status)}`}>{lifecycleStatusLabel(row.workflow_status)}</small>
+                <small className={`operations-status ${lifecycleStatusTone(row.workflow_status)}`}>{billingStatusLabel(row.workflow_status)}</small>
                 {projectBadDebtMeta && <small className={`operations-status ${projectBadDebtMeta.tone}`}>{projectBadDebtMeta.label}</small>}
               </span>
             </button>
@@ -652,7 +656,7 @@ export function FinanceBillingPage() {
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="operations-panel">
         {!detail && <div className="nk-empty">
@@ -661,7 +665,7 @@ export function FinanceBillingPage() {
           <p>{projects.length ? 'Select a project from the Billing Pipeline to review its invoices, record payments and move it toward Finance Closure.' : 'Nothing to invoice yet. Once a project enters the Billing Pipeline, select it here to draft its first invoice.'}</p>
         </div>}
         {detail && <>
-          <header><div><span className="operations-kicker">{detail.project_code} · {detail.client_name || detail.client_id || 'Client not recorded'}</span><h2>{detail.project_name}</h2></div><span className={`operations-status ${lifecycleStatusTone(detail.workflow_status)}`}>{lifecycleStatusLabel(detail.workflow_status)}</span></header>
+          <header><div><span className="operations-kicker">{detail.project_code} · {detail.client_name || detail.client_id || 'Client not recorded'}</span><h2>{detail.project_name}</h2></div><span className={`operations-status ${lifecycleStatusTone(detail.workflow_status)}`}>{billingStatusLabel(detail.workflow_status)}</span></header>
 
           {!!detail.change_requests.filter(row => row.status !== 'pending').length && <div className="operations-note">Approved/rejected change requests may affect invoice amount: {detail.change_requests.filter(r => r.status !== 'pending').map(r => `${r.request_code} (${r.status}${r.commercial_impact != null ? `, ${formatMoney(r.commercial_impact, r.currency)}` : ''})`).join(', ')}</div>}
 
@@ -943,10 +947,10 @@ export function FinanceBillingPage() {
         </>}
       </section>
     </div>
-    <section className="operations-panel">
+    {!embedded && <section className="operations-panel">
       <header><div><span className="operations-kicker">SEPARATE FINANCE TRACKING</span><h2>Bad Debt Register</h2></div><span className="nk-meta-chip">Not Revenue</span></header>
       {!badDebts.length ? <div className="operations-empty">No Bad Debt proposals or write-offs recorded.</div> : <div className="operations-table-wrap"><table className="operations-table"><thead><tr><th>Project</th><th>Invoice</th><th>Status</th><th>Proposed</th><th>Approved / Net</th><th>Reason</th></tr></thead><tbody>{badDebts.map(row => <tr key={row.id}><td>{row.project_code || row.project_id}</td><td>{row.invoice_number || row.invoice_id}</td><td>{(() => { const meta = badDebtStatusMeta(row.status); return <span className={`operations-status ${meta.tone}`}>{meta.label}</span> })()}</td><td>{formatMoney(row.proposed_amount, row.currency || 'INR')}</td><td>{row.approved_amount == null ? '—' : `${formatMoney(row.approved_amount, row.currency || 'INR')} / ${formatMoney(row.net_bad_debt, row.currency || 'INR')}`}</td><td>{row.reason}</td></tr>)}</tbody></table></div>}
-    </section>
+    </section>}
     {preview && <div className="invoice-preview-backdrop" role="presentation" onMouseDown={() => setPreview(null)}>
       <section className="invoice-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="invoice-preview-title" onMouseDown={event => event.stopPropagation()}>
         <header className="invoice-preview-toolbar">

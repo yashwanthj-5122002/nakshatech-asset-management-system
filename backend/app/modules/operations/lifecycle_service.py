@@ -18,6 +18,8 @@ from app.modules.employee_portal.models import SupportTicket
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
 from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects
+from app.modules.management_clients.models import ManagementClientIntake
+from app.modules.management_projects.models import ManagementProjectLink
 from app.modules.notifications.service import create_global_notification
 from app.core.management_access import MANAGEMENT_EMAILS
 from app.modules.operations.lifecycle_models import (
@@ -80,6 +82,9 @@ CLIENT_ACCEPTED = "CLIENT_ACCEPTED"
 NO_FEEDBACK_CLOSURE_RECOMMENDED = "NO_FEEDBACK_CLOSURE_RECOMMENDED"
 DEEMED_ACCEPTED = "DEEMED_ACCEPTED"
 CHANGE_REQUEST_PENDING = "CHANGE_REQUEST_PENDING"
+APPROVAL_PENDING = "APPROVAL_PENDING"
+MANAGEMENT_APPROVAL_PENDING_EVENT = "management_approval_pending"
+MANAGEMENT_SOURCE_APPROVED_EVENT = "management_source_approved"
 READY_FOR_BILLING = "READY_FOR_BILLING"
 INVOICE_DRAFT = "INVOICE_DRAFT"
 INVOICE_RAISED = "INVOICE_RAISED"
@@ -115,6 +120,48 @@ def _workflow(db: Session, project_id: int) -> ProjectWorkflow:
     if workflow is None:
         raise ValueError("Project workflow not found")
     return workflow
+
+
+def management_source_approval_event(db: Session, project_id: int) -> ProjectWorkflowEvent | None:
+    """Authoritative approval: the original client source signed off after the latest delivery."""
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        return None
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    if intake is None or intake.created_by_id is None:
+        return None
+    last_pending_id = db.scalar(select(func.max(ProjectWorkflowEvent.id)).where(
+        ProjectWorkflowEvent.project_id == project_id,
+        ProjectWorkflowEvent.event_type == MANAGEMENT_APPROVAL_PENDING_EVENT,
+    )) or 0
+    return db.scalar(select(ProjectWorkflowEvent).where(
+        ProjectWorkflowEvent.project_id == project_id,
+        ProjectWorkflowEvent.event_type == MANAGEMENT_SOURCE_APPROVED_EVENT,
+        ProjectWorkflowEvent.actor_user_id == intake.created_by_id,
+        ProjectWorkflowEvent.id > last_pending_id,
+    ).order_by(ProjectWorkflowEvent.id.desc()).limit(1))
+
+
+def management_billing_status(db: Session, workflow: ProjectWorkflow) -> str:
+    """Display old Management deliveries as pending without rewriting historical rows.
+
+    A legacy management project may already have FEEDBACK_NOT_SENT or
+    READY_FOR_BILLING from the BD path. Until its original source approves,
+    show Approval Pending, but do not change invoice/payment history.
+    """
+    if workflow.status not in {FEEDBACK_NOT_SENT, READY_FOR_BILLING}:
+        return workflow.status
+    if workflow.operational_completed_at is None:
+        return workflow.status
+    if db.get(ManagementProjectLink, workflow.project_id) is None:
+        return workflow.status
+    if management_source_approval_event(db, workflow.project_id) is not None:
+        return workflow.status
+    if db.scalar(select(ProjectInvoice.id).where(
+        ProjectInvoice.project_id == workflow.project_id,
+    ).limit(1)) is not None:
+        return workflow.status
+    return APPROVAL_PENDING
 
 
 def add_timeline_event(
@@ -235,7 +282,7 @@ def enter_feedback_lifecycle(
     project: FinanceProject,
     workflow: ProjectWorkflow,
 ) -> None:
-    """Move a newly operationally-complete project into feedback, never billing closure."""
+    """Route operational completion to BD feedback or original Management approval."""
     _transition(
         db,
         workflow=workflow,
@@ -245,15 +292,24 @@ def enter_feedback_lifecycle(
         title="PM Operational Completion",
         comments=workflow.completion_remarks,
     )
-    _transition(
-        db,
-        workflow=workflow,
-        actor=actor,
-        status=FEEDBACK_NOT_SENT,
-        event_type="client_feedback_lifecycle_opened",
-        title="Client feedback lifecycle opened",
-        comments="Business Development must send the client feedback request before billing.",
-    )
+    management_link = db.get(ManagementProjectLink, project.id)
+    if management_link is not None:
+        _transition(
+            db, workflow=workflow, actor=actor, status=APPROVAL_PENDING,
+            event_type=MANAGEMENT_APPROVAL_PENDING_EVENT,
+            title="Awaiting original Management source approval",
+            comments="Delivery completed. Only the original Management source can approve billing.",
+        )
+    else:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=FEEDBACK_NOT_SENT,
+            event_type="client_feedback_lifecycle_opened",
+            title="Client feedback lifecycle opened",
+            comments="Business Development must send the client feedback request before billing.",
+        )
     next_version = int(db.scalar(select(func.max(ProjectDeliveryVersion.version_number)).where(
         ProjectDeliveryVersion.project_id == project.id
     )) or 0) + 1
@@ -266,6 +322,19 @@ def enter_feedback_lifecycle(
             delivered_by_id=actor.id,
             delivered_at=workflow.operational_completed_at or utc_now(),
         ))
+    if management_link is not None:
+        intake = db.get(ManagementClientIntake, management_link.management_client_id)
+        if intake is not None and intake.created_by_id is not None:
+            _notify(
+                db, project=project,
+                event_type="lifecycle.management_approval_requested",
+                title=f"Management approval pending: {project.project_code}",
+                message="Delivery is complete; your approval is required before Finance can invoice.",
+                target_url="/management/client-register",
+                recipient_user_ids=[intake.created_by_id],
+                dedupe_key=f"lifecycle:management-approval:{project.id}",
+            )
+        return
     _notify(
         db,
         project=project,
@@ -297,6 +366,8 @@ def create_feedback_request(
 ) -> tuple[ProjectFeedbackRequest, str, str]:
     project = _project(db, project_id)
     workflow = _workflow(db, project_id)
+    if db.get(ManagementProjectLink, project_id) is not None:
+        raise ValueError("Management projects require original-source approval, not BD feedback")
     if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
         raise PermissionError("Only the project BD owner can send client feedback requests")
     allowed = {FEEDBACK_NOT_SENT, REWORK_RESUBMITTED, FEEDBACK_REMINDER_SENT, AWAITING_CLIENT_FEEDBACK}
@@ -1286,6 +1357,9 @@ def create_invoice_draft(
 ) -> ProjectInvoice:
     project = _project(db, project_id)
     workflow = _workflow(db, project_id)
+    if (db.get(ManagementProjectLink, project_id) is not None
+            and management_source_approval_event(db, project_id) is None):
+        raise ValueError("Original Management source approval is required before invoice drafting")
     if workflow.status not in {READY_FOR_BILLING, INVOICE_DRAFT}:
         raise ValueError("Client acceptance and Ready For Billing are required before invoice drafting")
     invoice_number = payload.invoice_number.strip()
@@ -2320,12 +2394,18 @@ def assert_finance_closable(db: Session, *, workflow: ProjectWorkflow) -> None:
             return
     if workflow.status != FINANCE_CLOSURE_PENDING:
         raise ValueError("Finance Closure Pending is required before Finance Closure")
-    accepted = db.scalar(select(ProjectTimelineEvent.id).where(
-        ProjectTimelineEvent.project_id == workflow.project_id,
-        ProjectTimelineEvent.status.in_([CLIENT_ACCEPTED, DEEMED_ACCEPTED]),
-    ).limit(1))
-    if accepted is None:
-        raise ValueError("Client acceptance or authorized deemed acceptance is required")
+    # Management projects require original Management-source approval.
+    # BD projects retain their existing client acceptance validation.
+    if db.get(ManagementProjectLink, workflow.project_id) is not None:
+        if management_source_approval_event(db, workflow.project_id) is None:
+            raise ValueError("Original Management source approval is required before Finance Closure")
+    else:
+        accepted = db.scalar(select(ProjectTimelineEvent.id).where(
+            ProjectTimelineEvent.project_id == workflow.project_id,
+            ProjectTimelineEvent.status.in_([CLIENT_ACCEPTED, DEEMED_ACCEPTED]),
+        ).limit(1))
+        if accepted is None:
+            raise ValueError("Client acceptance or authorized deemed acceptance is required")
     ready = db.scalar(select(ProjectTimelineEvent.id).where(
         ProjectTimelineEvent.project_id == workflow.project_id,
         ProjectTimelineEvent.status == READY_FOR_BILLING,
@@ -2546,6 +2626,7 @@ def _project_summary(db: Session, project: FinanceProject, workflow: ProjectWork
     progress = round((delivered / len(packages)) * 100, 1) if packages else (100.0 if workflow.operational_completed_at else 0.0)
     client = project.client
     pm = project.master_profile.project_manager if project.master_profile else None
+    displayed_status = management_billing_status(db, workflow)
     tl_id = db.scalar(select(OrthoProjectMember.user_id).where(
         OrthoProjectMember.project_id == project.id,
         OrthoProjectMember.member_role == "team_leader",
@@ -2558,12 +2639,12 @@ def _project_summary(db: Session, project: FinanceProject, workflow: ProjectWork
         "project_name": project.project_name,
         "client_id": client.client_code if client else None,
         "client_name": (client.client_name or "") if client else (project.client_name or ""),
-        "workflow_status": workflow.status,
+        "workflow_status": displayed_status,
         "project_manager_id": pm.id if pm else None,
         "project_manager_name": pm.full_name if pm else None,
         "team_leader_id": tl.id if tl else None,
         "team_leader_name": tl.full_name if tl else None,
-        "current_stage": workflow.status,
+        "current_stage": displayed_status,
         "progress_percent": progress,
         "operational_completed_at": workflow.operational_completed_at.isoformat() if workflow.operational_completed_at else None,
         "rework_count": len(reworks),

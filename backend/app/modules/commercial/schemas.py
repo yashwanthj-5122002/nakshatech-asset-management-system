@@ -277,6 +277,15 @@ class ProjectExpenseInput(BaseModel):
         return value
 
 
+class ProjectExpenseCancellation(BaseModel):
+    reason: str = Field(min_length=10, max_length=2000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def strip_cancellation_reason(cls, value):
+        return str(value or "").strip()
+
+
 class ProjectExpenseDecision(BaseModel):
     decision: Literal["approve", "return", "reject"]
     approved_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
