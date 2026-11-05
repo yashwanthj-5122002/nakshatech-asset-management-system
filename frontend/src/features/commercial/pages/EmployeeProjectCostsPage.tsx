@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { FilePlus2, RefreshCcw, Send, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -17,7 +18,7 @@ type ExpenseForm = {
   phase_key: string
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 const blank = (): ExpenseForm => ({ expense_date: today(), category: 'Travel', purpose: '', amount: '', payment_source: 'EMPLOYEE_PAID', remarks: '', phase_key: 'ORIGINAL' })
 
 export function EmployeeProjectCostsPage() {

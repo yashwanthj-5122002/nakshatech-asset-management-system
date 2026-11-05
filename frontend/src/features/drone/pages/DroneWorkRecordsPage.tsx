@@ -1,10 +1,11 @@
+import { indiaDateInput } from '../../../lib/date'
 import { CheckCircle2, ClipboardList, PlusCircle } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import type { DroneAssetListResponse, DroneKit, DroneProject, DroneWorkRecord } from '../../../types'
 
-const today = new Date().toISOString().slice(0, 10)
+const today = indiaDateInput()
 
 export function DroneWorkRecordsPage() {
   const [records, setRecords] = useState<DroneWorkRecord[]>([])

@@ -13,6 +13,7 @@ from app.api.router import (
     update_work_record as legacy_update_work_record,
 )
 from app.lib.reporting_month import normalize_reporting_month
+from app.core.roles import role_is_allowed
 from app.models.entities import Asset, ReplacementRecord, User, WorkRecord
 from app.modules.batch3.common import acquire_asset_code_lock
 from app.modules.batch3.replacement_workflow import (
@@ -328,7 +329,7 @@ def update_work_without_management_approval(
     # change applies only to IT work.
     if work.module != "it":
         return legacy_update_work_record(work_id, payload, db, user)
-    if user.role not in {"it", "admin"}:
+    if not role_is_allowed(user.role, {"it", "admin"}):
         raise HTTPException(status_code=403, detail="Management has read-only visibility of IT work")
 
     values = payload.model_dump(exclude_unset=True)

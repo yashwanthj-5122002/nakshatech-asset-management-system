@@ -151,6 +151,7 @@ const navItems: NavItem[] = [
   { to: '/production-tracking', label: 'Production Tracking', icon: Activity, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho', managementGroup: 'operations', managementLabel: 'Production Tracking' },
   { to: '/payables', label: 'Payables', icon: FileCheck2, roles: ['admin', 'finance', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Payables' }, // NAKSHA_PAYABLES_NAV
   { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Dashboard' },
+  { to: '/management/project-tracking', label: 'Project Tracking', icon: BarChart3, roles: ['management'], group: 'finance', managementGroup: 'operations', managementLabel: 'Project Tracking' }, // NAKSHA_PTS_NAV
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Project Register' },
@@ -371,6 +372,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const activeNavGroups = isManagement ? managementNavGroups : isAdmin ? adminNavGroups : navGroups
 
   const visibleItems = navItems.filter(item =>
+    (item.to !== '/management/project-tracking-sales' ||
+      (currentUser.role === 'management' &&
+        ['vinod@nakshatech.com', 'chethan@nakshatech.com']
+          .includes((currentUser.email || '').toLowerCase()))) &&
     (item.to !== '/payables' || currentUser.role !== 'management' || ['vinod@nakshatech.com', 'chethan@nakshatech.com'].includes(currentUser.email.toLowerCase())) &&
     canShowInSidebar(currentUser.role, item)
   ) // NAKSHA_PAYABLES_MANAGER_VISIBILITY

@@ -53,6 +53,14 @@ def commit(db: Session):
         raise HTTPException(409, 'Duplicate bill number for this vendor, or duplicate payment reference') from exc
 
 
+def flush(db: Session):
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, 'Duplicate bill number for this vendor, approval, or payment reference') from exc
+
+
 @router.get('/me')
 def whoami(auth: CurrentAuth = Depends(get_current_auth)):
     return {'role': role(auth), 'email': auth.user.email, 'manager_emails': list(MANAGERS)}
@@ -81,7 +89,7 @@ def create_payable(data: BillInput, db: Session = Depends(get_db), auth: Current
         raised_by_id=auth.user.id, status='draft', paid_paise=0, approval_version=1)
     fill_fields(bill, data)
     db.add(bill)
-    db.flush()
+    flush(db)
     bill.code = f'PAY-{utc_now():%Y}-{bill.id:06d}'
     audit(db, bill, auth, 'created', {'origin': origin, 'amount_paise': bill.total_paise})
     commit(db)
@@ -115,7 +123,7 @@ def upload_bill(payable_id: int, file: UploadFile = File(...), db: Session = Dep
     if bill.status not in ('draft', 'returned') or bill.paid_paise > 0:
         raise HTTPException(409, 'Bill attachments can be changed only before submitting a bill for approval')
     item = save_document(db, auth, bill, file, 'bill')
-    db.flush()
+    flush(db)
     audit(db, bill, auth, 'bill_document_uploaded', {'document_id': item.id, 'sha256': item.sha256})
     commit(db)
     return {'document_id': item.id, 'filename': item.filename}
@@ -163,7 +171,7 @@ def manager_decision(payable_id: int, data: DecisionInput, db: Session = Depends
     elif all(current[m]['decision'] == 'approved' or m == email for m in MANAGERS):
         bill.status = 'approved'
         notify(db, bill, 'approved', f'Vinod and Chethan approved {bill.bill_name}; Finance can record payment.', _finance_ids(db))
-    db.flush()
+    flush(db)
     commit(db)
     return serialize(db, bill)
 
@@ -201,9 +209,9 @@ def record_payment(payable_id: int, amount: str = Form(...), payment_date: date 
     payment = PayablePayment(payable_id=bill.id, amount_paise=paise, payment_date=payment_date,
         payment_method=method, reference=reference, recorded_by_id=auth.user.id)
     db.add(payment)
-    db.flush()
+    flush(db)
     document = save_document(db, auth, bill, proof, 'challan', payment.id)
-    db.flush()
+    flush(db)
     bill.paid_paise += paise
     bill.status = 'paid_closed' if bill.paid_paise == bill.total_paise else 'partially_paid'
     if bill.status == 'paid_closed':

@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.database import SessionLocal  # noqa: E402
+from app.core.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.entities import User  # noqa: E402
 from app.modules.employee_portal.employee_master import (  # noqa: E402
@@ -113,7 +114,9 @@ def _register(client: TestClient) -> dict:
     return confirm.json()
 
 
-def test_eligible_employee_registers_with_master_identity() -> None:
+@pytest.mark.parametrize("local_auth_bypass", [False, True])
+def test_eligible_employee_registers_with_master_identity(monkeypatch, local_auth_bypass) -> None:
+    monkeypatch.setattr(settings, "local_test_auth_bypass", local_auth_bypass)
     _make_master()
     with TestClient(app) as client:
         _register(client)

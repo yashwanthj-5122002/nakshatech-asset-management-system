@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { ArrowRightLeft, ClipboardCheck, PackageCheck, RotateCcw, Send, UserCheck } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -9,7 +10,7 @@ type OperationTab = 'dispatch' | 'return' | 'transfer' | 'assign'
 type SelectedItem = { asset_id?: number; kit_id?: number; quantity: number }
 type ReturnState = { checked: boolean; quantity: number; condition: string; next_status: string; remarks: string }
 
-const today = new Date().toISOString().slice(0, 10)
+const today = indiaDateInput()
 
 function itemKey(item: SelectedItem) {
   return item.asset_id ? `asset-${item.asset_id}` : `kit-${item.kit_id}`

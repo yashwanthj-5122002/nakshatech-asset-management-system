@@ -404,6 +404,9 @@ def confirm_registration_mfa(
         user.is_active = True
         user.mfa_required = False
         user.must_change_password = False
+        master = employee_master_for_user(db, user)
+        if master is not None:
+            master.crm_account_status = ACTIVE
         record_audit(
             db,
             event_type="LOCAL_TEST_AUTHENTICATOR_BYPASSED",

@@ -521,10 +521,22 @@ def record_row(db: Session, record: BusinessRecord) -> BusinessRecordRow:
     return _row_payload(project, attribution, record, billing)
 
 
-def record_history(db: Session, *, record_id: int) -> list[BusinessHistoryEntry]:
+def record_history(db: Session, *, record_id: int, actor: User, role: str) -> list[BusinessHistoryEntry]:
     record = db.get(BusinessRecord, record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Business record not found")
+    project = db.scalar(exclude_hidden_projects(
+        db, select(FinanceProject).where(FinanceProject.id == record.project_id),
+    ))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Business record not found")
+    if not role_is_allowed((role or "").strip().lower(), TOTALS_ROLES):
+        attribution = _project_attribution(db, [project]).get(project.id, {})
+        own_record = actor.id in {
+            record.project_manager_user_id, attribution.get("project_manager_user_id"),
+        }
+        if not _is_project_manager(db, actor.id) or not own_record:
+            raise HTTPException(status_code=403, detail="Business history is restricted to authorized viewers and the assigned Project Manager")
     entries = list(db.scalars(
         select(BusinessRecordHistory)
         .where(BusinessRecordHistory.record_id == record_id)

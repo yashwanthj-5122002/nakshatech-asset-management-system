@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { Download, Eye, FilePlus2, Pencil, Plus, Printer, RefreshCcw, Trash2, X } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -31,7 +32,7 @@ type StandaloneInvoiceEditPayload = {
 const blankParty = (): PartyForm => ({ company_name: '', address: '', gstin: '', pan: '', email: '', phone: '' })
 const blankItem = (): ItemForm => ({ id: crypto.randomUUID(), description: '', detail: '', hsn_sac: '', quantity: '1', unit: 'Nos', rate: '0' })
 const clean = (value: string) => value.trim() || null
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 
 export function GenerateInvoicePage() {
   const [invoice, setInvoice] = useState({ invoice_number: '', invoice_date: today(), terms: '', due_date: '', reference_work_order: '', place_of_supply: '' })

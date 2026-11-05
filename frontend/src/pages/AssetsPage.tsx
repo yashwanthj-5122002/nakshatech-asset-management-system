@@ -24,7 +24,7 @@ import { StatCard } from '../components/StatCard'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, downloadFile } from '../lib/api'
-import { formatIndiaDateTime, isCurrentIndiaMonth } from '../lib/date'
+import { formatIndiaDateTime, indiaDateInput, isCurrentIndiaMonth } from '../lib/date'
 import { isFullAccessRole } from '../lib/roles'
 import { withITMonth } from '../lib/itMonth'
 import type { Asset, ReportMonth } from '../types'
@@ -153,8 +153,8 @@ export function AssetsPage() {
   const [device, setDevice] = useState('')
   const [assignmentOpen, setAssignmentOpen] = useState(false)
   const [returnOpen, setReturnOpen] = useState(false)
-  const [assignment, setAssignment] = useState({ used_by: '', department: '', workstation_no: '', location: 'Head Office', work_mode: 'office', assigned_date: new Date().toISOString().slice(0, 10), remarks: '' })
-  const [returnForm, setReturnForm] = useState({ return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+  const [assignment, setAssignment] = useState({ used_by: '', department: '', workstation_no: '', location: 'Head Office', work_mode: 'office', assigned_date: indiaDateInput(), remarks: '' })
+  const [returnForm, setReturnForm] = useState({ return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor', return_date: indiaDateInput(), remarks: '' })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -238,7 +238,7 @@ export function AssetsPage() {
       })
       setReturnOpen(false)
       setSelected(null)
-      setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+      setReturnForm({ return_mode: 'complete_return', return_date: indiaDateInput(), remarks: '' })
       const retained = result.retained_monitor_tags ? ` Monitor retained: ${result.retained_monitor_tags}.` : ''
       if (selectedDeviceType === 'External HDD') {
         setMessage(`${result.cpu_asset_tag || result.asset_code} returned / removed from the active External HDD register. External HDD count decreases by 1. Total IT Assets is unchanged.${retained}`)
@@ -288,14 +288,14 @@ export function AssetsPage() {
     setAssignment({
       used_by: '', department: selected.department || '', workstation_no: selected.workstation_no || '',
       location: selected.location || 'Head Office', work_mode: selected.work_mode || 'office',
-      assigned_date: new Date().toISOString().slice(0, 10), remarks: '',
+      assigned_date: indiaDateInput(), remarks: '',
     })
     setAssignmentOpen(true)
   }
 
   function openReturnRemove() {
     if (!selected) return
-    setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+    setReturnForm({ return_mode: 'complete_return', return_date: indiaDateInput(), remarks: '' })
     setReturnOpen(true)
   }
 

@@ -1,0 +1,100 @@
+/* NAKSHATECH PROJECT TRACKING UI PATCH */
+
+/* Eight departments in one desktop row */
+.pt-departments-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+  padding: 8px 4px 14px;
+}
+
+/* Department card */
+.pt-department-card {
+  min-width: 0;
+  min-height: 104px;
+  padding: 12px 10px;
+  border: 1px solid #d5e1ed;
+  border-radius: 12px;
+  background: #f7fbff;
+  cursor: pointer;
+  position: relative;
+
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease,
+    background-color 0.22s ease;
+}
+
+/* Hover animation */
+.pt-department-card:hover {
+  transform: translateY(-6px) scale(1.025);
+  box-shadow: 0 12px 26px rgba(15, 54, 92, 0.16);
+  border-color: #5598dd;
+  background: #ffffff;
+  z-index: 2;
+}
+
+/* Selected department */
+.pt-department-card.is-selected {
+  background: #e8f2ff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+/* Keep department labels readable */
+.pt-department-card .pt-department-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: #173b63;
+}
+
+/* Project count */
+.pt-department-card .pt-department-count {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+/* Keyboard navigation */
+.pt-department-card:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Tablet layout */
+@media (max-width: 1250px) {
+  .pt-departments-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Mobile layout */
+@media (max-width: 650px) {
+  .pt-departments-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Respect reduced-motion settings */
+@media (prefers-reduced-motion: reduce) {
+  .pt-department-card {
+    transition: none;
+  }
+
+  .pt-department-card:hover {
+    transform: none;
+  }
+}
+
+/* Project value column */
+.pt-project-value {
+  white-space: nowrap;
+  font-weight: 700;
+  color: #173b63;
+  font-variant-numeric: tabular-nums;
+}

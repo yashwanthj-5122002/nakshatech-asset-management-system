@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { BarChart3, RefreshCcw, TrendingUp } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -12,7 +13,7 @@ const fyStart = () => {
   const year = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear()
   return `${year}-04-01`
 }
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 
 export function ManagementCommercialPage() {
   const [projects, setProjects] = useState<FinanceProject[]>([])

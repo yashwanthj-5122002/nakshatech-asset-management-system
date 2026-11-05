@@ -176,7 +176,7 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
           </p>
         </div>
         <label className="operations-button">
-          <Upload size={15} /> {busy ? 'Workingâ€¦' : 'Upload Excel'}
+          <Upload size={15} /> {busy ? 'Working…' : 'Upload Excel'}
           <input
             type="file"
             accept=".csv,.xlsx,.xls"

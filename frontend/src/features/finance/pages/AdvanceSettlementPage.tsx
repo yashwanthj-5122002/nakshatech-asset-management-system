@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { ArrowLeft, FileText, Plus, Send, Trash2, UploadCloud, X } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -17,7 +18,7 @@ interface DraftSettlementItem {
   expenseDate: string
 }
 
-function todayIso() { return new Date().toISOString().slice(0, 10) }
+function todayIso() { return indiaDateInput() }
 function blankItem(): DraftSettlementItem { return { id: crypto.randomUUID(), category: 'travel', otherCategory: '', description: '', amount: '', paymentMode: 'upi', expenseDate: todayIso() } }
 
 export function AdvanceSettlementPage() {

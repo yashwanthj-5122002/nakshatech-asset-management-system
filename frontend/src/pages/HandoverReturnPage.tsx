@@ -4,13 +4,14 @@ import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, uploadExcel } from '../lib/api'
+import { indiaDateInput } from '../lib/date'
 import { custodyActionAllowed, custodyGuidance, defaultCustodyAction } from '../lib/assetCustody'
 import { DEPARTMENT_OPTIONS, MANUAL_ENTRY_VALUE } from '../lib/assetOptions'
 import { isFullAccessRole } from '../lib/roles'
 import { monthLabel } from '../lib/itMonth'
 import type { Asset, ITHandoverRecord } from '../types'
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() { return indiaDateInput() }
 
 const initialForm = {
   asset_id: '', device_category: 'laptop', employee_name: '', dc_number: '', department: '', work_mode: 'office',

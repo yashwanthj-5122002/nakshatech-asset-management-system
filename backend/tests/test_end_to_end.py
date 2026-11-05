@@ -59,8 +59,34 @@ IT_TEMP_PASSWORD = "ITTemporary@2026"
 IT_PERMANENT_PASSWORD = "ITPermanent@2026"
 
 
-@pytest.fixture(scope="module")
-def client():
+@pytest.fixture
+def client(isolated_application_database, monkeypatch):
+    from app.core.config import settings
+
+    # Collection imports settings before this legacy module's environment
+    # assignments. Configure this fixture explicitly rather than inheriting the
+    # developer's Docker credentials or another test module's seed settings.
+    overrides = {
+        "seed_default_users": True,
+        "seed_admin_password": "Admin@123",
+        "seed_software_team_password": SOFTWARE_TEMP_PASSWORD,
+        "seed_management_password": MANAGEMENT_TEMP_PASSWORD,
+        "seed_management_secondary_password": "ChethanTemporary@2026",
+        "seed_it_password": IT_TEMP_PASSWORD,
+        "seed_drone_email": "drone@nakshatech.com",
+        "seed_drone_password": "Drone@123",
+        "seed_organization_admin_email": "",
+        "seed_organization_admin_password": "",
+        "local_test_auth_bypass": False,
+        "local_backup_agent_enabled": True,
+        "local_backup_agent_token": "test-local-backup-token-abcdefghijklmnopqrstuvwxyz-123456",
+        "naksha_copilot_enabled": True,
+        "gemini_api_key": "test-gemini-key-never-used-on-network",
+        "naksha_copilot_requests_per_hour": 50,
+        "it_support_email": "software.team@nakshatech.com",
+    }
+    for name, value in overrides.items():
+        monkeypatch.setattr(settings, name, value)
     with TestClient(app) as test_client:
         yield test_client
     TEST_DB.unlink(missing_ok=True)
@@ -109,6 +135,8 @@ def _ensure_privileged_test_login(
     )
     assert confirmed.status_code == 200, confirmed.text
     confirmed_payload = confirmed.json()
+    if confirmed_payload.get("access_token"):
+        return confirmed
     assert confirmed_payload["password_change_required"] is True
 
     completed = client.post(
@@ -149,9 +177,12 @@ def login(client: TestClient, role: str, email: str, password: str) -> dict[str,
             permanent_password=IT_PERMANENT_PASSWORD,
         )
     elif role == "admin":
-        response = client.post(
-            "/api/auth/login",
-            json={"role": "admin", "email": "admin@nakshatech.com", "password": "Admin@123"},
+        response = _ensure_privileged_test_login(
+            client,
+            role=role,
+            email="admin@nakshatech.com",
+            temporary_password="Admin@123",
+            permanent_password="Admin@123",
         )
     else:
         response = client.post(

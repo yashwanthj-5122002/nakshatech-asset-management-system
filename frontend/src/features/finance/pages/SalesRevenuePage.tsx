@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { AlertTriangle, BarChart3, CalendarDays, CircleDollarSign, Eye, EyeOff, FileText, RefreshCcw, TrendingUp, WalletCards, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CommandCenterHero, useNkReveal } from '../../../components/CommandCenterHero'
@@ -181,11 +182,11 @@ function money(value: number, currency: string) {
 }
 
 function currentMonth() {
-  return new Date().toISOString().slice(0, 7)
+  return indiaDateInput().slice(0, 7)
 }
 
 function currentDate() {
-  return new Date().toISOString().slice(0, 10)
+  return indiaDateInput()
 }
 
 function currentWeek() {

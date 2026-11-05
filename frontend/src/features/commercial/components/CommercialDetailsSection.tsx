@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { CircleDollarSign, HandCoins, Plus, RefreshCcw, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../../lib/api'
@@ -48,7 +49,7 @@ export function CommercialDetailsSection({ form, onChange, currencies, disabled 
     try {
       setPreview(await apiFetch<FxPreview>('/commercial/fx/preview', {
         method: 'POST',
-        body: JSON.stringify({ amount, currency_code: form.currency_code, event_date: new Date().toISOString().slice(0, 10) }),
+        body: JSON.stringify({ amount, currency_code: form.currency_code, event_date: indiaDateInput() }),
       }))
     } catch (err) {
       setFxError(err instanceof Error ? err.message : 'Automatic exchange rate unavailable.')

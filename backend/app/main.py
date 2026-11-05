@@ -11,6 +11,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.routers.management_project_tracking import router as management_project_tracking_router
 from app.api.router import router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
@@ -37,6 +38,12 @@ from app.modules.notifications.service import retire_obsolete_sample_notificatio
 from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.finance import standalone_invoice_models as standalone_invoice_models  # noqa: F401
 from app.modules.finance.router import router as finance_router
+<<<<<<< HEAD
+=======
+from app.api.dependencies import get_current_auth
+from app.routers.project_tracking_sales import build_project_tracking_router
+from app.routers.management_sales_reporting import reporting_service
+>>>>>>> 81649c8537b6947a83535171b0679297f3f83087
 from app.modules.management_clients import models as management_client_models  # noqa: F401
 from app.modules.management_clients.router import router as management_clients_router
 from app.modules.management_projects.router import router as management_projects_router
@@ -590,6 +597,10 @@ app.include_router(payables_router, prefix=settings.api_prefix)  # NAKSHA_PAYABL
 app.include_router(notification_router, prefix=settings.api_prefix)
 app.include_router(business_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
+<<<<<<< HEAD
+=======
+app.include_router(build_project_tracking_router(get_current_auth, reporting_service))  # NAKSHA_PTS_BACKEND
+>>>>>>> 81649c8537b6947a83535171b0679297f3f83087
 app.include_router(management_clients_router, prefix=settings.api_prefix)
 app.include_router(management_projects_router, prefix=settings.api_prefix)
 app.include_router(commercial_router, prefix=settings.api_prefix)
@@ -599,6 +610,7 @@ app.include_router(operations_router, prefix=settings.api_prefix)
 app.include_router(uat_2026_router, prefix=settings.api_prefix)
 
 
+app.include_router(management_project_tracking_router)
 @app.middleware("http")
 async def production_headers(request, call_next):
     response = await call_next(request)
