@@ -582,3 +582,108 @@
   color: #ffffff !important;
 }
 
+/* NAKSHA MANAGEMENT EXACT REFERENCE V6 START */
+/* Finance / Management Projects details only. All existing interactions retained. */
+.operations-page.mp-page .mp-project-detail {
+  background:#f9fbfd !important;background-image:none !important;
+  color:#102846 !important;border-color:#d1e0ec !important;
+}
+.operations-page.mp-page .mp-project-detail > .mp-detail-heading {
+  background:#fff !important;background-image:none !important;
+  color:#102846 !important;border:0 !important;
+  border-bottom:1px solid #e0e8ef !important;box-shadow:none !important;
+}
+.operations-page.mp-page .mp-project-detail > .mp-detail-heading :is(h2,h3,p,span,strong,.mp-eyebrow) {
+  color:#102846 !important;-webkit-text-fill-color:#102846 !important;
+  opacity:1 !important;text-shadow:none !important;
+}
+.operations-page.mp-page .mp-project-detail > .mp-detail-heading .mp-eyebrow {
+  color:#344e69 !important;-webkit-text-fill-color:#344e69 !important;
+}
+.operations-page.mp-page .mp-project-detail > .mp-detail-heading button {
+  background:#fff !important;color:#102846 !important;
+  border:1px solid #cad9e7 !important;box-shadow:none !important;
+}
+.operations-page.mp-page .mp-project-detail :is(.mp-detail-card,.mp-tracking-detail,.mp-file-tracking) {
+  background:#fff !important;background-image:none !important;
+  color:#102846 !important;border:1px solid #d1e0ec !important;
+  box-shadow:0 2px 7px rgba(22,60,92,.025) !important;
+}
+.operations-page.mp-page .mp-project-detail :is(.mp-detail-card,.mp-tracking-detail) :is(h3,strong,dt,dd,p,small,span) {
+  color:#102846 !important;-webkit-text-fill-color:#102846 !important;opacity:1 !important;
+}
+.operations-page.mp-page .mp-project-detail :is(.mp-tracking-current,.mp-tracking-current strong) {
+  color:#102846 !important;-webkit-text-fill-color:#102846 !important;
+  opacity:1 !important;font-weight:500 !important;font-size:14px !important;
+}
+.operations-page.mp-page .mp-project-detail :is(.mp-file-heading,.mp-tracking-header) {
+  background:#fff !important;background-image:none !important;
+  color:#102846 !important;border-color:#d1e0ec !important;box-shadow:none !important;
+}
+.operations-page.mp-page .mp-project-detail :is(.mp-file-heading,.mp-tracking-header) :is(h3,span) {
+  color:#102846 !important;-webkit-text-fill-color:#102846 !important;
+}
+.operations-page.mp-page .mp-project-detail .mp-file-table :is(thead,thead tr,thead th) {
+  background:#e7f4eb !important;background-image:none !important;
+  color:#102846 !important;-webkit-text-fill-color:#102846 !important;
+  border-color:#d8e6dd !important;
+}
+.operations-page.mp-page .mp-project-detail .mp-file-table tbody td {
+  color:#102846 !important;-webkit-text-fill-color:#102846 !important;
+  background:#fff !important;border-color:#dce8ed !important;
+}
+.operations-page.mp-page .mp-project-detail .mp-file-table tbody tr:nth-child(even) td {background:#f3faf6 !important;}
+.operations-page.mp-page .mp-project-detail .mp-file-table td small {
+  color:#476078 !important;-webkit-text-fill-color:#476078 !important;
+}
+.operations-page.mp-page .mp-project-detail .mp-stage-badge:is(.success,.complete,.completed,.passed,.delivered,.good,.done,.positive) {
+  background:#e6f7e8 !important;color:#08632c !important;
+  -webkit-text-fill-color:#08632c !important;
+  border:1px solid #7bc68c !important;font-weight:500 !important;
+}
+.operations-page.mp-page .mp-project-detail .mp-progress > span,
+.operations-page.mp-page .mp-project-detail .mp-progress > div {
+  background:#98dc70 !important;background-image:none !important;
+}
+.operations-page.mp-page .mp-project-detail .mp-large-progress > strong {
+  color:#0b6a2d !important;-webkit-text-fill-color:#0b6a2d !important;
+}
+/* NAKSHA MANAGEMENT EXACT REFERENCE V6 END */
+
+/* NAKSHA MANAGEMENT PROGRESS V8 FINANCE START */
+/* Only the operational bars on the Finance Management Projects page. */
+.operations-page.mp-page .mp-progress > span.mp-v8-red {background:#e34b4b !important;background-image:none !important;}
+.operations-page.mp-page .mp-progress > span.mp-v8-orange {background:#f18c32 !important;background-image:none !important;}
+.operations-page.mp-page .mp-progress > span.mp-v8-yellow {background:#e5bb28 !important;background-image:none !important;}
+.operations-page.mp-page .mp-progress > span.mp-v8-green {background:#8bd75d !important;background-image:none !important;}
+/* NAKSHA MANAGEMENT PROGRESS V8 FINANCE END */
+
+/* NAKSHA FINANCE MANAGEMENT INACTIVE BADGES V9 START */
+/* Only Finance > Management Projects > File-wise Tracking.
+   The pending tone class covers multiple statuses, so the read-only data
+   attribute distinguishes Not Started from Pending visually. */
+.operations-page.mp-page .mp-file-table .mp-stage-badge[data-management-status="Not Started"] {
+  background: #EFF3F7 !important;
+  background-image: none !important;
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+  border: 1px solid #CBD5E1 !important;
+  border-radius: 7px !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  font-weight: 500 !important;
+  opacity: 1 !important;
+}
+.operations-page.mp-page .mp-file-table .mp-stage-badge[data-management-status="Pending"] {
+  background: #FFF4D9 !important;
+  background-image: none !important;
+  color: #815A18 !important;
+  -webkit-text-fill-color: #815A18 !important;
+  border: 1px solid #F1D48B !important;
+  border-radius: 7px !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  font-weight: 500 !important;
+  opacity: 1 !important;
+}
+/* NAKSHA FINANCE MANAGEMENT INACTIVE BADGES V9 END */

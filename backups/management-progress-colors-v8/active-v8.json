@@ -1,0 +1,23 @@
+{
+  "version": 8,
+  "root": "D:\\NakshaTech ERP",
+  "files": [
+    "D:\\NakshaTech ERP\\frontend\\src\\features\\finance\\pages\\FinanceManagementProjectsPage.tsx",
+    "D:\\NakshaTech ERP\\frontend\\src\\features\\finance\\pages\\finance-management-prussian-theme.css",
+    "D:\\NakshaTech ERP\\frontend\\src\\features\\management\\ManagementClientRegisterPage.tsx",
+    "D:\\NakshaTech ERP\\frontend\\src\\features\\management\\naksha-management-tracking-light-v4.css"
+  ],
+  "backups": [
+    "D:\\NakshaTech ERP\\backups\\management-progress-colors-v8\\2026-11-05T10-38-05-651Z\\original-0-FinanceManagementProjectsPage.tsx",
+    "D:\\NakshaTech ERP\\backups\\management-progress-colors-v8\\2026-11-05T10-38-05-651Z\\original-1-finance-management-prussian-theme.css",
+    "D:\\NakshaTech ERP\\backups\\management-progress-colors-v8\\2026-11-05T10-38-05-651Z\\original-2-ManagementClientRegisterPage.tsx",
+    "D:\\NakshaTech ERP\\backups\\management-progress-colors-v8\\2026-11-05T10-38-05-651Z\\original-3-naksha-management-tracking-light-v4.css"
+  ],
+  "appliedHashes": [
+    "76c377dae7c0cd1312923ce33e0b249e6a671113be276b7ef7ffeae86b647001",
+    "98eba54e7a8730c60f8fe21797085664f7ff796fbea74dcbd802aa8263da01c6",
+    "069a6abc5fec6c860e9588510da844d5a30cd98bb65e0912e66291160952feef",
+    "c0c613b61bcd509d4a4e94c79864d7dc24d33fee0287df944f24c81d4ea2bb09"
+  ],
+  "created": "2026-11-05T10:38:05.674Z"
+}

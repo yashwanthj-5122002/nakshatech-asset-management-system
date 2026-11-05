@@ -1,3 +1,4 @@
+import './naksha-management-tracking-light-v4.css';
 import { Activity, ArrowLeft, Building2, CheckCircle2, ChevronDown, ChevronRight, Eye, Pencil, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { Fragment, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -140,7 +141,7 @@ function ManagementTrackingDialog({ project, client, onClose }: {
   const files = detail?.files ?? []
   const asOf = detail?.as_of
   return createPortal(<div className="mct-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section className="mct-modal" role="dialog" aria-modal="true" aria-label={`Tracking for project ${project.project_code}`}>
+    <section className="mct-modal" role="dialog" aria-modal="true" aria-label={`Tracking for project ${project.project_code}`} data-naksha-management-live-v4="true">
       <header className="mct-modal-header">
         <div><span className="mct-eyebrow">MANAGEMENT PROJECT · {project.source_person_name}</span>
           <h2>{project.project_code} — {project.project_name}</h2>
@@ -153,7 +154,7 @@ function ManagementTrackingDialog({ project, client, onClose }: {
         <div className="mct-dark-card">
           <h3>Overall Stage Completion</h3>
           <strong className="mct-big-percent">{percentText(summary.overall_percent)}</strong>
-          <ProgressMeter value={summary.overall_percent} label="Overall project stage completion" />
+          <div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(summary.overall_percent)}><ProgressMeter value={summary.overall_percent} label="Overall project stage completion" /></div>
           <small>{summary.operational_status}</small>
         </div>
         <div className="mct-dark-card mct-stages-card"><h3>Stage Progress</h3>
@@ -162,7 +163,7 @@ function ManagementTrackingDialog({ project, client, onClose }: {
             return <div className="mct-stage" key={stage}>
               <strong>{stageLabels[stage]}</strong>
               <span>{percentText(value.percent)} ({value.completed}/{value.total})</span>
-              <ProgressMeter value={value.percent} label={`${stageLabels[stage]} completion`} />
+              <div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(value.percent)}><ProgressMeter value={value.percent} label={`${stageLabels[stage]} completion`} /></div>
             </div>
           })}</div>
         </div>
@@ -185,7 +186,7 @@ function ManagementTrackingDialog({ project, client, onClose }: {
           </tr></thead><tbody>{files.map((file, index) => <tr key={`${file.work_package_item_id ?? 'legacy'}-${file.package_code}-${index}`} className={!file.is_active ? 'mct-inactive' : ''}>
             <td><strong>{file.item_name || file.item_number}</strong><small>{file.package_code}{file.tracking_basis === 'legacy_area' ? ' · Area tracking' : ''}{!file.is_active ? ' · Inactive' : ''}</small></td>
             {stages.map(stage => <td key={stage}>
-              <span className={`mct-status ${stageTone(file[stage])}`}>{readable(file[stage])}</span>
+              <span className={`mct-status ${stageTone(file[stage])}`} data-management-status={readable(file[stage])}>{readable(file[stage])}</span>
               {stage !== 'delivery' && file[`${stage}_employee` as 'production_employee' | 'qc_employee' | 'qa_employee'] &&
                 <small>{file[`${stage}_employee` as 'production_employee' | 'qc_employee' | 'qa_employee']}</small>}
             </td>)}
@@ -215,6 +216,18 @@ function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()
 }
+
+
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION START
+// Management UI presentation only. Never change incoming percentages.
+function managementProgressTone(p: number): 'red'|'orange'|'yellow'|'green' {
+  const n = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0
+  if (n < 30) return 'red'
+  if (n < 50) return 'orange'
+  if (n < 70) return 'yellow'
+  return 'green'
+}
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION END
 
 export function ManagementClientRegisterPage() {
   const [clients, setClients] = useState<Client[]>([])
@@ -455,7 +468,7 @@ export function ManagementClientRegisterPage() {
               <strong>{client.client_code}</strong></button></td>
               <td>{client.client_name}</td><td>{client.contact_person_name}</td><td>{client.source_person_name}</td><td>{formatDate(client.created_at)}</td>
               <td><button type="button" className="mct-count" onClick={() => setExpandedClientId(expanded ? null : client.id)}>{clientTracking ? `${clientTracking.project_count} ${clientTracking.project_count === 1 ? 'Project' : 'Projects'}` : '—'}</button></td>
-              <td>{clientTracking && clientTracking.project_count ? <div className="mct-progress-cell"><ProgressMeter value={clientTracking.overall_percent} label={`${client.client_name} stage completion`} /><span>{percentText(clientTracking.overall_percent)}</span></div> : '—'}</td>
+              <td>{clientTracking && clientTracking.project_count ? <div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(clientTracking.overall_percent)}><ProgressMeter value={clientTracking.overall_percent} label={`${client.client_name} stage completion`} /></div><span>{percentText(clientTracking.overall_percent)}</span></div> : '—'}</td>
               <td><div className="operations-actions"><button type="button" className="operations-button secondary" onClick={() => { setSelectedId(client.id); setShowForm(false) }}>View</button><button type="button" className="operations-button secondary" onClick={() => openEdit(client)}><Pencil size={14} /> Edit</button>{hasApprovableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
             </tr>
             {expanded && <tr className="mct-expanded-row"><td colSpan={8}>
@@ -479,7 +492,7 @@ export function ManagementClientRegisterPage() {
           return <tr key={project.id}><td><strong>{project.project_code}</strong></td>
             <td><strong>{client?.client_name || 'Management client'}</strong><small>{project.source_person_name}</small></td>
             <td><strong>{project.project_name}</strong><small>PM: {project.project_manager_name || 'Not assigned'}</small></td>
-            <td>{project.department_label}</td><td><div className="mct-progress-cell"><ProgressMeter value={project.tracking.overall_percent} label={`${project.project_code} stage completion`} /><span>{percentText(project.tracking.overall_percent)}</span></div></td>
+            <td>{project.department_label}</td><td><div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(project.tracking.overall_percent)}><ProgressMeter value={project.tracking.overall_percent} label={`${project.project_code} stage completion`} /></div><span>{percentText(project.tracking.overall_percent)}</span></div></td>
             <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
             <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
           </tr>

@@ -1,0 +1,10 @@
+/* NakshaTech management source live tracking: light Prussian UI V4 */
+[data-naksha-management-live-v4="true"] { background: #f3f8fd !important; color: #193d59 !important; border-color: #c8deef !important; }
+[data-naksha-management-live-v4="true"] .mct-modal-header { background: linear-gradient(115deg,#1168ab 0%,#07517e 56%,#073954 100%) !important; background-image: linear-gradient(115deg,#1168ab 0%,#07517e 56%,#073954 100%) !important; border-color: #23678d !important; color:#fff !important; }
+[data-naksha-management-live-v4="true"] .mct-modal-header :is(h1,h2,h3,p,small) { color:#fff !important; -webkit-text-fill-color:#fff !important; opacity:1 !important; }
+[data-naksha-management-live-v4="true"] .mct-modal-header > div :is(span,strong) { color:#fff !important; -webkit-text-fill-color:#fff !important; }
+[data-naksha-management-live-v4="true"] .mct-dark-card { background: #f7fbff !important; background-image:none !important; border:1px solid #bfd8ef !important; border-radius:14px !important; box-shadow:0 3px 12px rgba(7,49,83,.06) !important; color:#173d5c !important; }
+[data-naksha-management-live-v4="true"] .mct-dark-card :is(h2,h3,h4,strong,dt,dd) {color:#123c5e !important; -webkit-text-fill-color:#123c5e !important; opacity:1 !important;}
+[data-naksha-management-live-v4="true"] .mct-dark-card :is(p,small,dt) {color:#496780 !important; -webkit-text-fill-color:#496780 !important; opacity:1 !important;}
+[data-naksha-management-live-v4="true"] .mct-dark-card {background: #f8fbff !important; background-image:none !important; color:#173f5c !important; border:1px solid #c8deee !important; border-radius:14px !important; box-shadow:0 3px 12px rgba(9,50,83,.05) !important;}
+[data-naksha-management-live-v4="true"] .mct-dark-card :is(h2,h3,h4){color:#143e60 !important; -webkit-text-fill-color:#143e60 !important;}

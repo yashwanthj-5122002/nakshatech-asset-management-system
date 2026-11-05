@@ -1,0 +1,17 @@
+{
+  "version": 6,
+  "root": "D:\\NakshaTech ERP",
+  "files": [
+    "D:\\NakshaTech ERP\\frontend\\src\\features\\management\\naksha-management-tracking-light-v4.css",
+    "D:\\NakshaTech ERP\\frontend\\src\\features\\finance\\pages\\finance-management-prussian-theme.css"
+  ],
+  "backups": [
+    "D:\\NakshaTech ERP\\backups\\management-tracking-exact-reference-v6\\2026-11-05T09-51-59-880Z\\management-theme-before-v6.css",
+    "D:\\NakshaTech ERP\\backups\\management-tracking-exact-reference-v6\\2026-11-05T09-51-59-880Z\\finance-theme-before-v6.css"
+  ],
+  "appliedHashes": [
+    "35707a2d6382acc871f729d937ac568855a1f791db7465ceb35edc0886ebda96",
+    "baaf1cf8402361751016b68ec463689d822a23d4a8e2f4458a0bc20462a45c95"
+  ],
+  "created": "2026-11-05T09:51:59.894Z"
+}
