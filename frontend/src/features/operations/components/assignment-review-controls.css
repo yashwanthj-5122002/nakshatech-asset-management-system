@@ -13,3 +13,31 @@
 .assignment-review-sent { display: grid; gap: 6px; border-top: 1px solid #e2e8f0; padding-top: 10px; }
 .assignment-review-sent span, .assignment-review-sent small { font-size: .78rem; color: #475569; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .assignment-review { padding: 10px; } .assignment-review-buttons { width: 100%; } }
+
+/* Bulk rework file picker is independent of the existing file-level review UI. */
+.assignment-review-dropdown { max-width: 620px; }
+.assignment-review-dropdown input[type="text"], .assignment-review-dropdown input:not([type]) { width: 100%; }
+.assignment-review-selection-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.assignment-review-selection-bar > span { color: #405875; font-size: .8rem; margin-right: auto; }
+.assignment-review-selection-bar .operations-button { padding: 7px 10px; font-size: .77rem; }
+.assignment-review-file-picker { max-height: 250px; overflow-y: auto; display: grid; gap: 4px; padding: 7px; background: #f8fbfe; border: 1px solid #d5e2ee; border-radius: 9px; }
+.assignment-review-file-choice { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; font-size: .82rem; color: #244566; border-radius: 6px; padding: 7px 9px; }
+.assignment-review-file-choice:hover { background: #e7f1f9; }
+.assignment-review-file-choice input { accent-color: #1466bd; margin-top: 3px; flex: 0 0 auto; }
+.assignment-review-file-choice span { overflow-wrap: anywhere; }
+.assignment-review-file-choice strong { color: #173655; font-size: .82rem; }
+
+/* V2: an added cross-package CLD import toolbar; individual file controls are untouched. */
+.cld-block-review { margin: 14px 0 18px; padding: 16px; border: 1px solid #b8d8e4; border-radius: 14px; background: #fff; display: grid; gap: 12px; }
+.cld-block-heading h3 { margin: 4px 0; font-size: 1.05rem; color: #12345c; }
+.cld-block-heading small, .cld-review-note { color: #64748b; font-size: .78rem; }
+.cld-stage { margin: 0; }
+.cld-review-dropdown { max-width: 750px; }
+.cld-review-dropdown input[type='text'], .cld-review-dropdown .operations-field input { width: 100%; }
+.cld-review-selection-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cld-review-selection-actions span { margin-right: auto; color: #475569; font-size: .82rem; }
+.cld-review-file-list { max-height: 300px; overflow: auto; display: grid; gap: 3px; padding: 6px; border: 1px solid #d9e5ef; border-radius: 9px; }
+.cld-review-file { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 7px; background: #f8fbfd; cursor: pointer; }
+.cld-review-file input { width: 16px; height: 16px; flex-shrink: 0; }
+.cld-review-file span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .85rem; }
+.cld-review-file small { font-size: .72rem; color: #64748b; }

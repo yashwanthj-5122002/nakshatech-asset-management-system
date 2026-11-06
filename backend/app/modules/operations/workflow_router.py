@@ -45,7 +45,7 @@ from app.modules.operations.schemas import (
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
 )
-from app.modules.operations import production_allocation, production_items, assignment_review
+from app.modules.operations import production_allocation, production_items, assignment_review, cld_bulk_delivery
 from app.modules.operations.models import WorkPackageItem
 from app.modules.operations.workflow_service import (
     ADMIN_ROLE,
@@ -868,6 +868,11 @@ class AssignmentReviewRework(BaseModel):
     reason: str = Field(min_length=3, max_length=2000)
 
 
+class AssignmentReviewBulkRework(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
 @router.post("/ortho/work-packages/{work_package_id}/review/{stage}/start")
 def workflow_assignment_review_start(
     work_package_id: int,
@@ -932,6 +937,32 @@ def workflow_assignment_review_rework(
         )
         _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_REWORK", "ortho_work_package",
                work_package_id, {"stage": stage, "item_id": payload.item_id, "activity_id": result["activity_id"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/rework/bulk")
+def workflow_assignment_review_rework_bulk(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    payload: AssignmentReviewBulkRework,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.send_files_to_rework(
+            db, actor=auth.user, package_id=work_package_id, stage=stage,
+            item_ids=payload.item_ids, reason=payload.reason,
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_BULK_REWORK", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_ids": result["item_ids"],
+                                 "activity_ids": result["activity_ids"]})
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -1285,3 +1316,72 @@ def workflow_ready_for_delivery(
         db.rollback()
         raise _error(exc) from exc
     return readiness
+
+
+# CLD import rows are separate work packages; these group actions are explicitly
+# project-scoped to the authenticated reviewer and one import source. Existing
+# per-package and per-file QC/QA endpoints above are unchanged.
+class CLDSourceReviewRequest(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=512)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/ortho/projects/{project_id}/cld-review/{stage}/{action}")
+def workflow_cld_source_review(
+    project_id: int,
+    stage: Literal["qc", "qa"],
+    action: Literal["start", "complete", "rework"],
+    payload: CLDSourceReviewRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = assignment_review.cld_source_review(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            stage=stage, action=action, item_ids=payload.item_ids,
+            reason=payload.reason,
+        )
+        _audit(
+            request, db, auth,
+            f"WORKFLOW_CLD_{stage.upper()}_BLOCK_{action.upper()}",
+            "finance_project", project_id,
+            {"stage": stage, "action": action, "item_ids": result["item_ids"]},
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+# Add-only TL / PM CLD-import group readiness operation. The existing per-file
+# and per-package Ready for Delivery endpoints above are unchanged.
+class CLDGroupDeliveryRequest(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=512)
+
+
+@router.post("/ortho/projects/{project_id}/cld-ready-for-delivery")
+def workflow_cld_ready_for_delivery(
+    project_id: int,
+    payload: CLDGroupDeliveryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = cld_bulk_delivery.mark_cld_group_ready(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            item_ids=payload.item_ids,
+        )
+        _audit(request, db, auth, "WORKFLOW_CLD_GROUP_READY_FOR_DELIVERY", "finance_project", project_id,
+               {"item_ids": result["item_ids"], "work_package_ids": result["package_ids"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
