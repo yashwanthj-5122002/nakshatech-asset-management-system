@@ -59,6 +59,7 @@ class ManagementClientInput(BaseModel):
 
 class ManagementClientResponse(ManagementClientInput):
     model_config = ConfigDict(from_attributes=True)
+    can_request_project: bool = False
 
     id: int
     source_person_name: str

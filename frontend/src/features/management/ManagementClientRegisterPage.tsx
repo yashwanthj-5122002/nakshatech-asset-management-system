@@ -24,6 +24,7 @@ type Client = {
   is_active: boolean
   created_at: string
   updated_at: string
+  can_request_project: boolean
 }
 
 type ClientForm = {
@@ -46,7 +47,14 @@ const emptyForm: ClientForm = {
   contact_person_email: '', contact_person_phone: '', work_description: '',
 }
 
+type AdditionalProjectRequest = {
+  id: number; management_client_id: number; client_code: string; client_name: string
+  source_person_name: string; project_name: string; scope_text: string
+  expected_start_date: string | null; remarks: string | null
+  status: 'PENDING' | 'CREATED'; created_project_code: string | null; created_at: string
+}
 const endpoint = '/management/client-register'
+const requestEndpoint = `${endpoint}/additional-project-requests`
 type StageKey = 'production' | 'qc' | 'qa' | 'delivery'
 type Stage = { completed: number; total: number; percent: number; in_progress: number }
 type TrackingSummary = {
@@ -243,9 +251,21 @@ export function ManagementClientRegisterPage() {
   const [form, setForm] = useState<ClientForm>(emptyForm)
   const [tracking, setTracking] = useState<TrackingRegister | null>(null)
   const [trackingError, setTrackingError] = useState('')
+  const [additionalRequests, setAdditionalRequests] = useState<AdditionalProjectRequest[]>([])
+  const [requestingClientId, setRequestingClientId] = useState<number | null>(null)
+  const [requestProjectName, setRequestProjectName] = useState('')
+  const [requestScope, setRequestScope] = useState('')
+  const [requestStart, setRequestStart] = useState('')
+  const [requestRemarks, setRequestRemarks] = useState('')
+  const [requestBusy, setRequestBusy] = useState(false)
+  const [requestError, setRequestError] = useState('')
   const [trackingView, setTrackingView] = useState<'clients' | 'projects'>('clients')
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null)
   const [trackingProjectId, setTrackingProjectId] = useState<number | null>(null)
+  // NAKSHA_MGMT_CLIENTS_PAGINATION_5_V2: only the Management users' Registered Clients table.
+  const [managementClientPage, setManagementClientPage] = useState(1)
+  // Reset after search/source filter changes; keep search across ALL clients.
+  useEffect(() => { setManagementClientPage(1) }, [query, ownerFilter])
 
   async function load() {
     setLoading(true)
@@ -260,6 +280,47 @@ export function ManagementClientRegisterPage() {
   }
 
   useEffect(() => { void load() }, [])
+  // New-project requests are separate from client and operational tracking state.
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void apiFetch<AdditionalProjectRequest[]>(requestEndpoint)
+        .then(rows => { if (alive) setAdditionalRequests(rows) })
+        .catch(() => undefined)
+    }
+    refresh()
+    const interval = window.setInterval(refresh, 5000)
+    return () => { alive = false; window.clearInterval(interval) }
+  }, [])
+
+  function openAdditionalRequest(client: Client) {
+    if (!client.can_request_project) return
+    setRequestingClientId(client.id)
+    setRequestProjectName('')
+    setRequestScope('')
+    setRequestStart('')
+    setRequestRemarks('')
+    setRequestError('')
+  }
+
+  async function submitAdditionalRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (requestingClientId === null || requestBusy) return
+    setRequestBusy(true); setRequestError('')
+    try {
+      await apiFetch(requestEndpoint, { method: 'POST', body: JSON.stringify({
+        management_client_id: requestingClientId,
+        project_name: requestProjectName.trim(), scope_text: requestScope.trim(),
+        expected_start_date: requestStart || null, remarks: requestRemarks.trim() || null,
+      }) })
+      setAdditionalRequests(await apiFetch<AdditionalProjectRequest[]>(requestEndpoint))
+      setRequestingClientId(null)
+      setNotice('Project request sent to Finance. The status will change to Project Created when Finance creates and links the new project.')
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : 'Unable to request a project')
+    } finally { setRequestBusy(false) }
+  }
   useEffect(() => {
     let active = true
     let busy = false
@@ -377,6 +438,12 @@ export function ManagementClientRegisterPage() {
     }
   }
 
+  const managementClientPageSize = 5
+  const managementClientTotal = (filtered).length
+  const managementClientPageCount = Math.max(1, Math.ceil(managementClientTotal / managementClientPageSize))
+  const managementClientSafePage = Math.min(managementClientPage, managementClientPageCount)
+  const managementClientFirst = managementClientTotal === 0 ? 0 : (managementClientSafePage - 1) * managementClientPageSize + 1
+  const managementClientLast = Math.min(managementClientSafePage * managementClientPageSize, managementClientTotal)
   return <div className="operations-page">
     <DashboardHeader
       eyebrow="MANAGEMENT · CLIENT INTAKE"
@@ -423,6 +490,23 @@ export function ManagementClientRegisterPage() {
       </form>
     </section>}
 
+    {requestingClientId !== null && <section className="operations-panel" aria-label="New project request for existing client">
+      <header><div><span className="operations-kicker">EXISTING MANAGEMENT CLIENT</span>
+        <h2>Request Another Project</h2>
+        <p>Finance will create the project under the same existing client. This request does not create a project.</p>
+      </div></header>
+      {requestError && <div className="operations-alert error" role="alert">{requestError}</div>}
+      <form className="operations-form-grid" onSubmit={event => void submitAdditionalRequest(event)}>
+        <div className="operations-field"><span>Client</span><strong>{clients.find(c => c.id === requestingClientId)?.client_name || 'Existing client'} ({clients.find(c => c.id === requestingClientId)?.client_code})</strong></div>
+        <label className="operations-field"><span>Requested Project Name *</span><input required minLength={2} maxLength={255} value={requestProjectName} onChange={event => setRequestProjectName(event.target.value)} /></label>
+        <label className="operations-field operations-span-2"><span>New Project Scope / Requirements *</span><textarea required minLength={2} maxLength={5000} rows={3} value={requestScope} onChange={event => setRequestScope(event.target.value)} /></label>
+        <label className="operations-field"><span>Expected Start (optional)</span><input type="date" value={requestStart} onChange={event => setRequestStart(event.target.value)} /></label>
+        <label className="operations-field operations-span-2"><span>Remarks (optional)</span><textarea maxLength={2000} rows={2} value={requestRemarks} onChange={event => setRequestRemarks(event.target.value)} /></label>
+        <div className="operations-actions operations-span-2"><button type="submit" className="operations-button" disabled={requestBusy}>{requestBusy ? 'Sending…' : 'Send Request to Finance'}</button>
+          <button type="button" className="operations-button secondary" disabled={requestBusy} onClick={() => setRequestingClientId(null)}>Cancel</button></div>
+      </form>
+    </section>}
+
     {!showForm && selected && <section className="operations-panel">
       <header><div><span className="operations-kicker">CLIENT DETAILS · {selected.client_code}</span><h2>{selected.client_name}</h2><p>Registered by {selected.source_person_name} · {formatDate(selected.created_at)}</p></div></header>
       <div className="operations-form-grid">
@@ -436,6 +520,12 @@ export function ManagementClientRegisterPage() {
         <div className="operations-field"><span>Address</span><strong>{selected.address || '—'}</strong></div>
         <div className="operations-field operations-span-2"><span>Client Work / Initial Requirement</span><p>{selected.work_description || 'No work notes recorded yet.'}</p></div>
       </div>
+      {additionalRequests.filter(row => row.management_client_id === selected.id).length > 0 && <div className="operations-note" style={{ marginBottom: 12 }}>
+        <strong>Additional Project Request History</strong>
+        {additionalRequests.filter(row => row.management_client_id === selected.id).map(row =>
+          <p key={row.id}>{row.project_name} · <span style={{ color: row.status === 'CREATED' ? '#166534' : '#9f3636' }}>{row.status === 'CREATED' ? `Project Created (${row.created_project_code || 'Linked'})` : 'Awaiting Finance'}</span></p>
+        )}
+      </div>}
       <div className="operations-actions">
         <button type="button" className="operations-button secondary" onClick={() => setSelectedId(null)}><ArrowLeft size={16} /> Back to Register</button>
         <button type="button" className="operations-button" onClick={() => openEdit(selected)}><Pencil size={16} /> Edit Client</button>
@@ -457,11 +547,13 @@ export function ManagementClientRegisterPage() {
         <div className="operations-empty">No management clients found.</div> :
         <div className="operations-table-wrap"><table className="operations-table mct-register-table"><thead><tr>
           <th>Client ID</th><th>Client Organization</th><th>Contact Person</th><th>Registered By</th><th>Created</th><th>Projects</th><th>Tracking (Overall)</th><th>Actions</th>
-        </tr></thead><tbody>{filtered.map(client => {
+        </tr></thead><tbody>{(filtered).slice((managementClientSafePage - 1) * managementClientPageSize, managementClientSafePage * managementClientPageSize).map(client => {
           const clientTracking = tracking?.clients[String(client.id)]
           const clientProjects = projects.filter(project => project.management_client_id === client.id)
           const hasApprovableProject = clientProjects.some(project => project.can_approve)
           const expanded = expandedClientId === client.id
+          const latestRequest = additionalRequests.find(row => row.management_client_id === client.id)
+          const pendingRequest = additionalRequests.some(row => row.management_client_id === client.id && row.status === 'PENDING')
           return <Fragment key={client.id}>
             <tr><td><button className="mct-expand" type="button" onClick={() => setExpandedClientId(expanded ? null : client.id)} aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} projects for ${client.client_name}`}>
               {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -469,7 +561,10 @@ export function ManagementClientRegisterPage() {
               <td>{client.client_name}</td><td>{client.contact_person_name}</td><td>{client.source_person_name}</td><td>{formatDate(client.created_at)}</td>
               <td><button type="button" className="mct-count" onClick={() => setExpandedClientId(expanded ? null : client.id)}>{clientTracking ? `${clientTracking.project_count} ${clientTracking.project_count === 1 ? 'Project' : 'Projects'}` : '—'}</button></td>
               <td>{clientTracking && clientTracking.project_count ? <div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(clientTracking.overall_percent)}><ProgressMeter value={clientTracking.overall_percent} label={`${client.client_name} stage completion`} /></div><span>{percentText(clientTracking.overall_percent)}</span></div> : '—'}</td>
-              <td><div className="operations-actions"><button type="button" className="operations-button secondary" onClick={() => { setSelectedId(client.id); setShowForm(false) }}>View</button><button type="button" className="operations-button secondary" onClick={() => openEdit(client)}><Pencil size={14} /> Edit</button>{hasApprovableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+              <td><div className="operations-actions"><button type="button" className="operations-button secondary" onClick={() => { setSelectedId(client.id); setShowForm(false) }}>View</button><button type="button" className="operations-button secondary" onClick={() => openEdit(client)}><Pencil size={14} /> Edit</button>
+                {client.can_request_project && <button type="button" className="operations-button secondary" disabled={pendingRequest || requestBusy} onClick={() => openAdditionalRequest(client)}><Plus size={14} /> Request Project</button>}
+                {latestRequest && <span title={latestRequest.project_name} style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', padding: '6px 9px', borderRadius: 8, background: latestRequest.status === 'CREATED' ? '#e8f6eb' : '#fcebea', color: latestRequest.status === 'CREATED' ? '#166534' : '#a23e3e', border: `1px solid ${latestRequest.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}` }}>{latestRequest.status === 'CREATED' ? `Project Created: ${latestRequest.created_project_code || ''}` : 'Awaiting Finance'}</span>}
+                {hasApprovableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
             </tr>
             {expanded && <tr className="mct-expanded-row"><td colSpan={8}>
               <div className="mct-client-projects"><h3>Client Projects — {client.client_name} ({clientProjects.length})</h3>
@@ -484,7 +579,16 @@ export function ManagementClientRegisterPage() {
               </div>
             </td></tr>}
           </Fragment>
-        })}</tbody></table></div>) :
+        })}</tbody></table>
+          {/* Management Client Register: pagination, appearance only. */}
+          <nav aria-label="Registered clients pagination" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, padding: "12px 8px 6px", color: "#234969", fontSize: 13 }}>
+            <span aria-live="polite">Showing {managementClientFirst}–{managementClientLast} of {managementClientTotal} clients</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button type="button" disabled={managementClientSafePage <= 1} onClick={() => setManagementClientPage(page => Math.max(1, Math.min(page, managementClientPageCount) - 1))} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #bdd4e8", background: "#ffffff", color: "#153e60", fontSize: 13, cursor: managementClientSafePage <= 1 ? "not-allowed" : "pointer", opacity: managementClientSafePage <= 1 ? 0.5 : 1 }}>Previous</button>
+              <span style={{ whiteSpace: "nowrap" }}>Page {managementClientSafePage} of {managementClientPageCount}</span>
+              <button type="button" disabled={managementClientSafePage >= managementClientPageCount} onClick={() => setManagementClientPage(page => Math.min(managementClientPageCount, Math.min(page, managementClientPageCount) + 1))} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #bdd4e8", background: "#ffffff", color: "#153e60", fontSize: 13, cursor: managementClientSafePage >= managementClientPageCount ? "not-allowed" : "pointer", opacity: managementClientSafePage >= managementClientPageCount ? 0.5 : 1 }}>Next</button>
+            </div>
+          </nav></div>) :
         <div className="operations-table-wrap"><table className="operations-table mct-register-table"><thead><tr>
           <th>Project Code</th><th>Client / Source</th><th>Project Name</th><th>Department</th><th>Progress</th><th>Operational Status</th><th>Action</th>
         </tr></thead><tbody>{filteredProjects.map(project => {
