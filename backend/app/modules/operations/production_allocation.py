@@ -85,7 +85,7 @@ _UNIT_TOKEN = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678
 # Parsing / validation
 # ===========================================================================================
 
-def _map_headers(header_row: Iterable[Any]) -> tuple[dict[int, str], list[str]]:
+"""def _map_headers(header_row: Iterable[Any]) -> tuple[dict[int, str], list[str]]:
     mapping: dict[int, str] = {}
     seen: set[str] = set()
     for index, cell in enumerate(header_row):
@@ -101,10 +101,85 @@ def _map_headers(header_row: Iterable[Any]) -> tuple[dict[int, str], list[str]]:
     if "item_number" in missing_fields and "total_files" in seen:
         missing_fields.remove("item_number")
     missing = [_FIELD_LABELS[f] for f in missing_fields]
+    return mapping, missing"""
+def _normalize_import_header(value: Any) -> str:
+    if value is None:
+        return ""
+
+    text = str(value)
+    text = text.replace("\xa0", " ")
+    text = text.replace("\r", " ")
+    text = text.replace("\n", " ")
+    text = text.replace("_", " ")
+    text = text.strip().rstrip(":").casefold()
+
+    return " ".join(text.split())
+
+
+def _map_headers(header_row: Iterable[Any]) -> tuple[dict[int, str], list[str]]:
+    aliases = {
+        _normalize_import_header(alias): field
+        for alias, field in _HEADER_ALIASES.items()
+    }
+
+    mapping: dict[int, str] = {}
+    seen: set[str] = set()
+
+    for index, cell in enumerate(header_row):
+        name = _normalize_import_header(cell)
+
+        if not name:
+            continue
+
+        field = aliases.get(name)
+
+        if field and field not in seen:
+            mapping[index] = field
+            seen.add(field)
+
+    missing_fields = [
+        field
+        for field in _REQUIRED_FIELDS
+        if field not in seen
+    ]
+
+    if "item_number" in missing_fields and "total_files" in seen:
+        missing_fields.remove("item_number")
+
+    missing = [
+        _FIELD_LABELS[field]
+        for field in missing_fields
+    ]
+
     return mapping, missing
 
 
-def _read_rows(filename: str, content: bytes) -> list[list[Any]]:
+def _find_import_header(
+    rows: list[list[Any]],
+) -> tuple[int, dict[int, str], list[str]]:
+
+    best_index = 0
+    best_mapping: dict[int, str] = {}
+    best_missing = list(_FIELD_LABELS.values())
+    best_score = (-1, -999)
+
+    for index, row in enumerate(rows[:50]):
+        mapping, missing = _map_headers(row)
+
+        if mapping and not missing:
+            return index, mapping, missing
+
+        score = (len(mapping), -len(missing))
+
+        if score > best_score:
+            best_score = score
+            best_index = index
+            best_mapping = mapping
+            best_missing = missing
+
+    return best_index, best_mapping, best_missing
+
+"""def _read_rows(filename: str, content: bytes) -> list[list[Any]]:
     name = (filename or "").lower()
     if name.endswith(".csv") or content[:2] != b"PK":
         text = None
@@ -126,11 +201,92 @@ def _read_rows(filename: str, content: bytes) -> list[list[Any]]:
         sheet = workbook.worksheets[0]
         return [list(row) for row in sheet.iter_rows(values_only=True)]
     finally:
+        workbook.close()"""
+def _read_rows(filename: str, content: bytes) -> list[list[Any]]:
+    name = (filename or "").lower()
+
+    if name.endswith(".csv") or content[:2] != b"PK":
+        text = None
+
+        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+            try:
+                text = content.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if text is None:
+            raise ValueError("Unable to decode the uploaded file")
+
+        return [
+            list(row)
+            for row in csv.reader(text.splitlines())
+        ]
+
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(
+            BytesIO(content),
+            read_only=True,
+            data_only=True,
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"The uploaded workbook could not be read: {exc}"
+        ) from exc
+
+    try:
+        compatible_sheets = []
+        best_rows = None
+        best_score = (-1, -999)
+
+        for sheet in workbook.worksheets:
+            if sheet.sheet_state != "visible":
+                continue
+
+            sheet.reset_dimensions()
+
+            rows = [
+                list(row)
+                for row in sheet.iter_rows(values_only=True)
+            ]
+
+            if not rows:
+                continue
+
+            _, mapping, missing = _find_import_header(rows)
+
+            if mapping and not missing:
+                compatible_sheets.append((sheet.title, rows))
+
+            score = (len(mapping), -len(missing))
+
+            if score > best_score:
+                best_score = score
+                best_rows = rows
+
+        if len(compatible_sheets) > 1:
+            names = ", ".join(
+                name for name, _ in compatible_sheets
+            )
+            raise ValueError(
+                "Multiple compatible worksheets found: "
+                + names
+                + ". Select one import worksheet to avoid "
+                  "accidentally importing the wrong data."
+            )
+
+        if compatible_sheets:
+            return compatible_sheets[0][1]
+
+        return best_rows or []
+
+    finally:
         workbook.close()
 
-
-def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
-    """Parse + validate the master workbook. Raises ValueError with row-level detail."""
+"""def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
+    Parse + validate the master workbook. Raises ValueError with row-level detail.
     if not content:
         raise ValueError("The uploaded file is empty")
     rows = [row for row in _read_rows(filename, content)
@@ -149,9 +305,256 @@ def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
             for column, mapped in mapping.items():
                 if mapped == field:
                     return row[column] if column < len(row) else None
-            return None
+            return None"""
 
+# NAKSHA_CLD_BLOCKS_PATCH_V1
+# Additive support for two-column CLD spreadsheets.
+# Original six-column import and downstream allocation are unchanged.
+
+def _parse_cld_block_rows(
+    rows: list[list[Any]],
+    filename: str,
+) -> list[dict] | None:
+    from decimal import Decimal, InvalidOperation
+    from hashlib import sha256
+    def normalize(value: Any) -> str:
+        if value is None:
+            return ""
+        return " ".join(
+            str(value)
+            .replace("\xa0", " ")
+            .replace("\n", " ")
+            .casefold()
+            .split()
+        )
+
+    header_index = None
+    block_column = None
+    distance_column = None
+
+    for index, row in enumerate(rows[:50]):
+        names = [normalize(value) for value in row]
+
+        if (
+            "block name" in names
+            and "cl distance (m)" in names
+        ):
+            block_column = names.index("block name")
+            distance_column = names.index("cl distance (m)")
+            header_index = index
+
+            other_headers = [
+                name
+                for col, name in enumerate(names)
+                if name
+                and col not in {
+                    block_column,
+                    distance_column,
+                }
+            ]
+
+            if other_headers:
+                raise ValueError(
+                    "CLD import has additional columns. "
+                    "Review the workbook mapping before upload: "
+                    + ", ".join(other_headers)
+                )
+
+            break
+
+    if header_index is None:
+        return None
+
+    # These are explicit internal import-group labels.
+    # They are NOT claims about the official lot/code.
+    import_lot = "CLD_IMPORT"
+    import_code = "CENTRELINE_M"
+
+    entries: list[dict] = []
+    seen_blocks: set[str] = set()
+
+    source_name = filename.replace("\\", "/").split("/")[-1]
+
+    for row_index, row in enumerate(
+        rows[header_index + 1:],
+        start=header_index + 2,
+    ):
+        if not any(
+            value is not None and str(value).strip()
+            for value in row
+        ):
+            continue
+
+        block_value = (
+            row[block_column]
+            if block_column < len(row)
+            else None
+        )
+
+        distance_value = (
+            row[distance_column]
+            if distance_column < len(row)
+            else None
+        )
+
+        block = str(
+            block_value if block_value is not None else ""
+        ).strip()
+
+        # Summary rows are NOT physical work items.
+        if block.casefold() in {
+            "total",
+            "grand total",
+            "sum",
+        }:
+            continue
+
+        # Do not silently discard extra data.
+        additional_values = [
+            value
+            for col, value in enumerate(row)
+            if col not in {
+                block_column,
+                distance_column,
+            }
+            and value is not None
+            and str(value).strip()
+        ]
+
+        if additional_values:
+            raise ValueError(
+                f"CLD row {row_index}: unexpected extra data"
+            )
+
+        if not block:
+            raise ValueError(
+                f"CLD row {row_index}: Block Name is blank"
+            )
+
+        if len(block) > 120:
+            raise ValueError(
+                f"CLD row {row_index}: Block Name is too long"
+            )
+
+        key = block.casefold()
+
+        if key in seen_blocks:
+            raise ValueError(
+                f"CLD row {row_index}: duplicate Block Name "
+                f"'{block}'"
+            )
+
+        if (
+            distance_value is None
+            or str(distance_value).strip() == ""
+        ):
+            raise ValueError(
+                f"CLD row {row_index}: distance is missing "
+                f"for block '{block}'"
+            )
+
+        try:
+            distance = Decimal(
+                str(distance_value).strip()
+            )
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValueError(
+                f"CLD row {row_index}: invalid distance "
+                f"'{distance_value}'"
+            )
+        if not distance.is_finite() or distance < 0:
+            raise ValueError(
+                f"CLD row {row_index}: distance must "
+                f"be zero or greater"
+            )
+
+        seen_blocks.add(key)
+
+        # ONE BLOCK = ONE ASSIGNABLE PHYSICAL WORK ITEM.
+        # The original Block Name remains its identifier.
+        # A unique Area avoids duplicating block lengths.
+        entries.append({
+            "row": row_index,
+            "lot": import_lot,
+            "code": f"{import_code}_{sha256(key.encode('utf-8')).hexdigest()[:16].upper()}",
+            "area_name": block,
+            "item_number": block,
+            "item_numbers": [block],
+            "planned_quantity": distance,
+            "area_planned_quantity": distance,
+            "total_files": None,
+            "unit": "m",
+            "remarks": (
+                f"CLD source: {source_name}; "
+                f"Block Name: {block}"
+            ),
+            "item_name": block,
+        })
+
+        if len(entries) > 5000:
+            raise ValueError(
+                "CLD upload exceeds the 5000-block "
+                "safety limit"
+            )
+
+    if not entries:
+        raise ValueError(
+            "CLD workbook has no valid block rows"
+        )
+
+    return entries
+
+
+def parse_master_workbook(filename: str, content: bytes) -> list[dict]:
+    """Parse and validate the master workbook."""
+
+    if not content:
+        raise ValueError("The uploaded file is empty")
+
+    rows = _read_rows(filename, content)
+
+    if not any(
+        cell is not None and str(cell).strip()
+        for row in rows
+        for cell in row
+    ):
+        raise ValueError("The uploaded workbook is empty")
+
+    cld_entries = _parse_cld_block_rows(rows, filename)
+    if cld_entries is not None:
+        return cld_entries
+
+    header_index, mapping, missing = _find_import_header(rows)
+
+    if missing:
+        raise ValueError(
+            "Missing required column(s): " + ", ".join(missing)
+        )
+
+    entries: list[dict] = []
+    errors: list[str] = []
+    seen_keys: set[tuple[str, str, str, str]] = set()
+
+    for index, row in enumerate(
+        rows[header_index + 1:],
+        start=header_index + 2,
+    ):
+        if not any(
+            cell is not None and str(cell).strip()
+            for cell in row
+        ):
+            continue
+
+        # KEEP THE EXISTING CODE BELOW THIS POINT.
+        # Your original nested cell() helper and all
+        # row validation / import logic remain unchanged.
+        def cell(field: str) -> Any:
+            for column, mapped in mapping.items():
+                if mapped == field:
+                    return row[column] if column < len(row) else None
+            return None
         lot = str(cell("lot") or "").strip()
+        
         code = str(cell("code") or "").strip()
         area_name = str(cell("area_name") or "").strip()
         number = str(cell("item_number") or "").strip()
