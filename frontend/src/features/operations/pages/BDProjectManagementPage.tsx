@@ -27,6 +27,9 @@ type Dashboard={projects:Project[];project_managers:PM[];project_managers_by_dep
 type Form={client_id:number;project_code:string;project_name:string;start_date:string;end_date:string;scope_text:string;quantity:string;quantity_unit:string;priority:string;performing_department_code:string;commercial_value:string;currency:string;po_wo_number:string;description:string;attachment_references:string}
 
 export function BDProjectManagementPage(){
+  // NAKSHA_BD_PROJECTS_PAGINATION_V1 - UI-only pagination; BD workflows are unchanged.
+  const BD_PAGE_SIZE = 5;
+  const [bdPage,setBdPage]=useState(1);
   const [data,setData]=useState<Dashboard|null>(null);const [query,setQuery]=useState('');const [financeFilter,setFinanceFilter]=useState('all');const [operationalFilter,setOperationalFilter]=useState('all')
   const [selectedId,setSelectedId]=useState<number|null>(null);const [editing,setEditing]=useState<Form|null>(null);const [pmChoice,setPmChoice]=useState<Record<number,string>>({})
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [loading,setLoading]=useState(true)
@@ -49,6 +52,10 @@ export function BDProjectManagementPage(){
     return () => window.clearTimeout(handle)
   }, [notice])
   const rows=useMemo(()=>filterProjects(data?.projects??[],query,financeFilter,operationalFilter),[data,query,financeFilter,operationalFilter])
+  const bdTotalPages=Math.max(1,Math.ceil(rows.length/BD_PAGE_SIZE))
+  const bdCurrentPage=Math.min(bdPage,bdTotalPages)
+  const bdVisibleRows=rows.slice((bdCurrentPage-1)*BD_PAGE_SIZE,bdCurrentPage*BD_PAGE_SIZE)
+  useEffect(()=>{setBdPage(page=>Math.min(page,bdTotalPages))},[bdTotalPages])
   const selected=data?.projects.find(row=>row.id===selectedId)??null
   function startEdit(row:Project){
     setSelectedId(row.id);setDocs([]);setRev1(null);setCommercial({...emptyCommercialForm(),scope_description:row.scope_text||'',currency_code:row.currency||'INR',estimated_amount:row.commercial_value==null?'':String(row.commercial_value),po_wo_reference:row.po_wo_number||''})
@@ -80,10 +87,18 @@ export function BDProjectManagementPage(){
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
     {loading&&<section className="operations-panel"><div className="operations-empty"><span className="spinner"/> Loading projects…</div></section>}
     <section className="operations-panel">
-      <ProjectRegisterFilters query={query} onQueryChange={setQuery} financeFilter={financeFilter} onFinanceFilterChange={setFinanceFilter} operationalFilter={operationalFilter} onOperationalFilterChange={setOperationalFilter}/>
-      <ProjectRegisterTable rows={rows} onDetails={row=>{setSelectedId(row.id);setEditing(null)}}
+      <ProjectRegisterFilters query={query} onQueryChange={value=>{setQuery(value);setBdPage(1)}} financeFilter={financeFilter} onFinanceFilterChange={value=>{setFinanceFilter(value);setBdPage(1)}} operationalFilter={operationalFilter} onOperationalFilterChange={value=>{setOperationalFilter(value);setBdPage(1)}}/>
+      <ProjectRegisterTable rows={bdVisibleRows} onDetails={row=>{setSelectedId(row.id);setEditing(null)}}
         renderProjectManager={row=>{if(!['finance_approved','pm_assigned'].includes(row.workflow_status))return null;const candidates=(data?.project_managers_by_department?.[row.performing_department_code||'ortho'])??data?.project_managers??[];return <div className="operations-actions"><select value={pmChoice[row.id]??(row.project_manager_id?String(row.project_manager_id):'')} onChange={e=>setPmChoice({...pmChoice,[row.id]:e.target.value})}><option value="">Select {row.performing_department_label||'Ortho'} PM</option>{candidates.map(pm=><option key={pm.id} value={pm.id}>{pm.employee_id?`${pm.employee_id} · `:''}{pm.full_name}</option>)}</select><button className="operations-button secondary" disabled={busy} onClick={()=>void assignPm(row)}><UserRoundCheck size={14}/>{busy?'Assigning…':'Assign'}</button></div>}}
         renderActions={row=>{if(!['draft','finance_returned'].includes(row.workflow_status))return null;return <><button className="operations-button secondary" onClick={()=>startEdit(row)}><Pencil size={14}/> Edit</button><button className="operations-button" disabled={busy} onClick={()=>void submit(row)}><Send size={14}/>{busy?'Submitting…':'Submit'}</button></>}}/>
+      {rows.length > 0 && <nav aria-label="BD project pagination" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginTop:16}}>
+        <span style={{fontSize:13}}>Showing {(bdCurrentPage-1)*BD_PAGE_SIZE+1}-{Math.min(bdCurrentPage*BD_PAGE_SIZE,rows.length)} of {rows.length} projects</span>
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <button type="button" className="operations-button secondary" disabled={bdCurrentPage===1} onClick={()=>setBdPage(page=>Math.max(1,page-1))}>Previous</button>
+          <span aria-live="polite" style={{fontSize:13,whiteSpace:'nowrap'}}>Page {bdCurrentPage} of {bdTotalPages}</span>
+          <button type="button" className="operations-button secondary" disabled={bdCurrentPage>=bdTotalPages} onClick={()=>setBdPage(page=>Math.min(bdTotalPages,page+1))}>Next</button>
+        </div>
+      </nav>}
     </section>
 
     {selected&&<ProjectDetailsPanel project={selected}/>}

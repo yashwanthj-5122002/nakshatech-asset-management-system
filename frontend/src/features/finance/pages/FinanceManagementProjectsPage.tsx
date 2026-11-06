@@ -27,6 +27,12 @@ type ManagementProject = {
   start_date: string; end_date: string; created_at: string
   project_value: number | null; currency: string; source_approved: boolean
 }
+type AdditionalProjectRequest = {
+  id: number; management_client_id: number; client_code: string; client_name: string
+  source_person_name: string; project_name: string; scope_text: string
+  expected_start_date: string | null; remarks: string | null; status: 'PENDING' | 'CREATED'
+  created_project_id: number | null; created_project_code: string | null; created_at: string
+}
 type Register = { clients: ManagementClient[]; projects: ManagementProject[] }
 type PM = { id: number; full_name: string; employee_id?: string | null }
 type Options = { departments: Array<{ code: string; label: string }>; project_managers_by_department: Record<string, PM[]> }
@@ -108,7 +114,7 @@ type ProjectForm = {
   end_date: string; performing_department_code: string; priority: string
   quantity: string; quantity_unit: string; description: string; project_manager_id: string
 }
-type MainTab = 'projects' | 'clients' | 'invoices' | 'payments' | 'tracking'
+type MainTab = 'projects' | 'clients' | 'invoices' | 'payments' | 'tracking' | 'requests'
 type DetailTab = 'overview' | 'workflow' | 'billing'
 
 const emptyProject = (): ProjectForm => ({
@@ -195,6 +201,10 @@ export function FinanceManagementProjectsPage() {
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [additionalRequests, setAdditionalRequests] = useState<AdditionalProjectRequest[]>([])
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
+  const [requestSearch, setRequestSearch] = useState('')
+  const [requestFetchError, setRequestFetchError] = useState('')
   const [project, setProject] = useState<ProjectForm>(emptyProject)
   const [commercial, setCommercial] = useState<CommercialFormState>(emptyCommercialForm)
   const [pmChoice, setPmChoice] = useState<Record<number, string>>({})
@@ -204,6 +214,8 @@ export function FinanceManagementProjectsPage() {
   const [departmentFilter, setDepartmentFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
+  const [clientPage, setClientPage] = useState(1)
+  const [projectPage, setProjectPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -237,6 +249,20 @@ export function FinanceManagementProjectsPage() {
       }).catch(() => undefined)
     }, 15000)
     return () => window.clearInterval(timer)
+  }, [])
+
+  // The independent Finance request queue refreshes even when the normal project tab is open.
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void apiFetch<AdditionalProjectRequest[]>('/finance/management-projects/additional-project-requests')
+        .then(rows => { if (alive) { setAdditionalRequests(rows); setRequestFetchError('') } })
+        .catch(err => { if (alive) setRequestFetchError(err instanceof Error ? err.message : 'Request list unavailable') })
+    }
+    refresh()
+    const interval = window.setInterval(refresh, 5000)
+    return () => { alive = false; window.clearInterval(interval) }
   }, [])
 
   // File-level tracking is a separate read-only Finance endpoint. Do not let a
@@ -315,10 +341,29 @@ export function FinanceManagementProjectsPage() {
     return (!term || [row.client_code, row.client_name, row.source_person_name].some(value => value.toLowerCase().includes(term))) &&
       (!sourceFilter || row.source_person_name === sourceFilter)
   }), [data.clients, search, sourceFilter])
+  // NAKSHA_FINANCE_PAGINATION_5_PER_PAGE_V1: restrict ONLY Projects/Clients table rows, not the source datasets.
+  const financePageSize = 5
+  const clientPageCount = Math.max(1, Math.ceil(filteredClients.length / financePageSize))
+  const projectPageCount = Math.max(1, Math.ceil(filteredProjects.length / financePageSize))
+  const currentClientPage = Math.min(clientPage, clientPageCount)
+  const currentProjectPage = Math.min(projectPage, projectPageCount)
+  const paginatedClients = filteredClients.slice((currentClientPage - 1) * financePageSize, currentClientPage * financePageSize)
+  const paginatedProjects = filteredProjects.slice((currentProjectPage - 1) * financePageSize, currentProjectPage * financePageSize)
+  // Search and filters still operate on ALL clients/projects; restart from page 1 on filter changes.
+  useEffect(() => { setClientPage(1); setProjectPage(1) }, [search, departmentFilter, statusFilter, sourceFilter])
+  // Clamp each page if live refresh removes records.
+  useEffect(() => { if (clientPage > clientPageCount) setClientPage(clientPageCount) }, [clientPage, clientPageCount])
+  useEffect(() => { if (projectPage > projectPageCount) setProjectPage(projectPageCount) }, [projectPage, projectPageCount])
+  const paginationIsClients = activeTab === 'clients'
+  const paginationCount = paginationIsClients ? filteredClients.length : filteredProjects.length
+  const paginationPage = paginationIsClients ? currentClientPage : currentProjectPage
+  const paginationPages = paginationIsClients ? clientPageCount : projectPageCount
+  const paginationFirst = paginationCount === 0 ? 0 : (paginationPage - 1) * financePageSize + 1
+  const paginationLast = Math.min(paginationPage * financePageSize, paginationCount)
   const activeProjects = data.projects.filter(row => !['CLOSED', 'COMPLETED'].includes((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())).length
   const total = summary?.totals ?? { ...EMPTY_FINANCIAL, collection_rate: 0 }
 
-  function openCreate(client?: ManagementClient) {
+  function openCreate(client?: ManagementClient, requestRow?: AdditionalProjectRequest) {
     const chosen = client ?? data.clients.find(item => item.is_active)
     if (!chosen) {
       setActiveTab('clients')
@@ -326,7 +371,13 @@ export function FinanceManagementProjectsPage() {
       return
     }
     setSelectedClientId(chosen.id)
-    setProject({ ...emptyProject(), scope_text: chosen.work_description || '' })
+    setSelectedRequestId(requestRow?.id ?? null)
+    setProject({ ...emptyProject(),
+      project_name: requestRow?.project_name ?? '',
+      scope_text: requestRow?.scope_text ?? chosen.work_description ?? '',
+      start_date: requestRow?.expected_start_date ?? '',
+      description: requestRow?.remarks ?? '',
+    })
     setCommercial(emptyCommercialForm())
     setShowCreate(true)
     setError(''); setNotice('')
@@ -349,6 +400,7 @@ export function FinanceManagementProjectsPage() {
       const result = await apiFetch<{ project_id: number; project_code: string }>('/finance/management-projects', {
         method: 'POST', body: JSON.stringify({
           management_client_id: selectedClient.id,
+          additional_request_id: selectedRequestId,
           project_code: project.project_code, project_name: project.project_name,
           scope_text: project.scope_text, start_date: project.start_date, end_date: project.end_date,
           performing_department_code: project.performing_department_code, priority: project.priority,
@@ -359,6 +411,8 @@ export function FinanceManagementProjectsPage() {
         }),
       })
       setShowCreate(false)
+      setSelectedRequestId(null)
+      void apiFetch<AdditionalProjectRequest[]>('/finance/management-projects/additional-project-requests').then(setAdditionalRequests).catch(() => undefined)
       setSelectedProjectId(result.project_id)
       setDetailTab('overview')
       setActiveTab('projects')
@@ -389,6 +443,7 @@ export function FinanceManagementProjectsPage() {
     { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'payments', label: 'Payments', icon: Wallet },
     { id: 'tracking', label: 'Tracking', icon: Activity },
+    { id: 'requests', label: 'Project Requests', icon: FilePlus2 },
   ]
 
   return <div className="operations-page mp-page">
@@ -421,9 +476,26 @@ export function FinanceManagementProjectsPage() {
     {total.missing_fx_rows > 0 && <p className="mp-fx-note">Some foreign-currency invoice/payment rows have no recorded INR FX value ({total.missing_fx_rows}). INR totals exclude those amounts; see the existing Finance ledger for reconciliation.</p>}
 
     <nav className="mp-tabs" aria-label="Management Projects sections">
-      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeTab === id ? 'mp-tab active' : 'mp-tab'} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { setActiveTab(id); setSelectedProjectId(null) }}><Icon size={16}/>{label}</button>)}
+      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeTab === id ? 'mp-tab active' : 'mp-tab'} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { setActiveTab(id); setSelectedProjectId(null) }}><Icon size={16}/>{label}{id === 'requests' && additionalRequests.filter(r => r.status === 'PENDING').length > 0 && <span style={{ marginLeft: 4, background: '#fcebea', color: '#a23e3e', borderRadius: 9, padding: '2px 6px', fontSize: 11 }}>{additionalRequests.filter(r => r.status === 'PENDING').length}</span>}</button>)}
     </nav>
 
+    {activeTab === 'requests' && <section className="mp-panel" aria-label="Existing client project requests">
+      <div className="mp-panel-heading"><h2>Existing Client – Project Requests</h2><span>{additionalRequests.filter(r => r.status === 'PENDING').length} awaiting Finance</span></div>
+      <p style={{ margin: '8px 0 12px', color: '#46647c', fontSize: 13 }}>When Vinod Sir or Chethan Sir requests another project for an existing client, it appears here. Use the normal Create Project form to complete it.</p>
+      {requestFetchError && <p role="alert" style={{ color: '#a23e3e' }}>{requestFetchError}</p>}
+      <label className="mp-search" style={{ display: 'block', marginBottom: 12 }}><Search size={17}/><input aria-label="Search project requests" placeholder="Search client, project or Management source…" value={requestSearch} onChange={e => setRequestSearch(e.target.value)}/></label>
+      <div className="mp-table-scroll"><table className="mp-table"><thead><tr><th>Client</th><th>Requested Project</th><th>Management Source</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody>
+        {additionalRequests.filter(row => !requestSearch.trim() || [row.client_code, row.client_name, row.project_name, row.source_person_name].some(value => (value || '').toLowerCase().includes(requestSearch.trim().toLowerCase()))).sort((a,b) => (a.status === 'PENDING' ? 0 : 1) - (b.status === 'PENDING' ? 0 : 1)).map(row =>
+          <tr key={row.id}><td><strong>{row.client_code}</strong><small>{row.client_name}</small></td>
+            <td><strong>{row.project_name}</strong><small>{row.scope_text}</small>{row.remarks && <small>Notes: {row.remarks}</small>}</td>
+            <td>{row.source_person_name}</td><td>{row.created_at ? new Date(row.created_at).toLocaleDateString('en-IN') : '—'}</td>
+            <td><span style={{ display: 'inline-block', fontSize: 12, fontWeight: 500, borderRadius: 8, padding: '6px 9px', background: row.status === 'CREATED' ? '#e8f6eb' : '#fcebea', border: `1px solid ${row.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}`, color: row.status === 'CREATED' ? '#166534' : '#a23e3e' }}>{row.status === 'CREATED' ? `Project Created: ${row.created_project_code || ''}` : 'Awaiting Finance'}</span></td>
+            <td>{row.status === 'PENDING' ? <button className="mp-button mp-button-primary mp-button-small" type="button" disabled={!clientById.get(row.management_client_id)?.is_active} onClick={() => openCreate(clientById.get(row.management_client_id), row)}><Plus size={14}/> Create Project</button> : row.created_project_code}</td></tr>
+        )}</tbody></table></div>
+      {additionalRequests.length === 0 && !requestFetchError && <div className="mp-empty">No additional project requests yet.</div>}
+    </section>}
+
+    {activeTab !== 'requests' && <>
     <div className="mp-toolbar">
       <label className="mp-search"><Search size={17}/><input aria-label="Search management projects or clients" placeholder="Search by project, client or code…" value={search} onChange={e => setSearch(e.target.value)}/></label>
       {activeTab !== 'clients' && <select aria-label="Department filter" value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)}><option value="">All Departments</option>{options.departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}</select>}
@@ -434,12 +506,12 @@ export function FinanceManagementProjectsPage() {
     </div>
 
     <section className="mp-panel" aria-label={`${activeTab} register`}>
-      <div className="mp-panel-heading"><h2>{({ projects: 'Management Project Register', clients: 'Registered Management Clients', invoices: 'Management Project Invoices', payments: 'Payments & Collections', tracking: 'Project Tracking' })[activeTab]}</h2><span>{activeTab === 'clients' ? filteredClients.length : filteredProjects.length} records</span></div>
+      <div className="mp-panel-heading"><h2>{({ projects: 'Management Project Register', clients: 'Registered Management Clients', invoices: 'Management Project Invoices', payments: 'Payments & Collections', tracking: 'Project Tracking', requests: 'Project Requests' })[activeTab]}</h2><span>{activeTab === 'clients' ? filteredClients.length : filteredProjects.length} records</span></div>
       <div className="mp-table-scroll">
         {activeTab === 'clients' ? <table className="mp-table"><thead><tr><th>Client Code</th><th>Client</th><th>Source</th><th>Projects</th><th>Action</th></tr></thead><tbody>
-          {filteredClients.map(client => <tr key={client.id}><td className="mp-code">{client.client_code}</td><td><strong>{client.client_name}</strong><small>{client.contact_person_name}</small></td><td><span className="mp-source">{client.source_person_name}</span></td><td>{data.projects.filter(p => p.management_client_id === client.id).length}</td><td><button type="button" className="mp-button mp-button-primary mp-button-small" disabled={!client.is_active} onClick={() => openCreate(client)}><Plus size={14}/> Create Project</button></td></tr>)}
+          {paginatedClients.map(client => <tr key={client.id}><td className="mp-code">{client.client_code}</td><td><strong>{client.client_name}</strong><small>{client.contact_person_name}</small></td><td><span className="mp-source">{client.source_person_name}</span></td><td>{data.projects.filter(p => p.management_client_id === client.id).length}</td><td><button type="button" className="mp-button mp-button-primary mp-button-small" disabled={!client.is_active} onClick={() => openCreate(client)}><Plus size={14}/> Create Project</button></td></tr>)}
         </tbody></table> : <table className="mp-table"><thead><tr><th>Project Code</th><th>Client / Source</th><th>Project Name</th><th>Department</th>{activeTab === 'payments' || activeTab === 'invoices' ? <><th>Invoiced (INR)</th><th>Received (INR)</th><th>Outstanding (INR)</th></> : <><th>Project Value</th><th>Status</th><th>Progress</th></>}<th>Action</th></tr></thead><tbody>
-          {filteredProjects.filter(row => activeTab !== 'invoices' || (summary?.projects[String(row.id)]?.invoice_count ?? 0) > 0 || INVOICE_STATES.has((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())).map(row => {
+          {(activeTab === 'projects' ? paginatedProjects : filteredProjects).filter(row => activeTab !== 'invoices' || (summary?.projects[String(row.id)]?.invoice_count ?? 0) > 0 || INVOICE_STATES.has((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())).map(row => {
             const client = clientById.get(row.management_client_id)
             const life = lifecycleById.get(row.id)
             const status = life?.workflow_status ?? row.workflow_status
@@ -457,10 +529,20 @@ export function FinanceManagementProjectsPage() {
           })}
         </tbody></table>}
       </div>
+      {(activeTab === 'projects' || activeTab === 'clients') && <nav aria-label={`${paginationIsClients ? 'Clients' : 'Projects'} pagination`} className="mp-finance-pagination" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 12 }}>
+        <span aria-live="polite">Showing {paginationFirst}–{paginationLast} of {paginationCount} {paginationIsClients ? 'clients' : 'projects'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" className="mp-button mp-button-muted" disabled={paginationPage <= 1} onClick={() => paginationIsClients ? setClientPage(page => Math.max(1, page - 1)) : setProjectPage(page => Math.max(1, page - 1))}>Previous</button>
+          <span style={{ whiteSpace: 'nowrap' }}>Page {paginationPage} of {paginationPages}</span>
+          <button type="button" className="mp-button mp-button-muted" disabled={paginationPage >= paginationPages} onClick={() => paginationIsClients ? setClientPage(page => Math.min(clientPageCount, page + 1)) : setProjectPage(page => Math.min(projectPageCount, page + 1))}>Next</button>
+        </div>
+      </nav>}
       {activeTab === 'clients' && filteredClients.length === 0 && <div className="mp-empty">No management clients match these filters. Vinod Sir and Chethan Sir register clients from their existing Client Register.</div>}
       {activeTab !== 'clients' && filteredProjects.length === 0 && <div className="mp-empty">No management projects match these filters. Select an active management client to create one.</div>}
       {activeTab === 'invoices' && filteredProjects.length > 0 && !filteredProjects.some(row => (summary?.projects[String(row.id)]?.invoice_count ?? 0) > 0 || INVOICE_STATES.has((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())) && <div className="mp-empty">No management project invoices yet. Invoicing becomes available once a project reaches Ready For Billing.</div>}
     </section>
+
+    </>}
 
     {selectedProject && <section className="mp-panel mp-project-detail" aria-label="Selected management project">
       <div className="mp-detail-heading"><div><span className="mp-eyebrow">MANAGEMENT PROJECT · {selectedProject.source_person_name}</span><h2>{selectedProject.project_code} — {selectedProject.project_name}</h2><p>{clientById.get(selectedProject.management_client_id)?.client_name} · {selectedProject.department_label} · {managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</p></div><button type="button" className="mp-button mp-button-muted" onClick={() => setSelectedProjectId(null)}><X size={15}/> Close</button></div>
@@ -493,7 +575,7 @@ export function FinanceManagementProjectsPage() {
     {showCreate && selectedClient && <div className="mp-overlay" role="presentation"><aside className="mp-create-dialog" role="dialog" aria-modal="true" aria-label="Create Management Project">
       <div className="mp-dialog-heading"><div><span className="mp-eyebrow">FINANCE DEPARTMENT</span><h2>Create Management Project</h2><p>Choose a management client, assign department, then save.</p></div><button type="button" className="mp-icon-button" aria-label="Close project form" disabled={busy} onClick={() => setShowCreate(false)}><X size={19}/></button></div>
       <form className="mp-dialog-body" onSubmit={event => void createProject(event)}>
-        <div className="mp-form-section"><h3>1. Client Information</h3><label className="mp-field"><span>Management Client *</span><select value={selectedClientId ?? ''} onChange={e => { const id = Number(e.target.value); const chosen = data.clients.find(c => c.id === id); setSelectedClientId(id); if (chosen) setProject(prev => ({ ...prev, scope_text: chosen.work_description || prev.scope_text })) }}>{data.clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}</select></label><div className="mp-readonly-pair"><div><span>Client Source</span><strong>{selectedClient.source_person_name}</strong></div><div><span>Client Code</span><strong>{selectedClient.client_code}</strong></div></div></div>
+        <div className="mp-form-section"><h3>1. Client Information</h3><label className="mp-field"><span>Management Client *</span><select value={selectedClientId ?? ''} disabled={selectedRequestId !== null} onChange={e => { const id = Number(e.target.value); const chosen = data.clients.find(c => c.id === id); setSelectedClientId(id); if (chosen) setProject(prev => ({ ...prev, scope_text: chosen.work_description || prev.scope_text })) }}>{data.clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}</select></label><div className="mp-readonly-pair"><div><span>Client Source</span><strong>{selectedClient.source_person_name}</strong></div><div><span>Client Code</span><strong>{selectedClient.client_code}</strong></div></div></div>
         <div className="mp-form-section"><h3>2. Project Details</h3><div className="mp-form-grid"><label className="mp-field"><span>Project Code *</span><input required minLength={2} value={project.project_code} onChange={e => setProject({ ...project, project_code: e.target.value.toUpperCase() })} placeholder="MGT-PRJ-001"/></label><label className="mp-field"><span>Project Name *</span><input required minLength={2} value={project.project_name} onChange={e => setProject({ ...project, project_name: e.target.value })} placeholder="Enter project name"/></label><label className="mp-field mp-full"><span>Project Description / Scope of Work *</span><textarea required minLength={2} value={project.scope_text} onChange={e => setProject({ ...project, scope_text: e.target.value })} placeholder="Describe deliverables"/></label><label className="mp-field"><span>Start Date *</span><input required type="date" value={project.start_date} onChange={e => setProject({ ...project, start_date: e.target.value })}/></label><label className="mp-field"><span>Expected Delivery *</span><input required type="date" min={project.start_date || undefined} value={project.end_date} onChange={e => setProject({ ...project, end_date: e.target.value })}/></label><label className="mp-field mp-full"><span>Finance Notes</span><textarea value={project.description} onChange={e => setProject({ ...project, description: e.target.value })}/></label></div></div>
         <div className="mp-form-section"><h3>3. Department Assignment · Same as BD</h3><div className="mp-form-grid"><label className="mp-field"><span>Assign Department *</span><select required value={project.performing_department_code} onChange={e => setProject({ ...project, performing_department_code: e.target.value, project_manager_id: '' })}><option value="">Select Department</option>{options.departments.map(dept => <option key={dept.code} value={dept.code}>{dept.label}</option>)}</select></label><label className="mp-field"><span>Department Project Manager</span><select value={project.project_manager_id} onChange={e => setProject({ ...project, project_manager_id: e.target.value })} disabled={!project.performing_department_code}><option value="">Assign after creation</option>{pmOptions.map(pm => <option key={pm.id} value={pm.id}>{pm.employee_id ? `${pm.employee_id} · ` : ''}{pm.full_name}</option>)}</select></label><label className="mp-field"><span>Priority</span><select value={project.priority} onChange={e => setProject({ ...project, priority: e.target.value })}><option value="low">Low</option><option value="medium">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label className="mp-field"><span>Planned Quantity</span><input type="number" min="0" step="0.001" value={project.quantity} onChange={e => setProject({ ...project, quantity: e.target.value })}/></label><label className="mp-field"><span>Quantity Unit</span><input value={project.quantity_unit} onChange={e => setProject({ ...project, quantity_unit: e.target.value })}/></label></div><p className="mp-form-help">The existing BD department/PM assignment and notification mechanism is reused. Finance approves the project on creation.</p></div>
         <div className="mp-form-section"><h3>4. Commercial Information</h3><div className="mp-commercial"><CommercialDetailsSection form={commercial} onChange={setCommercial} currencies={currencies} disabled={busy}/></div></div>

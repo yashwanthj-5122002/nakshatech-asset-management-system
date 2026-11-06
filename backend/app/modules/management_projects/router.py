@@ -20,8 +20,10 @@ from app.modules.employee_portal.service import record_audit
 from app.modules.finance.models import FinanceClient, FinanceProject
 from app.modules.finance.schemas import FinanceClientCreateRequest, FinanceClientProjectCreateRequest
 from app.modules.finance.service import create_client_project, create_finance_client
-from app.modules.management_clients.models import ManagementClientIntake
+from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
 from app.modules.management_projects.models import ManagementProjectLink
+from app.modules.notifications.service import create_global_notification
+from app.modules.notifications.models import GlobalNotification
 from app.modules.operations.models import (
     OrthoWorkPackage, ProjectWorkflow, ProjectWorkflowEvent,
     WorkPackageItem, WorkPackageItemActivity,
@@ -47,6 +49,7 @@ def _finance_only(auth: CurrentAuth) -> None:
 
 class ManagementProjectCreate(BaseModel):
     management_client_id: int = Field(gt=0)
+    additional_request_id: int | None = Field(default=None, gt=0)
     project_code: str = Field(min_length=2, max_length=80)
     project_name: str = Field(min_length=2, max_length=255)
     start_date: date
@@ -476,6 +479,15 @@ def create_management_project(
         intake = db.get(ManagementClientIntake, payload.management_client_id)
         if intake is None or not intake.is_active:
             raise ValueError("Select an active management-registered client")
+        request_row = None
+        if payload.additional_request_id is not None:
+            request_row = db.scalar(select(ManagementAdditionalProjectRequest).where(
+                ManagementAdditionalProjectRequest.id == payload.additional_request_id,
+            ).with_for_update())
+            if request_row is None or request_row.management_client_id != intake.id:
+                raise HTTPException(status_code=409, detail="Project request does not belong to this client")
+            if request_row.status != "PENDING" or request_row.created_project_id is not None:
+                raise HTTPException(status_code=409, detail="Project request was already processed")
         client = _finance_client_for_intake(db, intake, auth)
         project = create_client_project(db, client=client, actor=auth.user, payload=FinanceClientProjectCreateRequest(
             project_code=payload.project_code, project_name=payload.project_name,
@@ -525,12 +537,40 @@ def create_management_project(
                          "management_client_id": intake.id, "source_person_name": intake.source_person_name,
                          "department": payload.performing_department_code,
                          "project_manager_id": payload.project_manager_id,
+                         "additional_request_id": request_row.id if request_row else None,
                      })
+        if request_row is not None:
+            request_row.status = "CREATED"
+            request_row.created_project_id = project.id
+            request_row.completed_by_id = auth.user.id
+            request_row.completed_at = utc_now()
+            # Resolve the specific Finance action prompt when its request is fulfilled.
+            for note in db.scalars(select(GlobalNotification).where(
+                GlobalNotification.dedupe_key == f"mgmt_add_project_request_{request_row.id}",
+                GlobalNotification.resolved_at.is_(None),
+            )).all():
+                note.resolved_at = utc_now()
+                note.resolved_by_id = auth.user.id
+                note.resolution_note = "Project created"
+                note.requires_action = False
+            record_audit(db, event_type="MANAGEMENT_ADDITIONAL_PROJECT_CREATED", request=request,
+                user=auth.user, module="finance", target_type="management_additional_project_request",
+                target_id=str(request_row.id), details={"project_id": project.id, "client_id": intake.id})
+            create_global_notification(db,
+                event_type="management.additional_project.created", category="system",
+                title="Requested Management project has been created",
+                message=f"Finance created {project.project_code} for {intake.client_code} ({request_row.project_name}).",
+                target_url="/management/project-management", recipient_user_ids=[request_row.requested_by_id],
+                dedupe_key=f"mgmt_add_project_created_{request_row.id}", severity="success",
+                metadata={"request_id": request_row.id, "project_id": project.id})
         db.commit()
         if payload.project_manager_id is not None:
             email_project_manager_assignment(db, project_id=project.id, pm_id=payload.project_manager_id)
         return {"project_id": project.id, "project_code": project.project_code,
                 "workflow_status": workflow.status}
+    except HTTPException:
+        db.rollback()
+        raise
     except (ValueError, PermissionError) as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -567,3 +607,33 @@ def assign_management_pm(
     except Exception:
         db.rollback()
         raise
+
+
+# NAKSHA_MGMT_NEW_PROJECT_REQUEST_V1 - Finance-only pending queue.
+@router.get("/additional-project-requests")
+def list_finance_additional_project_requests(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    rows = db.scalars(select(ManagementAdditionalProjectRequest).order_by(
+        ManagementAdditionalProjectRequest.created_at.desc(),
+        ManagementAdditionalProjectRequest.id.desc(),
+    )).all()
+    result = []
+    for row in rows:
+        intake = db.get(ManagementClientIntake, row.management_client_id)
+        project = db.get(FinanceProject, row.created_project_id) if row.created_project_id else None
+        result.append({
+            "id": row.id, "management_client_id": row.management_client_id,
+            "client_code": intake.client_code if intake else "",
+            "client_name": intake.client_name if intake else "",
+            "source_person_name": intake.source_person_name if intake else "",
+            "project_name": row.project_name, "scope_text": row.scope_text,
+            "expected_start_date": row.expected_start_date.date().isoformat() if row.expected_start_date else None,
+            "remarks": row.remarks, "status": row.status,
+            "created_project_id": row.created_project_id,
+            "created_project_code": project.project_code if project else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        })
+    return result

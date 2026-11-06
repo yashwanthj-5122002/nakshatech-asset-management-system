@@ -32,3 +32,23 @@ class ManagementClientIntake(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class ManagementAdditionalProjectRequest(Base):
+    """Persistent source-owned request. No duplicate client or project is created here."""
+
+    __tablename__ = "management_additional_project_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    management_client_id: Mapped[int] = mapped_column(ForeignKey("management_client_intakes.id", ondelete="RESTRICT"), index=True)
+    requested_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    project_name: Mapped[str] = mapped_column(String(255))
+    scope_text: Mapped[str] = mapped_column(Text)
+    expected_start_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
+    created_project_id: Mapped[int | None] = mapped_column(ForeignKey("finance_projects.id", ondelete="RESTRICT"), nullable=True, unique=True)
+    completed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
