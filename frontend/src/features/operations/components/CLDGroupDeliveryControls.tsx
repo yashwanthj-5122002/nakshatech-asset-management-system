@@ -21,6 +21,13 @@ export function CLDGroupDeliveryControls({ projectId, sourceName, items, onChang
     item.qa_status === 'passed' && item.ready_for_delivery !== true &&
     item.delivery_status !== 'delivered')
   const count = eligible.length
+  // Final delivery is separate from readiness; count only files with QA passed,
+  // explicit readiness confirmed, and no prior delivery.
+  const deliverable = items.filter(item => item.is_active !== false &&
+    item.production_status === 'completed' && item.qc_status === 'passed' &&
+    item.qa_status === 'passed' && item.ready_for_delivery === true &&
+    item.delivery_status !== 'delivered')
+  const deliveryCount = deliverable.length
 
   async function markAllReady() {
     if (!count || busy) return
@@ -38,6 +45,26 @@ export function CLDGroupDeliveryControls({ projectId, sourceName, items, onChang
     } finally { setBusy(false) }
   }
 
+  async function markAllDelivered() {
+    if (!deliveryCount || busy) return
+    if (!window.confirm(`Mark all ${deliveryCount} ready-confirmed file(s) Delivered for this CLD source? This records FINAL delivery.`)) return
+    const remarks = window.prompt('Final delivery remarks / reference (optional):', '')
+    if (remarks === null) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const result = await apiFetch<{ count: number }>(
+        `/operations/workflow/ortho/projects/${projectId}/cld-deliver`,
+        { method: 'POST', body: JSON.stringify({
+          item_ids: deliverable.map(item => item.work_package_item_id), remarks: remarks || null,
+        }) },
+      )
+      setNotice(`${result.count} MARCENA file(s) marked Delivered.`)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to mark CLD files Delivered')
+    } finally { setBusy(false) }
+  }
+
   return <section className="cld-block-review" aria-label="Team Lead CLD bulk Ready for Delivery">
     <div className="cld-block-heading">
       <span className="operations-kicker">TEAM LEAD / PM · CLD IMPORT</span>
@@ -49,7 +76,11 @@ export function CLDGroupDeliveryControls({ projectId, sourceName, items, onChang
         onClick={() => void markAllReady()}>
         {busy ? 'Confirming…' : `Mark All ${count} Ready for Delivery`}
       </button>
-      <small className="cld-review-note">Existing individual Mark Ready for Delivery buttons remain below. Delivery itself is a separate step.</small>
+      <button type="button" className="operations-button success" disabled={busy || deliveryCount === 0}
+        onClick={() => void markAllDelivered()}>
+        {busy ? 'Delivering…' : `Mark All ${deliveryCount} Delivered`}
+      </button>
+      <small className="cld-review-note">Ready confirmation and final delivery are separate steps. Individual delivery buttons below remain unchanged.</small>
     </div>
     {error && <div className="operations-alert error" role="alert">{error}</div>}
     {notice && <div className="operations-alert success" role="status">{notice}</div>}

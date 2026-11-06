@@ -1385,3 +1385,39 @@ def workflow_cld_ready_for_delivery(
         db.rollback()
         raise _error(exc) from exc
     return result
+
+
+# Add-only final delivery action beside the existing TL/PM CLD group readiness
+# action. Original per-package and per-file delivery routes are unchanged.
+class CLDGroupFinalDeliveryRequest(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=512)
+    remarks: str | None = Field(default=None, max_length=5000)
+
+
+@router.post("/ortho/projects/{project_id}/cld-deliver")
+def workflow_cld_group_deliver(
+    project_id: int,
+    payload: CLDGroupFinalDeliveryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = cld_bulk_delivery.mark_cld_group_delivered(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            item_ids=payload.item_ids, remarks=payload.remarks,
+        )
+        for package_id in result["package_ids"]:
+            _audit(request, db, auth, "WORKFLOW_DELIVERED", "ortho_work_package", package_id,
+                   {"remarks": payload.remarks, "cld_source": result["source"]})
+        _audit(request, db, auth, "WORKFLOW_CLD_GROUP_DELIVERED", "finance_project", project_id,
+               {"item_ids": result["item_ids"], "work_package_ids": result["package_ids"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    for package_id in result["package_ids"]:
+        email_delivery_completion(db, work_package_id=package_id)
+    return result

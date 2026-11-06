@@ -351,7 +351,7 @@ export function OrthoDashboardPage(){
                 {delivered&&<span>Delivered {pkg.delivered_at?pkg.delivered_at.slice(0,16).replace('T',' '):''}</span>}
                 {/* Ready is an explicit step; once confirmed it is replaced by the explicit Deliver action. */}
                 {eligible&&!confirmed&&!delivered&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>action(`/operations/workflow/ortho/work-packages/${pkg.id}/ready-for-delivery`,undefined,'Ready for Delivery confirmed. The Project Manager was notified.')}>Mark Ready for Delivery</button>}
-                {confirmed&&!delivered&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>deliver(pkg)}>Deliver</button>}
+                
               </>
             })()}
           </div>}
