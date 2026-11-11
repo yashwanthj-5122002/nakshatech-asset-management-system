@@ -38,6 +38,79 @@ from app.modules.operations.models import (
     WorkPackageItemActivity,
 )
 
+from decimal import Decimal, InvalidOperation, localcontext
+
+_LENGTH_TO_KM = {
+    "m": Decimal("0.001"),
+    "meter": Decimal("0.001"),
+    "meters": Decimal("0.001"),
+    "metre": Decimal("0.001"),
+    "metres": Decimal("0.001"),
+    "km": Decimal("1"),
+    "kilometer": Decimal("1"),
+    "kilometers": Decimal("1"),
+    "kilometre": Decimal("1"),
+    "kilometres": Decimal("1"),
+    "cm": Decimal("0.00001"),
+    "mm": Decimal("0.000001"),
+}
+
+
+def locked_actual_from_item(item) -> tuple[Decimal, str]:
+    """
+    Server-authoritative completed quantity.
+
+    Applies to every physical work item, regardless of
+    employee, department, project or role.
+
+    Never use the employee's submitted quantity.
+    Never modify the original planned quantity.
+    """
+
+    raw_quantity = item.planned_quantity
+    raw_unit = (item.planned_unit or "").strip()
+
+    if raw_quantity is None:
+        raise ValueError(
+            "Cannot complete this file: planned quantity "
+            "is missing. Ask the Project Manager to correct "
+            "the source data."
+        )
+
+    if not raw_unit:
+        raise ValueError(
+            "Cannot complete this file: planned unit is missing."
+        )
+
+    try:
+        quantity = Decimal(str(raw_quantity))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError("Invalid stored planned quantity")
+
+    if not quantity.is_finite() or quantity < 0:
+        raise ValueError("Invalid stored planned quantity")
+
+    normalized_unit = raw_unit.lower()
+
+    # Convert every distance-based item to km.
+    if normalized_unit in _LENGTH_TO_KM:
+        factor = _LENGTH_TO_KM[normalized_unit]
+
+        with localcontext() as context:
+            context.prec = max(
+                50,
+                len(quantity.as_tuple().digits) + 12
+            )
+            locked_quantity = quantity * factor
+
+        return locked_quantity, "km"
+
+    # Other work types, such as area or file counts,
+    # remain locked in their original valid unit.
+    # We must not incorrectly convert sq.m or files to km.
+    return quantity, raw_unit
+
+
 ADMIN_ROLE = "admin"
 MANAGEMENT_ROLE = "management"
 EMPLOYEE_ROLE = "employee"
@@ -882,11 +955,83 @@ def stop_activity(
         if affected.work_package_id != activity.work_package_id:
             raise ValueError("Affected file must belong to the same area")
 
-    activity.ended_at = end
+    """activity.ended_at = end
     activity.duration_seconds = duration
     activity.status = final_status
     activity.quantity_completed = _clean_number(quantity_completed)
     activity.unit = (unit or "").strip() or None
+# GLOBAL LOCKED ACTUAL QUANTITY POLICY
+# Applies to all project and department file completions.
+#
+# Keep the existing permission checks, workflow gates,
+# timestamps, transactions and QC/QA logic unchanged.
+
+if (
+    stage == "production"
+    and finalize
+    and final_status == "completed"
+):
+    # WorkPackageItem is the existing item model.
+    source_item = db.get(
+        WorkPackageItem,
+        activity.work_package_item_id,
+    )
+
+    if source_item is None:
+        raise ValueError("Work item not found")
+
+    # ALWAYS replace client-supplied values with
+    # the authoritative stored planned measurement.
+    quantity_completed, unit = locked_actual_from_item(
+        source_item
+    )
+
+    # These fields are no longer captured by
+    # the new Complete File form.
+    remarks = None
+    affected_item_id = None
+    delay_remarks = None"""
+
+    # Save the existing server-authoritative timestamps.
+    activity.ended_at = end
+    activity.duration_seconds = duration
+    activity.status = final_status
+
+    # GLOBAL LOCKED ACTUAL QUANTITY POLICY
+    # Applies to all employees, projects and departments.
+    # The client cannot decide the completed quantity.
+    if (
+        stage == "production"
+        and finalize
+        and final_status == "completed"
+    ):
+        source_item = db.get(
+            WorkPackageItem,
+            activity.work_package_item_id,
+        )
+
+        if source_item is None:
+            raise ValueError("Work item not found")
+
+        # Calculate from the original planned quantity.
+        # Preserve decimal precision and convert lengths to km.
+        quantity_completed, unit = locked_actual_from_item(
+            source_item
+        )
+
+        # Fields removed from the Production completion form.
+        remarks = None
+        affected_item_id = None
+        delay_remarks = None
+
+    # Save the final authoritative quantity and unit.
+    # This must happen AFTER locked quantity calculation.
+    activity.quantity_completed = _clean_number(
+        quantity_completed
+    )
+    activity.unit = (unit or "").strip() or None
+
+
     # FILE-LEVEL workflow: the specific file being completed is known, so the
     # completed-file contribution is automatic — and a physical file contributes exactly
     # ONCE across all its sessions (partial "save progress" sessions contribute 0 and a
@@ -1244,6 +1389,14 @@ def build_item_rows(
             affected = db.get(WorkPackageItem, prod.affected_item_id)
         open_row = open_by_item.get(item.id)
         rework_request = pending_production_rework(per_stage)
+
+        # Calculate the fixed quantity from the stored planned value.
+        locked_quantity = None
+        locked_unit = None
+
+        if item.planned_quantity is not None and (item.planned_unit or "").strip():
+            locked_quantity, locked_unit = locked_actual_from_item(item)
+
         rows.append({
             "work_package_item_id": item.id,
             "work_package_id": item.work_package_id,
@@ -1253,7 +1406,17 @@ def build_item_rows(
             "sequence_no": item.sequence_no,
             "planned_quantity": float(item.planned_quantity) if item.planned_quantity is not None else None,
             "planned_unit": item.planned_unit,
+
+            # Read-only actual quantity supplied to the frontend.
+            "locked_actual_quantity": (
+                format(locked_quantity, "f")
+                if locked_quantity is not None
+                else None
+            ),
+            "locked_actual_unit": locked_unit,
+
             "production_target_date": item.production_target_date.isoformat() if item.production_target_date else None,
+
             "qc_target_date": item.qc_target_date.isoformat() if item.qc_target_date else None,
             "qa_target_date": item.qa_target_date.isoformat() if item.qa_target_date else None,
             "import_source": item.import_source,
