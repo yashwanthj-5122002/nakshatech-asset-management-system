@@ -782,7 +782,23 @@ export function FinanceBillingPage({ embeddedProjectId }: { embeddedProjectId?: 
                   : invoice.signature_invalidated_at
                     ? <span className="sr-status warning">UNSIGNED — previous signature invalidated</span>
                     : <span className="sr-status danger">UNSIGNED</span>}
-                {!invoice.signed && <button className="operations-button success" disabled={busy === `sign-${invoice.id}`} onClick={() => void run(`sign-${invoice.id}`, () => apiFetch(`/operations/lifecycle/invoices/${invoice.id}/sign`, { method: 'POST' }), 'Invoice signed')}>Sign Invoice</button>}
+                {!invoice.signed && <button className="operations-button success" disabled={busy === `sign-${invoice.id}`} onClick={() => void run(`sign-${invoice.id}`, async () => {
+                  // Use the persisted, server-confirmed invoice result for an immediate status refresh.
+                  const signedInvoice = await apiFetch<InvoiceRow>(`/operations/lifecycle/invoices/${invoice.id}/sign`, { method: 'POST' })
+                  if (signedInvoice?.id !== invoice.id || signedInvoice.signed !== true) {
+                    throw new Error('The server did not confirm the invoice signature.')
+                  }
+                  setDetail(current => current ? {
+                    ...current,
+                    invoices: current.invoices.map(item => item.id === invoice.id ? {
+                      ...item,
+                      signed: true,
+                      signed_by_name: signedInvoice.signed_by_name,
+                      signed_at: signedInvoice.signed_at,
+                      signature_invalidated_at: null,
+                    } : item),
+                  } : current)
+                }, 'Invoice signed')}>Sign Invoice</button>}
                 <button className="operations-button secondary" disabled={busy === `edit-${invoice.id}`}
                   onClick={() => openEditInvoice(invoice as unknown as Record<string, unknown>)}>Edit Invoice</button>
                 {invoice.can_close_invoice && <button className="operations-button success" disabled={busy === `close-${invoice.id}`} onClick={() => void run(`close-${invoice.id}`, () => closeInvoice(invoice.id), 'Invoice closed')}>Close Invoice</button>}
