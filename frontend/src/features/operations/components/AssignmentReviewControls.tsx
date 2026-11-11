@@ -20,7 +20,8 @@ function ReviewStageControls({ stage, packageId, items, myUserId, onChanged }: P
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [openRework, setOpenRework] = useState(false)
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [fileQuery, setFileQuery] = useState('')
   const [reason, setReason] = useState('')
 
   const owned = items.filter(item => item.is_active !== false && (stage === 'qc' ? item.qc_user_id : item.qa_user_id) === myUserId)
@@ -59,24 +60,30 @@ function ReviewStageControls({ stage, packageId, items, myUserId, onChanged }: P
   const alreadyPassed = owned.filter(item => (stage === 'qc' ? item.qc_status : item.qa_status) === 'passed').length
 
   useEffect(() => {
-    // Keep the dropdown open after Complete; only clear a selection that
-    // is no longer eligible according to the refreshed backend state.
-    if (selectedId && !canRework.some(item => item.work_package_item_id === Number(selectedId))) {
-      setSelectedId('')
-    }
-  }, [selectedId, items, myUserId, stage])
+    // Drop only files that have become ineligible after a backend refresh.
+    const eligible = new Set(canRework.map(item => item.work_package_item_id))
+    setSelectedIds(current => {
+      const remaining = current.filter(id => eligible.has(id))
+      return remaining.length === current.length ? current : remaining
+    })
+  }, [items, myUserId, stage])
+
+  const visibleRework = canRework.filter(item =>
+    `${item.item_number} ${item.item_name || ''}`.toLowerCase().includes(fileQuery.trim().toLowerCase()),
+  )
 
   async function execute(endpoint: string, body?: object): Promise<boolean> {
     setBusy(true)
     setError('')
     setNotice('')
     try {
-      const result = await apiFetch<{count?: number; item_id?: number}>(
+      const result = await apiFetch<{count?: number; item_ids?: number[]}>(
         `/operations/workflow/ortho/work-packages/${packageId}/review/${stage}/${endpoint}`,
         { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) },
       )
-      setNotice(endpoint === 'rework' ? 'Selected file sent back to Production.' :
-        `${stage.toUpperCase()}: ${result.count ?? 0} file(s) ${endpoint === 'start' ? 'started' : 'passed'}.`)
+      setNotice(endpoint === 'rework/bulk'
+        ? `${result.count ?? 0} selected file(s) sent to Production for rework.`
+        : `${stage.toUpperCase()}: ${result.count ?? 0} file(s) ${endpoint === 'start' ? 'started' : 'passed'}.`)
       onChanged()
       return true
     } catch (err) {
@@ -88,13 +95,14 @@ function ReviewStageControls({ stage, packageId, items, myUserId, onChanged }: P
   }
 
   async function sendRework() {
-    if (!selectedId || reason.trim().length < 3) {
-      setError('Choose a file and enter a rework reason (at least 3 characters).')
+    if (!selectedIds.length || reason.trim().length < 3) {
+      setError('Choose one or more files and enter a rework reason (at least 3 characters).')
       return
     }
-    if (await execute('rework', { item_id: Number(selectedId), reason: reason.trim() })) {
+    if (await execute('rework/bulk', { item_ids: selectedIds, reason: reason.trim() })) {
       setOpenRework(false)
-      setSelectedId('')
+      setSelectedIds([])
+      setFileQuery('')
       setReason('')
     }
   }
@@ -109,34 +117,49 @@ function ReviewStageControls({ stage, packageId, items, myUserId, onChanged }: P
         </div>
         <div className="assignment-review-buttons">
           <button type="button" className="operations-button" disabled={busy || !readyToStart}
-            onClick={() => void execute('start')}>Start</button>
+            onClick={() => void execute('start')}>Start All {owned.length}</button>
           <button type="button" className="operations-button success" disabled={busy || reviewing.length === 0}
-            onClick={() => void execute('complete')}>Complete</button>
+            onClick={() => void execute('complete')}>Complete All {owned.length}</button>
           <button type="button" className="operations-button secondary" disabled={busy}
             aria-expanded={openRework} onClick={() => setOpenRework(v => !v)}>Rework ▾</button>
         </div>
       </div>
       {openRework && (
         <div className="assignment-review-dropdown">
-          <strong>Send a file back to Production</strong>
+          <strong>Select files to send back to Production</strong>
           {canRework.length ? (
             <>
               <label className="operations-field">
-                <span>File to rework</span>
-                <select value={selectedId} onChange={event => setSelectedId(event.target.value)}>
-                  <option value="">Select a file</option>
-                  {canRework.map(item => <option key={item.work_package_item_id} value={item.work_package_item_id}>
-                    {item.item_number}{item.item_name ? ` - ${item.item_name}` : ''}
-                  </option>)}
-                </select>
+                <span>Search eligible MARCENA files</span>
+                <input value={fileQuery} onChange={event => setFileQuery(event.target.value)}
+                  placeholder="Search file number or name" />
               </label>
+              <div className="assignment-review-selection-bar">
+                <span>{selectedIds.length} of {canRework.length} eligible files selected</span>
+                <button type="button" className="operations-button secondary" disabled={busy}
+                  onClick={() => setSelectedIds(canRework.map(item => item.work_package_item_id))}>Select All Eligible</button>
+                <button type="button" className="operations-button secondary" disabled={busy || !selectedIds.length}
+                  onClick={() => setSelectedIds([])}>Clear</button>
+              </div>
+              <div className="assignment-review-file-picker" role="group" aria-label="Files for Production rework">
+                {visibleRework.map(item => <label key={item.work_package_item_id} className="assignment-review-file-choice">
+                  <input type="checkbox" checked={selectedIds.includes(item.work_package_item_id)} disabled={busy}
+                    onChange={event => setSelectedIds(current => event.target.checked
+                      ? current.includes(item.work_package_item_id) ? current : [...current, item.work_package_item_id]
+                      : current.filter(id => id !== item.work_package_item_id))}/>
+                  <span><strong>{item.item_number}</strong>{item.item_name ? ` — ${item.item_name}` : ''}</span>
+                </label>)}
+                {!visibleRework.length && <small>No eligible files match this search.</small>}
+              </div>
               <label className="operations-field">
-                <span>Reason *</span>
-                <textarea rows={2} value={reason} onChange={event => setReason(event.target.value)}
-                  placeholder="Describe the issue for Production" />
+                <span>Reason for Production rework *</span>
+                <textarea rows={3} value={reason} onChange={event => setReason(event.target.value)}
+                  maxLength={2000} placeholder="Describe the corrections required for the selected files" />
               </label>
-              <button type="button" className="operations-button danger" disabled={busy || !selectedId || reason.trim().length < 3}
-                onClick={() => { if (window.confirm('Send the selected file back to Production for rework?')) void sendRework() }}>Send Selected File to Production</button>
+              <button type="button" className="operations-button danger" disabled={busy || !selectedIds.length || reason.trim().length < 3}
+                onClick={() => { if (window.confirm(`Send ${selectedIds.length} selected file(s) back to Production for rework?`)) void sendRework() }}>
+                Send {selectedIds.length} Selected File{selectedIds.length === 1 ? '' : 's'} to Production
+              </button>
             </>
           ) : <small>No files are eligible for rework. Only your active review files or passed files that have not moved to the next stage can be selected.</small>}
           <div className="assignment-review-sent">

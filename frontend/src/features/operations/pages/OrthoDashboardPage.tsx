@@ -8,6 +8,8 @@ import { apiFetch } from '../../../lib/api'
 import { PMBillingBasisPanel } from '../../commercial/components/PMBillingBasisPanel'
 import { ItemStageActivityControls, type ActivityItem } from '../components/ItemStageActivityControls'
 import { AssignmentReviewControls } from '../components/AssignmentReviewControls'
+import { CLDGroupReviewControls } from '../components/CLDGroupReviewControls'
+import { CLDGroupDeliveryControls } from '../components/CLDGroupDeliveryControls'
 import { ImportedAllocationPanel, MasterImportPanel } from '../components/WorkAllocationPanel'
 import '../operations.css'
 
@@ -17,7 +19,7 @@ type Assignment = { id:number; full_name:string; email:string; employee_id?:stri
 type DailyUpdate = {id:number;update_date:string;work_type?:string|null;quantity_completed:number;progress_percent?:number|null;files_completed:number;hours_spent?:number|null;status:string;blockers?:string|null;remarks?:string|null;created_at:string}
 type AssigneeLite = {id:number;full_name?:string|null}
 type Package = {
-  id:number; package_code:string; area_name:string; quantity?:number|null; quantity_unit:string; target_date?:string|null; instructions?:string|null;
+  id:number; package_code:string; area_name:string; quantity?:number|null; quantity_unit:string; target_date?:string|null; instructions?:string|null; lot_batch?:string|null;
   current_stage:string; production_state:string; qc_state:string; qa_state:string; rework_source?:string|null; rework_cycle_id?:number|null; rework_cycle_number?:number|null; rework_of_package_code?:string|null;
   cumulative_completed:number; remaining_quantity:number; progress_percent:number; files_completed:number; my_roles:string[];
   can_daily_activity:boolean; can_complete_production:boolean; can_qc:boolean; can_qa:boolean; can_deliver:boolean;
@@ -26,6 +28,7 @@ type Package = {
   has_items?:boolean; files_expected?:number; files_production_done?:number; files_qc_passed?:number; files_qa_passed?:number; files_delivered?:number; stage_bucket?:string|null; ready_for_delivery?:boolean;
   display_stage?:string|null; ready_eligible?:boolean; delivered?:boolean; delivered_at?:string|null;
   items?:ActivityItem[];
+
   item_assignees?:{production?:AssigneeLite[];qc?:AssigneeLite[];qa?:AssigneeLite[];team_leader?:AssigneeLite[]}
 }
 type ReworkSource = {id:number;package_code:string;area_name:string;quantity?:number|null;quantity_unit?:string|null;current_stage:string;team_leader_name?:string|null;production_user_id?:number|null;production_name?:string|null;qc_user_id?:number|null;qc_name?:string|null;qa_user_id?:number|null;qa_name?:string|null;carry_forward:{production:boolean;qc:boolean;qa:boolean}}
@@ -64,6 +67,44 @@ export function OrthoDashboardPage(){
   function load(){setError('');void apiFetch<OrthoDashboard>('/operations/workflow/ortho/dashboard').then(v=>{setData(v);setSelectedId(current=>current&&v.projects.some(p=>p.project_id===current)?current:((requestedProjectId&&v.projects.some(p=>p.project_id===requestedProjectId)?requestedProjectId:null)??v.projects[0]?.project_id??null))}).catch(e=>setError(e instanceof Error?e.message:'Unable to load Ortho workflow'))}
   useEffect(load,[])
   const selected=useMemo(()=>data?.projects.find(p=>p.project_id===selectedId)??null,[data,selectedId])
+  // One CLD master workbook imports MARCENA rows as SEPARATE work packages.
+  // Group by authoritative import_source (not package ID), so 32 file rows
+  // receive ONE block toolbar. Other area/package workflows remain unchanged.
+  const cldGroups = useMemo(() => {
+    const grouped = new Map<string, ActivityItem[]>()
+    for (const pkg of selected?.packages ?? []) {
+      if (pkg.lot_batch !== 'CLD_IMPORT' || !pkg.package_code.startsWith('CENTRELINE_M_') || pkg.rework_cycle_id) continue
+      for (const item of pkg.items ?? []) {
+        if (item.is_active === false || (item.qc_user_id !== user?.id && item.qa_user_id !== user?.id)) continue
+        const source = (item as ActivityItem & { import_source?: string | null }).import_source ?? ''
+        const list = grouped.get(source) ?? []
+        list.push(item)
+        grouped.set(source, list)
+      }
+    }
+    return [...grouped.entries()].map(([source, items]) => ({ source, items }))
+  }, [selected, user?.id])
+
+
+  // TL / PM only: source-grouped Ready for Delivery actions. Unlike the
+  // reviewer toolbar above, this includes all QA-passed CLD packages in the
+  // imported source. The existing per-file readiness buttons remain below.
+  const cldDeliveryGroups = useMemo(() => {
+    const grouped = new Map<string, ActivityItem[]>()
+    if (!selected || !(selected.my_roles.includes('team_leader') || selected.my_roles.includes('project_manager'))) return []
+    for (const pkg of selected.packages) {
+      if (pkg.lot_batch !== 'CLD_IMPORT' || !pkg.package_code.startsWith('CENTRELINE_M_') || pkg.rework_cycle_id) continue
+      for (const item of pkg.items ?? []) {
+        if (item.is_active === false) continue
+        const source = (item as ActivityItem & { import_source?: string | null }).import_source
+        if (!source) continue // Avoid accidentally mixing CLD imports with unknown source.
+        const list = grouped.get(source) ?? []
+        list.push(item)
+        grouped.set(source, list)
+      }
+    }
+    return [...grouped.entries()].map(([source, items]) => ({ source, items }))
+  }, [selected])
 
   function currentTeam(project:Project):TeamDraft{return {
     team_leader_user_id:String(project.members?.find(m=>m.member_role==='team_leader')?.user_id??''),
@@ -259,9 +300,11 @@ export function OrthoDashboardPage(){
       </section>}
 
       {selected&&<section className="operations-panel"><header><div><span className="operations-kicker">ASSIGNMENT TRACKER</span><h2>{selected.can_manage_team||selected.can_allocate_work?'Project Work Packages':'My Exact Assigned Work'}</h2><p>Daily progress is calculated from activity entries. Cumulative quantity and progress percentage cannot be manually overwritten.</p></div>{selected.can_complete_project&&<button className="operations-button success" disabled={busy} onClick={()=>completeProject(selected)}><CheckCircle2 size={15}/> Complete Project</button>}</header>
+        {cldDeliveryGroups.map(group => <CLDGroupDeliveryControls key={`delivery-${group.source}`} projectId={selected.project_id} sourceName={group.source} items={group.items} onChanged={load} />)}
+        {cldGroups.map(group => <CLDGroupReviewControls key={group.source} projectId={selected.project_id} sourceName={group.source || null} items={group.items} myUserId={user?.id??0} onChanged={load} />)}
         {!selected.packages.length?<div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work packages allocated yet</h3><p>This project has no assigned work packages yet — the Team Lead's Area / Code / Quantity allocations appear here.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{const d=daily[pkg.id]??emptyDaily;return <article className="operations-daily-card" key={pkg.id}>
           <div className="operations-daily-heading"><div><span className="operations-kicker">{pkg.package_code}</span><h3>{pkg.area_name}</h3><div className="operations-project-meta"><span>Project: {selected.project_code}</span><span>Client ID: {selected.client_code||'—'}</span><span>My Role: {pkg.my_roles.map(label).join(', ')||'Monitoring'}</span><span>Target: {pkg.target_date||'—'}</span></div></div><div>{pkg.rework_cycle_id&&<span className="operations-status warning">Rework Cycle #{pkg.rework_cycle_number}{pkg.rework_of_package_code?` · of ${pkg.rework_of_package_code}`:''}</span>} <span className="operations-status">{label(pkg.display_stage ?? pkg.current_stage)}</span></div></div>
-          {pkg.has_items && !!pkg.items?.length && <AssignmentReviewControls packageId={pkg.id} items={pkg.items} myUserId={user?.id??0} onChanged={load} />}
+          {pkg.has_items && !!pkg.items?.length && !(pkg.lot_batch === 'CLD_IMPORT' && pkg.package_code.startsWith('CENTRELINE_M_') && !pkg.rework_cycle_id) && <AssignmentReviewControls packageId={pkg.id} items={pkg.items} myUserId={user?.id??0} onChanged={load} />}
           {pkg.instructions&&<div className="operations-instructions"><strong>Instructions:</strong> {pkg.instructions}</div>}
           <div className="operations-progress"><span style={{width:`${Math.min(100,pkg.progress_percent)}%`}}/></div><div className="operations-project-meta"><span>Assigned: {pkg.quantity??'—'} {pkg.quantity_unit}</span><span>Completed: {pkg.cumulative_completed} {pkg.quantity_unit}</span><span>Remaining: {pkg.remaining_quantity} {pkg.quantity_unit}</span><span>Progress: {pkg.progress_percent}%</span><span>Files: {pkg.has_items?(pkg.files_expected??0):pkg.files_completed}</span>{pkg.has_items&&<span>Completed Files: {pkg.files_production_done??0} of {pkg.files_expected??0}</span>}</div>
           {pkg.has_items
@@ -308,7 +351,7 @@ export function OrthoDashboardPage(){
                 {delivered&&<span>Delivered {pkg.delivered_at?pkg.delivered_at.slice(0,16).replace('T',' '):''}</span>}
                 {/* Ready is an explicit step; once confirmed it is replaced by the explicit Deliver action. */}
                 {eligible&&!confirmed&&!delivered&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>action(`/operations/workflow/ortho/work-packages/${pkg.id}/ready-for-delivery`,undefined,'Ready for Delivery confirmed. The Project Manager was notified.')}>Mark Ready for Delivery</button>}
-                {confirmed&&!delivered&&<button type="button" className="operations-button success" disabled={busy} onClick={()=>deliver(pkg)}>Deliver</button>}
+                
               </>
             })()}
           </div>}
