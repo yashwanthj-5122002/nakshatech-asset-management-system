@@ -109,7 +109,7 @@ def test_v6_client_project_master_assignment_and_employee_safe_visibility():
         project_data = project_payload(project)
         assert project_data["project_code"] == "NT-PROJ-2026-014"
         assert project_data["project_status"] == "active"
-        assert project_data["project_manager_id"] == manager.id
+        assert project_data["project_manager_id"] is None  # PM assignment belongs to BD
         assert project_data["reporting_manager_id"] == reporting.id
         assert project_data["assigned_employee_ids"] == [employee.id]
 

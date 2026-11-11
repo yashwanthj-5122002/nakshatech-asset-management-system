@@ -895,7 +895,8 @@ export function ItemStageActivityControls({
               <button
                 type="button"
                 className="operations-button"
-                disabled={busy}
+                disabled={busy || !lockedActualAvailable}
+                title={!lockedActualAvailable ? 'Ask the Project Manager or Team Lead to complete this file’s planned quantity and unit.' : undefined}
                 onClick={() =>
                   start('production')
                 }

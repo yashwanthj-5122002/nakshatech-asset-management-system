@@ -1,0 +1,57 @@
+[
+    {
+        "script":  "test:finance-command-center",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-finance-command-center.log"
+    },
+    {
+        "script":  "test:finance-command-center:advance-alerts",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-finance-command-center-advance-alerts.log"
+    },
+    {
+        "script":  "test:finance-command-center:advance-settlement",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-finance-command-center-advance-settlement.log"
+    },
+    {
+        "script":  "test:finance-command-center:invoice-document",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-finance-command-center-invoice-document.log"
+    },
+    {
+        "script":  "test:finance-bad-debt",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-finance-bad-debt.log"
+    },
+    {
+        "script":  "test:sales-revenue-drilldown",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-sales-revenue-drilldown.log"
+    },
+    {
+        "script":  "test:finance-generate-invoice",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-finance-generate-invoice.log"
+    },
+    {
+        "script":  "test:notification-popup",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-notification-popup.log"
+    },
+    {
+        "script":  "test:critical-action-visibility",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-critical-action-visibility.log"
+    },
+    {
+        "script":  "test:bd-client-feedback",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-bd-client-feedback.log"
+    },
+    {
+        "script":  "test:india-dates",
+        "exitCode":  0,
+        "log":  "../artifacts/qa/current-run/test-india-dates.log"
+    }
+]

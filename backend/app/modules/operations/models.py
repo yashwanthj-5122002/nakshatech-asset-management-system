@@ -425,6 +425,8 @@ class WorkPackageItemActivity(Base):
 
     __tablename__ = "work_package_item_activities"
     __table_args__ = (
+        Index("uq_work_package_item_activities_open", "work_package_item_id", "stage", unique=True,
+              postgresql_where=text("ended_at IS NULL"), sqlite_where=text("ended_at IS NULL")),
         Index("ix_work_package_item_activities_item_stage", "work_package_item_id", "stage"),
         Index("ix_work_package_item_activities_employee_stage", "employee_user_id", "stage"),
         Index("ix_work_package_item_activities_stage_status", "stage", "status"),
@@ -442,7 +444,7 @@ class WorkPackageItemActivity(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    quantity_completed: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    quantity_completed: Mapped[Decimal | None] = mapped_column(Numeric(20, 9), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
     files_completed: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(40), default="in_progress", index=True)

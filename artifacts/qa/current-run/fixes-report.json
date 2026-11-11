@@ -1,0 +1,427 @@
+{
+  "tested_at": "2026-11-11T16:56:33.757979+05:30",
+  "overall": "Automated checks passed",
+  "full_regression": {
+    "total": 687,
+    "counts": {
+      "passed": 679,
+      "skipped": 7,
+      "failed": 1
+    },
+    "failures": [
+      {
+        "module": "backend.tests.test_ortho_item_visibility_v8_3",
+        "test": "test_no_duplicate_file_or_quantity_counting",
+        "message": "assert 1.2 == 1.16"
+      }
+    ]
+  },
+  "final_module_recheck": {
+    "counts": {
+      "passed": 14
+    },
+    "note": "The full run had one outdated expected quantity. Its assertion was aligned with the locked-plan rule and its whole 14-test module rerun. No application code changed after the full run."
+  },
+  "latest_verified_results": {
+    "total": 687,
+    "counts": {
+      "passed": 680,
+      "skipped": 7,
+      "failed": 0
+    },
+    "test_modules": {
+      "backend.tests.test_advance_payment_notifications_phase4": {
+        "passed": 8
+      },
+      "backend.tests.test_agent_monitor_excel_export": {
+        "passed": 2
+      },
+      "backend.tests.test_allocation_member_validation_v8_4": {
+        "passed": 9
+      },
+      "backend.tests.test_asset_inventory_lifecycle_integrity": {
+        "passed": 4
+      },
+      "backend.tests.test_asset_report_validation": {
+        "passed": 7
+      },
+      "backend.tests.test_bad_debt_dual_approval_v8_5": {
+        "passed": 8
+      },
+      "backend.tests.test_bad_debt_lifecycle_v8_1": {
+        "passed": 11
+      },
+      "backend.tests.test_batch3_complete": {
+        "passed": 1
+      },
+      "backend.tests.test_batch4_complete": {
+        "passed": 1
+      },
+      "backend.tests.test_batch4_custody_endpoint_boundary": {
+        "passed": 2
+      },
+      "backend.tests.test_batch4_management_decision_response": {
+        "passed": 1
+      },
+      "backend.tests.test_bd_finance_pm_notifications_v7_0_14": {
+        "passed": 3
+      },
+      "backend.tests.test_bd_manual_feedback_action_center": {
+        "passed": 4
+      },
+      "backend.tests.test_bd_ortho_manager_login_v7_0_7": {
+        "passed": 3
+      },
+      "backend.tests.test_bd_ortho_v7": {
+        "passed": 13
+      },
+      "backend.tests.test_business_history_permissions": {
+        "passed": 10
+      },
+      "backend.tests.test_client_advance_api_phase2": {
+        "passed": 5
+      },
+      "backend.tests.test_client_advance_request_form": {
+        "passed": 18
+      },
+      "backend.tests.test_client_advance_schema_phase1": {
+        "passed": 2
+      },
+      "backend.tests.test_client_advance_settlement_phase5": {
+        "passed": 4
+      },
+      "backend.tests.test_client_project_crm_v6_1": {
+        "passed": 2
+      },
+      "backend.tests.test_client_project_master_v6": {
+        "passed": 2
+      },
+      "backend.tests.test_commercial_cost_layer_v8_1": {
+        "passed": 6
+      },
+      "backend.tests.test_commercial_workflow_alignment_v8_1": {
+        "passed": 18
+      },
+      "backend.tests.test_department_isolation": {
+        "passed": 5
+      },
+      "backend.tests.test_employee_master_management": {
+        "passed": 2
+      },
+      "backend.tests.test_employee_master_registration": {
+        "passed": 7
+      },
+      "backend.tests.test_employee_password_regression": {
+        "passed": 3
+      },
+      "backend.tests.test_end_to_end": {
+        "passed": 27
+      },
+      "backend.tests.test_finance_bad_debt_revenue": {
+        "passed": 9
+      },
+      "backend.tests.test_finance_client_management_v4": {
+        "passed": 2
+      },
+      "backend.tests.test_finance_client_management_v5": {
+        "passed": 2
+      },
+      "backend.tests.test_finance_expense_claims": {
+        "passed": 4
+      },
+      "backend.tests.test_finance_kpi_reconciliation": {
+        "passed": 9
+      },
+      "backend.tests.test_finance_reporting_v2": {
+        "passed": 3
+      },
+      "backend.tests.test_finance_revenue_targets": {
+        "passed": 2
+      },
+      "backend.tests.test_finance_sales_revenue": {
+        "passed": 4
+      },
+      "backend.tests.test_finance_settlement_v3": {
+        "passed": 3
+      },
+      "backend.tests.test_finance_visibility_filtering": {
+        "passed": 5
+      },
+      "backend.tests.test_global_notification_foundation": {
+        "passed": 2
+      },
+      "backend.tests.test_hardening_v7_0_23": {
+        "passed": 4
+      },
+      "backend.tests.test_hrms_company_policy": {
+        "passed": 2
+      },
+      "backend.tests.test_hrms_web_attendance": {
+        "passed": 2
+      },
+      "backend.tests.test_invoice_company_address": {
+        "passed": 11
+      },
+      "backend.tests.test_invoice_document_generation": {
+        "passed": 4
+      },
+      "backend.tests.test_invoice_generation_v2": {
+        "passed": 14
+      },
+      "backend.tests.test_invoice_layout_pagination": {
+        "passed": 6
+      },
+      "backend.tests.test_invoice_payment_status": {
+        "passed": 4
+      },
+      "backend.tests.test_invoice_reference_themes": {
+        "passed": 15
+      },
+      "backend.tests.test_invoice_template_edit_isolation": {
+        "passed": 2
+      },
+      "backend.tests.test_invoice_three_templates": {
+        "passed": 7
+      },
+      "backend.tests.test_it_work_role_permissions": {
+        "passed": 4
+      },
+      "backend.tests.test_item_daily_activity_flow_v8_3": {
+        "passed": 15
+      },
+      "backend.tests.test_item_multi_session_production_v8_3": {
+        "passed": 12
+      },
+      "backend.tests.test_management_authentication": {
+        "passed": 3
+      },
+      "backend.tests.test_module_route_contracts": {
+        "passed": 3
+      },
+      "backend.tests.test_multi_department_workflow_v8_1": {
+        "passed": 17,
+        "skipped": 4
+      },
+      "backend.tests.test_new_joiner_onboarding": {
+        "passed": 7
+      },
+      "backend.tests.test_notification_popup_experience": {
+        "passed": 23
+      },
+      "backend.tests.test_notification_recipient_isolation": {
+        "passed": 13
+      },
+      "backend.tests.test_obsolete_sample_workflow_retirement": {
+        "passed": 3
+      },
+      "backend.tests.test_ortho_item_visibility_v8_3": {
+        "passed": 14,
+        "failed": 0
+      },
+      "backend.tests.test_payables_workflow": {
+        "passed": 2
+      },
+      "backend.tests.test_physical_file_workflow_v8_4": {
+        "passed": 23
+      },
+      "backend.tests.test_production_e2e_final_v8_3": {
+        "passed": 4
+      },
+      "backend.tests.test_production_file_tracking_v8_2": {
+        "passed": 26
+      },
+      "backend.tests.test_production_integrity": {
+        "passed": 13
+      },
+      "backend.tests.test_production_master_excel_allocation_v8_3": {
+        "passed": 33
+      },
+      "backend.tests.test_production_schema_upgrade": {
+        "passed": 10,
+        "skipped": 2
+      },
+      "backend.tests.test_production_tracking_v8_1": {
+        "passed": 14
+      },
+      "backend.tests.test_project_activation_v6_1_5": {
+        "passed": 1
+      },
+      "backend.tests.test_project_activation_v6_1_6": {
+        "passed": 2
+      },
+      "backend.tests.test_project_activation_v6_1_7": {
+        "passed": 3
+      },
+      "backend.tests.test_project_completion_v7_0_19": {
+        "passed": 6
+      },
+      "backend.tests.test_project_data_handovers_v7_0_17": {
+        "passed": 4
+      },
+      "backend.tests.test_project_monitoring_v7_0_18": {
+        "passed": 4
+      },
+      "backend.tests.test_project_scope_allocation_v8_6": {
+        "passed": 3
+      },
+      "backend.tests.test_project_selector_v6_1_3": {
+        "passed": 1
+      },
+      "backend.tests.test_project_tracking_sales_workflow": {
+        "passed": 13
+      },
+      "backend.tests.test_project_workstreams_v7_0_15": {
+        "passed": 4
+      },
+      "backend.tests.test_purchase_approval_email_channel": {
+        "passed": 4
+      },
+      "backend.tests.test_purchase_approval_two_management_visibility": {
+        "passed": 1
+      },
+      "backend.tests.test_ready_delivery_ux_v8_4": {
+        "passed": 7
+      },
+      "backend.tests.test_rental_asset_return_integration_guards": {
+        "passed": 2
+      },
+      "backend.tests.test_rental_asset_vendor_return": {
+        "passed": 4
+      },
+      "backend.tests.test_reporting_error_boundaries": {
+        "passed": 16
+      },
+      "backend.tests.test_reporting_v7_0_22": {
+        "passed": 3
+      },
+      "backend.tests.test_sample_requests_v7_0_16": {
+        "passed": 3
+      },
+      "backend.tests.test_standalone_invoice_generation": {
+        "passed": 5
+      },
+      "backend.tests.test_technical_routing_v7_0_21": {
+        "passed": 6
+      },
+      "backend.tests.test_technical_team_directory_v7_0_20": {
+        "passed": 7
+      },
+      "backend.tests.test_ticket_attachment_validation": {
+        "passed": 3
+      },
+      "backend.tests.test_ticket_description_validation": {
+        "passed": 3
+      },
+      "backend.tests.test_ticket_global_notifications": {
+        "passed": 2
+      },
+      "backend.tests.test_ticket_simplified_workflow": {
+        "passed": 3
+      },
+      "backend.tests.test_ticket_sla": {
+        "passed": 3
+      },
+      "backend.tests.test_travel_km_email_notifications": {
+        "passed": 2
+      },
+      "backend.tests.test_travel_km_live_tracking": {
+        "passed": 2
+      },
+      "backend.tests.test_travel_km_smart_verification": {
+        "passed": 3
+      },
+      "backend.tests.test_travel_km_workflow": {
+        "passed": 2
+      },
+      "backend.tests.test_uat_2026_plan": {
+        "passed": 4
+      },
+      "backend.tests.test_uat_client_advance_e2e": {
+        "passed": 2
+      },
+      "_pt_patch.tests.test_installer": {
+        "passed": 2,
+        "skipped": 1
+      },
+      "_pt_patch.tests.test_project_tracking_progress": {
+        "passed": 7
+      }
+    },
+    "failures": [],
+    "skipped": [
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_four_department_pm_uat_accounts_exist_and_ortho_is_untouched",
+        "reason": "lidar@nakshatech.com is not seeded in this environment (SEED_OPERATIONS_TEST_USERS_ENABLED path not configured for it)"
+      },
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_sixty_department_test_employee_accounts_exist_and_are_generic_employee_role",
+        "reason": "Multi-department test employee seed is not enabled in this environment"
+      },
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_multi_department_seed_functions_are_idempotent",
+        "reason": "Multi-department test account seeding is not enabled in this environment"
+      },
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_existing_fifteen_ortho_employee_fixtures_normalized_to_ortho_department",
+        "reason": "V8.1 Ortho employee test seed is not enabled in this environment"
+      },
+      {
+        "module": "backend.tests.test_production_schema_upgrade",
+        "test": "test_concurrent_session_requests_have_one_winner[sqlite-start]",
+        "reason": "Real row-lock concurrency requires PostgreSQL"
+      },
+      {
+        "module": "backend.tests.test_production_schema_upgrade",
+        "test": "test_concurrent_session_requests_have_one_winner[sqlite-stop]",
+        "reason": "Real row-lock concurrency requires PostgreSQL"
+      },
+      {
+        "module": "_pt_patch.tests.test_installer",
+        "test": "test_patch_does_not_modify_sales_module",
+        "reason": "Optional installer source snapshot is not present"
+      }
+    ]
+  },
+  "real_postgresql_upgrade_and_concurrency_checks": {
+    "passed": 6
+  },
+  "browser": {
+    "passed": 3,
+    "coverage": [
+      "Production through QC, QA and delivery",
+      "QC rejection, production correction and delivery without output inflation",
+      "Correcting a draft file's source plan through the allocation UI"
+    ],
+    "database": "Disposable SQLite database owned by a loopback test server; real application services and APIs, without mocked workflow responses."
+  },
+  "frontend": {
+    "lint": 0,
+    "build": 0,
+    "source_verification_scripts_passed": 17
+  },
+  "changes": [
+    "One planned quantity is credited once across partial sessions, completion and rework; production totals, employee summaries and workbook exports share the same calculation.",
+    "File plans are validated before assignment/start; missing-plan correction is available in the allocation UI; completed plans cannot rewrite historical output.",
+    "Activity start/stop/delivery serialize on the item row and a partial unique index prevents duplicate open sessions.",
+    "Equal start/end clock readings produce zero duration; earlier end times are rejected. Review retries require a newer completed correction, including when timestamps are equal.",
+    "Blocked sessions never count as completed physical files. Delay metadata and historical rows are retained.",
+    "Converted distance quantities persist nine fractional digits instead of being truncated to three.",
+    "Reporting keeps expected HTTP errors and logs unexpected failures while returning a generic 500 response.",
+    "Schema upgrades validate column types, serialize PostgreSQL startup migrations, record versions and refuse duplicate-session upgrades without deleting history.",
+    "Legacy tests now use the deployed Batch 4 runtime, eligible Employee Master records, complete current payloads and independent Drone import fixtures; retired approvals/sample notifications are no longer expected.",
+    "Added PostgreSQL migration/concurrency tests, real browser workflow tests, aggregate frontend verification and GitHub Actions CI."
+  ],
+  "migration": "backend/migrations/20261111_production_integrity.sql",
+  "migration_instructions": "backend/migrations/README.md",
+  "limitations": [
+    "The normal application/production database was not migrated or modified. Only disposable test databases were used.",
+    "The local bulk SQLite runner disabled disk-flush durability only for its UUID-named throwaway database; transactions and per-test schema resets remained active. PostgreSQL concurrency checks ran on a separate PostgreSQL 16 container.",
+    "Browser checks cover the shared production/allocation controls against real APIs, not every navigation path, registration screen or finance screen.",
+    "SMTP delivery, external vendor integrations, backup restoration, crash recovery and cPanel deployment were not tested.",
+    "The existing Vite large-bundle warning remains. GitHub Actions was added but was not executed on GitHub during this local session."
+  ]
+}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import shutil
+import pytest
 
 INSTALLER = Path(__file__).resolve().parents[1] / 'apply_project_tracking_patch.py'
 spec = importlib.util.spec_from_file_location('project_tracking_installer', INSTALLER)
@@ -29,7 +30,7 @@ def test_backend_main_router_is_registered_once():
 def test_patch_does_not_modify_sales_module(tmp_path: Path):
     old = Path(__file__).resolve().parents[2] / 'repo'
     if not old.is_dir():
-        return  # Only available for the local source snapshot smoke test.
+        pytest.skip("Optional installer source snapshot is not present")
     root = tmp_path / 'test_repo'
     shutil.copytree(old, root, ignore=shutil.ignore_patterns('.project_tracking_patch_backups'))
     sales = root / 'backend/app/routers/project_tracking_sales.py'

@@ -162,7 +162,7 @@ def test_tl_adds_one_file():
     with SessionLocal() as db:
         ctx = make_area(db, code="ONE")
         created = add_items(db, actor=ctx["team"]["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                            entries=[{"item_number": "BLDG_001", "item_name": "BLDG_001.dxf"}])
+                            entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "BLDG_001", "item_name": "BLDG_001.dxf"}])
         assert len(created) == 1
         db.flush()
         listing = item_list(db, actor=ctx["team"]["tl"], role=TL_ROLE, work_package_id=ctx["package"].id)
@@ -174,7 +174,7 @@ def test_tl_adds_one_file():
 def test_tl_adds_multiple_files():
     with SessionLocal() as db:
         ctx = make_area(db, code="MULTI")
-        entries = [{"item_number": f"TILE_{n:03d}"} for n in range(1, 6)]
+        entries = [{"planned_quantity": 1, "planned_unit": "km", "item_number": f"TILE_{n:03d}"} for n in range(1, 6)]
         created = add_items(db, actor=ctx["team"]["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
                             entries=entries)
         assert len(created) == 5
@@ -197,16 +197,16 @@ def test_duplicate_file_numbers_rejected():
         ctx = make_area(db, code="DUP")
         with pytest.raises(ValueError, match="Duplicate"):
             add_items(db, actor=ctx["team"]["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                      entries=[{"item_number": "D1"}, {"item_number": "D1"}])
+                      entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "D1"}, {"planned_quantity": 1, "planned_unit": "km", "item_number": "D1"}])
         # nothing partial was created, then a valid add still works
         assert db.scalar(select(WorkPackageItem.id).where(
             WorkPackageItem.work_package_id == ctx["package"].id)) is None
         created = add_items(db, actor=ctx["team"]["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                            entries=[{"item_number": "D1"}])
+                            entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "D1"}])
         assert len(created) == 1
         with pytest.raises(ValueError, match="Duplicate"):
             add_items(db, actor=ctx["team"]["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                      entries=[{"item_number": "D1"}])
+                      entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "D1"}])
 
 
 def test_import_validation():
@@ -232,7 +232,7 @@ def test_file_assignment():
         ctx = make_area(db, code="ASGN")
         team = ctx["team"]
         created = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                            entries=[{"item_number": "A1"}, {"item_number": "A2"}])
+                            entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "A1"}, {"planned_quantity": 1, "planned_unit": "km", "item_number": "A2"}])
         ids = [i.id for i in created]
         assign_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
                      item_ids=ids, production_user_id=team["prod"].id,
@@ -260,8 +260,8 @@ def test_employee_sees_only_assigned_files():
         team = ctx["team"]
         outsider = make_user(db, "noshow.ft@nakshatech.com", "employee", "LiDAR")
         add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id, entries=[
-            {"item_number": "MINE", "production_user_id": team["prod"].id},
-            {"item_number": "THEIRS", "qc_user_id": team["qc"].id},
+            {"planned_quantity": 1, "planned_unit": "km", "item_number": "MINE", "production_user_id": team["prod"].id},
+            {"planned_quantity": 1, "planned_unit": "km", "item_number": "THEIRS", "qc_user_id": team["qc"].id},
         ])
         db.flush()
         listing = item_list(db, actor=team["prod"], role="employee", work_package_id=ctx["package"].id)
@@ -280,7 +280,7 @@ def test_unauthorized_employee_cannot_update_file():
         team = ctx["team"]
         outsider = make_user(db, "evil.ft@nakshatech.com", "employee", "LiDAR")
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "U1", "production_user_id": team["prod"].id}])[0]
+                         entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "U1", "production_user_id": team["prod"].id}])[0]
         db.flush()
         with pytest.raises(PermissionError):
             update_item(db, actor=outsider, role="employee", work_package_item_id=item.id,
@@ -302,14 +302,14 @@ def test_management_is_read_only():
         team = ctx["team"]
         management = make_user(db, "mgmt.ft@nakshatech.com", "management")
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "R1"}])[0]
+                         entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "R1"}])[0]
         db.flush()
         listing = item_list(db, actor=management, role="management", work_package_id=ctx["package"].id)
         assert listing["can_manage"] is False and listing["can_deliver"] is False
         assert len(listing["items"]) == 1  # read-only visibility
         with pytest.raises(PermissionError, match="read-only"):
             add_items(db, actor=management, role="management", work_package_id=ctx["package"].id,
-                      entries=[{"item_number": "NOPE"}])
+                      entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "NOPE"}])
         with pytest.raises(PermissionError, match="read-only"):
             start_activity(db, actor=management, role="management", work_package_item_id=item.id, stage="production")
         with pytest.raises(PermissionError, match="read-only"):
@@ -321,7 +321,7 @@ def test_team_lead_can_personally_perform_production():
         ctx = make_area(db, code="TLPRD")
         team = ctx["team"]
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "TL1", "production_user_id": team["prod"].id}])[0]
+                         entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "TL1", "production_user_id": team["prod"].id}])[0]
         db.flush()
         # TL (not the production assignee) may personally work — recorded under TL's own id
         activity = start_activity(db, actor=team["tl"], role=TL_ROLE, work_package_item_id=item.id, stage="production")
@@ -341,7 +341,7 @@ def test_production_start_end_timestamps_and_duration():
         ctx = make_area(db, code="TIME")
         team = ctx["team"]
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "T1", "production_user_id": team["prod"].id}])[0]
+                         entries=[{"planned_quantity": 10, "planned_unit": "km", "item_number": "T1", "production_user_id": team["prod"].id}])[0]
         db.flush()
         started = datetime(2026, 10, 1, 9, 0, 0)
         activity = start_activity(db, actor=team["prod"], role="employee",
@@ -372,7 +372,7 @@ def test_overnight_session_duration():
         ctx = make_area(db, code="NIGHT")
         team = ctx["team"]
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "N1", "production_user_id": team["prod"].id}])[0]
+                         entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "N1", "production_user_id": team["prod"].id}])[0]
         db.flush()
         start = datetime(2026, 9, 24, 18, 7, 2)
         end = datetime(2026, 9, 25, 10, 19, 18)
@@ -388,8 +388,8 @@ def test_employee_files_attribution_and_aggregation():
         ctx = make_area(db, code="ATTR")
         team = ctx["team"]
         created = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id, entries=[
-            {"item_number": "P1", "production_user_id": team["prod"].id},
-            {"item_number": "P2", "production_user_id": team["prod"].id},
+            {"planned_quantity": 5, "planned_unit": "km", "item_number": "P1", "production_user_id": team["prod"].id},
+            {"planned_quantity": 5, "planned_unit": "km", "item_number": "P2", "production_user_id": team["prod"].id},
         ])
         db.flush()
         for index, item in enumerate(created):
@@ -417,7 +417,7 @@ def test_employee_productivity_summary():
         ctx = make_area(db, code="PROD")
         team = ctx["team"]
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "E1", "production_user_id": team["prod"].id}])[0]
+                         entries=[{"planned_quantity": 4, "planned_unit": "km", "item_number": "E1", "production_user_id": team["prod"].id}])[0]
         db.flush()
         started = datetime(2026, 10, 4, 9, 0, 0)
         ended = datetime(2026, 10, 4, 12, 0, 0)
@@ -491,8 +491,8 @@ def test_delay_category_system_malfunction_and_affected_file():
         ctx = make_area(db, code="DELAY")
         team = ctx["team"]
         created = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id, entries=[
-            {"item_number": "BUILDING_045", "production_user_id": team["prod"].id},
-            {"item_number": "OTHER_1", "production_user_id": team["prod"].id},
+            {"planned_quantity": 1, "planned_unit": "km", "item_number": "BUILDING_045", "production_user_id": team["prod"].id},
+            {"planned_quantity": 1, "planned_unit": "km", "item_number": "OTHER_1", "production_user_id": team["prod"].id},
         ])
         db.flush()
         target = next(i for i in created if i.item_number == "BUILDING_045")
@@ -535,7 +535,7 @@ def _ready_for_review(db, ctx, name: str, *, prepare: str | None = None):
     """
     team = ctx["team"]
     item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                     entries=[{"item_number": f"R-{name}",
+                     entries=[{"planned_quantity": 2, "planned_unit": "km", "item_number": f"R-{name}",
                                "production_user_id": team["prod"].id,
                                "qc_user_id": team["qc"].id,
                                "qa_user_id": team["qa"].id}])[0]
@@ -578,8 +578,9 @@ def test_qc_reject_preserves_history_then_pass():
                       remarks="Misaligned tiles")
         row = item_list(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id)["items"][0]
         assert row["qc_status"] == "rejected" and row["status"] == "qc_rejected"
-        second = start_activity(db, actor=team["qc"], role="employee", work_package_item_id=item.id, stage="qc")
-        stop_activity(db, actor=team["qc"], activity_id=second.id, status="passed", remarks="Fixed")
+        from test_production_master_excel_allocation_v8_3 import run_production, run_review
+        run_production(db, ctx, item)
+        run_review(db, ctx, item, "qc", "passed", remarks="Fixed")
         history = item_history(db, actor=team["tl"], role=TL_ROLE, work_package_item_id=item.id)
         qc_rows = [h for h in history if h["stage"] == "qc"]
         assert [h["status"] for h in qc_rows] == ["rejected", "passed"]  # old attempt never overwritten
@@ -604,6 +605,10 @@ def test_qa_start_end_duration_and_reject_rework():
         assert [h["status"] for h in qa_rows] == ["rework"]  # history preserved, nothing overwritten
         assert row["status"] == "qa_rejected"
         # QA rejection requires remarks
+        from test_production_master_excel_allocation_v8_3 import run_production
+        with pytest.raises(ValueError, match="correction"):
+            start_activity(db, actor=team["qa"], role="employee", work_package_item_id=item.id, stage="qa")
+        run_production(db, ctx, item)
         second = start_activity(db, actor=team["qa"], role="employee", work_package_item_id=item.id, stage="qa")
         with pytest.raises(ValueError, match="status"):
             stop_activity(db, actor=team["qa"], activity_id=second.id)
@@ -627,7 +632,7 @@ def test_delivery_after_qa_pass():
         # non-authorized employee cannot deliver
         outsider = make_user(db, "nodelivery.ft@nakshatech.com", "employee", "LiDAR")
         item2 = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                          entries=[{"item_number": "D2", "qa_user_id": team["qa"].id}])[0]
+                          entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "D2", "qa_user_id": team["qa"].id}])[0]
         db.flush()
         with pytest.raises(PermissionError, match="Team Lead or Project Manager"):
             deliver_item(db, actor=outsider, role="employee", work_package_item_id=item2.id)
@@ -639,7 +644,7 @@ def test_full_chain_rollups():
         ctx = make_area(db, code="CHAIN")
         team = ctx["team"]
         item = add_items(db, actor=team["tl"], role=TL_ROLE, work_package_id=ctx["package"].id,
-                         entries=[{"item_number": "C1", "production_user_id": team["prod"].id,
+                         entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "C1", "production_user_id": team["prod"].id,
                                    "qc_user_id": team["qc"].id, "qa_user_id": team["qa"].id}])[0]
         db.flush()
         p = start_activity(db, actor=team["prod"], role="employee", work_package_item_id=item.id, stage="production")
@@ -677,7 +682,7 @@ def test_workbook_exact_project_and_sheet_names():
     with SessionLocal() as db:
         ctx_a = make_area(db, code="WBA")
         item = add_items(db, actor=ctx_a["team"]["tl"], role=TL_ROLE, work_package_id=ctx_a["package"].id,
-                         entries=[{"item_number": "WA_001", "production_user_id": ctx_a["team"]["prod"].id,
+                         entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "WA_001", "production_user_id": ctx_a["team"]["prod"].id,
                                    "qc_user_id": ctx_a["team"]["qc"].id, "qa_user_id": ctx_a["team"]["qa"].id}])[0]
         db.flush()
         act = start_activity(db, actor=ctx_a["team"]["prod"], role="employee",

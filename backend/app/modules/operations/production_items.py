@@ -20,7 +20,7 @@ Invariants:
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from io import BytesIO
 from typing import Any, Iterable
 
@@ -37,8 +37,6 @@ from app.modules.operations.models import (
     WorkPackageItem,
     WorkPackageItemActivity,
 )
-
-from decimal import Decimal, InvalidOperation, localcontext
 
 _LENGTH_TO_KM = {
     "m": Decimal("0.001"),
@@ -109,6 +107,71 @@ def locked_actual_from_item(item) -> tuple[Decimal, str]:
     # remain locked in their original valid unit.
     # We must not incorrectly convert sq.m or files to km.
     return quantity, raw_unit
+
+
+def validate_item_plan(item) -> tuple[Decimal, str]:
+    """Require an actionable plan before allocation or starting production."""
+    try:
+        return locked_actual_from_item(item)
+    except ValueError as exc:
+        raise ValueError(f"File {item.item_number}: {exc}") from exc
+
+
+def production_contributions(activities, items: dict[int, WorkPackageItem]) -> dict[int, tuple[Decimal, str]]:
+    """Attribute each file's planned output once, preserving all session history.
+
+    Completion rows store the full authoritative plan, not a session increment.
+    Their contribution is the remainder after prior partial progress. Rework adds
+    time and history but never manufactures another copy of the physical output.
+    Applying this at read time also corrects old overcounted rows without rewriting
+    the audit trail. All distance sessions are expressed in canonical kilometres.
+    """
+    result = {}
+    credited: dict[int, Decimal] = {}
+    completed: set[int] = set()
+    for activity in sorted(activities, key=lambda row: row.id):
+        if activity.stage != "production" or activity.ended_at is None:
+            continue
+        item_id = activity.work_package_item_id
+        item = items.get(item_id)
+        plan = None
+        if item is not None and item.planned_quantity is not None and (item.planned_unit or "").strip():
+            plan, unit = locked_actual_from_item(item)
+        else:
+            unit = (activity.unit or "").strip()
+            if unit.lower() in _LENGTH_TO_KM:
+                unit = "km"
+        quantity = activity.quantity_completed or Decimal("0")
+        source_unit = (activity.unit or "").strip()
+        if source_unit.lower() in _LENGTH_TO_KM:
+            quantity *= _LENGTH_TO_KM[source_unit.lower()]
+            source_unit = "km"
+        if source_unit and source_unit.casefold() != unit.casefold():
+            # Historical mixed units must not be silently added to the plan.
+            quantity = Decimal("0")
+        quantity = max(Decimal("0"), quantity)
+        previous = credited.get(item_id, Decimal("0"))
+        if item_id in completed:
+            quantity = Decimal("0")
+        elif plan is not None:
+            remaining = max(Decimal("0"), plan - previous)
+            quantity = remaining if activity.status == "completed" else min(quantity, remaining)
+        if activity.status == "completed":
+            completed.add(item_id)
+        credited[item_id] = previous + quantity
+        result[activity.id] = (quantity, unit)
+    return result
+
+
+def _lock_item(db: Session, item_id: int) -> WorkPackageItem:
+    # Serialize start/stop/delivery on one parent row. Refresh cached state after
+    # waiting for another transaction; never overwrite caller changes implicitly.
+    db.flush()
+    item = db.scalar(select(WorkPackageItem).where(WorkPackageItem.id == item_id)
+                     .with_for_update().execution_options(populate_existing=True))
+    if item is None:
+        raise ValueError("Work item not found")
+    return item
 
 
 ADMIN_ROLE = "admin"
@@ -468,7 +531,10 @@ def _clean_number(value: Any) -> Decimal | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     try:
-        return Decimal(str(value).strip())
+        quantity = Decimal(str(value).strip())
+        if not quantity.is_finite() or quantity < 0:
+            raise ValueError("Quantity must be finite and zero or greater")
+        return quantity
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"Invalid quantity: {value!r}") from exc
 
@@ -508,6 +574,14 @@ def add_items(
             duplicates.append(number)
             continue
         seen.add(number)
+        quantity = _clean_number(entry.get("planned_quantity"))
+        unit = (entry.get("planned_unit") or "").strip()
+        if (quantity is None) != (not unit):
+            raise ValueError(f"File {number}: planned quantity and unit must be supplied together")
+        if len(unit) > 30:
+            raise ValueError(f"File {number}: planned unit is too long")
+        if entry.get("production_user_id") and quantity is None:
+            raise ValueError(f"File {number}: planned quantity and unit are required before Production assignment")
         cleaned.append({**entry, "item_number": number})
     if duplicates:
         raise ValueError(
@@ -695,6 +769,9 @@ def assign_items(
         _ensure_assignable(db, package, ctx, int(qa_user_id), "qa")
     for item in items:
         if production_user_id:
+            validate_item_plan(item)
+    for item in items:
+        if production_user_id:
             item.production_user_id = int(production_user_id)
         if qc_user_id:
             item.qc_user_id = int(qc_user_id)
@@ -718,6 +795,20 @@ def update_item(
     package = load_package(db, item.work_package_id)
     ctx = actor_context(db, package, actor, role)
     _ensure_mutable(ctx)
+    if provided & {"planned_quantity", "planned_unit"}:
+        quantity = _clean_number(changes.get("planned_quantity")) if "planned_quantity" in provided else item.planned_quantity
+        unit = (changes.get("planned_unit") or "").strip() if "planned_unit" in provided else (item.planned_unit or "")
+        if (quantity is None) != (not unit):
+            raise ValueError("Planned quantity and unit must be supplied together")
+        if item.production_user_id and quantity is None:
+            raise ValueError("An assigned file must have planned quantity and unit")
+        changed = quantity != item.planned_quantity or unit != (item.planned_unit or "")
+        if changed and db.scalar(select(WorkPackageItemActivity.id).where(
+            WorkPackageItemActivity.work_package_item_id == item.id,
+            WorkPackageItemActivity.stage == "production",
+            WorkPackageItemActivity.status == "completed",
+        ).limit(1)) is not None:
+            raise ValueError("The plan cannot be changed after production completion")
     if "item_number" in provided:
         number = (changes.get("item_number") or "").strip()
         if not number:
@@ -787,7 +878,8 @@ def pending_production_rework(
             production is None
             or production.status != "completed"
             or production.ended_at is None
-            or production.ended_at <= activity.ended_at
+            or production.id <= activity.id
+            or production.ended_at < activity.ended_at
         )
     ]
     return max(outstanding, key=lambda activity: activity.id) if outstanding else None
@@ -805,11 +897,13 @@ def start_activity(
     stage = (stage or "").strip().lower()
     if stage not in TIMED_STAGES:
         raise ValueError(f"Stage must be one of: {', '.join(TIMED_STAGES)}")
-    item = load_item(db, work_package_item_id)
+    item = _lock_item(db, work_package_item_id)
     if not item.is_active:
         raise ValueError("This file is inactive and cannot be worked on")
     package = load_package(db, item.work_package_id)
     performed_role = _ensure_stage_actor(db, package, item, actor, role, stage)
+    if stage == "production":
+        validate_item_plan(item)
 
     # Workflow gates (server-side, authoritative): QC only after Production is
     # completed for that file; QA only after QC passed it.
@@ -852,7 +946,8 @@ def start_activity(
                 and latest_production.status == "completed"
                 and latest_production.ended_at is not None
                 and previous_review.ended_at is not None
-                and latest_production.ended_at > previous_review.ended_at
+                and latest_production.id > previous_review.id
+                and latest_production.ended_at >= previous_review.ended_at
             )
             if not corrected:
                 raise ValueError("Production must finish the rejected file's correction before review restarts")
@@ -918,7 +1013,13 @@ def stop_activity(
     item stays in progress and QC is NOT unlocked). ``finalize=True`` = COMPLETE
     PRODUCTION / QC / QA decision.
     """
-    activity = db.get(WorkPackageItemActivity, activity_id)
+    item_id = db.scalar(select(WorkPackageItemActivity.work_package_item_id)
+                        .where(WorkPackageItemActivity.id == activity_id))
+    if item_id is None:
+        raise ValueError("Activity not found")
+    source_item = _lock_item(db, item_id)
+    activity = db.scalar(select(WorkPackageItemActivity).where(WorkPackageItemActivity.id == activity_id)
+                         .with_for_update().execution_options(populate_existing=True))
     if activity is None:
         raise ValueError("Activity not found")
     if activity.employee_user_id != actor.id:
@@ -929,8 +1030,8 @@ def stop_activity(
     end = ended_at or utc_now()
     if activity.started_at is None:
         raise ValueError("This session has no start timestamp")
-    if end <= activity.started_at:
-        raise ValueError("End time must be after the start time")
+    if end < activity.started_at:
+        raise ValueError("End time must not be before the start time")
     duration = int((end - activity.started_at).total_seconds())
     if duration < 0:
         raise ValueError("Duration cannot be negative")
@@ -955,48 +1056,6 @@ def stop_activity(
         if affected.work_package_id != activity.work_package_id:
             raise ValueError("Affected file must belong to the same area")
 
-    """activity.ended_at = end
-    activity.duration_seconds = duration
-    activity.status = final_status
-    activity.quantity_completed = _clean_number(quantity_completed)
-    activity.unit = (unit or "").strip() or None
-# GLOBAL LOCKED ACTUAL QUANTITY POLICY
-# Applies to all project and department file completions.
-#
-# Keep the existing permission checks, workflow gates,
-# timestamps, transactions and QC/QA logic unchanged.
-
-if (
-    stage == "production"
-    and finalize
-    and final_status == "completed"
-):
-    # WorkPackageItem is the existing item model.
-    source_item = db.get(
-        WorkPackageItem,
-        activity.work_package_item_id,
-    )
-
-    if source_item is None:
-        raise ValueError("Work item not found")
-
-    # ALWAYS replace client-supplied values with
-    # the authoritative stored planned measurement.
-    quantity_completed, unit = locked_actual_from_item(
-        source_item
-    )
-
-    # These fields are no longer captured by
-    # the new Complete File form.
-    remarks = None
-    affected_item_id = None
-    delay_remarks = None"""
-
-    # Save the existing server-authoritative timestamps.
-    activity.ended_at = end
-    activity.duration_seconds = duration
-    activity.status = final_status
-
     # GLOBAL LOCKED ACTUAL QUANTITY POLICY
     # Applies to all employees, projects and departments.
     # The client cannot decide the completed quantity.
@@ -1005,24 +1064,37 @@ if (
         and finalize
         and final_status == "completed"
     ):
-        source_item = db.get(
-            WorkPackageItem,
-            activity.work_package_item_id,
-        )
-
-        if source_item is None:
-            raise ValueError("Work item not found")
-
         # Calculate from the original planned quantity.
         # Preserve decimal precision and convert lengths to km.
         quantity_completed, unit = locked_actual_from_item(
             source_item
         )
 
-        # Fields removed from the Production completion form.
-        remarks = None
-        affected_item_id = None
-        delay_remarks = None
+    elif stage == "production":
+        planned, canonical_unit = validate_item_plan(source_item)
+        quantity_completed = _clean_number(quantity_completed) or Decimal("0")
+        submitted_unit = (unit or canonical_unit).strip()
+        if submitted_unit.lower() in _LENGTH_TO_KM:
+            quantity_completed *= _LENGTH_TO_KM[submitted_unit.lower()]
+            submitted_unit = "km"
+        if submitted_unit.casefold() != canonical_unit.casefold():
+            raise ValueError("Progress unit must match the file's planned unit")
+        previous_activities = db.scalars(select(WorkPackageItemActivity).where(
+            WorkPackageItemActivity.work_package_item_id == source_item.id,
+            WorkPackageItemActivity.ended_at.is_not(None),
+        )).all()
+        previous = sum((value[0] for value in production_contributions(
+            previous_activities, {source_item.id: source_item}).values()), Decimal("0"))
+        if quantity_completed > max(Decimal("0"), planned - previous):
+            raise ValueError("Daily progress exceeds the remaining planned quantity")
+        unit = canonical_unit
+    else:
+        quantity_completed, unit = None, None
+
+    # Validate everything before closing the timer; callers may correct and retry.
+    activity.ended_at = end
+    activity.duration_seconds = duration
+    activity.status = final_status
 
     # Save the final authoritative quantity and unit.
     # This must happen AFTER locked quantity calculation.
@@ -1037,14 +1109,15 @@ if (
     # ONCE across all its sessions (partial "save progress" sessions contribute 0 and a
     # re-finalization after rework does not count the file a second time).
     already_counted = False
-    if stage == "production" and finalize:
+    completed_file = stage == "production" and finalize and final_status == "completed"
+    if completed_file:
         already_counted = db.scalar(select(WorkPackageItemActivity.id).where(
             WorkPackageItemActivity.work_package_item_id == activity.work_package_item_id,
             WorkPackageItemActivity.stage == "production",
             WorkPackageItemActivity.files_completed == 1,
             WorkPackageItemActivity.id != activity.id,
         ).limit(1)) is not None
-    activity.files_completed = 1 if (stage == "production" and finalize and not already_counted) else 0
+    activity.files_completed = 1 if completed_file and not already_counted else 0
     activity.remarks = (remarks or "").strip() or None
     activity.delay_category = category
     activity.affected_item_id = int(affected_item_id) if affected_item_id else None
@@ -1221,7 +1294,7 @@ def deliver_item(
     reference: str | None = None,
 ) -> WorkPackageItemActivity:
     """Record file delivery (authorized Team Lead / PM, mirroring mark_delivered)."""
-    item = load_item(db, work_package_item_id)
+    item = _lock_item(db, work_package_item_id)
     package = load_package(db, item.work_package_id)
     ctx = actor_context(db, package, actor, role)
     if ctx["read_only_role"]:
@@ -1363,6 +1436,10 @@ def build_item_rows(
     )).all()
     open_by_item: dict[int, WorkPackageItemActivity] = {row.work_package_item_id: row for row in open_rows}
     all_acts = all_activities_by_item(db, package_ids)
+    contributions = production_contributions(
+        [activity for group in all_acts.values() for activity in group],
+        {item.id: item for item in items},
+    )
     packages = {p.id: p for p in db.scalars(
         select(OrthoWorkPackage).where(OrthoWorkPackage.id.in_(package_ids))
     ).all()}
@@ -1380,7 +1457,7 @@ def build_item_rows(
         # finalized only by a session whose status is "completed".
         item_acts = all_acts.get(item.id, [])
         prod_sessions = [a for a in item_acts if a.stage == "production" and a.ended_at is not None]
-        cumulative = sum((a.quantity_completed or Decimal("0")) for a in prod_sessions)
+        cumulative = sum((contributions[a.id][0] for a in prod_sessions), Decimal("0"))
         total_seconds = sum(int(a.duration_seconds or 0) for a in prod_sessions)
         finalized = next((a for a in reversed(prod_sessions) if a.status == "completed"), None)
         files_completed_total = sum(int(a.files_completed or 0) for a in prod_sessions)
@@ -1455,7 +1532,7 @@ def build_item_rows(
                                             else (prod.duration_seconds if prod else None)),
             "production_quantity": (float(cumulative) if prod_sessions
                                     else (float(prod.quantity_completed) if prod and prod.quantity_completed is not None else None)),
-            "production_unit": prod.unit if prod else (item.planned_unit),
+            "production_unit": contributions[prod_sessions[-1].id][1] if prod_sessions else item.planned_unit,
             "production_files": files_completed_total,
             "qc_attempts": len([a for a in item_acts if a.stage == "qc" and a.ended_at is not None]),
             "qa_attempts": len([a for a in item_acts if a.stage == "qa" and a.ended_at is not None]),
@@ -1615,13 +1692,15 @@ def employee_productivity_rows(db: Session, package_ids: Iterable[int]) -> list[
     packages = {p.id: p for p in db.scalars(select(OrthoWorkPackage).where(
         OrthoWorkPackage.id.in_(package_ids))).all()}
     items_by_id = {i.id: i for i in items_for_packages(db, package_ids)}
+    contributions = production_contributions(activities, items_by_id)
     employee_ids = {a.employee_user_id for a in activities}
     users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(employee_ids))).all()}
 
     groups: dict[tuple, dict] = {}
     for act in activities:
         day = act.started_at.date() if act.started_at else (act.created_at.date() if act.created_at else None)
-        key = (act.employee_user_id, act.work_package_id, day, act.unit or "")
+        quantity, unit = contributions.get(act.id, (Decimal("0"), act.unit))
+        key = (act.employee_user_id, act.work_package_id, day, unit or "")
         package = packages.get(act.work_package_id)
         entry = groups.setdefault(key, {
             "employee_user_id": act.employee_user_id,
@@ -1635,7 +1714,7 @@ def employee_productivity_rows(db: Session, package_ids: Iterable[int]) -> list[
             "files_completed": 0,
             "worked_item_ids": set(),
             "quantity_completed": Decimal("0"),
-            "unit": act.unit,
+            "unit": unit,
             "production_seconds": 0,
             "qc_seconds": 0,
             "qa_seconds": 0,
@@ -1649,8 +1728,7 @@ def employee_productivity_rows(db: Session, package_ids: Iterable[int]) -> list[
         })
         entry["files_completed"] += int(act.files_completed or 0)
         entry["worked_item_ids"].add(act.work_package_item_id)
-        if act.quantity_completed is not None:
-            entry["quantity_completed"] += act.quantity_completed
+        entry["quantity_completed"] += quantity
         seconds = int(act.duration_seconds or 0)
         if act.stage == "production":
             entry["production_seconds"] += seconds
@@ -1895,6 +1973,7 @@ def activity_rows_for_packages(db: Session, package_ids: Iterable[int]) -> list[
     if not acts:
         return []
     items = {i.id: i for i in items_for_packages(db, package_ids)}
+    contributions = production_contributions(acts, items)
     packages = {p.id: p for p in db.scalars(select(OrthoWorkPackage).where(
         OrthoWorkPackage.id.in_(package_ids))).all()}
     user_ids = {a.employee_user_id for a in acts if a.employee_user_id}
@@ -1923,8 +2002,9 @@ def activity_rows_for_packages(db: Session, package_ids: Iterable[int]) -> list[
             "started_at": started.isoformat() if started else None,
             "ended_at": act.ended_at.isoformat() if act.ended_at else None,
             "duration_seconds": act.duration_seconds,
-            "quantity_completed": float(act.quantity_completed) if act.quantity_completed is not None else None,
-            "unit": act.unit,
+            "quantity_completed": float(contributions[act.id][0]) if act.id in contributions else None,
+            "recorded_quantity": float(act.quantity_completed) if act.quantity_completed is not None else None,
+            "unit": contributions[act.id][1] if act.id in contributions else act.unit,
             "files_completed": int(act.files_completed or 0),
             "status": act.status,
             "attempt_type": act.attempt_type,
@@ -2012,19 +2092,20 @@ def employee_file_totals(db: Session, package_ids: Iterable[int]) -> list[dict]:
                 stat["qa_pending"] += 1
 
     totals: dict[tuple[int, str], dict] = {}
+    contributions = production_contributions(activities, {item.id: item for item in items})
     for act in activities:
-        key = (act.employee_user_id, act.unit or "")
+        quantity, unit = contributions.get(act.id, (Decimal("0"), act.unit))
+        key = (act.employee_user_id, unit or "")
         entry = totals.setdefault(key, {
             "employee_user_id": act.employee_user_id,
             "employee": None,
             "files_completed": 0,
             "quantity_completed": Decimal("0"),
-            "unit": act.unit,
+            "unit": unit,
             "duration_seconds": 0,
         })
         entry["files_completed"] += int(act.files_completed or 0)
-        if act.quantity_completed is not None:
-            entry["quantity_completed"] += act.quantity_completed
+        entry["quantity_completed"] += quantity
         entry["duration_seconds"] += int(act.duration_seconds or 0)
     # Employees who are assigned but have not worked yet still appear (0 progress).
     for uid in assign_stats:

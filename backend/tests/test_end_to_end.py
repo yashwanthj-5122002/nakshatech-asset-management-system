@@ -42,7 +42,7 @@ os.environ["SEED_DRONE_PASSWORD"] = "Drone@123"
 from sqlalchemy import select  # noqa: E402
 
 from app.core.database import SessionLocal  # noqa: E402
-from app.main import app  # noqa: E402
+from app.batch4_main import app  # noqa: E402 - test the deployed, cumulative runtime
 from app.models.entities import ApprovalDecisionHistory, User  # noqa: E402
 from app.modules.employee_portal.models import AuthenticatorCredential  # noqa: E402
 from app.modules.employee_portal.service import decrypt_totp_secret, totp_code  # noqa: E402
@@ -84,6 +84,7 @@ def client(isolated_application_database, monkeypatch):
         "gemini_api_key": "test-gemini-key-never-used-on-network",
         "naksha_copilot_requests_per_hour": 50,
         "it_support_email": "software.team@nakshatech.com",
+        "purchase_approval_public_url": "http://testserver",
     }
     for name, value in overrides.items():
         monkeypatch.setattr(settings, name, value)
@@ -101,6 +102,24 @@ def _authenticator_code(email: str) -> str:
         )
         assert credential is not None
         return totp_code(decrypt_totp_secret(credential.encrypted_secret))
+
+
+def _eligible_registration(email: str, employee_id: str, name: str) -> None:
+    """Register through the current published Employee Master eligibility gate."""
+    from app.modules.employee_portal.employee_master import ACTIVE_EMPLOYMENT, NOT_REGISTERED, set_imported_master_publication
+    from app.modules.employee_portal.models import EmployeeMaster
+    with SessionLocal() as db:
+        db.add(EmployeeMaster(
+            source_sl_no=uuid.uuid4().hex, access_card_no=employee_id,
+            access_card_no_normalized=employee_id.lower(), employee_number=employee_id,
+            employee_number_normalized=employee_id.lower(), employee_name=name,
+            phone="9000000001", phone_normalized="9000000001",
+            department_raw="Operations", department_code="operations", designation_raw="Worker",
+            email=email, email_normalized=email, employment_status=ACTIVE_EMPLOYMENT,
+            crm_account_status=NOT_REGISTERED, source_batch_id="end-to-end-registration-fixture",
+        ))
+        set_imported_master_publication(db, True)
+        db.commit()
 
 
 def _ensure_privileged_test_login(
@@ -248,7 +267,7 @@ def test_exact_company_excel_and_dashboard_exports(client: TestClient) -> None:
 
     asset_export = client.get("/api/reports/nakshatech-assets.xlsx", headers=headers)
     assert asset_export.status_code == 200, asset_export.text
-    assert "NakshaTech Asset Details" in asset_export.headers["content-disposition"]
+    assert "NakshaTech Active Asset Details" in asset_export.headers["content-disposition"]
     workbook = load_workbook(BytesIO(asset_export.content), read_only=True)
     current_sheet = datetime.now().strftime("%B %Y")
     assert workbook.sheetnames[0] == current_sheet
@@ -347,7 +366,7 @@ def test_printer_import_dashboard_export_and_replacement_guard(client: TestClien
     mismatch = client.post(
         "/api/replacements",
         headers=it_headers,
-        json={
+        json={"approval_recipient_name": "Vinod", "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
             "old_asset_id": assigned_printer["id"],
             "new_asset_id": non_printer["id"],
             "reason": "Printer replacement type validation",
@@ -362,7 +381,7 @@ def test_printer_import_dashboard_export_and_replacement_guard(client: TestClien
     replacement = client.post(
         "/api/replacements",
         headers=it_headers,
-        json={
+        json={"approval_recipient_name": "Vinod", "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
             "old_asset_id": assigned_printer["id"],
             "reason": "Printer is beyond economical repair",
             "damage_category": "technical_failure",
@@ -371,18 +390,11 @@ def test_printer_import_dashboard_export_and_replacement_guard(client: TestClien
         },
     )
     assert replacement.status_code == 200, replacement.text
-    approved = client.patch(
-        f"/api/replacements/{replacement.json()['id']}",
-        headers=management_headers,
-        json={
-            "approval_status": "approved",
-            "new_asset_id": available_printer["id"],
-            "final_action": "replace_and_retire",
-            "remarks": "Approved printer replacement integration test",
-        },
-    )
-    assert approved.status_code == 200, approved.text
-    assert approved.json()["new_asset_code"] == available_printer["asset_code"]
+    assert replacement.json()["approval_status"] == "not_required"
+    assert replacement.json()["new_asset_code"] == available_printer["asset_code"]
+    forbidden = client.patch(f"/api/replacements/{replacement.json()['id']}", headers=management_headers,
+                              json={"approval_status": "approved"})
+    assert forbidden.status_code == 403
 
 
 
@@ -589,344 +601,50 @@ def test_external_hdd_import_dashboard_drawer_export_and_audit(client: TestClien
 
 
 def test_work_and_replacement_workflows(client: TestClient) -> None:
+    """IT completes operational work and spare replacements without Management approval."""
+    from app.modules.notifications.models import GlobalNotification
+    from sqlalchemy import func
     it_headers = login(client, "it", "it@nakshatech.com", "IT@123456")
     management_headers = login(client, "management", "management@nakshatech.com", "Manager@123")
-    admin_headers = login(client, "admin", "admin@nakshatech.com", "Admin@123")
-    old_asset = client.get("/api/assets?status=assigned&limit=1", headers=it_headers).json()[0]
-    new_asset = client.get("/api/assets?status=available&limit=1", headers=it_headers).json()[0]
-
-    work = client.post(
-        "/api/work-records",
-        headers=it_headers,
-        json={
-            "module": "it",
-            "asset_id": old_asset["id"],
-            "title": "Inspect non-working system",
-            "work_type": "Hardware inspection",
-            "issue_description": "System does not power on",
-            "priority": "high",
-            "technician": "IT Department",
-            "details": "Created by automated integration test",
-        },
-    )
+    assets = client.get("/api/assets?limit=1000", headers=it_headers).json()
+    old_asset = next(row for row in assets if row["device_type"] == "Computer" and row["status"] == "assigned")
+    work = client.post("/api/work-records", headers=it_headers, json={
+        "module": "it", "asset_id": old_asset["id"], "title": "Inspect non-working system",
+        "work_type": "Hardware inspection", "issue_description": "System does not power on",
+        "priority": "high", "technician": "IT Department",
+    })
     assert work.status_code == 200, work.text
-    assert work.json()["status"] == "open"
     work_id = work.json()["id"]
-
-    invalid_direct_complete = client.patch(
-        f"/api/work-records/{work_id}",
-        headers=it_headers,
-        json={"status": "completed"},
-    )
-    assert invalid_direct_complete.status_code == 409
-
-    started = client.patch(f"/api/work-records/{work_id}", headers=it_headers, json={"status": "in_progress"})
-    assert started.status_code == 200, started.text
-    completed = client.patch(
-        f"/api/work-records/{work_id}",
-        headers=it_headers,
-        json={"status": "completed", "resolution": "Inspection completed"},
-    )
+    assert work.json()["status"] == "open"
+    assert client.patch(f"/api/work-records/{work_id}", headers=it_headers,
+                        json={"status": "completed"}).status_code == 409
+    assert client.patch(f"/api/work-records/{work_id}", headers=it_headers,
+                        json={"status": "in_progress"}).status_code == 200
+    completed = client.patch(f"/api/work-records/{work_id}", headers=it_headers,
+                             json={"status": "completed", "resolution": "Inspection completed"})
     assert completed.status_code == 200, completed.text
     assert completed.json()["status"] == "completed"
-    assert completed.json()["approval_status"] == "pending"
-    assert completed.json()["submitted_by_role"] == "it"
-    assert completed.json()["submitted_at"] is not None
-    work_code = completed.json()["work_code"]
-    pending_notice = _approval_notification(
-        client,
-        management_headers,
-        event_type="approval.it_work.submitted",
-        record_code=work_code,
-        target_prefix="/work",
-    )
-    assert pending_notice["is_read"] is False
-
-    locked_after_submit = client.patch(
-        f"/api/work-records/{work_id}",
-        headers=it_headers,
-        json={"resolution": "Attempted edit after submission"},
-    )
-    assert locked_after_submit.status_code == 409
-
-    forged_generic_approval = client.patch(
-        f"/api/work-records/{work_id}",
-        headers=management_headers,
-        json={"status": "closed", "approval_status": "approved"},
-    )
-    assert forged_generic_approval.status_code in {400, 403}
-
-    forbidden_it_decision = client.post(
-        f"/api/work-records/{work_id}/decision",
-        headers=it_headers,
-        json={"action": "approve"},
-    )
-    assert forbidden_it_decision.status_code == 403
-    forbidden_admin_decision = client.post(
-        f"/api/work-records/{work_id}/decision",
-        headers=admin_headers,
-        json={"action": "approve"},
-    )
-    assert forbidden_admin_decision.status_code == 403
-
-    closed = client.post(
-        f"/api/work-records/{work_id}/decision",
-        headers=management_headers,
-        json={"action": "approve", "comments": "Inspection verified by Management"},
-    )
-    assert closed.status_code == 200, closed.text
-    assert closed.json()["status"] == "closed"
-    assert closed.json()["approval_status"] == "approved"
-    assert closed.json()["approved_by_role"] == "management"
-    assert closed.json()["approval_comments"] == "Inspection verified by Management"
-    _approval_notification(
-        client,
-        it_headers,
-        event_type="approval.it_work.approved",
-        record_code=work_code,
-        target_prefix="/work",
-    )
-
-    duplicate_decision = client.post(
-        f"/api/work-records/{work_id}/decision",
-        headers=management_headers,
-        json={"action": "approve"},
-    )
-    assert duplicate_decision.status_code == 409
-
-    returned_work = client.post(
-        "/api/work-records",
-        headers=it_headers,
-        json={
-            "module": "it",
-            "asset_id": old_asset["id"],
-            "title": "Validate returned approval cycle",
-            "work_type": "Inspection",
-            "issue_description": "Approval return regression test",
-            "priority": "medium",
-            "technician": "IT Department",
-        },
-    )
-    assert returned_work.status_code == 200, returned_work.text
-    returned_work_id = returned_work.json()["id"]
-    assert client.patch(f"/api/work-records/{returned_work_id}", headers=it_headers, json={"status": "in_progress"}).status_code == 200
-    assert client.patch(f"/api/work-records/{returned_work_id}", headers=it_headers, json={"status": "completed"}).status_code == 200
-    missing_return_comment = client.post(
-        f"/api/work-records/{returned_work_id}/decision",
-        headers=management_headers,
-        json={"action": "return"},
-    )
-    assert missing_return_comment.status_code == 400
-    returned = client.post(
-        f"/api/work-records/{returned_work_id}/decision",
-        headers=management_headers,
-        json={"action": "return", "comments": "Add the final verification result"},
-    )
-    assert returned.status_code == 200, returned.text
-    assert returned.json()["status"] == "in_progress"
-    assert returned.json()["approval_status"] == "returned"
-    returned_work_code = returned.json()["work_code"]
-    _approval_notification(
-        client,
-        it_headers,
-        event_type="approval.it_work.returned",
-        record_code=returned_work_code,
-        target_prefix="/work",
-    )
-    resubmitted_work = client.patch(
-        f"/api/work-records/{returned_work_id}",
-        headers=it_headers,
-        json={"status": "completed", "resolution": "Verification added"},
-    )
-    assert resubmitted_work.status_code == 200, resubmitted_work.text
-    assert resubmitted_work.json()["approval_status"] == "pending"
-    _approval_notification(
-        client,
-        management_headers,
-        event_type="approval.it_work.resubmitted",
-        record_code=returned_work_code,
-        target_prefix="/work",
-    )
-
-    replacement = client.post(
-        "/api/replacements",
-        headers=it_headers,
-        json={
-            "old_asset_id": old_asset["id"],
-            "reason": "Beyond economical repair",
-            "damage_category": "Technical Failure",
-            "inspection_finding": "Replacement recommended after inspection",
-            "final_action": "replacement_pending",
-        },
-    )
+    assert completed.json()["approval_status"] == "not_required"
+    assert completed.json()["approved_by_name"] is None
+    forbidden = client.patch(f"/api/work-records/{work_id}", headers=management_headers,
+                              json={"resolution": "Unauthorized change"})
+    assert forbidden.status_code == 403
+    replacement = client.post("/api/replacements", headers=it_headers, json={"approval_recipient_name": "Vinod", "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
+        "old_asset_id": old_asset["id"], "reason": "Spare-first replacement after inspection",
+        "damage_category": "technical_failure", "inspection_finding": "Motherboard failed",
+    })
     assert replacement.status_code == 200, replacement.text
-    replacement_id = replacement.json()["id"]
-    replacement_code = replacement.json()["replacement_code"]
-    assert replacement.json()["approval_status"] == "pending"
-    _approval_notification(
-        client,
-        management_headers,
-        event_type="approval.replacement.submitted",
-        record_code=replacement_code,
-        target_prefix="/replacements",
-    )
-
-    duplicate_replacement = client.post(
-        "/api/replacements",
-        headers=it_headers,
-        json={
-            "old_asset_id": old_asset["id"],
-            "reason": "Duplicate request must be blocked",
-            "damage_category": "technical_failure",
-        },
-    )
-    assert duplicate_replacement.status_code == 409
-
-    forbidden_replacement_admin = client.patch(
-        f"/api/replacements/{replacement_id}",
-        headers=admin_headers,
-        json={
-            "approval_status": "approved",
-            "new_asset_id": new_asset["id"],
-            "final_action": "replace_and_retire",
-        },
-    )
-    assert forbidden_replacement_admin.status_code == 403
-
-    missing_replacement_return_comment = client.patch(
-        f"/api/replacements/{replacement_id}",
-        headers=management_headers,
-        json={"approval_status": "returned"},
-    )
-    assert missing_replacement_return_comment.status_code == 400
-
-    returned_replacement = client.patch(
-        f"/api/replacements/{replacement_id}",
-        headers=management_headers,
-        json={
-            "approval_status": "returned",
-            "remarks": "Clarify the inspection finding before approval",
-        },
-    )
-    assert returned_replacement.status_code == 200, returned_replacement.text
-    assert returned_replacement.json()["approval_status"] == "returned"
-    assert returned_replacement.json()["decision_remarks"] == "Clarify the inspection finding before approval"
-    _approval_notification(
-        client,
-        it_headers,
-        event_type="approval.replacement.returned",
-        record_code=replacement_code,
-        target_prefix="/replacements",
-    )
-
-    resubmitted_replacement = client.put(
-        f"/api/replacements/{replacement_id}/resubmit",
-        headers=it_headers,
-        json={
-            "reason": "Beyond economical repair after second verification",
-            "damage_category": "technical_failure",
-            "inspection_finding": "Main board confirmed failed and repair is uneconomical",
-            "final_action": "replacement_pending",
-        },
-    )
-    assert resubmitted_replacement.status_code == 200, resubmitted_replacement.text
-    assert resubmitted_replacement.json()["approval_status"] == "pending"
-    assert resubmitted_replacement.json()["approved_by"] is None
-    _approval_notification(
-        client,
-        management_headers,
-        event_type="approval.replacement.resubmitted",
-        record_code=replacement_code,
-        target_prefix="/replacements",
-    )
-
-    approved = client.patch(
-        f"/api/replacements/{replacement_id}",
-        headers=management_headers,
-        json={
-            "approval_status": "approved",
-            "new_asset_id": new_asset["id"],
-            "final_action": "replace_and_retire",
-            "remarks": "Approved by management integration test",
-        },
-    )
-    assert approved.status_code == 200, approved.text
-    assert approved.json()["approval_status"] == "approved"
-    assert approved.json()["new_asset_code"] == new_asset["asset_code"]
-    assert approved.json()["approved_by_role"] == "management"
-    _approval_notification(
-        client,
-        it_headers,
-        event_type="approval.replacement.approved",
-        record_code=replacement_code,
-        target_prefix="/replacements",
-    )
-
-    duplicate_replacement_decision = client.patch(
-        f"/api/replacements/{replacement_id}",
-        headers=management_headers,
-        json={"approval_status": "rejected", "remarks": "Must not overwrite approval"},
-    )
-    assert duplicate_replacement_decision.status_code == 409
-
-    assigned_candidates = client.get("/api/assets?status=assigned&limit=10", headers=it_headers).json()
-    reject_old_asset = next(item for item in assigned_candidates if item["id"] != old_asset["id"])
-    reject_request = client.post(
-        "/api/replacements",
-        headers=it_headers,
-        json={
-            "old_asset_id": reject_old_asset["id"],
-            "reason": "Replacement rejection regression test",
-            "damage_category": "technical_failure",
-            "inspection_finding": "Repair remains viable",
-            "final_action": "replacement_pending",
-        },
-    )
-    assert reject_request.status_code == 200, reject_request.text
-    reject_request_id = reject_request.json()["id"]
-    reject_without_remarks = client.patch(
-        f"/api/replacements/{reject_request_id}",
-        headers=management_headers,
-        json={"approval_status": "rejected"},
-    )
-    assert reject_without_remarks.status_code == 400
-    rejected_replacement = client.patch(
-        f"/api/replacements/{reject_request_id}",
-        headers=management_headers,
-        json={"approval_status": "rejected", "remarks": "Repair the existing asset instead"},
-    )
-    assert rejected_replacement.status_code == 200, rejected_replacement.text
-    assert rejected_replacement.json()["approval_status"] == "rejected"
-    _approval_notification(
-        client,
-        it_headers,
-        event_type="approval.replacement.rejected",
-        record_code=reject_request.json()["replacement_code"],
-        target_prefix="/replacements",
-    )
-    reject_asset_after = client.get(f"/api/assets/{reject_old_asset['id']}", headers=it_headers)
-    assert reject_asset_after.status_code == 200
-    assert reject_asset_after.json()["status"] == "assigned"
-
+    replaced = replacement.json()
+    assert replaced["approval_status"] == "not_required"
+    assert replaced["final_action"] == "replace_with_spare"
+    assert replaced["new_asset_id"] is not None
+    retired = client.get(f"/api/assets/{old_asset['id']}", headers=it_headers)
+    assert retired.status_code == 200
+    assert retired.json()["status"] == "replaced"
     with SessionLocal() as db:
-        work_actions = db.scalars(
-            select(ApprovalDecisionHistory.action)
-            .where(
-                ApprovalDecisionHistory.workflow_type == "it_work",
-                ApprovalDecisionHistory.record_id == returned_work_id,
-            )
-            .order_by(ApprovalDecisionHistory.id.asc())
-        ).all()
-        replacement_actions = db.scalars(
-            select(ApprovalDecisionHistory.action)
-            .where(
-                ApprovalDecisionHistory.workflow_type == "asset_replacement",
-                ApprovalDecisionHistory.record_id == replacement_id,
-            )
-            .order_by(ApprovalDecisionHistory.id.asc())
-        ).all()
-    assert work_actions == ["submitted", "returned", "resubmitted"]
-    assert replacement_actions == ["submitted", "returned", "resubmitted", "approved"]
+        obsolete = db.scalar(select(func.count()).select_from(GlobalNotification).where(
+            GlobalNotification.event_type.in_(["approval.it_work.submitted", "approval.replacement.submitted"])))
+        assert obsolete == 0
 
 
 def test_purchase_permission_approval_conversion_and_excel(client: TestClient) -> None:
@@ -940,6 +658,8 @@ def test_purchase_permission_approval_conversion_and_excel(client: TestClient) -
         json={
             "reporting_month": month,
             "requesting_department": "Software",
+            "approval_recipient_name": "Vinod",
+            "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
             "requested_employee": "QA Software Employee",
             "item_type": "hardware",
             "item_name": "AI Development Workstation",
@@ -1075,6 +795,8 @@ def test_purchase_permission_approval_conversion_and_excel(client: TestClient) -
         json={
             "reporting_month": month,
             "requesting_department": "Civil",
+            "approval_recipient_name": "Vinod",
+            "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
             "requested_employee": "QA Civil Employee",
             "item_type": "software",
             "item_name": "GIS Desktop License",
@@ -1113,7 +835,7 @@ def test_purchase_permission_approval_conversion_and_excel(client: TestClient) -
     resubmitted = client.put(
         f"/api/it-activity/purchase-requests/{sent_back_id}/resubmit",
         headers=it_headers,
-        json={
+        json={"approval_recipient_name": "Vinod", "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
             "reporting_month": month,
             "requesting_department": "Civil",
             "requested_employee": "QA Civil Employee",
@@ -1140,7 +862,7 @@ def test_purchase_permission_approval_conversion_and_excel(client: TestClient) -
     rejected_request = client.post(
         "/api/it-activity/purchase-requests",
         headers=it_headers,
-        json={
+        json={"approval_recipient_name": "Vinod", "approval_recipient_email": MANAGEMENT_TEST_EMAIL,
             "reporting_month": month,
             "requesting_department": "IT",
             "requested_employee": "QA IT Employee",
@@ -1342,7 +1064,7 @@ def test_asset_edit_allows_optional_monthly_text_and_preserves_audit(client: Tes
     cpu_tag = f"QA-OPTIONAL-AUDIT-{uuid.uuid4().hex[:8].upper()}"
     office_location = (
         "Naksha Tech Pvt. Ltd., R.K. Chambers, 4th Floor, 5th Main, "
-        "Chamarajpet, Bengaluru, Karnataka, India – 560018"
+        "Chamarajpet, Bengaluru, Karnataka, India â€“ 560018"
     )
 
     created = client.post(
@@ -1762,6 +1484,12 @@ def test_drone_workbook_preview_preserves_all_source_structures(client: TestClie
 def test_drone_import_commit_is_separate_from_it_assets(client: TestClient) -> None:
     admin_headers = login(client, "admin", "admin@nakshatech.com", "Admin@123")
     it_headers = login(client, "it", "it@nakshatech.com", "IT@123456")
+    # Every test has a fresh database: create this test's own preview batch.
+    workbook_path = Path(__file__).resolve().parents[1] / "app/data/drone_hardware_inventory_template.xlsx"
+    with workbook_path.open("rb") as workbook:
+        preview = client.post("/api/drone/import/preview?reporting_month=2026-05", headers=admin_headers,
+                              files={"file": (workbook_path.name, workbook, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert preview.status_code == 200, preview.text
     batches = client.get("/api/drone/import/batches", headers=admin_headers).json()
     batch = batches[0]
     before_it_total = client.get("/api/dashboard/it", headers=it_headers).json()["kpis"]["total"]
@@ -2093,6 +1821,7 @@ def test_employee_registration_one_time_authenticator_then_password_login_and_ti
 
     email = f"employee.portal.{uuid.uuid4().hex[:8]}@nakshatech.com"
     employee_id = f"NT-PORTAL-{uuid.uuid4().hex[:8].upper()}"
+    _eligible_registration(email, employee_id, "Portal Test Employee")
     otp_response = client.post("/api/auth/register/request-otp", json={"email": email})
     assert otp_response.status_code == 200, otp_response.text
     otp = otp_response.json().get("development_otp")
@@ -2111,6 +1840,7 @@ def test_employee_registration_one_time_authenticator_then_password_login_and_ti
             "designation": "Worker",
             "branch_id": branch_id,
             "password": "PortalStrong@123",
+            "confirm_password": "PortalStrong@123",
         },
     )
     assert completed.status_code == 200, completed.text
@@ -2498,6 +2228,8 @@ def test_pending_registration_can_resume_authenticator_but_active_login_is_passw
 
     branch_id = client.get("/api/auth/branches").json()[0]["id"]
     email = f"employee.resume.{uuid.uuid4().hex[:8]}@nakshatech.com"
+    employee_id = f"NT-RES-{uuid.uuid4().hex[:8].upper()}"
+    _eligible_registration(email, employee_id, "Resume Activation Employee")
     password = "ResumeActivation@123"
 
     otp_response = client.post("/api/auth/register/request-otp", json={"email": email})
@@ -2510,10 +2242,11 @@ def test_pending_registration_can_resume_authenticator_but_active_login_is_passw
         json={
             "registration_token": verified.json()["registration_token"],
             "full_name": "Resume Activation Employee",
-            "employee_id": f"NT-RES-{uuid.uuid4().hex[:8].upper()}",
+            "employee_id": employee_id,
             "department": "Operations",
             "branch_id": branch_id,
             "password": password,
+            "confirm_password": password,
         },
     )
     assert completed.status_code == 200, completed.text
@@ -2554,6 +2287,8 @@ def test_employee_password_reset_and_software_ticket_handling(client: TestClient
 
     branch_id = client.get("/api/auth/branches").json()[0]["id"]
     email = f"employee.recovery.{uuid.uuid4().hex[:8]}@nakshatech.com"
+    employee_id = f"NT-REC-{uuid.uuid4().hex[:8].upper()}"
+    _eligible_registration(email, employee_id, "Recovery Test Employee")
     initial_password = "PortalStart@123"
     new_password = "PortalReset@456"
 
@@ -2571,11 +2306,12 @@ def test_employee_password_reset_and_software_ticket_handling(client: TestClient
         json={
             "registration_token": verified.json()["registration_token"],
             "full_name": "Recovery Test Employee",
-            "employee_id": f"NT-REC-{uuid.uuid4().hex[:8].upper()}",
+            "employee_id": employee_id,
             "department": "Operations",
             "designation": "Worker",
             "branch_id": branch_id,
             "password": initial_password,
+            "confirm_password": initial_password,
         },
     )
     assert completed.status_code == 200, completed.text
@@ -3180,14 +2916,14 @@ def test_batch3b_handover_return_consistency_and_guardrails(client: TestClient) 
             "reporting_month": "2026-08",
             "asset_id": asset_id,
             "device_category": "laptop",
-            "employee_name": "",
-            "dc_number": "",
+            "employee_name": "QA Custodian Two",
+            "dc_number": "QA-WS-B3B-02",
             "department": "IT",
             "work_mode": "office",
             "internal_asset_no": tag,
             "condition": "Good",
             "action_type": "return",
-            "return_status": "repair",
+            "return_status": "available",
             "activity_date": "2026-08-12",
             "apply_to_asset": True,
         },

@@ -1,0 +1,47 @@
+name: ERP quality checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa
+          POSTGRES_PASSWORD: qa-ci-tests-only
+          POSTGRES_DB: qa
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U qa -d qa" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TEST_POSTGRES_URL: postgresql+psycopg://qa:qa-ci-tests-only@127.0.0.1:5432/qa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python -m pytest backend/tests _pt_patch/tests --junitxml=artifacts/backend.xml
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint && npm run test:checks && npm run build
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-results
+          path: |
+            artifacts/backend.xml
+            frontend/test-results/

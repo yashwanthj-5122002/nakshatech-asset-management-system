@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 from io import StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -12,6 +13,7 @@ from app.modules.operations.reporting_service import REPORTING_ROLES, powerbi_se
 from app.modules.operations.service import normalize_role
 
 router = APIRouter(prefix="/reporting", tags=["Phase 8 Reporting"])
+logger = logging.getLogger(__name__)
 
 
 def _role(auth: CurrentAuth) -> str:
@@ -26,9 +28,15 @@ def _allow_reporting(auth: CurrentAuth) -> str:
 
 
 def _write_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
     if isinstance(exc, PermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    logger.error("Unexpected reporting failure", exc_info=(type(exc), exc, exc.__traceback__))
+    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                         detail="The report could not be generated. Please try again later.")
 
 
 def _csv_response(rows: list[dict], filename: str) -> Response:

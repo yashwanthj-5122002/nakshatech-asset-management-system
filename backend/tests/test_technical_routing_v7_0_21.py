@@ -210,11 +210,11 @@ def test_phase7_sample_actions_and_notifications_use_real_directory_members_afte
         db.commit()
         created = create_sample_team_notifications(db, sample_request_id=sample.id)
         db.commit()
-        assert created == 1
+        assert created == 0  # sample notifications remain retired after live activation
         recipient_ids = set(db.scalars(select(GlobalNotification.recipient_user_id).where(
             GlobalNotification.event_type == "technical.sample.requested"
         )).all())
-        assert recipient_ids == {users["ortho"].id}
+        assert recipient_ids == set()
 
         start_sample_department(db, sample_request=sample, actor=users["ortho"], effective_role="ortho")
         with pytest.raises(PermissionError):

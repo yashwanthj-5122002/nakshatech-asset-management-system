@@ -347,7 +347,7 @@ def test_unassigned_pm_project_access_rejected_at_project_360():
         with pytest.raises(PermissionError):
             project_360(db, actor=stranger_pm, role="civil", project_id=project.id)
         # the assigned PM can see it
-        assert project_360(db, actor=team["pm"], role="civil", project_id=project.id)["project_id"] == project.id if False else True
+        assert project_360(db, actor=team["pm"], role="civil", project_id=project.id)["id"] == project.id
 
 
 # =============================================================================================== G. test accounts

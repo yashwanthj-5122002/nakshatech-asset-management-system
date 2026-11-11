@@ -154,3 +154,43 @@ Key controls:
 - Employee expense-project choices are restricted to projects to which the employee is assigned.
 
 Implementation notes and endpoint details are in `docs/PROJECT_WORKFLOW_V8_INTEGRATION.md`.
+
+## Automated verification
+
+From the repository root, run the backend and installer tests:
+
+```powershell
+backend/.venv/Scripts/python.exe -m pytest backend/tests _pt_patch/tests -q
+```
+
+Backend tests use a fresh disposable SQLite database. PostgreSQL upgrade and
+concurrency tests also run when `TEST_POSTGRES_URL` is set; see
+[`backend/migrations/README.md`](backend/migrations/README.md) for the isolated QA
+container commands. Optional deployment-account seed checks report skips when
+those accounts are not configured.
+
+From `frontend`, run:
+
+```powershell
+npm ci
+npm run lint
+npm run test:checks
+npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+The browser tests start a separate Vite server and a loopback backend backed by
+a fresh temporary database. They exercise the real file-plan correction and
+Production → QC → QA → Delivery controls, including rejection and correction.
+They do not use existing ERP accounts or business data. An installed Chrome can
+be used instead of downloading Chromium by setting `CHROME_PATH` to its executable.
+
+Completed file output comes from its stored plan. Partial progress contributes
+toward that total; final completion supplies only the remaining reporting credit.
+Rework contributes time and history without counting the output again. Draft
+files need an explicit quantity and unit before allocation; count-based imports
+do not invent distances. The allocation screen provides the missing-plan editor.
+
+GitHub Actions runs the regression, PostgreSQL migration/concurrency checks,
+frontend verification, build, and browser tests on pushes and pull requests.

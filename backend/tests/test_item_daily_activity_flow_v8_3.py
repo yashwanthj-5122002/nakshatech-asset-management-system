@@ -89,7 +89,7 @@ def test_production_timestamps_and_duration():
         assert row["production_start"].startswith("2026-10-13T09:35:12")
         assert row["production_end"].startswith("2026-10-13T11:08:47")
         assert row["production_duration_seconds"] == 5615
-        assert row["production_quantity"] == 1.16
+        assert row["production_quantity"] == 1.2  # server locks completed output to the plan
         assert row["production_files"] == 1
         assert row["production_deadline"]["status"] == "completed_on_time"
 
@@ -162,7 +162,7 @@ def test_duplicate_complete_does_not_double_count():
                   quantity_completed=Decimal("1.16"), unit="km")
         rows = items_service.build_item_rows(db, [package.id])
         assert rows[0]["production_files"] == 1
-        assert rows[0]["production_quantity"] == 1.16
+        assert rows[0]["production_quantity"] == 1.2
         assert db.scalar(select(func.count(WorkPackageItemActivity.id)).where(
             WorkPackageItemActivity.work_package_item_id == item.id)) == 1
 
@@ -200,6 +200,7 @@ def test_qc_reject_preserves_history_then_pass():
         item = items[0]
         run_production(db, ctx, item)
         run_review(db, ctx, item, "qc", "rejected", remarks="Misaligned tiles")
+        run_production(db, ctx, item)  # complete the correction before repeating QC
         run_review(db, ctx, item, "qc", "passed", remarks="Fixed")
         history = items_service.item_history(db, actor=ctx["team"]["tl"], role=TL_ROLE,
                                              work_package_item_id=item.id)

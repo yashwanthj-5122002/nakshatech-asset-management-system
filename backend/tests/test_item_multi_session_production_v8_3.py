@@ -6,7 +6,7 @@ FINISHING a physical file ("Complete Production", finalize=True) are DISTINCT op
   - quantity/time SUM across closed sessions (never overwrite a previous session)
   - ONE physical file is counted exactly ONCE (partial sessions contribute files_completed=0)
   - QC only unlocks on FINAL production completion
-  - actual may differ from planned (below/equal/above) without blocking completion
+  - client-submitted completion quantities cannot override the stored plan
   - cross-midnight sessions compute a correct duration from full datetimes
   - ACTIVITY HISTORY / LEGACY TILE ACTIVITY / EMPLOYEE PRODUCTIVITY reflect reality
 """
@@ -171,7 +171,7 @@ def test_qc_reject_allows_production_rework_without_double_counting_file():
             finalize=True, quantity_completed=Decimal("0.20"), unit=item.planned_unit,
             ended_at=datetime(2026, 10, 14, 10, 0))
         row = _row(db, package, item)
-        assert row["production_quantity"] == 1.4        # 1.2 + 0.2, sessions accumulate
+        assert row["production_quantity"] == 1.2        # rework never adds a second copy of the physical output
         assert row["production_sessions"] == 2
         assert row["production_files"] == 1             # re-finalization does NOT count twice
         run_review(db, ctx, item, "qc", "passed", remarks="Fixed")
@@ -182,26 +182,26 @@ def test_qc_reject_allows_production_rework_without_double_counting_file():
 # actual vs planned
 # ===========================================================================================
 
-def test_actual_below_planned_still_finalizes():
+def test_client_quantity_below_plan_does_not_change_locked_completion():
     with SessionLocal() as db:
         ctx, package, items = _prepare(db, "MS5")
         item = items[0]  # planned 1.20 km
         _session(db, ctx, item, quantity="0.90", finalize=True,
                  start=datetime(2026, 10, 13, 9, 0), end=datetime(2026, 10, 13, 11, 0))
         row = _row(db, package, item)
-        assert row["production_quantity"] == 0.9
+        assert row["production_quantity"] == 1.2
         assert row["production_files"] == 1
         assert row["planned_quantity"] == 1.2          # planned quantity unchanged
 
 
-def test_actual_above_planned_is_preserved():
+def test_client_quantity_above_plan_does_not_change_locked_completion():
     with SessionLocal() as db:
         ctx, package, items = _prepare(db, "MS6")
         item = items[0]  # planned 1.20 km
         _session(db, ctx, item, quantity="1.60", finalize=True,
                  start=datetime(2026, 10, 13, 9, 0), end=datetime(2026, 10, 13, 11, 0))
         row = _row(db, package, item)
-        assert row["production_quantity"] == 1.6       # actual kept, not clamped
+        assert row["production_quantity"] == 1.2       # stored plan is authoritative
         assert row["planned_quantity"] == 1.2
         assert row["production_files"] == 1
 
@@ -271,6 +271,8 @@ def test_qc_and_qa_gates_and_reject_history():
             items_service.start_activity(db, actor=ctx["team"]["qa"], role=TL_ROLE,
                                          work_package_item_id=item.id, stage="qa")
         run_review(db, ctx, item, "qc", "rejected", remarks="Misaligned")
+        from test_production_master_excel_allocation_v8_3 import run_production
+        run_production(db, ctx, item)  # finish the rejected correction before review
         run_review(db, ctx, item, "qc", "passed", remarks="Fixed")
         run_review(db, ctx, item, "qa", "rework", remarks="Attributes")
         history = items_service.item_history(db, actor=ctx["team"]["tl"], role=TL_ROLE,

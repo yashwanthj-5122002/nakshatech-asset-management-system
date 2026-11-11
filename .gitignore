@@ -40,3 +40,5 @@ dist/
 *.tsbuildinfo
 
 /backups/
+frontend/test-results/
+frontend/playwright-report/
