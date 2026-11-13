@@ -67,7 +67,7 @@ type ManagementProject = {
   source_person_name: string; department_label: string; workflow_status: string
   project_manager_name: string | null; start_date: string; end_date: string
   project_value: number | null; currency: string; tracking: TrackingSummary
-  can_approve: boolean; source_approved: boolean
+  can_approve: boolean; can_revoke: boolean; source_approved: boolean
 }
 type ClientTracking = {
   project_count: number; active_projects: number; completed_projects: number
@@ -383,6 +383,26 @@ export function ManagementClientRegisterPage() {
     }
   }
 
+  async function revokeProject(project: ManagementProject) {
+    if (busy || !project.can_revoke) return
+    if (!window.confirm(`Revoke approval for ${project.project_code} — ${project.project_name}? Finance will be blocked from raising an invoice until you approve again.`)) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      await apiFetch(`${endpoint}/projects/${project.id}/revoke-approval`, { method: 'POST' })
+      setNotice(`${project.project_code}: approval revoked. Finance billing is blocked until Management approves again.`)
+      try {
+        setTracking(await apiFetch<TrackingRegister>(trackingEndpoint))
+      } catch {
+        setTrackingError('Approval revoked, but tracking could not refresh. Reopen this page to see the latest status.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to revoke Management billing approval')
+    } finally {
+      setBusy(false)
+    }
+  }
   function updateField<K extends keyof ClientForm>(field: K, value: ClientForm[K]) {
     setForm(previous => ({ ...previous, [field]: value }))
   }
@@ -551,6 +571,7 @@ export function ManagementClientRegisterPage() {
           const clientTracking = tracking?.clients[String(client.id)]
           const clientProjects = projects.filter(project => project.management_client_id === client.id)
           const hasApprovableProject = clientProjects.some(project => project.can_approve)
+          const hasRevocableProject = clientProjects.some(project => project.can_revoke)
           const expanded = expandedClientId === client.id
           const latestRequest = additionalRequests.find(row => row.management_client_id === client.id)
           const pendingRequest = additionalRequests.some(row => row.management_client_id === client.id && row.status === 'PENDING')
@@ -564,7 +585,7 @@ export function ManagementClientRegisterPage() {
               <td><div className="operations-actions"><button type="button" className="operations-button secondary" onClick={() => { setSelectedId(client.id); setShowForm(false) }}>View</button><button type="button" className="operations-button secondary" onClick={() => openEdit(client)}><Pencil size={14} /> Edit</button>
                 {client.can_request_project && <button type="button" className="operations-button secondary" disabled={pendingRequest || requestBusy} onClick={() => openAdditionalRequest(client)}><Plus size={14} /> Request Project</button>}
                 {latestRequest && <span title={latestRequest.project_name} style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', padding: '6px 9px', borderRadius: 8, background: latestRequest.status === 'CREATED' ? '#e8f6eb' : '#fcebea', color: latestRequest.status === 'CREATED' ? '#166534' : '#a23e3e', border: `1px solid ${latestRequest.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}` }}>{latestRequest.status === 'CREATED' ? `Project Created: ${latestRequest.created_project_code || ''}` : 'Awaiting Finance'}</span>}
-                {hasApprovableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+                {hasApprovableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}><CheckCircle2 size={14} /> Approve</button>}{hasRevocableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}>Revoke Approval</button>}</div></td>
             </tr>
             {expanded && <tr className="mct-expanded-row"><td colSpan={8}>
               <div className="mct-client-projects"><h3>Client Projects — {client.client_name} ({clientProjects.length})</h3>
@@ -574,7 +595,7 @@ export function ManagementClientRegisterPage() {
                       <td><strong>{project.project_code}</strong></td><td>{project.project_name}</td><td>{project.department_label}</td>
                       {stages.map(stage => <td key={stage}>{percentText(project.tracking.stages[stage].percent)}</td>)}
                       <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
-                      <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+                      <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}</div></td>
                     </tr>)}</tbody></table></div>}
               </div>
             </td></tr>}
@@ -598,7 +619,7 @@ export function ManagementClientRegisterPage() {
             <td><strong>{project.project_name}</strong><small>PM: {project.project_manager_name || 'Not assigned'}</small></td>
             <td>{project.department_label}</td><td><div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(project.tracking.overall_percent)}><ProgressMeter value={project.tracking.overall_percent} label={`${project.project_code} stage completion`} /></div><span>{percentText(project.tracking.overall_percent)}</span></div></td>
             <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
-            <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+            <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}</div></td>
           </tr>
         })}</tbody></table>{filteredProjects.length === 0 && <div className="operations-empty">{tracking ? 'No matching management projects.' : 'Loading management project tracking…'}</div>}</div>}
       <div className="mct-tracking-footer">Live project tracking · Only the original Management source can approve fully delivered projects · Automatically refreshes every 5 seconds while this page is open{tracking?.as_of ? ` · Last updated ${formatDateTime(tracking.as_of)}` : ''}</div>

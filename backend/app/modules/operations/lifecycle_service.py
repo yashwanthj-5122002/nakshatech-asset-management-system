@@ -85,6 +85,7 @@ CHANGE_REQUEST_PENDING = "CHANGE_REQUEST_PENDING"
 APPROVAL_PENDING = "APPROVAL_PENDING"
 MANAGEMENT_APPROVAL_PENDING_EVENT = "management_approval_pending"
 MANAGEMENT_SOURCE_APPROVED_EVENT = "management_source_approved"
+MANAGEMENT_SOURCE_REVOKED_EVENT = "management_source_approval_revoked"
 READY_FOR_BILLING = "READY_FOR_BILLING"
 INVOICE_DRAFT = "INVOICE_DRAFT"
 INVOICE_RAISED = "INVOICE_RAISED"
@@ -134,12 +135,13 @@ def management_source_approval_event(db: Session, project_id: int) -> ProjectWor
         ProjectWorkflowEvent.project_id == project_id,
         ProjectWorkflowEvent.event_type == MANAGEMENT_APPROVAL_PENDING_EVENT,
     )) or 0
-    return db.scalar(select(ProjectWorkflowEvent).where(
+    latest = db.scalar(select(ProjectWorkflowEvent).where(
         ProjectWorkflowEvent.project_id == project_id,
-        ProjectWorkflowEvent.event_type == MANAGEMENT_SOURCE_APPROVED_EVENT,
+        ProjectWorkflowEvent.event_type.in_((MANAGEMENT_SOURCE_APPROVED_EVENT, MANAGEMENT_SOURCE_REVOKED_EVENT)),
         ProjectWorkflowEvent.actor_user_id == intake.created_by_id,
         ProjectWorkflowEvent.id > last_pending_id,
     ).order_by(ProjectWorkflowEvent.id.desc()).limit(1))
+    return latest if latest is not None and latest.event_type == MANAGEMENT_SOURCE_APPROVED_EVENT else None
 
 
 def management_billing_status(db: Session, workflow: ProjectWorkflow) -> str:
@@ -1463,6 +1465,13 @@ def raise_invoice(
         raise ValueError("Invoice not found")
     if invoice.status != INVOICE_DRAFT:
         raise ValueError("Only a draft invoice can be raised")
+    if db.get(ManagementProjectLink, invoice.project_id) is not None:
+        # Serialize against Management revocation; only management-linked projects are affected.
+        management_workflow = db.scalar(select(ProjectWorkflow).where(
+            ProjectWorkflow.project_id == invoice.project_id,
+        ).with_for_update())
+        if management_workflow is None or management_source_approval_event(db, invoice.project_id) is None:
+            raise ValueError("Active Management source approval is required before raising this invoice")
     from app.modules.commercial.service import lock_client_invoice_fx
 
     lock_client_invoice_fx(
