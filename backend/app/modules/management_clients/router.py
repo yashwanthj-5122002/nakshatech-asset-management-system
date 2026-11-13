@@ -16,6 +16,9 @@ from app.modules.management_projects.router import (
     _legacy_stage_counts, _project_packages, _project_payload, _tracking_rollup,
 )
 from app.modules.operations.models import ProjectWorkflow, WorkPackageItemActivity
+from app.modules.operations.schemas import WorkflowDepartmentChange
+from app.modules.operations.workflow_service import change_project_department_before_work, project_manager_options
+from app.core.departments import SUPPORTED_DEPARTMENTS, department_label
 from app.modules.operations.lifecycle_models import ProjectInvoice
 from app.modules.operations.lifecycle_service import (
     APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING, INVOICE_DRAFT,
@@ -175,6 +178,10 @@ def _approval_flags(
     )
     return {
         "source_approved": approved,
+        "can_change_department": bool(
+            intake is not None and intake.created_by_id == viewer_user_id
+            and workflow is not None and department_change_allowed(db, workflow)
+        ),
         "can_revoke": bool(
             intake is not None and intake.created_by_id == viewer_user_id
             and workflow is not None and workflow.status in {READY_FOR_BILLING, INVOICE_DRAFT}
@@ -187,6 +194,54 @@ def _approval_flags(
             and fully_delivered and not approved and not invoice_issued
         ),
     }
+
+
+@router.get("/department-change-options")
+def management_department_change_options(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    return {
+        "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
+        "project_managers_by_department": {
+            code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS
+        },
+    }
+
+
+@router.post("/projects/{project_id}/change-department")
+def management_change_project_department(
+    project_id: int, payload: WorkflowDepartmentChange, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    if intake is None or intake.created_by_id != auth.user.id:
+        raise HTTPException(status_code=403, detail="Only the original Management source can change the department")
+    try:
+        result = change_project_department_before_work(
+            db, actor=auth.user, project_id=project_id,
+            payload=payload, source="management",
+        )
+        record_audit(
+            db, event_type="MANAGEMENT_PROJECT_DEPARTMENT_CHANGED", request=request,
+            user=auth.user, module="management", target_type="finance_project",
+            target_id=str(project_id), details=result,
+        )
+        db.commit()
+        return result
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/projects/{project_id}/approve")

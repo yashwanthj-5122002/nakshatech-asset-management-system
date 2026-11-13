@@ -33,10 +33,10 @@ from app.modules.operations.production_items import (
 )
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.lifecycle_service import management_billing_status, management_source_approval_event
-from app.modules.operations.schemas import WorkflowPMAssignment
+from app.modules.operations.schemas import WorkflowPMAssignment, WorkflowDepartmentChange
 from app.modules.operations.workflow_service import (
     WORKFLOW_FINANCE_APPROVED, assign_project_manager, email_project_manager_assignment,
-    project_manager_options,
+    project_manager_options, change_project_department_before_work,
 )
 
 router = APIRouter(prefix="/finance/management-projects", tags=["Finance Management Projects"])
@@ -577,6 +577,35 @@ def create_management_project(
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="Client or Project ID already exists") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/{project_id}/change-department")
+def finance_change_management_department(
+    project_id: int, payload: WorkflowDepartmentChange, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    try:
+        result = change_project_department_before_work(
+            db, actor=auth.user, project_id=project_id,
+            payload=payload, source="management",
+        )
+        record_audit(
+            db, event_type="MANAGEMENT_PROJECT_DEPARTMENT_CHANGED_BY_FINANCE", request=request,
+            user=auth.user, module="finance", target_type="finance_project",
+            target_id=str(project_id), details=result,
+        )
+        db.commit()
+        return result
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception:
         db.rollback()
         raise

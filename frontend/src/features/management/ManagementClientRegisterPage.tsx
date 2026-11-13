@@ -3,6 +3,7 @@ import { Activity, ArrowLeft, Building2, CheckCircle2, ChevronDown, ChevronRight
 import { Fragment, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { DashboardHeader } from '../../components/DashboardHeader'
+import { DepartmentChangeDialog } from '../operations/components/DepartmentChangeDialog'
 import { apiFetch } from '../../lib/api'
 import '../operations/operations.css'
 import './management-project-tracking.css'
@@ -64,10 +65,10 @@ type TrackingSummary = {
 }
 type ManagementProject = {
   id: number; management_client_id: number; project_code: string; project_name: string
-  source_person_name: string; department_label: string; workflow_status: string
+  source_person_name: string; department_code: string; department_label: string; workflow_status: string
   project_manager_name: string | null; start_date: string; end_date: string
   project_value: number | null; currency: string; tracking: TrackingSummary
-  can_approve: boolean; can_revoke: boolean; source_approved: boolean
+  can_approve: boolean; can_revoke: boolean; can_change_department: boolean; source_approved: boolean
 }
 type ClientTracking = {
   project_count: number; active_projects: number; completed_projects: number
@@ -262,6 +263,10 @@ export function ManagementClientRegisterPage() {
   const [trackingView, setTrackingView] = useState<'clients' | 'projects'>('clients')
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null)
   const [trackingProjectId, setTrackingProjectId] = useState<number | null>(null)
+  const [departmentOptions, setDepartmentOptions] = useState<{departments:{code:string;label:string}[];project_managers_by_department:Record<string,{id:number;full_name:string}[]>}>({departments:[],project_managers_by_department:{}})
+  const [departmentEdit, setDepartmentEdit] = useState<{projectId:number;department:string;manager:string;reason:string}|null>(null)
+  useEffect(()=>{void apiFetch<typeof departmentOptions>(`${endpoint}/department-change-options`).then(setDepartmentOptions).catch(()=>undefined)},[])
+
   // NAKSHA_MGMT_CLIENTS_PAGINATION_5_V2: only the Management users' Registered Clients table.
   const [managementClientPage, setManagementClientPage] = useState(1)
   // Reset after search/source filter changes; keep search across ALL clients.
@@ -381,6 +386,24 @@ export function ManagementClientRegisterPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function saveDepartmentChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!departmentEdit || busy) return
+    const row = tracking?.projects.find(item=>item.id===departmentEdit.projectId)
+    if (!row || !departmentEdit.department || !departmentEdit.manager || departmentEdit.reason.trim().length<5) return
+    if (!window.confirm(`Change department for ${row.project_code}? The existing manager will lose this project assignment.`)) return
+    setBusy(true);setError('');setNotice('')
+    try {
+      await apiFetch(`${endpoint}/projects/${row.id}/change-department`,{method:'POST',body:JSON.stringify({
+        performing_department_code:departmentEdit.department,project_manager_id:Number(departmentEdit.manager),reason:departmentEdit.reason.trim(),
+      })})
+      setDepartmentEdit(null)
+      setNotice(`${row.project_code}: department and manager changed before work started.`)
+      setTracking(await apiFetch<TrackingRegister>(trackingEndpoint))
+    }catch(err){setError(err instanceof Error?err.message:'Unable to change department')}
+    finally{setBusy(false)}
   }
 
   async function revokeProject(project: ManagementProject) {
@@ -595,7 +618,7 @@ export function ManagementClientRegisterPage() {
                       <td><strong>{project.project_code}</strong></td><td>{project.project_name}</td><td>{project.department_label}</td>
                       {stages.map(stage => <td key={stage}>{percentText(project.tracking.stages[stage].percent)}</td>)}
                       <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
-                      <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}</div></td>
+                      <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}{project.can_change_department && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => setDepartmentEdit({projectId:project.id,department:'',manager:'',reason:''})}>Change Department</button>}</div></td>
                     </tr>)}</tbody></table></div>}
               </div>
             </td></tr>}
@@ -619,11 +642,22 @@ export function ManagementClientRegisterPage() {
             <td><strong>{project.project_name}</strong><small>PM: {project.project_manager_name || 'Not assigned'}</small></td>
             <td>{project.department_label}</td><td><div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(project.tracking.overall_percent)}><ProgressMeter value={project.tracking.overall_percent} label={`${project.project_code} stage completion`} /></div><span>{percentText(project.tracking.overall_percent)}</span></div></td>
             <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
-            <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}</div></td>
+            <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}{project.can_change_department && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => setDepartmentEdit({projectId:project.id,department:'',manager:'',reason:''})}>Change Department</button>}</div></td>
           </tr>
         })}</tbody></table>{filteredProjects.length === 0 && <div className="operations-empty">{tracking ? 'No matching management projects.' : 'Loading management project tracking…'}</div>}</div>}
       <div className="mct-tracking-footer">Live project tracking · Only the original Management source can approve fully delivered projects · Automatically refreshes every 5 seconds while this page is open{tracking?.as_of ? ` · Last updated ${formatDateTime(tracking.as_of)}` : ''}</div>
     </section>
+    {departmentEdit && <DepartmentChangeDialog
+      title={`Change Department - ${projects.find(p=>p.id===departmentEdit.projectId)?.project_code || 'Management Project'}`}
+      description="The project, billing and completed history remain unchanged. Only department and Project Manager are corrected."
+      busy={busy} error={error} onClose={()=>setDepartmentEdit(null)}>
+      <form className="operations-form-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:14}} onSubmit={event=>void saveDepartmentChange(event)}>
+        <label className="operations-field"><span>New Department *</span><select required value={departmentEdit.department} onChange={event=>setDepartmentEdit({...departmentEdit,department:event.target.value,manager:''})}><option value="">Select new department</option>{departmentOptions.departments.filter(dept=>dept.code!==projects.find(p=>p.id===departmentEdit.projectId)?.department_code).map(dept=><option key={dept.code} value={dept.code}>{dept.label}</option>)}</select></label>
+        <label className="operations-field"><span>New Project Manager *</span><select required disabled={!departmentEdit.department} value={departmentEdit.manager} onChange={event=>setDepartmentEdit({...departmentEdit,manager:event.target.value})}><option value="">Select manager</option>{(departmentOptions.project_managers_by_department[departmentEdit.department]??[]).map(pm=><option key={pm.id} value={pm.id}>{pm.full_name}</option>)}</select></label>
+        <label className="operations-field operations-span-2" style={{gridColumn:"1 / -1"}}><span>Reason for Change *</span><textarea required minLength={5} maxLength={1000} value={departmentEdit.reason} onChange={event=>setDepartmentEdit({...departmentEdit,reason:event.target.value})}/></label>
+        <div className="operations-actions operations-span-2" style={{gridColumn:"1 / -1",display:"flex",flexWrap:"wrap",gap:8}}><button type="submit" className="operations-button" disabled={busy||!departmentEdit.department||!departmentEdit.manager||departmentEdit.reason.trim().length<5}>Save Department Change</button><button type="button" className="operations-button secondary" onClick={()=>setDepartmentEdit(null)} disabled={busy}>Cancel</button></div>
+      </form>
+    </DepartmentChangeDialog>}
     {selectedTrackingProject && <ManagementTrackingDialog key={selectedTrackingProject.id} project={selectedTrackingProject}
       client={clients.find(item => item.id === selectedTrackingProject.management_client_id)}
       onClose={closeTracking} />}
