@@ -166,3 +166,151 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+/* Finance Management Project details modal - presentation only */
+.mp-finance-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(4, 16, 32, 0.75);
+  box-sizing: border-box;
+}
+
+.mp-finance-detail-overlay > .mp-project-detail {
+  width: min(1440px, 100%);
+  max-height: calc(100dvh - 32px);
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.3);
+}
+
+body:has(.mp-finance-detail-overlay) {
+  overflow: hidden;
+}
+
+/* NAKSHA FINANCE DETAIL MODAL FIX V2 */
+
+/* Center modal within the main Finance area, excluding the sidebar. */
+.mp-finance-detail-overlay {
+  left: 220px;
+  right: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 20px;
+  box-sizing: border-box;
+}
+
+/* Never allow the popup itself to grow beyond the viewport. */
+.mp-finance-detail-overlay > .mp-project-detail {
+  display: flex;
+  flex-direction: column;
+  width: min(1380px, 100%);
+  height: auto;
+  max-height: calc(100dvh - 32px);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Project name and Close button are permanently visible. */
+.mp-finance-detail-overlay .mp-detail-heading {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding: 16px 18px 12px;
+  background: #fff;
+}
+
+/* Overview / Workflow / Billing tabs stay visible. */
+.mp-finance-detail-overlay .mp-detail-tabs {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  margin: 0 18px;
+  background: #fff;
+}
+
+/* Only project content scrolls. */
+.mp-finance-detail-overlay .mp-finance-detail-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: calc(100dvh - 190px);
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 22px;
+  box-sizing: border-box;
+}
+
+/* Smaller screens */
+@media (max-width: 960px) {
+  .mp-finance-detail-overlay {
+    left: 0;
+    padding: 10px;
+  }
+
+  .mp-finance-detail-overlay > .mp-project-detail {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .mp-finance-detail-overlay .mp-finance-detail-scroll {
+    max-height: calc(100dvh - 175px);
+  }
+}
+/* NAKSHA FINANCE POPUP HEADER FIX V3 */
+
+/* Keep the entire popup below the ERP top navigation bar. */
+.mp-finance-detail-overlay {
+  top: 60px;
+  bottom: 12px;
+  height: auto;
+  align-items: safe center;
+  overflow: hidden;
+}
+
+/* Constrain the popup to the available visible screen height. */
+.mp-finance-detail-overlay > .mp-project-detail {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Header and Close button never scroll or get clipped. */
+.mp-finance-detail-overlay .mp-detail-heading {
+  flex: 0 0 auto;
+  min-height: 0;
+  position: relative;
+  z-index: 3;
+  background: #fff;
+}
+
+/* Keep the three tabs visible below the project heading. */
+.mp-finance-detail-overlay .mp-detail-tabs {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 3;
+  background: #fff;
+}
+
+/* Only the details and tracking content can scroll. */
+.mp-finance-detail-overlay .mp-finance-detail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
