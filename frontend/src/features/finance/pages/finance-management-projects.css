@@ -314,3 +314,28 @@ body:has(.mp-finance-detail-overlay) {
   overflow-x: auto;
   overscroll-behavior: contain;
 }
+
+/* Finance management project - automatic priority colors */
+.mp-field select.mp-auto-priority--high:disabled {
+    background-color: #FFECEF !important;
+    border-color: #F3C6CE !important;
+    color: #943947 !important;
+    -webkit-text-fill-color: #943947 !important;
+    opacity: 1 !important;
+}
+
+.mp-field select.mp-auto-priority--medium:disabled {
+    background-color: #FFF3D8 !important;
+    border-color: #EED9A5 !important;
+    color: #83601D !important;
+    -webkit-text-fill-color: #83601D !important;
+    opacity: 1 !important;
+}
+
+.mp-field select.mp-auto-priority--low:disabled {
+    background-color: #EAF8EF !important;
+    border-color: #C5E6D0 !important;
+    color: #286947 !important;
+    -webkit-text-fill-color: #286947 !important;
+    opacity: 1 !important;
+}

@@ -32,6 +32,14 @@ type ProjectForm = {project_code:string;project_name:string;scope_text:string;st
 const emptyClient:ClientForm={client_code:'',client_name:'',client_email:'',organization_email:'',address:'',gst_number:'',contact_person_name:'',contact_person_email:'',contact_person_phone:'',bd_name:''}
 const emptyProject:ProjectForm={project_code:'',project_name:'',scope_text:'',start_date:'',end_date:'',description:''}
 
+function automaticBdProjectPriority(startDate: string, endDate: string): string {
+  if (!startDate || !endDate || endDate < startDate) return ''
+  const start = Date.parse(`${startDate}T00:00:00Z`)
+  const end = Date.parse(`${endDate}T00:00:00Z`)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return ''
+  const days = Math.round((end - start) / 86400000)
+  return days <= 7 ? 'high' : days <= 14 ? 'medium' : 'low'
+}
 export function BDClientManagementPage(){
   const [data,setData]=useState<Dashboard|null>(null);const [selectedId,setSelectedId]=useState<number|null>(null)
   const register=useClientRegister(data?.clients??[])
@@ -44,6 +52,7 @@ export function BDClientManagementPage(){
   function clearError(){setError('');setAlertVisible(false)}
   const [commercial,setCommercial]=useState<CommercialFormState>(emptyCommercialForm);const [docs,setDocs]=useState<PendingDocument[]>([]);const [currencies,setCurrencies]=useState<CurrencyPayload|null>(null)
   const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''})
+  const automaticPriority = automaticBdProjectPriority(projectForm.start_date, projectForm.end_date)
   useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
   function load(){clearError();void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>showError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
@@ -63,6 +72,7 @@ export function BDClientManagementPage(){
   const conversionPrompt=conversionPilotId===null?pilots.find(p=>p.conversion_eligible&&!p.conversion_deferred)??null:null
   async function createPilot(){
     if(!selected)return
+    if(!automaticPriority){showError('Select valid Start Date and End Date to calculate Priority.');return}
     if(!delivery.performing_department_code){showError('Select the performing department.');return}
     setBusy(true);clearError();setNotice('')
     try{
@@ -70,7 +80,7 @@ export function BDClientManagementPage(){
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,
         start_date:projectForm.start_date,end_date:projectForm.end_date,scope_text:projectForm.scope_text,
         description:projectForm.description||null,quantity:delivery.quantity===''?null:Number(delivery.quantity),
-        quantity_unit:delivery.quantity_unit||'unit',priority:delivery.priority,
+        quantity_unit:delivery.quantity_unit||'unit',priority:automaticPriority,
         performing_department_code:delivery.performing_department_code,
         commercial_value:0,currency:'INR',po_wo_number:null,attachment_references:[],commercial:null,
         client_data_percentage:Number(pilotPercentage),client_data_reference:pilotDataRef.trim()
@@ -124,6 +134,7 @@ export function BDClientManagementPage(){
   async function createProject(submit:boolean){
     if(!selected)return
     clearError();setNotice('')
+    if(!automaticPriority){showError('Select valid Start Date and End Date to calculate Priority.');return}
     if(!delivery.performing_department_code){showError('Select the Performing Department before saving or submitting this project.');return}
     const problems=commercialFormProblems(commercial)
     if(problems.length){showError(problems[0]);return}
@@ -132,7 +143,7 @@ export function BDClientManagementPage(){
       // Project + Commercial Revision 1 are created in ONE request/transaction: either both exist or neither does.
       const result=await apiFetch<{project_id:number;project_code:string;commercial?:{baseline?:{id:number}|null}}>('/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,start_date:projectForm.start_date,end_date:projectForm.end_date,
-        scope_text:projectForm.scope_text,quantity:delivery.quantity===''?null:Number(delivery.quantity),quantity_unit:delivery.quantity_unit||'unit',priority:delivery.priority,
+        scope_text:projectForm.scope_text,quantity:delivery.quantity===''?null:Number(delivery.quantity),quantity_unit:delivery.quantity_unit||'unit',priority:automaticPriority,
         performing_department_code:delivery.performing_department_code,
         commercial_value:Number(commercial.estimated_amount),currency:commercial.currency_code,po_wo_number:commercial.po_wo_reference.trim()||null,
         attachment_references:[],description:projectForm.description||null,
@@ -202,7 +213,7 @@ export function BDClientManagementPage(){
           <label className="operations-field"><span>Client-provided data percentage *</span><input required type="number" min="0.01" max="100" step="0.01" value={pilotPercentage} onChange={e=>setPilotPercentage(e.target.value)}/></label>
           <label className="operations-field"><span>Client data reference *</span><input required minLength={3} value={pilotDataRef} onChange={e=>setPilotDataRef(e.target.value)}/></label>
           <label className="operations-field"><span>Performing Department *</span><select required value={delivery.performing_department_code} onChange={e=>setDelivery({...delivery,performing_department_code:e.target.value})}><option value="" disabled>Select Department</option><option value="ortho">ORTHO</option><option value="lidar">LiDAR</option><option value="mobile_mapping">Mobile Mapping</option><option value="laser_scanning">Laser Scanning</option><option value="civil">Civil</option></select></label>
-          <label className="operations-field"><span>Priority</span><select value={delivery.priority} onChange={e=>setDelivery({...delivery,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
+          <label className="operations-field"><span>Priority</span><select className={`bd-auto-priority bd-auto-priority--${automaticPriority || 'unset'}`} value={automaticPriority} disabled><option value="">Select dates first</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
           <label className="operations-field"><span>Sample quantity (optional)</span><input type="number" min="0" step="0.001" value={delivery.quantity} onChange={e=>setDelivery({...delivery,quantity:e.target.value})}/></label>
           <label className="operations-field"><span>Quantity Unit</span><input value={delivery.quantity_unit} onChange={e=>setDelivery({...delivery,quantity_unit:e.target.value})}/></label>
           <label className="operations-field operations-span-2"><span>Remarks</span><textarea value={projectForm.description} onChange={e=>setProjectForm({...projectForm,description:e.target.value})}/></label>
@@ -232,7 +243,7 @@ export function BDClientManagementPage(){
         <label className="operations-field"><span>Performing Department *</span><select required value={delivery.performing_department_code} onChange={e=>setDelivery({...delivery,performing_department_code:e.target.value})}>
           <option value="" disabled>Select Performing Department</option><option value="ortho">ORTHO</option><option value="lidar">LiDAR</option><option value="mobile_mapping">Mobile Mapping</option><option value="laser_scanning">Laser Scanning</option><option value="civil">Civil</option>
         </select></label>
-        <label className="operations-field"><span>Priority</span><select value={delivery.priority} onChange={e=>setDelivery({...delivery,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
+        <label className="operations-field"><span>Priority</span><select className={`bd-auto-priority bd-auto-priority--${automaticPriority || 'unset'}`} value={automaticPriority} disabled><option value="">Select dates first</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
         <label className="operations-field"><span>Planned quantity (optional)</span><input type="number" min="0" step="0.001" value={delivery.quantity} onChange={e=>setDelivery({...delivery,quantity:e.target.value})}/></label>
         <label className="operations-field"><span>Quantity unit</span><input value={delivery.quantity_unit} onChange={e=>setDelivery({...delivery,quantity_unit:e.target.value})} placeholder="e.g. sq.km, sites"/></label>
         <div className="operations-note operations-span-2">Finance approves first; you then assign the matching technical Project Manager for the selected Performing Department, who selects the project team.</div>
