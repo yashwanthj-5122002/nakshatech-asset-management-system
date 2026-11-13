@@ -43,6 +43,8 @@ class ManagementAdditionalProjectRequest(Base):
     management_client_id: Mapped[int] = mapped_column(ForeignKey("management_client_intakes.id", ondelete="RESTRICT"), index=True)
     requested_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     project_name: Mapped[str] = mapped_column(String(255))
+    project_type: Mapped[str] = mapped_column(String(16), nullable=False, default="regular")
+    pilot_payment_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     scope_text: Mapped[str] = mapped_column(Text)
     expected_start_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -52,3 +54,23 @@ class ManagementAdditionalProjectRequest(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class ManagementProjectClassification(Base):
+    """Permanent classification for a Finance-created Management project."""
+
+    __tablename__ = "management_project_classifications"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("finance_projects.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    project_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="regular"
+    )
+    pilot_payment_type: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now
+    )

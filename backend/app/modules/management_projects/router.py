@@ -20,7 +20,10 @@ from app.modules.employee_portal.service import record_audit
 from app.modules.finance.models import FinanceClient, FinanceProject
 from app.modules.finance.schemas import FinanceClientCreateRequest, FinanceClientProjectCreateRequest
 from app.modules.finance.service import create_client_project, create_finance_client
-from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
+from app.modules.management_clients.models import (
+    ManagementClientIntake, ManagementAdditionalProjectRequest,
+    ManagementProjectClassification,
+)
 from app.modules.management_projects.models import ManagementProjectLink
 from app.modules.notifications.service import create_global_notification
 from app.modules.notifications.models import GlobalNotification
@@ -47,6 +50,24 @@ def _finance_only(auth: CurrentAuth) -> None:
         raise HTTPException(status_code=403, detail="Finance access required")
 
 
+ 
+class ManagementCommercialInput(ProjectCommercialInput):
+    """Commercial input for Management Projects only."""
+
+    estimated_amount: Decimal = Field(
+        ge=0,
+        max_digits=18,
+        decimal_places=2
+    )
+
+    @model_validator(mode="after")
+    def require_initial_commercial_terms(self):
+        # Override the inherited mandatory payment-terms check.
+        # ManagementProjectCreate validates the terms by project type.
+        return self
+
+
+
 class ManagementProjectCreate(BaseModel):
     management_client_id: int = Field(gt=0)
     additional_request_id: int | None = Field(default=None, gt=0)
@@ -60,8 +81,10 @@ class ManagementProjectCreate(BaseModel):
     quantity: Decimal | None = Field(default=None, ge=0)
     quantity_unit: str = Field(default="unit", min_length=1, max_length=30)
     description: str | None = Field(default=None, max_length=5000)
-    commercial: ProjectCommercialInput
+    commercial: ManagementCommercialInput
     project_manager_id: int | None = Field(default=None, gt=0)
+    project_type: str = Field(default="regular", pattern="^(regular|pilot)$")
+    pilot_payment_type: str | None = Field(default=None, pattern="^(free|paid)$")
 
     @field_validator("project_code", mode="before")
     @classmethod
@@ -81,11 +104,53 @@ class ManagementProjectCreate(BaseModel):
             raise ValueError("Select an existing BD performing department")
         return code
 
+    
+   
     @model_validator(mode="after")
     def validate_schedule(self):
         if self.end_date < self.start_date:
-            raise ValueError("End date cannot be earlier than start date")
+            raise ValueError(
+                "End date cannot be earlier than start date"
+            )
+
+        amount = Decimal(str(self.commercial.estimated_amount))
+
+        if self.project_type == "pilot":
+            # Paid Pilots are no longer permitted.
+            if self.pilot_payment_type not in (None, "free"):
+                raise ValueError(
+                    "All Pilot Projects must be Free Pilots"
+                )
+
+            # Automatically enforce Free Pilot.
+            self.pilot_payment_type = "free"
+
+            if amount != 0:
+                raise ValueError(
+                    "Pilot Project customer contract value must be zero"
+                )
+
+        else:
+            # Preserve the existing Regular Project rules.
+            if self.pilot_payment_type is not None:
+                raise ValueError(
+                    "Regular Projects cannot have a pilot payment type"
+                )
+
+            if amount <= 0:
+                raise ValueError(
+                    "Regular Projects require a positive commercial value"
+                )
+            
+            if len((self.commercial.payment_terms or "").strip()) < 2:
+                raise ValueError(
+                    "Regular Projects require payment terms"
+                )
+
+
         return self
+
+
 
 
 def _client_payload(row: ManagementClientIntake) -> dict:
@@ -103,10 +168,13 @@ def _project_payload(db: Session, link: ManagementProjectLink) -> dict:
     if project is None or workflow is None:
         raise RuntimeError("Management project link points to an incomplete project")
     pm = project.master_profile.project_manager if project.master_profile else None
+    classification = db.get(ManagementProjectClassification, project.id)
     return {
         "id": project.id, "management_client_id": link.management_client_id,
         "project_code": project.project_code, "project_name": project.project_name,
         "source_person_name": link.source_person_name,
+        "project_type": classification.project_type if classification else "regular",
+        "pilot_payment_type": classification.pilot_payment_type if classification else None,
         "department_code": workflow.performing_department_code,
         "department_label": department_label(workflow.performing_department_code),
         "workflow_status": management_billing_status(db, workflow),
@@ -488,6 +556,16 @@ def create_management_project(
                 raise HTTPException(status_code=409, detail="Project request does not belong to this client")
             if request_row.status != "PENDING" or request_row.created_project_id is not None:
                 raise HTTPException(status_code=409, detail="Project request was already processed")
+        if request_row is not None:
+            if (
+                (request_row.project_type or "regular") != payload.project_type
+                or request_row.pilot_payment_type != payload.pilot_payment_type
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Project classification must match the Management request",
+                )
+
         client = _finance_client_for_intake(db, intake, auth)
         project = create_client_project(db, client=client, actor=auth.user, payload=FinanceClientProjectCreateRequest(
             project_code=payload.project_code, project_name=payload.project_name,
@@ -516,6 +594,11 @@ def create_management_project(
             finance_client_id=client.id, source_person_name=intake.source_person_name,
             created_by_id=auth.user.id,
         ))
+        db.add(ManagementProjectClassification(
+            project_id=project.id,
+            project_type=payload.project_type,
+            pilot_payment_type=payload.pilot_payment_type,
+        ))
         db.flush()
         db.add(ProjectWorkflowEvent(
             project_id=project.id, event_type="management_finance_project_created",
@@ -538,6 +621,8 @@ def create_management_project(
                          "department": payload.performing_department_code,
                          "project_manager_id": payload.project_manager_id,
                          "additional_request_id": request_row.id if request_row else None,
+                          "project_type": payload.project_type,
+                          "pilot_payment_type": payload.pilot_payment_type,
                      })
         if request_row is not None:
             request_row.status = "CREATED"
@@ -631,6 +716,8 @@ def list_finance_additional_project_requests(
             "project_name": row.project_name, "scope_text": row.scope_text,
             "expected_start_date": row.expected_start_date.date().isoformat() if row.expected_start_date else None,
             "remarks": row.remarks, "status": row.status,
+            "project_type": row.project_type or "regular",
+            "pilot_payment_type": row.pilot_payment_type,
             "created_project_id": row.created_project_id,
             "created_project_code": project.project_code if project else None,
             "created_at": row.created_at.isoformat() if row.created_at else None,

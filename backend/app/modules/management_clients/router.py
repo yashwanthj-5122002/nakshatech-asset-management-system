@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -70,7 +70,7 @@ def list_management_clients(
         )
     ).all()
     return [ManagementClientResponse.model_validate(row).model_copy(
-        update={"can_request_project": row.created_by_id == auth.user.id and row.is_active},
+        update={"can_request_project": row.is_active},
     ) for row in rows]
 
 
@@ -383,6 +383,21 @@ class AdditionalProjectRequestInput(BaseModel):
     scope_text: str = Field(min_length=2, max_length=5000)
     expected_start_date: str | None = Field(default=None, max_length=10)
     remarks: str | None = Field(default=None, max_length=2000)
+    project_type: str = Field(default="regular", pattern="^(regular|pilot)$")
+    pilot_payment_type: str | None = Field(default=None, pattern="^(free|paid)$")
+
+    @model_validator(mode="after")
+    def enforce_free_pilot(self):
+        if self.project_type == "pilot":
+            if self.pilot_payment_type not in (None, "free"):
+                raise ValueError("Paid Pilots are not allowed")
+            self.pilot_payment_type = "free"
+        elif self.pilot_payment_type is not None:
+            raise ValueError(
+                "Regular Projects cannot have a pilot payment type"
+            )
+        return self
+
 
 
 def _additional_request_payload(db: Session, row: ManagementAdditionalProjectRequest) -> dict:
@@ -395,6 +410,8 @@ def _additional_request_payload(db: Session, row: ManagementAdditionalProjectReq
         "project_name": row.project_name, "scope_text": row.scope_text,
         "expected_start_date": row.expected_start_date.date().isoformat() if row.expected_start_date else None,
         "remarks": row.remarks, "status": row.status,
+        "project_type": row.project_type or "regular",
+        "pilot_payment_type": row.pilot_payment_type,
         "created_project_id": row.created_project_id,
         "created_project_code": project.project_code if project else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -407,9 +424,7 @@ def list_my_additional_project_requests(
     db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
 ):
     _management_only(auth)
-    rows = db.scalars(select(ManagementAdditionalProjectRequest).where(
-        ManagementAdditionalProjectRequest.requested_by_id == auth.user.id,
-    ).order_by(ManagementAdditionalProjectRequest.created_at.desc(),
+    rows = db.scalars(select(ManagementAdditionalProjectRequest).order_by(ManagementAdditionalProjectRequest.created_at.desc(),
                ManagementAdditionalProjectRequest.id.desc())).all()
     return [_additional_request_payload(db, row) for row in rows]
 
@@ -421,6 +436,10 @@ def submit_additional_project_request(
 ):
     _management_only(auth)
     from datetime import date, datetime
+    if payload.project_type == "pilot" and payload.pilot_payment_type not in {"free", "paid"}:
+        raise HTTPException(status_code=422, detail="Select Free Pilot or Paid Pilot")
+    if payload.project_type == "regular" and payload.pilot_payment_type is not None:
+        raise HTTPException(status_code=422, detail="Regular projects cannot have a pilot payment type")
     try:
         # Lock the client so two clicks cannot create competing pending requests.
         client = db.scalar(select(ManagementClientIntake).where(
@@ -428,8 +447,8 @@ def submit_additional_project_request(
         ).with_for_update())
         if client is None or not client.is_active:
             raise HTTPException(status_code=404, detail="Active Management client not found")
-        if client.created_by_id != auth.user.id:
-            raise HTTPException(status_code=403, detail="Only the original Management source may request a project for this client")
+        # Both authorised Management accounts may request projects.
+        # The original client source retains post-delivery approval authority.
         exists = db.scalar(select(ManagementAdditionalProjectRequest.id).where(
             ManagementAdditionalProjectRequest.management_client_id == client.id,
             ManagementAdditionalProjectRequest.status == "PENDING",
@@ -448,6 +467,8 @@ def submit_additional_project_request(
             management_client_id=client.id, requested_by_id=auth.user.id,
             project_name=payload.project_name.strip(), scope_text=payload.scope_text.strip(),
             expected_start_date=date_value, remarks=(payload.remarks or "").strip() or None,
+            project_type=payload.project_type,
+            pilot_payment_type=payload.pilot_payment_type,
             status="PENDING",
         )
         db.add(row)
