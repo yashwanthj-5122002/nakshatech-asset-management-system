@@ -24,7 +24,7 @@ from app.modules.operations.lifecycle_service import (
 from app.modules.operations.production_items import build_item_rows, file_aggregates_for_packages
 from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
 from app.modules.management_clients.schemas import ManagementClientInput, ManagementClientResponse
-from app.modules.notifications.service import create_global_notification
+from app.modules.notifications.service import create_global_notification, resolve_notifications
 
 router = APIRouter(prefix="/management/client-register", tags=["Management Client Register"])
 
@@ -224,6 +224,14 @@ def approve_management_project(
             details={"project_code": db.get(FinanceProject, project_id).project_code,
                      "management_client_id": link.management_client_id,
                      "approved_by_user_id": auth.user.id},
+        )
+        # Resolve ONLY this original source's notification in the same transaction.
+        resolve_notifications(
+            db, recipient_user_ids=[auth.user.id],
+            event_type="lifecycle.management_approval_requested",
+            dedupe_key=f"lifecycle:management-approval:{project_id}",
+            resolved_by_id=auth.user.id,
+            resolution_note="Original Management source approved",
         )
         db.commit()
         return {"project_id": project_id, "workflow_status": READY_FOR_BILLING,

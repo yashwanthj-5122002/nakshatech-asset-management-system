@@ -307,7 +307,10 @@ export function GlobalNotificationBell() {
                   </span>
                   <span className="notification-item-copy">
                     <span className="notification-item-meta">
-                      <span className={`notification-category-chip ${notification.category}`}>{categoryLabel(notification.category)}</span>
+                      <span className={`notification-category-chip ${notification.category}`}>
+                        {(user?.role === 'finance' || user?.role === 'management') && notification.category === 'system'
+                          ? 'Information' : categoryLabel(notification.category)}
+                      </span>
                       <span className={`notification-item-status is-${status.id}`}>{status.label}</span>
                       <span className="notification-item-time">{formatNotificationTimestamp(notification.created_at)}</span>
                     </span>

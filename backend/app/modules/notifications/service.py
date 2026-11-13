@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 
 VALID_NOTIFICATION_CATEGORIES = {"approval", "ticket", "system"}
 
+# This change is deliberately presentation-only and limited to these two roles.
+# Other roles keep their existing category, listing and popup policies.
+REVIEWED_APPROVAL_ROLES = frozenset({"finance", "management"})
+
 # These exact events belonged exclusively to the rejected V7 Sample Request
 # workflow. Keep the list narrow so no current workflow notification is
 # suppressed by a prefix or a broad category rule.
@@ -258,15 +262,32 @@ def list_notifications_for_user(
     limit: int = 100,
     offset: int = 0,
     excluded_event_prefixes: Iterable[str] | None = None,
+    effective_role: str = "",
 ) -> list[GlobalNotification]:
     query = select(GlobalNotification).where(GlobalNotification.recipient_user_id == user_id)
     query = _exclude_event_prefixes(query, excluded_event_prefixes)
     if unread_only:
         query = query.where(GlobalNotification.is_read.is_(False))
-    if category:
-        normalized = category.strip().lower()
-        if normalized not in VALID_NOTIFICATION_CATEGORIES:
-            raise HTTPException(status_code=422, detail="Invalid notification category")
+    normalized = category.strip().lower() if category else None
+    if normalized and normalized not in VALID_NOTIFICATION_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Invalid notification category")
+    role = (effective_role or "").strip().lower()
+    if role in REVIEWED_APPROVAL_ROLES and normalized == "approval":
+        # Candidate selection happens in SQL, but BUSINESS-state validation happens
+        # before pagination; a legacy System row can therefore appear correctly.
+        from app.modules.notifications.approval_review import (
+            approval_events_for_role, is_pending_approval_for_user,
+        )
+        query = query.where(GlobalNotification.event_type.in_(approval_events_for_role(role)))
+        query = query.order_by(GlobalNotification.created_at.desc(), GlobalNotification.id.desc())
+        viewer = db.get(User, user_id)
+        if viewer is None:
+            return []
+        cache: dict = {}
+        eligible = [row for row in db.scalars(query).all()
+                    if is_pending_approval_for_user(db, row, viewer, role, cache)]
+        return eligible[offset:offset + limit]
+    if normalized:
         query = query.where(GlobalNotification.category == normalized)
     query = query.order_by(GlobalNotification.created_at.desc(), GlobalNotification.id.desc())
     return list(db.scalars(query.offset(offset).limit(limit)).all())
@@ -412,6 +433,40 @@ def notification_payload(
     }
 
 
+def reviewed_notification_payload(
+    db: Session,
+    notification: GlobalNotification,
+    *,
+    viewer: User,
+    effective_role: str,
+    cache: dict | None = None,
+) -> dict:
+    """Classify the displayed bell/popup row without updating stored history."""
+    payload = notification_payload(notification, effective_role=effective_role)
+    role = (effective_role or "").strip().lower()
+    if role not in REVIEWED_APPROVAL_ROLES:
+        return payload
+    from app.modules.notifications.approval_review import (
+        approval_events_for_role, is_pending_approval_for_user,
+    )
+    pending = (
+        notification.event_type in approval_events_for_role(role)
+        and is_pending_approval_for_user(db, notification, viewer, role, cache)
+    )
+    payload["approval_pending"] = pending
+    if pending:
+        payload.update(category="approval", requires_action=True, is_resolved=False, resolved_at=None)
+        # The existing popup response schema already exposes metadata; mark the
+        # verified approval here so legacy titles and non-approval wording pass
+        # the existing frontend eligibility policy without changing it.
+        payload["metadata"] = {**payload["metadata"], "notification_type": "approval"}
+    elif notification.category == "approval" or notification.event_type in approval_events_for_role(role):
+        # Legacy role-targeted informational notices were erroneously saved as
+        # approvals; retain their history but display them as information.
+        payload.update(category="system", requires_action=False)
+    return payload
+
+
 def list_popup_notifications(
     db: Session,
     *,
@@ -419,13 +474,41 @@ def list_popup_notifications(
     effective_role: str,
     limit: int = 5,
     excluded_event_prefixes: Iterable[str] | None = None,
+    excluded_notification_ids: Iterable[int] | None = None,
 ) -> list[dict]:
-    """Unresolved notifications eligible for the center popup, oldest first.
+    """Read-only popup queue: no business action or notification is mutated."""
+    role = (effective_role or "").strip().lower()
+    max_rows = max(1, min(int(limit), 20))
+    if role in REVIEWED_APPROVAL_ROLES:
+        from app.modules.notifications.approval_review import (
+            approval_events_for_role, is_pending_approval_for_user,
+        )
+        viewer = db.get(User, user_id)
+        if viewer is None:
+            return []
+        query = select(GlobalNotification).where(
+            GlobalNotification.recipient_user_id == user_id,
+            GlobalNotification.event_type.in_(approval_events_for_role(role)),
+        )
+        excluded = {int(nid) for nid in (excluded_notification_ids or ()) if int(nid) > 0}
+        if excluded:
+            query = query.where(~GlobalNotification.id.in_(excluded))
+        query = _exclude_event_prefixes(query, excluded_event_prefixes)
+        query = query.order_by(GlobalNotification.created_at.desc(), GlobalNotification.id.desc())
+        cache: dict = {}
+        result = []
+        # Filter by the REAL workflow before limiting, and skip approvals already
+        # dismissed this session so later pending requests can reach the popup.
+        for notification in db.scalars(query).all():
+            if is_pending_approval_for_user(db, notification, viewer, role, cache):
+                result.append(reviewed_notification_payload(
+                    db, notification, viewer=viewer, effective_role=role, cache=cache,
+                ))
+                if len(result) == max_rows:
+                    break
+        return result
 
-    This is a READ of existing rows: it never inserts, updates or resolves
-    anything, so opening/closing a popup can have no backend side effect.
-    """
-
+    # Preserve the previous queue behaviour for every other department.
     query = select(GlobalNotification).where(
         GlobalNotification.recipient_user_id == user_id,
         GlobalNotification.resolved_at.is_(None),
@@ -433,7 +516,7 @@ def list_popup_notifications(
     query = _exclude_event_prefixes(query, excluded_event_prefixes)
     query = query.order_by(
         GlobalNotification.created_at.asc(), GlobalNotification.id.asc()
-    ).limit(max(1, min(int(limit), 20)))
+    ).limit(max_rows)
     rows = list(db.scalars(query).all())
     return [notification_payload(row, effective_role=effective_role) for row in rows]
 
@@ -443,8 +526,26 @@ def pending_count_for_user(
     *,
     user_id: int,
     excluded_event_prefixes: Iterable[str] | None = None,
+    effective_role: str = "",
 ) -> int:
     """Count of notifications that still require a business decision."""
+
+    role = (effective_role or "").strip().lower()
+    if role in REVIEWED_APPROVAL_ROLES:
+        from app.modules.notifications.approval_review import (
+            approval_events_for_role, is_pending_approval_for_user,
+        )
+        viewer = db.get(User, user_id)
+        if viewer is None:
+            return 0
+        candidates = select(GlobalNotification).where(
+            GlobalNotification.recipient_user_id == user_id,
+            GlobalNotification.event_type.in_(approval_events_for_role(role)),
+        )
+        candidates = _exclude_event_prefixes(candidates, excluded_event_prefixes)
+        cache: dict = {}
+        return sum(1 for row in db.scalars(candidates).all()
+                   if is_pending_approval_for_user(db, row, viewer, role, cache))
 
     query = select(func.count(GlobalNotification.id)).where(
         GlobalNotification.recipient_user_id == user_id,
@@ -462,6 +563,8 @@ def resolve_notifications(
     event_type: str | None = None,
     event_type_prefix: str | None = None,
     dedupe_key_prefix: str | None = None,
+    dedupe_key: str | None = None,
+    target_url: str | None = None,
     resolved_by_id: int | None = None,
     resolution_note: str | None = None,
     now: datetime | None = None,
@@ -486,6 +589,10 @@ def resolve_notifications(
         conditions.append(GlobalNotification.event_type.startswith(event_type_prefix))
     if dedupe_key_prefix:
         conditions.append(GlobalNotification.dedupe_key.like(f"{dedupe_key_prefix}%"))
+    if dedupe_key:
+        conditions.append(GlobalNotification.dedupe_key == dedupe_key)
+    if target_url:
+        conditions.append(GlobalNotification.target_url == target_url)
 
     rows = list(db.scalars(select(GlobalNotification).where(*conditions)).all())
     if not rows:

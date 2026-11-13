@@ -761,6 +761,7 @@ def finance_review_project(db: Session, *, actor: User, project_id: int, payload
         db,
         recipient_user_ids=[user.id for user in resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE])],
         event_type="workflow.project.submitted_finance",
+        target_url=f"/finance?project={project.id}",
         resolved_by_id=actor.id,
         resolution_note=f"Finance {payload.decision}",
     )

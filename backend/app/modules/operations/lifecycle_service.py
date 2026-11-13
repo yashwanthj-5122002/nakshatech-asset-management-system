@@ -262,16 +262,31 @@ def _notify(
     recipient_user_ids: list[int] | None = None,
     dedupe_key: str | None = None,
 ) -> None:
+    # Only genuine Finance/Management approval requests become actionable.
+    # Keep the historical BD/other-role behaviour unchanged.
+    approval_request = event_type in {
+        "lifecycle.management_approval_requested",
+        "lifecycle.bad_debt.proposed",
+        "lifecycle.no_feedback_authorization_required",
+    }
+    financial_viewers = bool(set(recipient_roles or ()) & {"finance", "management"})
+    category = (
+        "approval" if approval_request else
+        "system" if financial_viewers else
+        "approval" if recipient_roles else "system"
+    )
     create_global_notification(
         db,
         event_type=event_type,
         title=title,
         message=f"Project ID {project.project_code}: {message}",
-        category="approval" if recipient_roles else "system",
+        category=category,
         target_url=target_url,
         recipient_roles=recipient_roles,
         recipient_user_ids=recipient_user_ids,
         dedupe_key=dedupe_key,
+        requires_action=True if approval_request else None,
+        metadata={"notification_type": "approval"} if approval_request else None,
     )
 
 

@@ -24,6 +24,7 @@ from app.modules.notifications.service import (
     get_notification_for_user,
     list_notifications_for_user,
     list_popup_notifications,
+    reviewed_notification_payload,
     mark_all_notifications_read,
     mark_notification_read,
     pending_count_for_user,
@@ -59,7 +60,7 @@ def list_global_notifications(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[GlobalNotificationResponse]:
-    return list_notifications_for_user(
+    rows = list_notifications_for_user(
         db,
         user_id=auth.user.id,
         unread_only=unread_only,
@@ -67,7 +68,14 @@ def list_global_notifications(
         limit=limit,
         offset=offset,
         excluded_event_prefixes=_excluded_prefixes(auth),
+        effective_role=auth.effective_role,
     )
+    if auth.effective_role in {"finance", "management"}:
+        cache: dict = {}
+        return [reviewed_notification_payload(
+            db, row, viewer=auth.user, effective_role=auth.effective_role, cache=cache,
+        ) for row in rows]
+    return rows
 
 
 @router.get("/unread-count", response_model=NotificationUnreadCountResponse)
@@ -113,6 +121,7 @@ def mark_all_global_notifications_read(
 @router.get("/popup-queue", response_model=list[NotificationPopupItem])
 def notification_popup_queue(
     limit: int = Query(default=5, ge=1, le=20),
+    exclude_ids: str | None = Query(default=None, max_length=4000),
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
@@ -128,6 +137,10 @@ def notification_popup_queue(
         effective_role=auth.effective_role,
         limit=limit,
         excluded_event_prefixes=_excluded_prefixes(auth),
+        excluded_notification_ids=(
+            [int(item) for item in exclude_ids.split(",") if item.isdecimal()][:400]
+            if auth.effective_role in {"finance", "management"} and exclude_ids else None
+        ),
     )
 
 
@@ -143,6 +156,7 @@ def notification_pending_count(
             db,
             user_id=auth.user.id,
             excluded_event_prefixes=_excluded_prefixes(auth),
+            effective_role=auth.effective_role,
         )
     )
 
