@@ -37,7 +37,20 @@ export function PMBillingBasisPanel({ projectId, projectCode }: { projectId: num
   const unit = view.quantity_unit || draft.unit
   const areaMatchesUnit = ref.area_unit != null && unit !== '' && ref.area_unit.toLowerCase() === unit.toLowerCase() && ref.delivered_area != null
 
+  const automaticCompletionPercent =
+    ref.area_unit != null &&
+    ref.total_area != null &&
+    ref.delivered_area != null &&
+    ref.total_area > 0
+      ? Math.min(100, Math.max(0,
+          Math.round((ref.delivered_area / ref.total_area) * 10000) / 100
+        ))
+      : ref.completion_percent_by_packages
   async function submit() {
+    if (type === 'fixed_price' && automaticCompletionPercent == null) {
+      setError('Completion cannot be calculated until work packages are recorded.')
+      return
+    }
     setBusy(true); setError(''); setNotice('')
     try {
       await apiFetch(`/commercial/projects/${projectId}/pm-billing-basis`, {
@@ -46,7 +59,7 @@ export function PMBillingBasisPanel({ projectId, projectCode }: { projectId: num
           cumulative_billable_quantity: draft.quantity.trim() === '' ? null : Number(draft.quantity),
           quantity_unit: unit || null,
           milestone_id: draft.milestone_id ? Number(draft.milestone_id) : null,
-          completion_percent: draft.completion_percent.trim() === '' ? null : Number(draft.completion_percent),
+          completion_percent: type === 'fixed_price' ? automaticCompletionPercent : null,
           delivery_accepted: draft.accepted,
           acceptance_reference: draft.reference.trim() || null,
           pm_remarks: draft.remarks.trim() || null,
@@ -80,7 +93,7 @@ export function PMBillingBasisPanel({ projectId, projectCode }: { projectId: num
         <div className="operations-field cw-inline-action"><span>&nbsp;</span>{areaMatchesUnit ? <button type="button" className="operations-button secondary" onClick={() => setDraft({ ...draft, quantity: String(ref.delivered_area) })}>Use delivered area ({ref.delivered_area} {ref.area_unit})</button> : <small className="cw-muted">Enter the quantity the client has accepted.</small>}</div>
       </>}
       {type === 'milestone' && <label className="operations-field operations-span-2"><span>Milestone achieved *</span><select value={draft.milestone_id} onChange={e => setDraft({ ...draft, milestone_id: e.target.value, accepted: e.target.value ? true : draft.accepted })}><option value="">Select milestone</option>{view.milestones.map(m => <option key={m.id} value={m.id}>{m.sequence}. {m.name}</option>)}</select></label>}
-      {type === 'fixed_price' && <label className="operations-field"><span>Completion % (or tick delivery accepted)</span><input type="number" min="0" max="100" step="0.01" value={draft.completion_percent} onChange={e => setDraft({ ...draft, completion_percent: e.target.value })} /></label>}
+      {type === 'fixed_price' && <label className="operations-field"><span>Completion %</span><input type="text" value={automaticCompletionPercent == null ? '' : `${automaticCompletionPercent}%`} placeholder="Awaiting work packages" readOnly /></label>}
       {!quantityBased && type !== 'milestone' && type !== 'fixed_price' && <>
         <label className="operations-field"><span>Billable quantity (optional)</span><input type="number" min="0" step="0.001" value={draft.quantity} onChange={e => setDraft({ ...draft, quantity: e.target.value })} /></label>
         <label className="operations-field"><span>Unit</span><input value={draft.unit} onChange={e => setDraft({ ...draft, unit: e.target.value })} placeholder="e.g. sites" /></label>

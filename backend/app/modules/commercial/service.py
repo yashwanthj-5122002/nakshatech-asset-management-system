@@ -1681,6 +1681,33 @@ def _invoiced_quantity(invoices: list[ProjectInvoice], *, exclude_invoice_id: in
     )
 
 
+def _automatic_completion_percent(
+    db: Session,
+    project: FinanceProject,
+    workflow: ProjectWorkflow | None,
+) -> Decimal | None:
+    """Calculate completion from existing delivered operational work."""
+    reference = _operational_reference(db, project, workflow)
+    total = reference["total_area"]
+    delivered = reference["delivered_area"]
+
+    if (
+        reference["area_unit"] is not None
+        and total is not None
+        and delivered is not None
+        and total > 0
+    ):
+        percent = Decimal(str(delivered)) * Decimal("100") / Decimal(str(total))
+    elif reference["completion_percent_by_packages"] is not None:
+        percent = Decimal(str(reference["completion_percent_by_packages"]))
+    else:
+        return None
+
+    return max(
+        Decimal("0"),
+        min(Decimal("100"), percent),
+    ).quantize(Decimal("0.01"))
+
 def pm_billing_basis_view(db: Session, *, actor: User, project_id: int) -> dict:
     """What the assigned PM sees: billing TYPE, unit and milestone NAMES only. No rate, value, FX or margin."""
     project = _project(db, project_id)
@@ -1741,10 +1768,9 @@ def record_billing_basis(db: Session, *, actor: User, project_id: int, payload: 
         if any(inv.billed_milestone_id == milestone.id for inv in invoices):
             raise ValueError("This milestone has already been invoiced")
     elif revision is not None and billing_type == "fixed_price":
-        if completion is None and not payload.delivery_accepted:
-            raise ValueError("Confirm the completion percentage or that delivery has been accepted")
+        completion = _automatic_completion_percent(db, project, workflow)
         if completion is None:
-            completion = Decimal("100.00")
+            raise ValueError("Completion cannot be calculated until work packages are recorded")
     else:
         if not payload.pm_remarks and quantity is None:
             raise ValueError("Describe the billable work in the remarks or enter a quantity")
