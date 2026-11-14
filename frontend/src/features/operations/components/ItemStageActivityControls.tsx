@@ -130,14 +130,14 @@ export type ActivityItem = {
 export function fmtQty(
   value: number | null | undefined,
 ): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return 'Ã¢â‚¬â€'
   return String(value)
 }
 
 export function fmtDate(
   value?: string | null,
 ): string {
-  if (!value) return '—'
+  if (!value) return 'Ã¢â‚¬â€'
   if (value.length <= 10) return value
 
   const ms = parseTimestamp(value)
@@ -168,7 +168,7 @@ export function parseTimestamp(
 export function fmtTime(
   value?: string | null,
 ): string {
-  if (!value) return '—'
+  if (!value) return 'Ã¢â‚¬â€'
 
   const ms = parseTimestamp(value)
 
@@ -192,7 +192,7 @@ export function fmtDuration(
   seconds?: number | null,
 ): string {
   if (seconds === null || seconds === undefined) {
-    return '—'
+    return 'Ã¢â‚¬â€'
   }
 
   const total = Math.max(0, Math.floor(seconds))
@@ -432,7 +432,7 @@ export function ItemStageActivityControls({
             body: JSON.stringify({ stage }),
           },
         ),
-      `${stageLabel(stage)} started for ${item.item_number} — the server recorded the start time.`,
+      `${stageLabel(stage)} started for ${item.item_number} Ã¢â‚¬â€ the server recorded the start time.`,
     )
 
     if (saved) {
@@ -499,7 +499,7 @@ export function ItemStageActivityControls({
         ),
       item.production_rework_pending
         ? `${item.item_number}: Production rework completed. The corrected file is ready for QC/QA review.`
-        : `${item.item_number}: production COMPLETED — QC now ready.`,
+        : `${item.item_number}: production COMPLETED Ã¢â‚¬â€ QC now ready.`,
     )
 
     if (saved) {
@@ -751,22 +751,22 @@ export function ItemStageActivityControls({
         cumulativeQty !== null) && (
         <div className="isa-meta isa-strong">
           Planned: {fmtQty(plannedQty)} {plannedUnit}
-          {' · '}
+          {' | '}
           Cumulative actual: {fmtQty(cumulativeQty)}{' '}
           {cumulativeUnit}
 
           {remainingQty !== null && (
             <>
-              {' · '}
-              Remaining: {fmtQty(remainingQty)}{' '}
+              {' | '}
+              Remaining: {fmtQty(item.production_status === "completed" ? 0 : Math.max(0, remainingQty))}{' '}
               {plannedUnit}
             </>
           )}
 
           {progressPct !== null && (
             <>
-              {' · '}
-              Progress: {progressPct}%
+              {' | '}
+              Progress: {item.production_status === "completed" ? 100 : Math.min(100, Math.max(0, progressPct))}%
             </>
           )}
         </div>
@@ -778,21 +778,21 @@ export function ItemStageActivityControls({
           Production sessions: {sessionCount}
 
           {item.production_duration_seconds != null &&
-            ` · Total production time: ${
+            ` | Total production time: ${
               fmtDuration(
                 item.production_duration_seconds,
               )
             }`}
 
           {item.production_completed_at &&
-            ` · Final completion: ${
+            ` | Final completion: ${
               fmtTime(
                 item.production_completed_at,
               )
             }`}
 
           {(item.production_files ?? 0) > 0 &&
-            ` · Files completed: ${
+            ` | Files completed: ${
               item.production_files
             }`}
         </div>
@@ -803,15 +803,15 @@ export function ItemStageActivityControls({
           Delay: {item.delay_category}
 
           {item.affected_item_number
-            ? ` · ${item.affected_item_number}`
+            ? ` Ã‚Â· ${item.affected_item_number}`
             : ''}
 
           {item.system_malfunction
-            ? ' · SYSTEM MALFUNCTION'
+            ? ' Ã‚Â· SYSTEM MALFUNCTION'
             : ''}
 
           {item.delay_reason
-            ? ` · ${item.delay_reason}`
+            ? ` Ã‚Â· ${item.delay_reason}`
             : ''}
         </div>
       )}
@@ -837,11 +837,11 @@ export function ItemStageActivityControls({
       {openStage && (
         <div className="isa-meta isa-open">
           {stageLabel(openStage)} IN PROGRESS
-          {' · '}
+          {' | '}
           started {fmtTime(openStartedAt)}
 
           {openStartedAt &&
-            ` · elapsed ${
+            ` Ã‚Â· elapsed ${
               fmtDuration(
                 Math.floor(
                   (
@@ -1042,7 +1042,7 @@ export function ItemStageActivityControls({
               {isProductionRework
                 ? 'Complete rework'
                 : 'Complete file'}
-              {' — '}
+              {' | '}
               {item.item_number}
             </strong>
 
@@ -1186,7 +1186,7 @@ export function ItemStageActivityControls({
                   />
 
                   <span>
-                    System Malfunction — the
+                    System Malfunction Ã¢â‚¬â€ the
                     system affected production
                     speed (not employee-caused)
                   </span>
@@ -1235,7 +1235,7 @@ export function ItemStageActivityControls({
               {openStage === 'qc'
                 ? 'Complete QC'
                 : 'Complete QA'}
-              {' — '}
+              {' | '}
               {item.item_number}
             </strong>
 
@@ -1318,7 +1318,7 @@ export function ItemStageActivityControls({
             className="spin"
           />
           {' '}
-          Saving…
+          SavingÃ¢â‚¬Â¦
         </div>
       )}
     </div>

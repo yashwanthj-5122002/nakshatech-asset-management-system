@@ -94,6 +94,7 @@ from app.modules.operations.production_stages import (
     TRACKABLE_STAGES,
     aggregate_project_progress,
     package_production_progress,
+    item_stage_complete,
     package_workflow_progress,
     stage_profile_for_department,
     stage_status,
@@ -1224,7 +1225,7 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
             db,
             event_type="workflow.project.team_assignment",
             title=f"Project team assignment: {project.project_code}",
-            message=f"Project ID {project.project_code} Â· Client ID {_client_code(project) or 'Not recorded'} Â· Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}.",
+            message=f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}.",
             category="system",
             target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
@@ -1323,12 +1324,12 @@ def confirm_rework_team(
     cycle.status = REWORK_PRODUCTION
     cycle.updated_at = utc_now()
     summary = (
-        f"{REWORK_NOTE_REUSE if payload.mode == 'reuse' else REWORK_NOTE_ADJUST} Â· "
-        f"Team Lead {team_lead.employee_id or team_lead.full_name} Â· Production {len(selected['production'])} Â· "
-        f"QC {len(selected['qc'])} Â· QA {len(selected['qa'])}"
+        f"{REWORK_NOTE_REUSE if payload.mode == 'reuse' else REWORK_NOTE_ADJUST} Ã‚Â· "
+        f"Team Lead {team_lead.employee_id or team_lead.full_name} Ã‚Â· Production {len(selected['production'])} Ã‚Â· "
+        f"QC {len(selected['qc'])} Ã‚Â· QA {len(selected['qa'])}"
     )
     if (payload.remarks or "").strip():
-        summary += f" Â· {payload.remarks.strip()}"
+        summary += f" Ã‚Â· {payload.remarks.strip()}"
     lifecycle_transition(
         db,
         workflow=workflow,
@@ -1350,8 +1351,8 @@ def confirm_rework_team(
             event_type="workflow.rework.team_confirmed",
             title=f"Rework team confirmed: {project.project_code}",
             message=(
-                f"Project ID {project.project_code} Â· Client ID {_client_code(project) or 'Not recorded'} Â· "
-                f"Rework Cycle {cycle.cycle_number} Â· Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
+                f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· "
+                f"Rework Cycle {cycle.cycle_number} Ã‚Â· Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
             ),
             category="system",
             target_url=f"/ortho?project={project.id}",
@@ -1456,13 +1457,13 @@ def allocate_rework_work(
     )
     db.add(package)
     db.flush()
-    note = f"{area} Â· {payload.quantity} {unit} Â· Target {payload.target_date.isoformat()}"
+    note = f"{area} Ã‚Â· {payload.quantity} {unit} Ã‚Â· Target {payload.target_date.isoformat()}"
     if source is not None:
-        note += f" Â· linked to original package {source.package_code}"
+        note += f" Ã‚Â· linked to original package {source.package_code}"
         if payload.correction_reason:
-            note += f" Â· Code/Area correction: {payload.correction_reason}"
+            note += f" Ã‚Â· Code/Area correction: {payload.correction_reason}"
         elif code.strip().lower() == source.package_code.strip().lower():
-            note += " Â· Code/Area carried forward"
+            note += " Ã‚Â· Code/Area carried forward"
     lifecycle_transition(
         db,
         workflow=workflow,
@@ -1478,8 +1479,8 @@ def allocate_rework_work(
             event_type="workflow.rework.work_assigned",
             title=f"New REWORK {role.upper()} work: {code}",
             message=(
-                f"Project ID {project.project_code} Â· Client ID {_client_code(project) or 'Not recorded'} Â· Rework Cycle {cycle.cycle_number} Â· "
-                f"Area {area} Â· Code {code} Â· {payload.quantity} {unit} Â· Target {payload.target_date.isoformat()}."
+                f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· Rework Cycle {cycle.cycle_number} Ã‚Â· "
+                f"Area {area} Ã‚Â· Code {code} Ã‚Â· {payload.quantity} {unit} Ã‚Â· Target {payload.target_date.isoformat()}."
             ),
             category="system",
             target_url=f"/ortho?project={project.id}",
@@ -1651,8 +1652,8 @@ def allocate_work(db: Session, *, actor: User, project_id: int, payload: Workflo
             event_type="workflow.work.assigned",
             title=f"New {role.upper()} work: {payload.package_code}",
             message=(
-                f"Project ID {project.project_code} Â· Client ID {_client_code(project) or 'Not recorded'} Â· "
-                f"Area {payload.area_name} Â· Code {payload.package_code} Â· {payload.quantity} {payload.quantity_unit} Â· Target {payload.target_date.isoformat()}."
+                f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· "
+                f"Area {payload.area_name} Ã‚Â· Code {payload.package_code} Ã‚Â· {payload.quantity} {payload.quantity_unit} Ã‚Â· Target {payload.target_date.isoformat()}."
             ),
             category="system",
             target_url=f"/ortho?project={project.id}",
@@ -1792,7 +1793,7 @@ def complete_production(db: Session, *, actor: User, work_package_id: int) -> Or
         db,
         event_type="workflow.production.completed",
         title=f"Production completed: {package.package_code}",
-        message=f"Project ID {project.project_code} Â· Code {package.package_code} is ready for QC.",
+        message=f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} is ready for QC.",
         category="system",
         target_url=f"/ortho?project={project.id}",
         recipient_user_ids=recipients,
@@ -1937,7 +1938,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.qa_user_id]
         event_type = "workflow.qc.approved"
         title = f"QC approved: {package.package_code}"
-        message = f"Project ID {project.project_code} Â· Code {package.package_code} is ready for QA."
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} is ready for QA."
     elif kind == "qc":
         package.qc_state = "rejected"
         package.current_stage = "production_rework"
@@ -1946,7 +1947,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.production_user_id, package.team_leader_user_id, pm.id if pm else None]
         event_type = "workflow.qc.rejected"
         title = f"QC rework required: {package.package_code}"
-        message = f"Project ID {project.project_code} Â· Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
     elif payload.decision == "approve":
         package.qa_state = "approved"
         package.current_stage = "delivery_ready"
@@ -1955,7 +1956,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.team_leader_user_id, pm.id if pm else None]
         event_type = "workflow.qa.approved"
         title = f"Ready for delivery: {package.package_code}"
-        message = f"Project ID {project.project_code} Â· Code {package.package_code} passed QA and is Ready for Delivery."
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} passed QA and is Ready for Delivery."
     else:
         package.qa_state = "rejected"
         package.current_stage = "production_rework"
@@ -1964,7 +1965,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.production_user_id, package.team_leader_user_id, pm.id if pm else None]
         event_type = "workflow.qa.rejected"
         title = f"QA rework required: {package.package_code}"
-        message = f"Project ID {project.project_code} Â· Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
     create_global_notification(
         db,
         event_type=event_type,
@@ -1992,7 +1993,7 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
     if readiness["applicable"]:
         if not readiness["ready"]:
             raise ValueError(
-                "Not all files passed QA yet â€” QA must approve every required file before Delivery"
+                "Not all files passed QA yet Ã¢â‚¬â€ QA must approve every required file before Delivery"
             )
         if package.ready_for_delivery_at is None:
             raise ValueError("Confirm Ready for Delivery before recording Delivery")
@@ -2026,7 +2027,7 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
         db,
         event_type="workflow.delivery.completed",
         title=f"Delivered: {package.package_code}",
-        message=f"Project ID {project.project_code} Â· Code {package.package_code} has been delivered.",
+        message=f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} has been delivered.",
         category="system",
         target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in {package.team_leader_user_id, pm.id if pm else None} if uid],
@@ -2233,11 +2234,21 @@ def _package_payload(
     target = package.area or Decimal("0")
     if has_items:
         # File-based area: the authoritative figures are the item rollups (same source
-        # as Production Tracking) â€” never the legacy area-level daily updates.
+        # as Production Tracking) Ã¢â‚¬â€ never the legacy area-level daily updates.
         total = Decimal(str(item_ctx.get("production_actual", 0.0)))
         files = int(item_ctx.get("active_count", 0))
     remaining = max(Decimal("0"), target - total)
     progress = 0.0 if target <= 0 else min(100.0, float((total / target) * Decimal("100")))
+
+    # Use authoritative production completion, not rounded quantities.
+    if has_items:
+        production_done = item_stage_complete(item_ctx, "production")
+    else:
+        production_done = package.production_state == "completed"
+
+    if production_done and target > 0:
+        progress = 100.0
+        remaining = Decimal("0")
     # V8.1 production tracking (additive): over-target variance + workflow % derived
     # from the applicable department stage profile (never user-typed).
     production_math = package_production_progress(total, package.area)
@@ -2396,7 +2407,7 @@ def _package_payload(
             ),
         })
         # Delivery is the EXPLICIT step after Ready has been confirmed (never merged with
-        # Mark Ready, never automatic) â€” derived from the physical-file state.
+        # Mark Ready, never automatic) Ã¢â‚¬â€ derived from the physical-file state.
         payload["can_deliver"] = (
             (viewer_is_pm or package.team_leader_user_id == viewer.id)
             and bool(item_ctx.get("ready_confirmed"))
@@ -2516,7 +2527,7 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
         }
         # V8.1 production tracking (additive): server-side progress for this project's
         # visible packages. Production % can legitimately be 100 while QC/QA/Delivery
-        # are still pending â€” both figures are always exposed separately.
+        # are still pending Ã¢â‚¬â€ both figures are always exposed separately.
         tracking = aggregate_project_progress(packages, workflow.performing_department_code, item_contexts)
         summary["production_progress_percent"] = tracking["production_progress_percent"]
         summary["workflow_progress_percent"] = tracking["workflow_progress_percent"]
