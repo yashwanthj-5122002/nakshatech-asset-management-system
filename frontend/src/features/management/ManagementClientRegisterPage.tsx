@@ -274,6 +274,8 @@ export function ManagementClientRegisterPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [form, setForm] = useState<ClientForm>(emptyForm)
+  const [registrationProjectType, setRegistrationProjectType] =
+    useState<'regular' | 'pilot'>('regular')
   const [tracking, setTracking] = useState<TrackingRegister | null>(null)
   const [trackingError, setTrackingError] = useState('')
   const [additionalRequests, setAdditionalRequests] = useState<AdditionalProjectRequest[]>([])
@@ -422,6 +424,7 @@ export function ManagementClientRegisterPage() {
 
   function openCreate() {
     setForm({ ...emptyForm })
+    setRegistrationProjectType('regular')
     setEditingId(null)
     setShowForm(true)
     setSelectedId(null)
@@ -455,6 +458,9 @@ export function ManagementClientRegisterPage() {
         ...form,
         client_code: form.client_code.trim().toUpperCase(),
         gst_number: form.gst_number.trim().toUpperCase(),
+        ...(editingId === null
+          ? { project_type: registrationProjectType }
+          : {}),
       }
       const saved = await apiFetch<Client>(editingId === null ? endpoint : `${endpoint}/${editingId}`, {
         method: editingId === null ? 'POST' : 'PUT', body: JSON.stringify(payload),
@@ -501,13 +507,19 @@ export function ManagementClientRegisterPage() {
     {showForm && <section className="operations-panel">
       <header><div><span className="operations-kicker">{editingId === null ? 'NEW CLIENT' : 'EDIT CLIENT'}</span>
         <h2>{editingId === null ? 'Client Registration' : 'Update Client Details'}</h2>
-        <p>Use the same core client details as BD. This registration does not create a project or assign a department.</p>
+        <p>Use the same core client details as BD. Registration creates a pending Finance request. Finance creates and assigns the project.</p>
       </div></header>
       <form className="operations-form-grid" onSubmit={event => void saveClient(event)}>
         <label className="operations-field"><span>Client ID / Code *</span><input required maxLength={32} value={form.client_code} onChange={event => updateField('client_code', event.target.value.toUpperCase())} placeholder="CLIENT-001" /></label>
         <label className="operations-field"><span>Client Organization Name *</span><input required maxLength={255} value={form.client_name} onChange={event => updateField('client_name', event.target.value)} /></label>
         <label className="operations-field"><span>Client Email ID</span><input type="email" value={form.client_email} onChange={event => updateField('client_email', event.target.value)} /></label>
         <label className="operations-field"><span>Organization Email ID</span><input type="email" value={form.organization_email} onChange={event => updateField('organization_email',event.target.value)} /></label>       
+
+        <div className={
+          editingId === null
+            ? 'operations-span-2 mct-country-gst-row'
+            : 'operations-span-2 mct-country-gst-row mct-country-gst-row--editing'
+        }>
 <CountrySelect
   value={form.country || 'India'}
   onChange={(country) =>
@@ -529,13 +541,32 @@ export function ManagementClientRegisterPage() {
     }
   />
 </label>
+        {editingId === null && (
+          <label className="operations-field">
+            <span>Project Type *</span>
+            <select
+              required
+              value={registrationProjectType}
+              onChange={event =>
+                setRegistrationProjectType(
+                  event.target.value as 'regular' | 'pilot'
+                )
+              }
+            >
+              <option value="regular">Regular Project</option>
+              <option value="pilot">Pilot Project</option>
+            </select>
+          </label>
+        )}
+
+        </div>
 
         <label className="operations-field operations-span-2"><span>Client Address</span><textarea rows={2} value={form.address} onChange={event => updateField('address', event.target.value)} /></label>
         <label className="operations-field"><span>Contact Person Name *</span><input required value={form.contact_person_name} onChange={event => updateField('contact_person_name', event.target.value)} /></label>
         <label className="operations-field"><span>Contact Person Email ID</span><input type="email" value={form.contact_person_email} onChange={event => updateField('contact_person_email', event.target.value)} /></label>
         <label className="operations-field"><span>Contact Person Phone</span><input type="tel" maxLength={40} value={form.contact_person_phone} onChange={event => updateField('contact_person_phone', event.target.value)} /></label>
         <label className="operations-field operations-span-2"><span>Client Work / Initial Requirement</span><textarea rows={4} maxLength={5000} value={form.work_description} onChange={event => updateField('work_description', event.target.value)} placeholder="Describe the work requested by the client. Project creation is handled separately." /></label>
-        <div className="operations-note operations-span-2">The client source is automatically recorded as the logged-in Management user. BD, project creation, and Finance approval workflows are not triggered.</div>
+        <div className="operations-note operations-span-2">The client source is automatically recorded as the logged-in Management user. A pending project request is sent to Finance automatically. No actual project is created at registration.</div>
         <div className="operations-actions operations-span-2">
           <button className="operations-button" type="submit" disabled={busy}>{busy ? 'Saving…' : editingId === null ? 'Create Client' : 'Save Changes'}</button>
           <button className="operations-button secondary" type="button" disabled={busy} onClick={() => setShowForm(false)}>Cancel</button>

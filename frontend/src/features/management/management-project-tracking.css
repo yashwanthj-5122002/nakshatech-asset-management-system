@@ -77,3 +77,35 @@
 @media(max-width:1150px){ .mct-modal-metrics { grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); } .mct-project-details { grid-column:1/-1; } }
 @media(max-width:900px){ .mct-modal-metrics { grid-template-columns:minmax(0,1fr); } .mct-project-details { grid-column:auto; } }
 @media(max-width:720px){ .mct-modal-backdrop { padding:8px; } .mct-modal { padding:12px; max-height:calc(100vh - 16px); max-height:calc(100dvh - 16px); } .mct-modal-metrics { grid-template-columns:minmax(0,1fr); } .mct-stages-grid { grid-template-columns:1fr 1fr; } .mct-project-details { grid-column:auto; } .mct-modal-header { flex-wrap:wrap; } .mct-timeline { gap:3px; } .mct-timeline strong { font-size:.72rem; } }
+
+/* Management Client Registration: aligned Country, GSTIN, Project Type */
+.mct-country-gst-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+  grid-column: 1 / -1;
+}
+
+.mct-country-gst-row--editing {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mct-country-gst-row > * {
+  min-width: 0;
+}
+
+.mct-country-gst-row .operations-field input,
+.mct-country-gst-row .operations-field select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 42px;
+}
+
+@media (max-width: 900px) {
+  .mct-country-gst-row,
+  .mct-country-gst-row--editing {
+    grid-template-columns: 1fr;
+  }
+}

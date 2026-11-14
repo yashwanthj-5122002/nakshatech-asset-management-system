@@ -116,7 +116,7 @@ type ProjectForm = {
   end_date: string; performing_department_code: string; priority: string
   quantity: string; quantity_unit: string; description: string; project_manager_id: string
 }
-type MainTab = 'projects' | 'clients' | 'invoices' | 'payments' | 'tracking' | 'requests'
+type MainTab = 'projects' | 'clients' | 'invoices' | 'payments' | 'tracking' | 'requests' | 'pilot'
 type DetailTab = 'overview' | 'workflow' | 'billing'
 
 const emptyProject = (): ProjectForm => ({
@@ -547,6 +547,22 @@ export function FinanceManagementProjectsPage() {
     finally { setBusy(false) }
   }
 
+
+  function pendingForTab(tab: MainTab) {
+    return additionalRequests.filter(row =>
+      row.status === 'PENDING' &&
+      (tab === 'pilot'
+        ? row.project_type === 'pilot'
+        : row.project_type !== 'pilot')
+    ).length
+  }
+
+  const requestsForActiveTab = additionalRequests.filter(row =>
+    activeTab === 'pilot'
+      ? row.project_type === 'pilot'
+      : row.project_type !== 'pilot'
+  )
+
   const tabs: Array<{ id: MainTab; label: string; icon: typeof FolderKanban }> = [
     { id: 'projects', label: 'Projects', icon: FolderKanban },
     { id: 'clients', label: 'Clients', icon: UsersRound },
@@ -554,6 +570,7 @@ export function FinanceManagementProjectsPage() {
     { id: 'payments', label: 'Payments', icon: Wallet },
     { id: 'tracking', label: 'Tracking', icon: Activity },
     { id: 'requests', label: 'Project Requests', icon: FilePlus2 },
+    { id: 'pilot', label: 'Pilot Projects', icon: Layers3 },
   ]
 
   return <div className="operations-page mp-page">
@@ -586,26 +603,79 @@ export function FinanceManagementProjectsPage() {
     {total.missing_fx_rows > 0 && <p className="mp-fx-note">Some foreign-currency invoice/payment rows have no recorded INR FX value ({total.missing_fx_rows}). INR totals exclude those amounts; see the existing Finance ledger for reconciliation.</p>}
 
     <nav className="mp-tabs" aria-label="Management Projects sections">
-      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeTab === id ? 'mp-tab active' : 'mp-tab'} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { setActiveTab(id); setSelectedProjectId(null) }}><Icon size={16}/>{label}{id === 'requests' && additionalRequests.filter(r => r.status === 'PENDING').length > 0 && <span style={{ marginLeft: 4, background: '#fcebea', color: '#a23e3e', borderRadius: 9, padding: '2px 6px', fontSize: 11 }}>{additionalRequests.filter(r => r.status === 'PENDING').length}</span>}</button>)}
+      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeTab === id ? 'mp-tab active' : 'mp-tab'} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { setActiveTab(id); setSelectedProjectId(null) }}><Icon size={16}/>{label}{(id === 'requests' || id === 'pilot') && pendingForTab(id) > 0 && <span style={{ marginLeft: 4, background: '#fcebea', color: '#a23e3e', borderRadius: 9, padding: '2px 6px', fontSize: 11 }}>{pendingForTab(id)}</span>}</button>)}
     </nav>
 
-    {activeTab === 'requests' && <section className="mp-panel" aria-label="Existing client project requests">
-      <div className="mp-panel-heading"><h2>Existing Client – Project Requests</h2><span>{additionalRequests.filter(r => r.status === 'PENDING').length} awaiting Finance</span></div>
+    {(activeTab === 'requests' || activeTab === 'pilot') && <section className="mp-panel" aria-label="Existing client project requests">
+      <div className="mp-panel-heading"><h2>{activeTab === 'pilot' ? 'Pilot Project Requests' : 'Regular Project Requests'}</h2><span>{requestsForActiveTab.filter(r => r.status === 'PENDING').length} awaiting Finance</span></div>
       <p style={{ margin: '8px 0 12px', color: '#46647c', fontSize: 13 }}>When Vinod Sir or Chethan Sir requests another project for an existing client, it appears here. Use the normal Create Project form to complete it.</p>
       {requestFetchError && <p role="alert" style={{ color: '#a23e3e' }}>{requestFetchError}</p>}
       <label className="mp-search" style={{ display: 'block', marginBottom: 12 }}><Search size={17}/><input aria-label="Search project requests" placeholder="Search client, project or Management source…" value={requestSearch} onChange={e => setRequestSearch(e.target.value)}/></label>
       <div className="mp-table-scroll"><table className="mp-table"><thead><tr><th>Client</th><th>Requested Project</th><th>Management Source</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody>
-        {additionalRequests.filter(row => !requestSearch.trim() || [row.client_code, row.client_name, row.project_name, row.source_person_name].some(value => (value || '').toLowerCase().includes(requestSearch.trim().toLowerCase()))).sort((a,b) => (a.status === 'PENDING' ? 0 : 1) - (b.status === 'PENDING' ? 0 : 1)).map(row =>
+        {requestsForActiveTab.filter(row => !requestSearch.trim() || [row.client_code, row.client_name, row.project_name, row.source_person_name].some(value => (value || '').toLowerCase().includes(requestSearch.trim().toLowerCase()))).sort((a,b) => (a.status === 'PENDING' ? 0 : 1) - (b.status === 'PENDING' ? 0 : 1)).map(row =>
           <tr key={row.id}><td><strong>{row.client_code}</strong><small>{row.client_name}</small></td>
-            <td><strong>{row.project_name}</strong>{row.project_type === 'pilot' && <small style={{ color: '#176d79', fontWeight: 700 }}>PILOT · {row.pilot_payment_type?.toUpperCase()}</small>}<small>{row.scope_text}</small>{row.remarks && <small>Notes: {row.remarks}</small>}</td>
+            <td><strong>{row.project_name || 'Project details pending Finance'}</strong>{row.project_type === 'pilot' && <small style={{ color: '#176d79', fontWeight: 700 }}>PILOT · {row.pilot_payment_type?.toUpperCase()}</small>}<small>{row.scope_text}</small>{row.remarks && <small>Notes: {row.remarks}</small>}</td>
             <td>{row.source_person_name}</td><td>{row.created_at ? new Date(row.created_at).toLocaleDateString('en-IN') : '—'}</td>
             <td><span style={{ display: 'inline-block', fontSize: 12, fontWeight: 500, borderRadius: 8, padding: '6px 9px', background: row.status === 'CREATED' ? '#e8f6eb' : '#fcebea', border: `1px solid ${row.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}`, color: row.status === 'CREATED' ? '#166534' : '#a23e3e' }}>{row.status === 'CREATED' ? `Project Created: ${row.created_project_code || ''}` : 'Awaiting Finance'}</span></td>
             <td>{row.status === 'PENDING' ? <button className="mp-button mp-button-primary mp-button-small" type="button" disabled={!clientById.get(row.management_client_id)?.is_active} onClick={() => openCreate(clientById.get(row.management_client_id), row)}><Plus size={14}/> Create Project</button> : row.created_project_code}</td></tr>
         )}</tbody></table></div>
-      {additionalRequests.length === 0 && !requestFetchError && <div className="mp-empty">No additional project requests yet.</div>}
+      {requestsForActiveTab.length === 0 && !requestFetchError && <div className="mp-empty">No matching project requests.</div>}
     </section>}
 
-    {activeTab !== 'requests' && <>
+    
+    {activeTab === 'pilot' && (
+      <section className="mp-panel">
+        <div className="mp-panel-heading">
+          <h2>Created Pilot Projects</h2>
+          <span>
+            {data.projects.filter(row =>
+              row.project_type === 'pilot'
+            ).length} projects
+          </span>
+        </div>
+        <div className="mp-table-scroll">
+          <table className="mp-table">
+            <thead>
+              <tr>
+                <th>Project Code</th>
+                <th>Project Name</th>
+                <th>Client</th>
+                <th>Department</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.projects
+                .filter(row => row.project_type === 'pilot')
+                .map(row => (
+                  <tr key={row.id}>
+                    <td>{row.project_code}</td>
+                    <td>{row.project_name}</td>
+                    <td>
+                      {clientById.get(row.management_client_id)
+                        ?.client_name || 'Management Client'}
+                    </td>
+                    <td>{row.department_label}</td>
+                    <td>{row.workflow_status}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="mp-button mp-button-primary mp-button-small"
+                        onClick={() => openDetails(row)}
+                      >
+                        View Project
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+{activeTab !== 'requests' && activeTab !== 'pilot' && <>
     <div className="mp-toolbar">
       <label className="mp-search"><Search size={17}/><input aria-label="Search management projects or clients" placeholder="Search by project, client or code…" value={search} onChange={e => setSearch(e.target.value)}/></label>
       {activeTab !== 'clients' && <select aria-label="Department filter" value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)}><option value="">All Departments</option>{options.departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}</select>}
@@ -617,7 +687,7 @@ export function FinanceManagementProjectsPage() {
     </div>
 
     <section className="mp-panel" aria-label={`${activeTab} register`}>
-      <div className="mp-panel-heading"><h2>{({ projects: 'Management Project Register', clients: 'Registered Management Clients', invoices: 'Management Project Invoices', payments: 'Payments & Collections', tracking: 'Project Tracking', requests: 'Project Requests' })[activeTab]}</h2><span>{activeTab === 'clients' ? filteredClients.length : filteredProjects.length} records</span></div>
+      <div className="mp-panel-heading"><h2>{({ projects: 'Management Project Register', clients: 'Registered Management Clients', invoices: 'Management Project Invoices', payments: 'Payments & Collections', tracking: 'Project Tracking', requests: 'Project Requests', pilot: 'Pilot Projects' })[activeTab]}</h2><span>{activeTab === 'clients' ? filteredClients.length : filteredProjects.length} records</span></div>
       <div className="mp-table-scroll">
         {activeTab === 'clients' ? <table className="mp-table"><thead><tr><th>Client Code</th><th>Client</th><th>Source</th><th>Projects</th><th>Action</th></tr></thead><tbody>
           {paginatedClients.map(client => <tr key={client.id}><td className="mp-code">{client.client_code}</td><td><strong>{client.client_name}</strong><small>{client.contact_person_name}</small></td><td><span className="mp-source">{client.source_person_name}</span></td><td>{data.projects.filter(p => p.management_client_id === client.id).length}</td><td><button type="button" className="mp-button mp-button-primary mp-button-small" disabled={!client.is_active} onClick={() => openCreate(client)}><Plus size={14}/> Create Project</button></td></tr>)}
@@ -698,7 +768,7 @@ export function FinanceManagementProjectsPage() {
             {projectType === 'pilot' && <label className="mp-field"><span>Pilot Financial Type *</span>
               <select value={pilotPaymentType} disabled={selectedRequestId !== null} onChange={e => setPilotPaymentType(e.target.value as 'free' | 'paid')}>
                 <option value="free">Free Pilot</option>
-                <option value="paid">Paid Pilot</option>
+                
               </select>
             </label>}
           </div>
