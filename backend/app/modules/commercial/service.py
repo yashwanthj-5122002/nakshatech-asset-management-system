@@ -519,6 +519,50 @@ def submit_baseline_estimate(db: Session, *, actor: User, project_id: int) -> Pr
     return row
 
 
+def finalize_bd_baseline_without_finance_approval(
+    db: Session, *, actor: User, project_id: int,
+) -> ProjectCommercialEstimateRevision | None:
+    """Lock submitted BD Revision 1 for billing without a Finance decision.
+
+    APPROVED is the legacy internal billing-compatible revision state, NOT a
+    Finance approval: reviewer, approval timestamp and FX verifier remain null.
+    """
+    from app.modules.finance.models import FinanceProject
+
+    project = db.get(FinanceProject, project_id)
+    if project is None or project.project_source_team != "bd_team":
+        raise PermissionError("Review-only baseline finalization is for BD-origin projects only")
+    row = db.scalar(select(ProjectCommercialEstimateRevision).where(
+        ProjectCommercialEstimateRevision.project_id == project_id,
+        ProjectCommercialEstimateRevision.revision_no == 1,
+    ))
+    if row is None:
+        if settings.commercial_estimate_required_on_submit:
+            raise ValueError("Commercial Revision 1 is required for BD project submission")
+        return None
+    if row.is_locked and row.status == "APPROVED":
+        return row
+    if row.status not in {"DRAFT", "PENDING_APPROVAL", "RETURNED"} or row.is_locked:
+        raise ValueError("Commercial Revision 1 cannot be finalized in its current state")
+    row.status = "APPROVED"  # Internal baseline/billing status, not Finance signoff.
+    row.is_baseline = True
+    row.is_locked = True
+    row.approved_by_id = None
+    row.approved_at = None
+    row.decision_comments = "Auto-locked when BD submitted for Finance viewing; no Finance approval"
+    if row.fx_snapshot_id:
+        snap = db.get(ProjectFxSnapshot, row.fx_snapshot_id)
+        if snap:
+            snap.fx_locked = True
+            snap.verified_by_id = None
+            snap.verified_at = None
+    _workflow_event(db, workflow=_workflow(db, project_id), actor=actor,
+                    event_type="commercial_bd_review_only_baseline_locked",
+                    comments="Revision 1 locked for billing without Finance approval")
+    db.flush()
+    return row
+
+
 def freeze_baseline_on_finance_approval(db: Session, *, actor: User, project_id: int) -> ProjectCommercialEstimateRevision | None:
     row = db.scalar(select(ProjectCommercialEstimateRevision).where(
         ProjectCommercialEstimateRevision.project_id == project_id,
@@ -1681,6 +1725,33 @@ def _invoiced_quantity(invoices: list[ProjectInvoice], *, exclude_invoice_id: in
     )
 
 
+def _automatic_completion_percent(
+    db: Session,
+    project: FinanceProject,
+    workflow: ProjectWorkflow | None,
+) -> Decimal | None:
+    """Calculate completion from existing delivered operational work."""
+    reference = _operational_reference(db, project, workflow)
+    total = reference["total_area"]
+    delivered = reference["delivered_area"]
+
+    if (
+        reference["area_unit"] is not None
+        and total is not None
+        and delivered is not None
+        and total > 0
+    ):
+        percent = Decimal(str(delivered)) * Decimal("100") / Decimal(str(total))
+    elif reference["completion_percent_by_packages"] is not None:
+        percent = Decimal(str(reference["completion_percent_by_packages"]))
+    else:
+        return None
+
+    return max(
+        Decimal("0"),
+        min(Decimal("100"), percent),
+    ).quantize(Decimal("0.01"))
+
 def pm_billing_basis_view(db: Session, *, actor: User, project_id: int) -> dict:
     """What the assigned PM sees: billing TYPE, unit and milestone NAMES only. No rate, value, FX or margin."""
     project = _project(db, project_id)
@@ -1741,10 +1812,9 @@ def record_billing_basis(db: Session, *, actor: User, project_id: int, payload: 
         if any(inv.billed_milestone_id == milestone.id for inv in invoices):
             raise ValueError("This milestone has already been invoiced")
     elif revision is not None and billing_type == "fixed_price":
-        if completion is None and not payload.delivery_accepted:
-            raise ValueError("Confirm the completion percentage or that delivery has been accepted")
+        completion = _automatic_completion_percent(db, project, workflow)
         if completion is None:
-            completion = Decimal("100.00")
+            raise ValueError("Completion cannot be calculated until work packages are recorded")
     else:
         if not payload.pm_remarks and quantity is None:
             raise ValueError("Describe the billable work in the remarks or enter a quantity")

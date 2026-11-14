@@ -90,6 +90,7 @@ type WorkflowProject = {
   attachment_references?: string[]
   workflow_status: string
   normalized_status: string
+  finance_review_only?: boolean
   finance_closable?: boolean
   finance_closure_blocker?: string | null
   finance_feedback?: string | null
@@ -450,7 +451,7 @@ export function FinanceDashboardPage() {
         meta={
           <>
             <span className="nk-meta-chip"><ShieldCheck size={14} /> Full Financial Authority</span>
-            <span className="nk-meta-chip"><Clock3 size={14} /> {workflow ? `${workflow.summary.pending_approval} Pending Approval` : 'Loading…'}</span>
+            <span className="nk-meta-chip"><Clock3 size={14} /> {workflow ? `${workflow.summary.pending_approval} Legacy Finance Queue` : 'Loading…'}</span>
             <span className="nk-meta-chip"><IndianRupee size={14} /> {data ? `${formatInr(data.paid_amount)} Disbursed` : 'Loading…'}</span>
           </>
         }
@@ -595,7 +596,7 @@ export function FinanceDashboardPage() {
               >
                 <div className="fin-status-badge orange"><Clock3 size={20} /></div>
                 <div className="fin-status-info">
-                  <span className="fin-status-label">Pending Approval</span>
+                  <span className="fin-status-label">Legacy Finance Queue</span>
                   <span className="fin-status-count">{workflow.summary.pending_approval}</span>
                 </div>
               </div>
@@ -776,7 +777,7 @@ export function FinanceDashboardPage() {
                       {/* 6. Status */}
                       <td>
                         <span className={`fin-status-pill ${statusTone}`}>
-                          {label(row.workflow_status)}
+                          {row.finance_review_only && row.normalized_status === 'pending_finance_approval' ? 'Under Finance Review' : row.finance_review_only && row.normalized_status === 'finance_approved' ? 'Ready for PM Assignment' : label(row.workflow_status)}
                         </span>
                         {row.finance_feedback && (
                           <div style={{ fontSize: '0.68rem', color: '#b91c1c', marginTop: 3, maxWidth: 140 }}>
@@ -1050,7 +1051,7 @@ export function FinanceDashboardPage() {
             <div className="fin-drawer-header">
               <div className="fin-drawer-title-group">
                 <span className="fin-status-pill info">
-                  {reviewProject.normalized_status === 'pending_finance_approval' ? 'Pending Finance Approval' : label(reviewProject.workflow_status)}
+                  {reviewProject.finance_review_only ? 'Finance Review Only' : reviewProject.normalized_status === 'pending_finance_approval' ? 'Pending Finance Approval' : label(reviewProject.workflow_status)}
                 </span>
                 <h2 id="review-drawer-title">{reviewProject.project_code} — {reviewProject.project_name}</h2>
               </div>
@@ -1156,8 +1157,14 @@ export function FinanceDashboardPage() {
               )}
             </div>
 
+            {reviewProject.finance_review_only && (
+              <p style={{ color: '#475569', borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+                BD-origin project: Finance can view and review these details. No approval or rejection is required before Project Manager assignment.
+              </p>
+            )}
+
             {/* Decision Controls */}
-            {user?.role === 'finance' && reviewProject.normalized_status === 'pending_finance_approval' && (
+            {user?.role === 'finance' && !reviewProject.finance_review_only && reviewProject.normalized_status === 'pending_finance_approval' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '2px solid #eef4fa', paddingTop: 16 }}>
                 <label className="finance-field">
                   <span>Mandatory Feedback if Returning to BD</span>

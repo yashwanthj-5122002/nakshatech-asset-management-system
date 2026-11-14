@@ -407,7 +407,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
         className={() => item === activeNavItem ? 'active' : ''}
       >
         <Icon size={18} />
-        <span>{navigationLabelForItem(currentUser.role, item)}</span>
+        <span>{currentUser.role === 'employee' && item.to === '/ortho' ? 'Daily Activity Report' : navigationLabelForItem(currentUser.role, item)}</span>
       </NavLink>
     )
   }

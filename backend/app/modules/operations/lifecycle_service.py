@@ -85,6 +85,7 @@ CHANGE_REQUEST_PENDING = "CHANGE_REQUEST_PENDING"
 APPROVAL_PENDING = "APPROVAL_PENDING"
 MANAGEMENT_APPROVAL_PENDING_EVENT = "management_approval_pending"
 MANAGEMENT_SOURCE_APPROVED_EVENT = "management_source_approved"
+MANAGEMENT_SOURCE_REVOKED_EVENT = "management_source_approval_revoked"
 READY_FOR_BILLING = "READY_FOR_BILLING"
 INVOICE_DRAFT = "INVOICE_DRAFT"
 INVOICE_RAISED = "INVOICE_RAISED"
@@ -134,12 +135,13 @@ def management_source_approval_event(db: Session, project_id: int) -> ProjectWor
         ProjectWorkflowEvent.project_id == project_id,
         ProjectWorkflowEvent.event_type == MANAGEMENT_APPROVAL_PENDING_EVENT,
     )) or 0
-    return db.scalar(select(ProjectWorkflowEvent).where(
+    latest = db.scalar(select(ProjectWorkflowEvent).where(
         ProjectWorkflowEvent.project_id == project_id,
-        ProjectWorkflowEvent.event_type == MANAGEMENT_SOURCE_APPROVED_EVENT,
+        ProjectWorkflowEvent.event_type.in_((MANAGEMENT_SOURCE_APPROVED_EVENT, MANAGEMENT_SOURCE_REVOKED_EVENT)),
         ProjectWorkflowEvent.actor_user_id == intake.created_by_id,
         ProjectWorkflowEvent.id > last_pending_id,
     ).order_by(ProjectWorkflowEvent.id.desc()).limit(1))
+    return latest if latest is not None and latest.event_type == MANAGEMENT_SOURCE_APPROVED_EVENT else None
 
 
 def management_billing_status(db: Session, workflow: ProjectWorkflow) -> str:
@@ -262,16 +264,31 @@ def _notify(
     recipient_user_ids: list[int] | None = None,
     dedupe_key: str | None = None,
 ) -> None:
+    # Only genuine Finance/Management approval requests become actionable.
+    # Keep the historical BD/other-role behaviour unchanged.
+    approval_request = event_type in {
+        "lifecycle.management_approval_requested",
+        "lifecycle.bad_debt.proposed",
+        "lifecycle.no_feedback_authorization_required",
+    }
+    financial_viewers = bool(set(recipient_roles or ()) & {"finance", "management"})
+    category = (
+        "approval" if approval_request else
+        "system" if financial_viewers else
+        "approval" if recipient_roles else "system"
+    )
     create_global_notification(
         db,
         event_type=event_type,
         title=title,
         message=f"Project ID {project.project_code}: {message}",
-        category="approval" if recipient_roles else "system",
+        category=category,
         target_url=target_url,
         recipient_roles=recipient_roles,
         recipient_user_ids=recipient_user_ids,
         dedupe_key=dedupe_key,
+        requires_action=True if approval_request else None,
+        metadata={"notification_type": "approval"} if approval_request else None,
     )
 
 
@@ -1448,6 +1465,13 @@ def raise_invoice(
         raise ValueError("Invoice not found")
     if invoice.status != INVOICE_DRAFT:
         raise ValueError("Only a draft invoice can be raised")
+    if db.get(ManagementProjectLink, invoice.project_id) is not None:
+        # Serialize against Management revocation; only management-linked projects are affected.
+        management_workflow = db.scalar(select(ProjectWorkflow).where(
+            ProjectWorkflow.project_id == invoice.project_id,
+        ).with_for_update())
+        if management_workflow is None or management_source_approval_event(db, invoice.project_id) is None:
+            raise ValueError("Active Management source approval is required before raising this invoice")
     from app.modules.commercial.service import lock_client_invoice_fx
 
     lock_client_invoice_fx(

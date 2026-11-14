@@ -16,15 +16,18 @@ from app.modules.management_projects.router import (
     _legacy_stage_counts, _project_packages, _project_payload, _tracking_rollup,
 )
 from app.modules.operations.models import ProjectWorkflow, WorkPackageItemActivity
+from app.modules.operations.schemas import WorkflowDepartmentChange
+from app.modules.operations.workflow_service import change_project_department_before_work, department_change_allowed, project_manager_options
+from app.core.departments import SUPPORTED_DEPARTMENTS, department_label
 from app.modules.operations.lifecycle_models import ProjectInvoice
 from app.modules.operations.lifecycle_service import (
-    APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING,
-    MANAGEMENT_SOURCE_APPROVED_EVENT, _transition, management_source_approval_event,
+    APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING, INVOICE_DRAFT,
+    MANAGEMENT_SOURCE_APPROVED_EVENT, MANAGEMENT_SOURCE_REVOKED_EVENT, _transition, management_source_approval_event,
 )
 from app.modules.operations.production_items import build_item_rows, file_aggregates_for_packages
 from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
 from app.modules.management_clients.schemas import ManagementClientInput, ManagementClientResponse
-from app.modules.notifications.service import create_global_notification
+from app.modules.notifications.service import create_global_notification, resolve_notifications
 
 router = APIRouter(prefix="/management/client-register", tags=["Management Client Register"])
 
@@ -234,6 +237,10 @@ def _approval_flags(
     intake = db.get(ManagementClientIntake, link.management_client_id)
     workflow = db.get(ProjectWorkflow, link.project_id)
     approved = management_source_approval_event(db, link.project_id) is not None
+    invoice_issued = db.scalar(select(ProjectInvoice.id).where(
+        ProjectInvoice.project_id == link.project_id,
+        ProjectInvoice.status != INVOICE_DRAFT,
+    ).limit(1)) is not None
     fully_delivered = (
         summary["work_units"] > 0 and summary["rework_count"] == 0
         and all(summary["stages"][stage]["completed"] == summary["work_units"]
@@ -241,12 +248,70 @@ def _approval_flags(
     )
     return {
         "source_approved": approved,
+        "can_change_department": bool(
+            intake is not None and intake.created_by_id == viewer_user_id
+            and workflow is not None and department_change_allowed(db, workflow)
+        ),
+        "can_revoke": bool(
+            intake is not None and intake.created_by_id == viewer_user_id
+            and workflow is not None and workflow.status in {READY_FOR_BILLING, INVOICE_DRAFT}
+            and approved and not invoice_issued
+        ),
         "can_approve": bool(
             intake is not None and intake.created_by_id == viewer_user_id
             and workflow is not None and workflow.operational_completed_at is not None
-            and workflow_status == APPROVAL_PENDING and fully_delivered and not approved
+            and workflow_status in {APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING, INVOICE_DRAFT}
+            and fully_delivered and not approved and not invoice_issued
         ),
     }
+
+
+@router.get("/department-change-options")
+def management_department_change_options(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    return {
+        "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
+        "project_managers_by_department": {
+            code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS
+        },
+    }
+
+
+@router.post("/projects/{project_id}/change-department")
+def management_change_project_department(
+    project_id: int, payload: WorkflowDepartmentChange, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    if intake is None or intake.created_by_id != auth.user.id:
+        raise HTTPException(status_code=403, detail="Only the original Management source can change the department")
+    try:
+        result = change_project_department_before_work(
+            db, actor=auth.user, project_id=project_id,
+            payload=payload, source="management",
+        )
+        record_audit(
+            db, event_type="MANAGEMENT_PROJECT_DEPARTMENT_CHANGED", request=request,
+            user=auth.user, module="management", target_type="finance_project",
+            target_id=str(project_id), details=result,
+        )
+        db.commit()
+        return result
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/projects/{project_id}/approve")
@@ -268,22 +333,28 @@ def approve_management_project(
         ).with_for_update())
         if workflow is None:
             raise HTTPException(status_code=404, detail="Project workflow not found")
-        if workflow.status not in {APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING}:
+        if workflow.status not in {APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING, INVOICE_DRAFT}:
             raise HTTPException(status_code=409, detail="Project is not awaiting Management approval")
         if workflow.operational_completed_at is None:
             raise HTTPException(status_code=409, detail="Project has not completed operational delivery")
         if management_source_approval_event(db, project_id) is not None:
             raise HTTPException(status_code=409, detail="This project is already approved")
-        if db.scalar(select(ProjectInvoice.id).where(ProjectInvoice.project_id == project_id).limit(1)) is not None:
-            raise HTTPException(status_code=409, detail="Existing invoices require manual review before approval")
+        if db.scalar(select(ProjectInvoice.id).where(
+            ProjectInvoice.project_id == project_id, ProjectInvoice.status != INVOICE_DRAFT,
+        ).limit(1)) is not None:
+            raise HTTPException(status_code=409, detail="Invoice already raised; billing approval is locked")
         packages = _project_packages(db, [project_id]).get(project_id, [])
         aggregates = file_aggregates_for_packages(db, [package.id for package in packages])
         summary = _tracking_rollup(packages, aggregates)
         if not _approval_flags(db, link=link, workflow_status=APPROVAL_PENDING,
                                summary=summary, viewer_user_id=auth.user.id)["can_approve"]:
             raise HTTPException(status_code=409, detail="Production, QC, QA and Delivery must all be completed")
+        draft_exists = db.scalar(select(ProjectInvoice.id).where(
+            ProjectInvoice.project_id == project_id, ProjectInvoice.status == INVOICE_DRAFT,
+        ).limit(1)) is not None
+        approved_status = INVOICE_DRAFT if draft_exists else READY_FOR_BILLING
         _transition(
-            db, workflow=workflow, actor=auth.user, status=READY_FOR_BILLING,
+            db, workflow=workflow, actor=auth.user, status=approved_status,
             event_type=MANAGEMENT_SOURCE_APPROVED_EVENT,
             title="Original Management source approved project for billing",
             comments=f"Approved by {auth.user.full_name} after Production, QC, QA and Delivery.",
@@ -295,8 +366,16 @@ def approve_management_project(
                      "management_client_id": link.management_client_id,
                      "approved_by_user_id": auth.user.id},
         )
+        # Resolve ONLY this original source's notification in the same transaction.
+        resolve_notifications(
+            db, recipient_user_ids=[auth.user.id],
+            event_type="lifecycle.management_approval_requested",
+            dedupe_key=f"lifecycle:management-approval:{project_id}",
+            resolved_by_id=auth.user.id,
+            resolution_note="Original Management source approved",
+        )
         db.commit()
-        return {"project_id": project_id, "workflow_status": READY_FOR_BILLING,
+        return {"project_id": project_id, "workflow_status": approved_status,
                 "approved_by_user_id": auth.user.id}
     except HTTPException:
         db.rollback()
@@ -305,6 +384,59 @@ def approve_management_project(
         db.rollback()
         raise
 
+
+@router.post("/projects/{project_id}/revoke-approval")
+def revoke_management_project_approval(
+    project_id: int, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Withdraw original-source billing approval, unless an invoice was already raised."""
+    _management_only(auth)
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    if intake is None or intake.created_by_id != auth.user.id:
+        raise HTTPException(status_code=403, detail="Only the original Management source may revoke approval")
+    try:
+        workflow = db.scalar(select(ProjectWorkflow).where(
+            ProjectWorkflow.project_id == project_id,
+        ).with_for_update())
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Project workflow not found")
+        if workflow.status not in {READY_FOR_BILLING, INVOICE_DRAFT}:
+            raise HTTPException(status_code=409, detail="Billing approval cannot be revoked at this stage")
+        if management_source_approval_event(db, project_id) is None:
+            raise HTTPException(status_code=409, detail="Management billing approval is not active")
+        if db.scalar(select(ProjectInvoice.id).where(
+            ProjectInvoice.project_id == project_id, ProjectInvoice.status != INVOICE_DRAFT,
+        ).limit(1)) is not None:
+            raise HTTPException(status_code=409, detail="Invoice already raised; approval is locked")
+        draft_exists = db.scalar(select(ProjectInvoice.id).where(
+            ProjectInvoice.project_id == project_id, ProjectInvoice.status == INVOICE_DRAFT,
+        ).limit(1)) is not None
+        next_status = INVOICE_DRAFT if draft_exists else APPROVAL_PENDING
+        _transition(
+            db, workflow=workflow, actor=auth.user, status=next_status,
+            event_type=MANAGEMENT_SOURCE_REVOKED_EVENT,
+            title="Original Management source revoked approval for billing",
+            comments=f"Billing approval revoked by {auth.user.full_name}; Finance may not raise an invoice.",
+        )
+        record_audit(
+            db, event_type="MANAGEMENT_PROJECT_SOURCE_APPROVAL_REVOKED", request=request, user=auth.user,
+            module="management", target_type="finance_project", target_id=str(project_id),
+            details={"project_code": db.get(FinanceProject, project_id).project_code,
+                     "management_client_id": link.management_client_id,
+                     "revoked_by_user_id": auth.user.id},
+        )
+        db.commit()
+        return {"project_id": project_id, "workflow_status": next_status, "source_approved": False}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
 
 # Management tracking and project-specific source approval share the same records.
 @router.get("/project-tracking")

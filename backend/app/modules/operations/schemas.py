@@ -28,6 +28,28 @@ ReviewDecision = Literal["approve", "reject"]
 WorkAction = Literal["start", "pause", "resume", "complete"]
 
 
+class WorkflowDepartmentChange(BaseModel):
+    performing_department_code: str
+    project_manager_id: int = Field(gt=0)
+    reason: str = Field(min_length=5, max_length=1000)
+
+    @field_validator("performing_department_code")
+    @classmethod
+    def validate_department(cls, value: str) -> str:
+        normalized = normalize_department_code(value)
+        if normalized is None:
+            raise ValueError("Select a supported performing department")
+        return normalized
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 5:
+            raise ValueError("Enter a reason of at least five characters")
+        return value
+
+
 class BDOpportunityCreate(BaseModel):
     title: str = Field(min_length=3, max_length=255)
     client_id: int | None = None

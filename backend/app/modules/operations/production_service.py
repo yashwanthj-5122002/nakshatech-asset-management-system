@@ -28,7 +28,10 @@ from app.models.entities import User, utc_now
 from app.modules.finance.models import FinanceProject, FinanceProjectMasterProfile
 from app.modules.finance.visibility import filter_visible_project_ids
 from app.modules.operations.models import (
+    OrthoDailyUpdate,
     OrthoProjectMember,
+    WorkPackageItem,
+    WorkPackageItemActivity,
     OrthoStageEvent,
     OrthoWorkPackage,
     ProjectWorkflow,
@@ -324,6 +327,106 @@ def package_stage_history(db: Session, *, actor: User, role: str, work_package_i
     return rows
 
 
+def employee_work_history(db: Session, *, actor: User, project_id: int | None = None) -> dict:
+    """Personal read-only history from existing append-only activity records.
+
+    Project access is determined by the employee's OWN recorded work, never a
+    browser-supplied project id, an old team membership, or current assignee.
+    Historical records remain visible after reassignment or file deactivation.
+    """
+    activities = list(db.scalars(select(WorkPackageItemActivity).where(
+        WorkPackageItemActivity.employee_user_id == actor.id,
+        *([WorkPackageItemActivity.project_id == project_id] if project_id is not None else []),
+    ).order_by(WorkPackageItemActivity.id.asc())).all())
+    legacy = list(db.scalars(select(OrthoDailyUpdate).where(
+        OrthoDailyUpdate.updated_by_id == actor.id,
+    ).order_by(OrthoDailyUpdate.id.asc())).all())
+    package_ids = {a.work_package_id for a in activities} | {d.work_package_id for d in legacy}
+    packages = {p.id: p for p in db.scalars(select(OrthoWorkPackage).where(
+        OrthoWorkPackage.id.in_(package_ids)
+    )).all()} if package_ids else {}
+    item_ids = {a.work_package_item_id for a in activities}
+    items = {i.id: i for i in db.scalars(select(WorkPackageItem).where(
+        WorkPackageItem.id.in_(item_ids)
+    )).all()} if item_ids else {}
+
+    # If the same package uses file sessions, its legacy aggregate update can
+    # describe that same work. Do not double-count it as personal production.
+    packages_with_file_activity = {a.work_package_id for a in activities}
+    entries: dict[int, list[dict]] = {}
+    for a in activities:
+        if a.project_id is None:
+            continue
+        item = items.get(a.work_package_item_id)
+        package = packages.get(a.work_package_id)
+        at = a.ended_at or a.started_at or a.created_at
+        entries.setdefault(a.project_id, []).append({
+            "id": f"item-{a.id}", "date": at.date().isoformat() if at else None,
+            "at": at.isoformat() if at else None, "stage": a.stage,
+            "work": item.item_number if item else (package.package_code if package else "Work file"),
+            "package": package.package_code if package else None,
+            "quantity": float(a.quantity_completed) if a.quantity_completed is not None else None,
+            "unit": a.unit or (item.planned_unit if item else None),
+            "files": int(a.files_completed or 0), "status": a.status,
+            "duration_seconds": a.duration_seconds, "remarks": a.remarks,
+            "recorded": a.ended_at is not None,
+        })
+    for d in legacy:
+        if d.work_package_id in packages_with_file_activity:
+            continue
+        package = packages.get(d.work_package_id)
+        if package is None:
+            continue
+        pid = package.project_id
+        if project_id is not None and pid != project_id:
+            continue
+        entries.setdefault(pid, []).append({
+            "id": f"daily-{d.id}", "date": d.update_date.isoformat() if d.update_date else None,
+            "at": d.created_at.isoformat() if d.created_at else None,
+            "stage": "production", "work": package.package_code,
+            "package": package.package_code,
+            "quantity": float(d.achieved_area) if d.achieved_area is not None else None,
+            "unit": package.area_unit, "files": int(d.files_completed or 0),
+            "status": d.status, "duration_seconds": None, "remarks": d.remarks,
+            "recorded": True,
+        })
+
+    authorized = set(filter_visible_project_ids(db, entries.keys()))
+    project_rows = {p.id: p for p in db.scalars(select(FinanceProject).where(
+        FinanceProject.id.in_(authorized)
+    )).all()} if authorized else {}
+    workflows = {w.project_id: w for w in db.scalars(select(ProjectWorkflow).where(
+        ProjectWorkflow.project_id.in_(authorized)
+    )).all()} if authorized else {}
+    result = []
+    for pid in sorted(authorized):
+        project = project_rows.get(pid)
+        if project is None:
+            continue
+        history = sorted(entries.get(pid, []), key=lambda row: (row["at"] or "", row["id"]), reverse=True)
+        totals: dict[str, float] = {}
+        completed_files = 0
+        days = set()
+        for entry in history:
+            if entry["date"]:
+                days.add(entry["date"])
+            if entry["stage"] == "production" and entry["recorded"]:
+                if entry["quantity"] is not None:
+                    unit = entry["unit"] or "(unit not specified)"
+                    totals[unit] = totals.get(unit, 0.0) + entry["quantity"]
+                completed_files += entry["files"]
+        workflow = workflows.get(pid)
+        result.append({
+            "project_id": pid, "project_code": project.project_code,
+            "department_code": normalize_department_code_or_default(workflow.performing_department_code) if workflow else None,
+            "work_days": len(days), "completed_files": completed_files,
+            "totals_by_unit": [{"unit": k, "quantity": round(v, 3)} for k, v in sorted(totals.items())],
+            "history": history,
+        })
+    return {"viewer_mode": "employee", "employee_projects": result,
+            "projects": [], "units": known_units()}
+
+
 def tracking_summary(db: Session, *, actor: User, role: str, project_id: int | None = None, authorized_bd_project_ids: set[int] | None = None) -> dict:
     """Server-side production-tracking summary for Team Lead / PM / Management dashboards.
 
@@ -331,6 +434,8 @@ def tracking_summary(db: Session, *, actor: User, role: str, project_id: int | N
     packages are bulk-loaded per project with ``selectinload`` and users are
     fetched in one batch. Employees receive only their own package rows.
     """
+    if role == EMPLOYEE_ROLE:
+        return employee_work_history(db, actor=actor, project_id=project_id)
     # BD may use only the IDs explicitly approved by the existing BD project
     # register, never IDs supplied directly by a browser/API query.
     if role == "bd":

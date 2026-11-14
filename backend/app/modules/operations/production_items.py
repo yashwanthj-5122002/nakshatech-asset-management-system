@@ -1481,7 +1481,6 @@ def build_item_rows(
             "item_number": item.item_number,
             "item_name": item.item_name,
             "sequence_no": item.sequence_no,
-            
             "planned_quantity": float(item.planned_quantity) if item.planned_quantity is not None else None,
             "planned_unit": item.planned_unit,
 
@@ -1924,9 +1923,26 @@ def item_dashboard_context(db: Session, packages: Iterable[OrthoWorkPackage]) ->
             bucket = "qc"
         else:
             bucket = "production"
-        production_actual = sum(
-            (row["production_quantity"] or 0.0) for row in active
-        )
+        # Item activity stores its own unit (e.g. km), while package.area
+        # can be in metres. Normalize before all tracking calculations.
+        # Never infer units from quantity magnitude.
+        from decimal import Decimal as _Decimal
+        _metres = {"m", "meter", "metre", "meters", "metres"}
+        _kilometres = {"km", "kilometer", "kilometre", "kilometers", "kilometres"}
+
+        def _in_package_unit(row):
+            amount = _Decimal(str(row.get("production_quantity") or 0))
+            source = str(row.get("production_unit") or "").strip().lower()
+            target = str(package.area_unit or "").strip().lower()
+            if source in _kilometres and target in _metres:
+                return amount * _Decimal("1000")
+            if source in _metres and target in _kilometres:
+                return amount / _Decimal("1000")
+            return amount
+
+        production_actual = float(sum(
+            (_in_package_unit(row) for row in active), _Decimal("0")
+        ))
         team_leader = None
         if package.team_leader_user_id:
             tl = db.get(User, package.team_leader_user_id)

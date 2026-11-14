@@ -11,6 +11,7 @@ import { CommercialDetailsSection } from '../../commercial/components/Commercial
 import type { CurrencyPayload } from '../../commercial/types'
 import type { LifecycleDashboard } from '../../operations/lifecycle-types'
 import { FinanceBillingPage } from './FinanceBillingPage'
+import { DepartmentChangeDialog } from '../../operations/components/DepartmentChangeDialog'
 import '../../operations/operations.css'
 import './finance-management-projects.css'
 import './finance-management-prussian-theme.css'
@@ -119,9 +120,17 @@ type ProjectForm = {
 type MainTab = 'projects' | 'clients' | 'invoices' | 'payments' | 'tracking' | 'requests' | 'pilot'
 type DetailTab = 'overview' | 'workflow' | 'billing'
 
+function automaticProjectPriority(startDate: string, endDate: string): string {
+  if (!startDate || !endDate || endDate < startDate) return ''
+  const start = Date.parse(`${startDate}T00:00:00Z`)
+  const end = Date.parse(`${endDate}T00:00:00Z`)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return ''
+  const days = Math.round((end - start) / 86400000)
+  return days <= 7 ? 'high' : days <= 14 ? 'medium' : 'low'
+}
 const emptyProject = (): ProjectForm => ({
   project_code: '', project_name: '', scope_text: '', start_date: '', end_date: '',
-  performing_department_code: '', priority: 'medium', quantity: '', quantity_unit: 'unit',
+  performing_department_code: '', priority: '', quantity: '', quantity_unit: 'unit',
   description: '', project_manager_id: '',
 })
 const EMPTY_FINANCIAL: ProjectFinancial = {
@@ -213,6 +222,7 @@ export function FinanceManagementProjectsPage() {
   const [projectTypeFilter, setProjectTypeFilter] = useState('')
   const [commercial, setCommercial] = useState<CommercialFormState>(emptyCommercialForm)
   const [pmChoice, setPmChoice] = useState<Record<number, string>>({})
+  const [departmentEdit, setDepartmentEdit] = useState<{ projectId:number; department:string; manager:string; reason:string } | null>(null)
   const [activeTab, setActiveTab] = useState<MainTab>('projects')
   const [detailTab, setDetailTab] = useState<DetailTab>('overview')
   const [search, setSearch] = useState('')
@@ -532,7 +542,26 @@ export function FinanceManagementProjectsPage() {
     }
   }
 
-    
+  async function saveDepartmentChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!departmentEdit || busy) return
+    const row = data.projects.find(item => item.id === departmentEdit.projectId)
+    if (!row || !departmentEdit.department || !departmentEdit.manager || departmentEdit.reason.trim().length < 5) return
+    if (!window.confirm(`Change ${row.project_code} from ${row.department_label} to ${departmentEdit.department}? The previous manager will be notified.`)) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      await apiFetch(`/finance/management-projects/${row.id}/change-department`, {
+        method: 'POST', body: JSON.stringify({ performing_department_code: departmentEdit.department,
+          project_manager_id: Number(departmentEdit.manager), reason: departmentEdit.reason.trim() }),
+      })
+      setDepartmentEdit(null)
+      setNotice(`${row.project_code}: department and manager changed before work started.`)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to change department')
+    } finally { setBusy(false) }
+  }
+
   async function assignPm(row: ManagementProject) {
     const id = Number(pmChoice[row.id] || 0)
     if (!id) { setError('Select a Project Manager for the assigned department.'); return }
@@ -725,11 +754,15 @@ export function FinanceManagementProjectsPage() {
 
     </>}
 
-    {selectedProject && <section className="mp-panel mp-project-detail" aria-label="Selected management project">
+    {selectedProject && <div className="mp-finance-detail-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSelectedProjectId(null) }}>
+      <section className="mp-panel mp-project-detail" role="dialog" aria-modal="true" aria-label="Selected management project" onKeyDown={event => { if (event.key === 'Escape') setSelectedProjectId(null) }}>
       <div className="mp-detail-heading"><div><span className="mp-eyebrow">MANAGEMENT PROJECT · {selectedProject.source_person_name}</span><h2>{selectedProject.project_code} — {selectedProject.project_name}</h2><p>{clientById.get(selectedProject.management_client_id)?.client_name} · {selectedProject.department_label} · {managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</p></div><button type="button" className="mp-button mp-button-muted" onClick={() => setSelectedProjectId(null)}><X size={15}/> Close</button></div>
       <div className="mp-detail-tabs"><button className={detailTab === 'overview' ? 'active' : ''} type="button" onClick={() => setDetailTab('overview')}>Overview</button><button className={detailTab === 'workflow' ? 'active' : ''} type="button" onClick={() => setDetailTab('workflow')}>Workflow & Tracking</button><button className={detailTab === 'billing' ? 'active' : ''} type="button" onClick={() => setDetailTab('billing')}>Invoices & Payments</button></div>
+      <div className="mp-finance-detail-scroll">
       {detailTab === 'overview' && <div className="mp-detail-grid">
-        <div className="mp-detail-card"><h3>Project Information</h3><dl><dt>Project Code</dt><dd>{selectedProject.project_code}</dd><dt>Client</dt><dd>{clientById.get(selectedProject.management_client_id)?.client_name ?? '—'}</dd><dt>Source</dt><dd>{selectedProject.source_person_name}</dd><dt>Department</dt><dd>{selectedProject.department_label}</dd><dt>Project Manager</dt><dd>{selectedProject.project_manager_name || 'Not assigned'}</dd><dt>Project Value</dt><dd>{projectMoney(selectedProject.project_value, selectedProject.currency)}</dd><dt>Start Date</dt><dd>{shortDate(selectedProject.start_date)}</dd><dt>Expected Delivery</dt><dd>{shortDate(selectedProject.end_date)}</dd></dl></div>
+        <div className="mp-detail-card"><h3>Project Information</h3><dl><dt>Project Code</dt><dd>{selectedProject.project_code}</dd><dt>Client</dt><dd>{clientById.get(selectedProject.management_client_id)?.client_name ?? '—'}</dd><dt>Source</dt><dd>{selectedProject.source_person_name}</dd><dt>Department</dt><dd>{selectedProject.department_label}</dd><dt>Project Manager</dt><dd>{selectedProject.project_manager_name || 'Not assigned'}</dd><dt>Project Value</dt><dd>{projectMoney(selectedProject.project_value, selectedProject.currency)}</dd><dt>Start Date</dt><dd>{shortDate(selectedProject.start_date)}</dd><dt>Expected Delivery</dt><dd>{shortDate(selectedProject.end_date)}</dd></dl>
+          {['finance_approved','pm_assigned'].includes(selectedProject.workflow_status.toLowerCase()) && <button type="button" className="mp-button mp-button-muted" disabled={busy} onClick={()=>setDepartmentEdit({projectId:selectedProject.id,department:'',manager:'',reason:''})}>Change Department</button>}
+        </div>
         <div className="mp-detail-card"><h3>Production & Quality Progress</h3>
           {selectedTracking ? <><div className="mp-large-progress"><strong>{selectedTracking.work_units ? `${selectedTracking.overall_percent.toFixed(0)}%` : '—'}</strong><div className="mp-progress"><span className={`mp-v8-${managementProgressTone(selectedTracking.overall_percent)}`} style={{ width: `${Math.min(100, Math.max(0, selectedTracking.overall_percent))}%` }}/></div></div><p><strong>{selectedTracking.operational_status}</strong></p><StageTrackingBars tracking={selectedTracking} compact/><p>{selectedTracking.work_units} tracked work units · {selectedTracking.active_files} active files{selectedTracking.rework_count > 0 ? ` · ${selectedTracking.rework_count} rework flags` : ''}</p></> : <p>{trackingError ? 'Tracking temporarily unavailable' : 'Loading file-level tracking…'}</p>}
           <p>Administrative ERP status: <strong>{managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</strong></p>
@@ -745,7 +778,20 @@ export function FinanceManagementProjectsPage() {
         <h3 className="mp-tracking-milestones">Administrative workflow</h3><div className="mp-workflow-steps">{WORKFLOW_STEPS.map(({ label, sub, icon: Icon }, index) => <div className={index === currentWorkflowStep(billingStatus) ? 'mp-workflow-step current' : 'mp-workflow-step'} key={label}><div className="mp-workflow-icon"><Icon size={19}/></div><strong>{label}</strong><small>{sub}</small></div>)}</div><p className="mp-tracking-note">Operational stage percentages are calculated from active file completion records, with legacy area-level fallback. Rework remains visible. Administrative status and billing readiness remain separate; department, QC/QA and delivery actions stay in their original ERP modules.</p></div>}
       {detailTab === 'billing' && <div className="mp-billing-container">{isFreePilot ? <div className="mp-billing-locked"><ShieldCheck size={27}/><h3>Free Pilot — No Customer Invoice</h3><p>Finance may track legitimate project costs. Customer invoicing is prohibited for free pilots.</p></div> : canOpenInvoices ? <FinanceBillingPage key={selectedProject.id} embeddedProjectId={selectedProject.id}/> : <div className="mp-billing-locked"><ShieldCheck size={27}/><h3>Invoice generation is not available yet</h3><p>Management projects require approval from their original Management source after Delivery, followed by <strong>Ready For Billing</strong>. Finance can then use the existing invoice, PDF, signing and payment controls.</p><p>Current status: <strong>{managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</strong></p></div>}</div>}
       {!selectedProject.project_manager_id && ['finance_approved', 'pm_assigned'].includes(selectedProject.workflow_status.toLowerCase()) && <div className="mp-assign-box"><div><strong>Department Project Manager not assigned</strong><small>Select a manager from the existing BD department mapping.</small></div><select aria-label={`Project Manager for ${selectedProject.project_code}`} value={pmChoice[selectedProject.id] || ''} onChange={e => setPmChoice(prev => ({ ...prev, [selectedProject.id]: e.target.value }))}><option value="">Select Project Manager</option>{(options.project_managers_by_department[selectedProject.department_code] ?? []).map(pm => <option key={pm.id} value={pm.id}>{pm.full_name}</option>)}</select><button className="mp-button mp-button-primary" type="button" disabled={busy || !pmChoice[selectedProject.id]} onClick={() => void assignPm(selectedProject)}>Assign Manager <ArrowRight size={15}/></button></div>}
-    </section>}
+      </div>
+      </section></div>}
+
+    {departmentEdit && selectedProject && departmentEdit.projectId===selectedProject.id && <DepartmentChangeDialog
+      title={`Change Department - ${selectedProject.project_code}`}
+      description={`Current: ${selectedProject.department_label} / ${selectedProject.project_manager_name || 'Unassigned'}. Project ID and billing details will stay unchanged.`}
+      busy={busy} error={error} onClose={()=>setDepartmentEdit(null)}>
+      <form className="operations-form-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:14}} onSubmit={event=>void saveDepartmentChange(event)}>
+        <label className="operations-field"><span>New Performing Department *</span><select required value={departmentEdit.department} onChange={event=>setDepartmentEdit({...departmentEdit,department:event.target.value,manager:''})}><option value="">Select a different department</option>{options.departments.filter(dept=>dept.code!==selectedProject.department_code).map(dept=><option key={dept.code} value={dept.code}>{dept.label}</option>)}</select></label>
+        <label className="operations-field"><span>New Department Manager *</span><select required disabled={!departmentEdit.department} value={departmentEdit.manager} onChange={event=>setDepartmentEdit({...departmentEdit,manager:event.target.value})}><option value="">Select Project Manager</option>{(options.project_managers_by_department[departmentEdit.department]??[]).map(pm=><option key={pm.id} value={pm.id}>{pm.full_name}</option>)}</select></label>
+        <label className="operations-field operations-span-2" style={{gridColumn:'1 / -1'}}><span>Reason for Change *</span><textarea required minLength={5} maxLength={1000} value={departmentEdit.reason} onChange={event=>setDepartmentEdit({...departmentEdit,reason:event.target.value})}/></label>
+        <div className="operations-actions operations-span-2" style={{gridColumn:'1 / -1',display:'flex',flexWrap:'wrap',gap:8}}><button type="submit" className="operations-button" disabled={busy||!departmentEdit.department||!departmentEdit.manager||departmentEdit.reason.trim().length<5}>Save Department Change</button><button type="button" className="operations-button secondary" onClick={()=>setDepartmentEdit(null)} disabled={busy}>Cancel</button></div>
+      </form>
+    </DepartmentChangeDialog>}
 
     <section className="mp-panel mp-workflow-panel">
       <div className="mp-panel-heading"><div><h2>Management Project Workflow</h2><p>End-to-end flow from Finance project creation to invoice settlement and closure</p></div><span><FileCheck2 size={17}/> Existing ERP lifecycle</span></div>
@@ -774,8 +820,13 @@ export function FinanceManagementProjectsPage() {
           </div>
           {projectType === 'pilot' && <p className="mp-form-help">{pilotPaymentType === 'free' ? 'Set estimated commercial value to zero. Finance tracks costs, but no customer invoice may be raised.' : 'Enter a positive commercial value. The existing Finance billing process applies.'}</p>}
         </div>
-        <div className="mp-form-section"><h3>2. Project Details</h3><div className="mp-form-grid"><label className="mp-field"><span>Project Code *</span><input required minLength={2} value={project.project_code} onChange={e => setProject({ ...project, project_code: e.target.value.toUpperCase() })} placeholder="MGT-PRJ-001"/></label><label className="mp-field"><span>Project Name *</span><input required minLength={2} value={project.project_name} onChange={e => setProject({ ...project, project_name: e.target.value })} placeholder="Enter project name"/></label><label className="mp-field mp-full"><span>Project Description / Scope of Work *</span><textarea required minLength={2} value={project.scope_text} onChange={e => setProject({ ...project, scope_text: e.target.value })} placeholder="Describe deliverables"/></label><label className="mp-field"><span>Start Date *</span><input required type="date" value={project.start_date} onChange={e => setProject({ ...project, start_date: e.target.value })}/></label><label className="mp-field"><span>Expected Delivery *</span><input required type="date" min={project.start_date || undefined} value={project.end_date} onChange={e => setProject({ ...project, end_date: e.target.value })}/></label><label className="mp-field mp-full"><span>Finance Notes</span><textarea value={project.description} onChange={e => setProject({ ...project, description: e.target.value })}/></label></div></div>
-        <div className="mp-form-section"><h3>3. Department Assignment · Same as BD</h3><div className="mp-form-grid"><label className="mp-field"><span>Assign Department *</span><select required value={project.performing_department_code} onChange={e => setProject({ ...project, performing_department_code: e.target.value, project_manager_id: '' })}><option value="">Select Department</option>{options.departments.map(dept => <option key={dept.code} value={dept.code}>{dept.label}</option>)}</select></label><label className="mp-field"><span>Department Project Manager</span><select value={project.project_manager_id} onChange={e => setProject({ ...project, project_manager_id: e.target.value })} disabled={!project.performing_department_code}><option value="">Assign after creation</option>{pmOptions.map(pm => <option key={pm.id} value={pm.id}>{pm.employee_id ? `${pm.employee_id} · ` : ''}{pm.full_name}</option>)}</select></label><label className="mp-field"><span>Priority</span><select value={project.priority} onChange={e => setProject({ ...project, priority: e.target.value })}><option value="low">Low</option><option value="medium">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label className="mp-field"><span>Planned Quantity</span><input type="number" min="0" step="0.001" value={project.quantity} onChange={e => setProject({ ...project, quantity: e.target.value })}/></label><label className="mp-field"><span>Quantity Unit</span><input value={project.quantity_unit} onChange={e => setProject({ ...project, quantity_unit: e.target.value })}/></label></div><p className="mp-form-help">The existing BD department/PM assignment and notification mechanism is reused. Finance approves the project on creation.</p></div>
+        <div className="mp-form-section"><h3>2. Project Details</h3><div className="mp-form-grid"><label className="mp-field"><span>Project Code *</span><input required minLength={2} value={project.project_code} onChange={e => setProject({ ...project, project_code: e.target.value.toUpperCase() })} placeholder="MGT-PRJ-001"/></label><label className="mp-field"><span>Project Name *</span><input required minLength={2} value={project.project_name} onChange={e => setProject({ ...project, project_name: e.target.value })} placeholder="Enter project name"/></label><label className="mp-field mp-full"><span>Project Description / Scope of Work *</span><textarea required minLength={2} value={project.scope_text} onChange={e => setProject({ ...project, scope_text: e.target.value })} placeholder="Describe deliverables"/></label><label className="mp-field"><span>Start Date *</span><input required type="date" value={project.start_date} onChange={e => setProject({ ...project, start_date: e.target.value, priority: automaticProjectPriority(e.target.value, project.end_date) })}/></label><label className="mp-field"><span>Expected Delivery *</span><input required type="date" min={project.start_date || undefined} value={project.end_date} onChange={e => setProject({ ...project, end_date: e.target.value, priority: automaticProjectPriority(project.start_date, e.target.value) })}/></label><label className="mp-field mp-full"><span>Finance Notes</span><textarea value={project.description} onChange={e => setProject({ ...project, description: e.target.value })}/></label></div></div>
+        <div className="mp-form-section"><h3>3. Department Assignment · Same as BD</h3><div className="mp-form-grid"><label className="mp-field"><span>Assign Department *</span><select required value={project.performing_department_code} onChange={e => setProject({ ...project, performing_department_code: e.target.value, project_manager_id: '' })}><option value="">Select Department</option>{options.departments.map(dept => <option key={dept.code} value={dept.code}>{dept.label}</option>)}</select></label><label className="mp-field"><span>Department Project Manager</span><select value={project.project_manager_id} onChange={e => setProject({ ...project, project_manager_id: e.target.value })} disabled={!project.performing_department_code}><option value="">Assign after creation</option>{pmOptions.map(pm => <option key={pm.id} value={pm.id}>{pm.employee_id ? `${pm.employee_id} · ` : ''}{pm.full_name}</option>)}</select></label><label className="mp-field"><span>Priority</span><select className={`mp-auto-priority mp-auto-priority--${project.priority || "unset"}`} value={project.priority} disabled style={{
+  backgroundColor: project.priority === 'high' ? '#FFF1F2' : project.priority === 'medium' ? '#FFFBEB' : project.priority === 'low' ? '#F0FDF4' : undefined,
+  borderColor: project.priority === 'high' ? '#FECACA' : project.priority === 'medium' ? '#FDE68A' : project.priority === 'low' ? '#BBF7D0' : undefined,
+  opacity: 1,
+  WebkitTextFillColor: '#334155'
+}}><option value="">Select dates first</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label><label className="mp-field"><span>Planned Quantity</span><input type="number" min="0" step="0.001" value={project.quantity} onChange={e => setProject({ ...project, quantity: e.target.value })}/></label><label className="mp-field"><span>Quantity Unit</span><input value={project.quantity_unit} onChange={e => setProject({ ...project, quantity_unit: e.target.value })}/></label></div><p className="mp-form-help">The existing BD department/PM assignment and notification mechanism is reused. Finance approves the project on creation.</p></div>
         <div className="mp-form-section">
   
 

@@ -1,4 +1,4 @@
-import { CheckCircle2, ClipboardList, RefreshCcw, Send, ShieldCheck, Truck, UserRoundCog, Users, Workflow } from 'lucide-react'
+import { CheckCircle2, ClipboardList, Eye, EyeOff, RefreshCcw, Send, ShieldCheck, Truck, UserRoundCog, Users, Workflow } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -63,6 +63,7 @@ export function OrthoDashboardPage(){
   const [teamDrafts,setTeamDrafts]=useState<Record<number,TeamDraft>>({}); const [allocation,setAllocation]=useState<AllocationDraft>(emptyAllocation)
   const [reworkMode,setReworkMode]=useState<Record<number,'reuse'|'adjust'>>({}); const [reworkRemarks,setReworkRemarks]=useState<Record<number,string>>({}); const [reworkAllocation,setReworkAllocation]=useState<ReworkAllocationDraft>(emptyReworkAllocation)
   const [daily,setDaily]=useState<Record<number,DailyDraft>>({})
+  const [expandedDeliveredPackages,setExpandedDeliveredPackages]=useState<Record<number,boolean>>({})
 
   function load(){setError('');void apiFetch<OrthoDashboard>('/operations/workflow/ortho/dashboard').then(v=>{setData(v);setSelectedId(current=>current&&v.projects.some(p=>p.project_id===current)?current:((requestedProjectId&&v.projects.some(p=>p.project_id===requestedProjectId)?requestedProjectId:null)??v.projects[0]?.project_id??null))}).catch(e=>setError(e instanceof Error?e.message:'Unable to load Ortho workflow'))}
   useEffect(load,[])
@@ -216,6 +217,8 @@ export function OrthoDashboardPage(){
   const departmentLabel=(user?.role&&DEPARTMENT_ROLE_LABELS[user.role])||DEPARTMENT_CODE_LABELS[user?.department_code||'']||'Ortho'
   const title=user?.role==='employee'?'My Assigned Work':`${departmentLabel} Project Operations`
   const tlProduction=selected?uniqMembers(selected.members,'production'):[];const tlQc=selected?uniqMembers(selected.members,'qc'):[];const tlQa=selected?uniqMembers(selected.members,'qa'):[]
+  const isEmployeeTracking=user?.role==='employee'
+
   const portfolio=useMemo(()=>{
     const seed={projects:0,packages:0,production:0,qc:0,qa:0,delivery_ready:0,delivered:0}
     return (data?.projects??[]).reduce((acc,p)=>({
@@ -241,7 +244,7 @@ export function OrthoDashboardPage(){
     {!data?.projects.length?<section className="operations-panel"><div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work assigned yet</h3><p>Nothing has been allocated to this login yet — Team Lead allocations and saved project teams appear here as soon as they are made.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div></section>:<>
       <section className="operations-panel operations-current-project"><div className="operations-current-project-row"><label className="operations-field"><span>Project</span><select value={selectedId??''} onChange={e=>setSelectedId(Number(e.target.value))}>{data.projects.map(p=><option key={p.project_id} value={p.project_id}>{p.project_code} · Client ID {p.client_code||'—'}</option>)}</select></label>{selected&&<div className="operations-current-project-meta"><strong>{selected.project_code}</strong><span>Client ID: {selected.client_code||'—'}</span><span>{selected.start_date||'—'} → {selected.end_date||'—'}</span><span>My Role: {selected.my_roles.map(label).join(', ')||'Read only'}</span><span>Status: {label(selected.workflow_status)}</span>{(selected.can_manage_team||user?.role==='management'||user?.role==='admin')&&<Link className="operations-button secondary" to={`/ortho/project-360/${selected.project_id}`}>Project 360 · Feedback &amp; Chat</Link>}</div>}</div></section>
 
-      {selected&&<section className="stats-grid">
+      {selected&&<section className="stats-grid" style={{gridTemplateColumns:"repeat(auto-fit, minmax(min(100%, 175px), 1fr))"}}>
         <StatCard icon={ClipboardList} label="Work Packages" value={selected.summary.packages}/><StatCard icon={Users} label="Production" value={selected.summary.production}/><StatCard icon={ShieldCheck} label="QC" value={selected.summary.qc} tone="purple"/><StatCard icon={CheckCircle2} label="QA" value={selected.summary.qa} tone="green"/><StatCard icon={Truck} label="Delivered" value={selected.summary.delivered} tone="green"/>
       </section>}
 
@@ -302,8 +305,18 @@ export function OrthoDashboardPage(){
       {selected&&<section className="operations-panel"><header><div><span className="operations-kicker">ASSIGNMENT TRACKER</span><h2>{selected.can_manage_team||selected.can_allocate_work?'Project Work Packages':'My Exact Assigned Work'}</h2><p>Daily progress is calculated from activity entries. Cumulative quantity and progress percentage cannot be manually overwritten.</p></div>{selected.can_complete_project&&<button className="operations-button success" disabled={busy} onClick={()=>completeProject(selected)}><CheckCircle2 size={15}/> Complete Project</button>}</header>
         {cldDeliveryGroups.map(group => <CLDGroupDeliveryControls key={`delivery-${group.source}`} projectId={selected.project_id} sourceName={group.source} items={group.items} onChanged={load} />)}
         {cldGroups.map(group => <CLDGroupReviewControls key={group.source} projectId={selected.project_id} sourceName={group.source || null} items={group.items} myUserId={user?.id??0} onChanged={load} />)}
-        {!selected.packages.length?<div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work packages allocated yet</h3><p>This project has no assigned work packages yet — the Team Lead's Area / Code / Quantity allocations appear here.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{const d=daily[pkg.id]??emptyDaily;return <article className="operations-daily-card" key={pkg.id}>
-          <div className="operations-daily-heading"><div><span className="operations-kicker">{pkg.package_code}</span><h3>{pkg.area_name}</h3><div className="operations-project-meta"><span>Project: {selected.project_code}</span><span>Client ID: {selected.client_code||'—'}</span><span>My Role: {pkg.my_roles.map(label).join(', ')||'Monitoring'}</span><span>Target: {pkg.target_date||'—'}</span></div></div><div>{pkg.rework_cycle_id&&<span className="operations-status warning">Rework Cycle #{pkg.rework_cycle_number}{pkg.rework_of_package_code?` · of ${pkg.rework_of_package_code}`:''}</span>} <span className="operations-status">{label(pkg.display_stage ?? pkg.current_stage)}</span></div></div>
+        {!selected.packages.length?<div className="nk-empty"><span className="nk-empty-icon"><ClipboardList size={22}/></span><h3>No work packages allocated yet</h3><p>This project has no assigned work packages yet — the Team Lead's Area / Code / Quantity allocations appear here.</p><div className="nk-empty-action"><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></div></div>:<div className="operations-daily-list">{selected.packages.map(pkg=>{
+          const d=daily[pkg.id]??emptyDaily
+          const completedPackage = isEmployeeTracking &&
+            (pkg.delivered === true || pkg.current_stage === 'delivered') &&
+            (!pkg.has_items || (!!pkg.items?.length && pkg.items.every(it =>
+              it.production_status === 'completed' && it.qc_status === 'passed' && it.qa_status === 'passed' &&
+              !it.production_rework_pending
+            )))
+          const showPackageDetails = !completedPackage || !!expandedDeliveredPackages[pkg.id]
+          return <article className="operations-daily-card" key={pkg.id}>
+          <div className="operations-daily-heading"><div><span className="operations-kicker">{pkg.package_code}</span><h3>{pkg.area_name}</h3><div className="operations-project-meta"><span>Project: {selected.project_code}</span><span>Client ID: {selected.client_code||'—'}</span><span>My Role: {pkg.my_roles.map(label).join(', ')||'Monitoring'}</span><span>Target: {pkg.target_date||'—'}</span></div></div><div>{pkg.rework_cycle_id&&<span className="operations-status warning">Rework Cycle #{pkg.rework_cycle_number}{pkg.rework_of_package_code?` · of ${pkg.rework_of_package_code}`:''}</span>} <span className="operations-status">{label(pkg.display_stage ?? pkg.current_stage)}</span>{completedPackage&&<button type="button" className="operations-button secondary" style={{marginLeft:8,padding:'6px 10px'}} aria-label={`${showPackageDetails?'Hide':'Show'} completed work for ${pkg.area_name}`} aria-expanded={showPackageDetails} onClick={()=>setExpandedDeliveredPackages(prev=>({...prev,[pkg.id]:!prev[pkg.id]}))}>{showPackageDetails?<><EyeOff size={16}/> Hide</>:<><Eye size={16}/> View</>}</button>}</div></div>
+          {showPackageDetails&&<>
           {pkg.has_items && !!pkg.items?.length && !(pkg.lot_batch === 'CLD_IMPORT' && pkg.package_code.startsWith('CENTRELINE_M_') && !pkg.rework_cycle_id) && <AssignmentReviewControls packageId={pkg.id} items={pkg.items} myUserId={user?.id??0} onChanged={load} />}
           {pkg.instructions&&<div className="operations-instructions"><strong>Instructions:</strong> {pkg.instructions}</div>}
           <div className="operations-progress"><span style={{width:`${Math.min(100,pkg.progress_percent)}%`}}/></div><div className="operations-project-meta"><span>Assigned: {pkg.quantity??'—'} {pkg.quantity_unit}</span><span>Completed: {pkg.cumulative_completed} {pkg.quantity_unit}</span><span>Remaining: {pkg.remaining_quantity} {pkg.quantity_unit}</span><span>Progress: {pkg.progress_percent}%</span><span>Files: {pkg.has_items?(pkg.files_expected??0):pkg.files_completed}</span>{pkg.has_items&&<span>Completed Files: {pkg.files_production_done??0} of {pkg.files_expected??0}</span>}</div>
@@ -359,6 +372,7 @@ export function OrthoDashboardPage(){
           <div className="operations-actions">{!pkg.has_items&&pkg.can_qc&&<><button className="operations-button success" disabled={busy} onClick={()=>review(pkg,'qc','approve')}>QC Approve → QA</button><button className="operations-button danger" disabled={busy} onClick={()=>review(pkg,'qc','reject')}>QC Reject → Rework</button></>}{!pkg.has_items&&pkg.can_qa&&<><button className="operations-button success" disabled={busy} onClick={()=>review(pkg,'qa','approve')}>QA Approve → Delivery</button><button className="operations-button danger" disabled={busy} onClick={()=>review(pkg,'qa','reject')}>QA Reject → Rework</button></>}{pkg.can_deliver&&<button className="operations-button success" disabled={busy} onClick={()=>deliver(pkg)}><Truck size={15}/> Mark Delivered</button>}</div>
           {!!pkg.daily_updates.length&&<div className="operations-daily-history"><strong>Daily Activity</strong>{pkg.daily_updates.slice().reverse().map(row=><div key={row.id}><span>{row.update_date} · {row.work_type||'Production'} · {row.quantity_completed} {pkg.quantity_unit} · {row.files_completed} files · {row.hours_spent??0} h · {label(row.status)}</span><small>{row.blockers?`Blocker: ${row.blockers} · `:''}{row.remarks||''}</small></div>)}</div>}
           {!!pkg.review_history.length&&<div className="operations-review-history"><strong>QC / QA History:</strong> {pkg.review_history.map((r,i)=><span key={`${r.review_type}-${r.attempt_no}-${i}`}> {r.review_type.toUpperCase()} #{r.attempt_no} {label(r.decision)}{r.comments?` — ${r.comments}`:''};</span>)}</div>}
+          </>}
         </article>})}</div>}
       </section>}
     </>}

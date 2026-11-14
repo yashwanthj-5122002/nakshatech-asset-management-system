@@ -8,11 +8,13 @@ from app.core.database import get_db
 from app.models.entities import User
 from app.modules.employee_portal.service import record_audit
 from app.modules.operations.models import BDOpportunity, OrthoProjectMember, OrthoProjectProfile, ProjectWorkstream
+from app.modules.operations.workflow_service import change_project_department_before_work
 from app.modules.operations.schemas import (
     BDOpportunityCreate,
     BDProjectLink,
     BDProjectManagerUpdate,
     BDStageUpdate,
+    WorkflowDepartmentChange,
     OrthoDailyUpdateRequest,
     OrthoDeliveryRequest,
     OrthoMemberUpsert,
@@ -110,6 +112,27 @@ def bd_dashboard(
 ):
     _exact_roles(auth, BD_ROLE, MANAGEMENT_ROLE, ADMIN_ROLE)
     return bd_dashboard_payload(db, actor=auth.user, effective_role=_role(auth))
+
+
+@router.post("/bd/projects/{project_id}/change-department")
+def bd_change_project_department(
+    project_id: int, payload: WorkflowDepartmentChange, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _exact_roles(auth, BD_ROLE)
+    try:
+        result = change_project_department_before_work(
+            db, actor=auth.user, project_id=project_id, payload=payload, source="bd",
+        )
+        _audit(request, db, auth, "BD_PROJECT_DEPARTMENT_CHANGED", "finance_project", project_id, result)
+        db.commit()
+        return result
+    except (ValueError, PermissionError) as exc:
+        db.rollback()
+        raise _write_error(exc) from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/bd/opportunities")

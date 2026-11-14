@@ -35,6 +35,7 @@ import {
 
 const POPUP_POLL_MS = 30_000
 const SESSION_KEY = 'nk_notification_popup_seen'
+const APPROVAL_SESSION_PREFIX = 'nk_approval_popup_dismissed_v2_'
 
 interface PopupContextValue {
   current: PopupNotification | null
@@ -51,9 +52,9 @@ interface PopupContextValue {
 
 const PopupContext = createContext<PopupContextValue | undefined>(undefined)
 
-function readSession(): Record<string, number> {
+function readSession(key = SESSION_KEY): Record<string, number> {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = sessionStorage.getItem(key)
     const parsed = raw ? JSON.parse(raw) : {}
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {}
   } catch {
@@ -61,9 +62,9 @@ function readSession(): Record<string, number> {
   }
 }
 
-function writeSession(map: Record<string, number>) {
+function writeSession(map: Record<string, number>, key = SESSION_KEY) {
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(map))
+    sessionStorage.setItem(key, JSON.stringify(map))
   } catch {
     /* storage unavailable - dedupe degrades, never breaks */
   }
@@ -75,16 +76,21 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
   const [feedback, setFeedback] = useState<FeedbackPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [settings, setSettings] = useState<NotificationSettings | null>(null)
-  const seenRef = useRef<Record<string, number>>(readSession())
-  const reminderRef = useRef<number | null>(null)
-
   const isAuthenticated = Boolean(user)
+  const deferApprovalPopupSeen = user?.role === 'finance' || user?.role === 'management'
+  const seenStorageKey = deferApprovalPopupSeen
+    ? `${APPROVAL_SESSION_PREFIX}${user?.id ?? 'unknown'}` : SESSION_KEY
+  const seenRef = useRef<Record<string, number>>(readSession(seenStorageKey))
+  const activeSeenKeyRef = useRef(seenStorageKey)
+  const reminderRef = useRef<number | null>(null)
 
   // ---- logout / login: never leak one user's popups into another's session ----
   useEffect(() => {
     if (isAuthenticated) return
     seenRef.current = {}
     writeSession({})
+    writeSession({}, activeSeenKeyRef.current)
+    activeSeenKeyRef.current = SESSION_KEY
     setQueue([])
     setFeedback(null)
     if (reminderRef.current !== null) {
@@ -96,13 +102,24 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
   const load = useCallback(async () => {
     if (!isAuthenticated) return
     try {
-      const rows = await apiFetch<PopupNotification[]>('/notifications/global/popup-queue?limit=5')
+      let url = '/notifications/global/popup-queue?limit=5'
+      if (deferApprovalPopupSeen) {
+        // Skip items dismissed in the last 24 hours BEFORE server-side limiting.
+        // This lets the sixth, seventh, etc. pending approval reach the popup.
+        const now = Date.now()
+        const dismissedIds = Object.entries(seenRef.current)
+          .filter(([id, stamp]) => /^\d+$/.test(id) &&
+            typeof stamp === 'number' && now - stamp < 24 * 60 * 60_000)
+          .slice(-300).map(([id]) => id)
+        if (dismissedIds.length) url += `&exclude_ids=${dismissedIds.join(',')}`
+      }
+      const rows = await apiFetch<PopupNotification[]>(url)
       setQueue(Array.isArray(rows) ? rows : [])
     } catch {
       // A failed popup fetch must never break the ERP.
       setQueue([])
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, deferApprovalPopupSeen])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -127,13 +144,16 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
       setSettings(null)
       return
     }
-    seenRef.current = readSession()
+    activeSeenKeyRef.current = seenStorageKey
+    seenRef.current = readSession(seenStorageKey)
     void loadSettings()
-  }, [isAuthenticated, loadSettings])
+  }, [isAuthenticated, loadSettings, seenStorageKey])
 
   // ---- ONE centralised overdue reminder timer (never one per notification) ----
   useEffect(() => {
-    if (!isAuthenticated || !settings) return
+    if (!isAuthenticated || !settings || deferApprovalPopupSeen) return
+    // Finance/Management dismissals remain acknowledged for the 24h session
+    // window; the reminder timer stays unchanged for all other departments.
     const minutes = settings.overdue_popup_reminder_minutes || settings.default_minutes || 10
     if (reminderRef.current !== null) window.clearInterval(reminderRef.current)
     reminderRef.current = window.setInterval(() => {
@@ -149,7 +169,7 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
       }
       if (changed) {
         seenRef.current = next
-        writeSession(next)
+        writeSession(next, activeSeenKeyRef.current)
       }
       void load()
     }, minutes * 60_000)
@@ -159,7 +179,7 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
         reminderRef.current = null
       }
     }
-  }, [isAuthenticated, settings, load])
+  }, [isAuthenticated, settings, load, deferApprovalPopupSeen])
 
   const popupQueue = useMemo(() => filterAutomaticPopupQueue(queue, user), [queue, user])
 
@@ -175,18 +195,24 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
 
   const queueRemaining = useMemo(() => popupQueue.filter(item => !item.is_resolved).length, [popupQueue])
 
-  // Record that the popup was surfaced this session (read, never resolved).
+  // Finance/Management approvals remain visible until explicitly dismissed.
+  // Reading or dismissing never resolves the underlying business approval.
   useEffect(() => {
-    if (!current || seenRef.current[String(current.id)]) return
+    if (!current || deferApprovalPopupSeen || seenRef.current[String(current.id)]) return
     seenRef.current = { ...seenRef.current, [String(current.id)]: Date.now() }
-    writeSession(seenRef.current)
+    writeSession(seenRef.current, activeSeenKeyRef.current)
     void apiFetch(`/notifications/global/${current.id}/read`, { method: 'POST' }).catch(() => undefined)
-  }, [current])
+  }, [current, deferApprovalPopupSeen])
 
   const dismissCurrent = useCallback(() => {
+    if (current && deferApprovalPopupSeen) {
+      seenRef.current = { ...seenRef.current, [String(current.id)]: Date.now() }
+      writeSession(seenRef.current, activeSeenKeyRef.current)
+      void apiFetch(`/notifications/global/${current.id}/read`, { method: 'POST' }).catch(() => undefined)
+    }
     setQueue(rows => rows.filter(item => item.id !== current?.id))
     void load()
-  }, [current?.id, load])
+  }, [current, deferApprovalPopupSeen, load])
 
   const showFeedback = useCallback((payload: FeedbackPayload) => setFeedback(payload), [])
   const clearFeedback = useCallback(() => setFeedback(null), [])
