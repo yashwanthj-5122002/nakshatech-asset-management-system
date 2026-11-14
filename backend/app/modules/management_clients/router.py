@@ -17,7 +17,7 @@ from app.modules.management_projects.router import (
 )
 from app.modules.operations.models import ProjectWorkflow, WorkPackageItemActivity
 from app.modules.operations.schemas import WorkflowDepartmentChange
-from app.modules.operations.workflow_service import change_project_department_before_work, project_manager_options
+from app.modules.operations.workflow_service import change_project_department_before_work, department_change_allowed, project_manager_options
 from app.core.departments import SUPPORTED_DEPARTMENTS, department_label
 from app.modules.operations.lifecycle_models import ProjectInvoice
 from app.modules.operations.lifecycle_service import (

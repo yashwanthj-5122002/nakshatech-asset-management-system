@@ -519,6 +519,50 @@ def submit_baseline_estimate(db: Session, *, actor: User, project_id: int) -> Pr
     return row
 
 
+def finalize_bd_baseline_without_finance_approval(
+    db: Session, *, actor: User, project_id: int,
+) -> ProjectCommercialEstimateRevision | None:
+    """Lock submitted BD Revision 1 for billing without a Finance decision.
+
+    APPROVED is the legacy internal billing-compatible revision state, NOT a
+    Finance approval: reviewer, approval timestamp and FX verifier remain null.
+    """
+    from app.modules.finance.models import FinanceProject
+
+    project = db.get(FinanceProject, project_id)
+    if project is None or project.project_source_team != "bd_team":
+        raise PermissionError("Review-only baseline finalization is for BD-origin projects only")
+    row = db.scalar(select(ProjectCommercialEstimateRevision).where(
+        ProjectCommercialEstimateRevision.project_id == project_id,
+        ProjectCommercialEstimateRevision.revision_no == 1,
+    ))
+    if row is None:
+        if settings.commercial_estimate_required_on_submit:
+            raise ValueError("Commercial Revision 1 is required for BD project submission")
+        return None
+    if row.is_locked and row.status == "APPROVED":
+        return row
+    if row.status not in {"DRAFT", "PENDING_APPROVAL", "RETURNED"} or row.is_locked:
+        raise ValueError("Commercial Revision 1 cannot be finalized in its current state")
+    row.status = "APPROVED"  # Internal baseline/billing status, not Finance signoff.
+    row.is_baseline = True
+    row.is_locked = True
+    row.approved_by_id = None
+    row.approved_at = None
+    row.decision_comments = "Auto-locked when BD submitted for Finance viewing; no Finance approval"
+    if row.fx_snapshot_id:
+        snap = db.get(ProjectFxSnapshot, row.fx_snapshot_id)
+        if snap:
+            snap.fx_locked = True
+            snap.verified_by_id = None
+            snap.verified_at = None
+    _workflow_event(db, workflow=_workflow(db, project_id), actor=actor,
+                    event_type="commercial_bd_review_only_baseline_locked",
+                    comments="Revision 1 locked for billing without Finance approval")
+    db.flush()
+    return row
+
+
 def freeze_baseline_on_finance_approval(db: Session, *, actor: User, project_id: int) -> ProjectCommercialEstimateRevision | None:
     row = db.scalar(select(ProjectCommercialEstimateRevision).where(
         ProjectCommercialEstimateRevision.project_id == project_id,

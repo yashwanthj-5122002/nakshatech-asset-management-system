@@ -280,6 +280,7 @@ def _full_project_payload(db: Session, project: FinanceProject, workflow: Projec
         "attachment_references": _attachment_references(workflow),
         "workflow_status": workflow.status,
         "normalized_status": normalized_workflow_status(workflow.status),
+        "finance_review_only": project.project_source_team == "bd_team",
         "finance_feedback": workflow.finance_feedback,
         "submission_count": workflow.submission_count or sum(1 for event in events if event["event_type"] == "submitted_to_finance"),
         "finance_reviewer_id": workflow.finance_reviewer_id,
@@ -566,31 +567,39 @@ def submit_project_to_finance(db: Session, *, actor: User, project_id: int) -> P
     from app.modules.commercial.service import prepare_revision1_for_finance_submission
 
     prepare_revision1_for_finance_submission(db, actor=actor, project_id=project_id)
+    from app.modules.commercial.service import finalize_bd_baseline_without_finance_approval
+
+    finalize_bd_baseline_without_finance_approval(db, actor=actor, project_id=project_id)
     workflow.finance_feedback = None
     workflow.submitted_at = utc_now()
     workflow.submission_count = int(workflow.submission_count or 0) + 1
-    _event(db, workflow=workflow, actor=actor, event_type="submitted_to_finance", to_status=WORKFLOW_PENDING_FINANCE)
+    # BD submissions are shared with Finance for visibility only. Preserve the
+    # legacy PM-ready internal status for existing downstream workflow consumers;
+    # this transition is NOT a Finance approval and has no approver/timestamp.
     project = _project(db, project_id)
+    if project.project_source_team != "bd_team":
+        raise PermissionError("Only BD-origin projects use Finance review-only handoff")
+    set_project_status(db, project=project, actor=actor, project_status="active")
+    _event(db, workflow=workflow, actor=actor, event_type="bd_submitted_for_finance_visibility", to_status=WORKFLOW_FINANCE_APPROVED,
+           comments="Finance visibility only; no Finance approval or rejection required")
     create_global_notification(
         db,
-        event_type="workflow.project.submitted_finance",
-        title=f"Finance review required: {project.project_code}",
-        message=f"BD submitted Project ID {project.project_code} for Finance approval. Client ID: {_client_code(project) or 'Not recorded'}.",
-        category="approval",
+        event_type="workflow.project.bd_finance_review_only",
+        title=f"BD project for Finance viewing: {project.project_code}",
+        message=f"BD submitted Project ID {project.project_code} for Finance review only. No approval required. Client ID: {_client_code(project) or 'Not recorded'}.",
+        category="system",
         target_url=f"/finance?project={project.id}",
         recipient_roles=[FINANCE_ROLE],
-        # Popup experience (additive): Finance must act, so the center popup offers
-        # Approve / Return. Closing the popup never resolves this - only the real
-        # finance_review_project action does.
+        # Informational only: Finance cannot approve or reject BD projects.
         severity="info",
-        requires_action=True,
+        requires_action=False,
         metadata={
             "project_id": project.id,
             "project_name": project.project_code,
             "client_name": _client_code(project) or None,
             "submitted_by": actor.full_name or actor.email,
             "submitted_at": workflow.submitted_at.isoformat() if workflow.submitted_at else None,
-            "current_stage": "Finance Approval",
+            "current_stage": "Finance Review Only / Ready for PM",
             "amount": workflow.commercial_value,
             "currency": workflow.currency,
         },
@@ -612,10 +621,10 @@ def email_finance_submission(db: Session, *, project_id: int) -> None:
     for user in resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE]):
         _safe_send_email(
             recipient=user.email,
-            subject=f"[{project.project_code}] Project approval required",
+            subject=f"[{project.project_code}] BD project for Finance review",
             body=(
                 f"Hello {user.full_name},\n\n"
-                f"Business Development submitted a project for Finance approval.\n\n"
+                f"Business Development shared a project for Finance review only. No approval or rejection is required.\n\n"
                 f"Project ID: {project.project_code}\n"
                 f"Client ID: {_client_code(project) or 'Not recorded'}\n"
                 f"Project Name: {project.project_name}\n"
@@ -701,9 +710,11 @@ def finance_dashboard(db: Session) -> dict:
 
 def finance_review_project(db: Session, *, actor: User, project_id: int, payload: WorkflowFinanceReview) -> ProjectWorkflow:
     workflow = _workflow(db, project_id)
+    project = _project(db, project_id)
+    if project.project_source_team == "bd_team":
+        raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
     if workflow.status != WORKFLOW_PENDING_FINANCE:
         raise ValueError("This project is not waiting for Finance approval")
-    project = _project(db, project_id)
     workflow.finance_reviewer_id = actor.id
     workflow.finance_reviewed_at = utc_now()
     if payload.decision == "return":
@@ -854,8 +865,17 @@ def assign_project_manager(
         raise PermissionError("Only the BD owner can assign the Project Manager")
     if allow_management_finance and not finance_management:
         raise PermissionError("Only Finance can assign a Management Project Manager")
-    if workflow.status not in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
-        raise ValueError("Project Manager can be assigned only after Finance approval and before the project team starts work")
+    pm_ready = workflow.status in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}
+    # Historic BD records awaiting the old Finance decision must not be stranded.
+    bd_review_only = project.project_source_team == "bd_team" and workflow.status == WORKFLOW_PENDING_FINANCE
+    if not (pm_ready or bd_review_only):
+        raise ValueError("Project Manager can be assigned only after project submission and before the project team starts work")
+    if bd_review_only:
+        # Upgrade a historic pending BD project without any Finance decision.
+        from app.modules.commercial.service import finalize_bd_baseline_without_finance_approval
+
+        finalize_bd_baseline_without_finance_approval(db, actor=actor, project_id=project_id)
+        set_project_status(db, project=project, actor=actor, project_status="active")
     expected_role = pm_role_for_department(workflow.performing_department_code)
     pm = db.get(User, payload.project_manager_id)
     if pm is None or not pm.is_active or pm.role != expected_role:
@@ -905,7 +925,11 @@ def department_change_allowed(db: Session, workflow: ProjectWorkflow) -> bool:
 
     This is a first-phase *pre-start* correction, never a team/work handover.
     """
-    if normalized_workflow_status(workflow.status) not in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
+    project = _project(db, workflow.project_id)
+    allowed = {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}
+    if project.project_source_team == "bd_team":
+        allowed.add(WORKFLOW_PENDING_FINANCE)  # Legacy BD submission, no Finance decision needed
+    if normalized_workflow_status(workflow.status) not in allowed:
         return False
     if workflow.team_assigned_at or workflow.operational_completed_at or workflow.finance_closed_at:
         return False
@@ -955,6 +979,11 @@ def change_project_department_before_work(
         raise PermissionError("Invalid department correction source")
     if not department_change_allowed(db, workflow):
         raise ValueError("Department can change only before team allocation, work, expenses or billing begins")
+    if source == "bd" and workflow.status == WORKFLOW_PENDING_FINANCE:
+        from app.modules.commercial.service import finalize_bd_baseline_without_finance_approval
+
+        finalize_bd_baseline_without_finance_approval(db, actor=actor, project_id=project_id)
+        set_project_status(db, project=project, actor=actor, project_status="active")
     new_department = normalize_department_code(payload.performing_department_code)
     if new_department is None or new_department not in SUPPORTED_DEPARTMENTS:
         raise ValueError("Select a supported performing department")

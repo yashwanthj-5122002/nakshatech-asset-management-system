@@ -5,7 +5,7 @@ import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import { ProjectDetailsPanel, ProjectRegisterFilters, ProjectRegisterTable } from '../components/ProjectRegister'
 import { DepartmentChangeDialog } from '../components/DepartmentChangeDialog'
-import { filterProjects } from '../components/register-utils'
+import { filterProjects, financeLabel } from '../components/register-utils'
 import { useNotificationPopup } from '../../notifications/NotificationPopupProvider'
 import { uploadRevisionDocuments, type PendingDocument } from '../../commercial/commercial-api'
 import { commercialFormFromRevision, commercialFormProblems, commercialFormToPayload, emptyCommercialForm, type CommercialFormState } from '../../commercial/commercial-form'
@@ -26,6 +26,12 @@ type Project={
 }
 type Dashboard={projects:Project[];project_managers:PM[];project_managers_by_department?:Record<string,PM[]>;departments?:{code:string;label:string}[]}
 type Form={client_id:number;project_code:string;project_name:string;start_date:string;end_date:string;scope_text:string;quantity:string;quantity_unit:string;priority:string;performing_department_code:string;commercial_value:string;currency:string;po_wo_number:string;description:string;attachment_references:string}
+
+function bdFinanceDisplayLabel(row: Project): string {
+  if (row.workflow_status === 'pending_finance_approval') return 'Under Finance Review'
+  if (row.workflow_status === 'finance_approved') return 'Ready for PM Assignment'
+  return financeLabel(row)
+}
 
 export function BDProjectManagementPage(){
   // NAKSHA_BD_PROJECTS_PAGINATION_V1 - UI-only pagination; BD workflows are unchanged.
@@ -76,7 +82,7 @@ export function BDProjectManagementPage(){
       setNotice(`${selected.project_code} updated without creating a duplicate project or a second Revision 1.`);setEditing(null);setDocs([]);load()
     }catch(err){setError(err instanceof Error?err.message:'Unable to update project')}finally{setBusy(false)}
   }
-  async function submit(row:Project){if(!window.confirm(`Submit ${row.project_code} to Finance?`))return;setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/submit-finance`,{method:'POST'});showFeedback({kind:'success',eyebrow:'Submitted',title:'SUBMITTED SUCCESSFULLY',message:`${row.project_code} was submitted to Finance.`,facts:[{label:'Project',value:row.project_code},{label:'Submitted To',value:'Finance'},{label:'Current Status',value:'Awaiting Finance Approval'}]});load()}catch(err){const message=err instanceof Error?err.message:'Unable to submit project';setError(message);showFeedback({kind:'error',eyebrow:'Unable To Submit',title:'UNABLE TO SUBMIT',message})}finally{setBusy(false)}}
+  async function submit(row:Project){if(!window.confirm(`Submit ${row.project_code} to Finance?`))return;setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/submit-finance`,{method:'POST'});showFeedback({kind:'success',eyebrow:'Submitted',title:'SUBMITTED SUCCESSFULLY',message:`${row.project_code} was submitted to Finance.`,facts:[{label:'Project',value:row.project_code},{label:'Submitted To',value:'Finance'},{label:'Current Status',value:'Ready for PM assignment — Finance review only'}]});load()}catch(err){const message=err instanceof Error?err.message:'Unable to submit project';setError(message);showFeedback({kind:'error',eyebrow:'Unable To Submit',title:'UNABLE TO SUBMIT',message})}finally{setBusy(false)}}
   async function assignPm(row:Project){const value=pmChoice[row.id]??(row.project_manager_id?String(row.project_manager_id):'');if(!value){setError('Select exactly one Project Manager for this project\'s Performing Department.');return}setBusy(true);setError('');try{await apiFetch(`/operations/workflow/bd/projects/${row.id}/assign-pm`,{method:'POST',body:JSON.stringify({project_manager_id:Number(value)})});setNotice(`${row.project_code}: Project Manager assigned.`);load()}catch(err){setError(err instanceof Error?err.message:'Unable to assign Project Manager')}finally{setBusy(false)}}
 
   async function saveDepartmentChange(event:FormEvent){
@@ -95,19 +101,19 @@ export function BDProjectManagementPage(){
   }
 
   return <div className="operations-page">
-    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · PORTFOLIO INTELLIGENCE" title="Project Management" description="Review project history, correct returned projects and resubmit the same record, then assign a PM only after Finance approval." details={<>
+    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · PORTFOLIO INTELLIGENCE" title="Project Management" description="Review project history, correct returned projects and resubmit the same record, then assign a PM without waiting for Finance approval." details={<>
       <div><span>Projects</span><strong>{data?.projects.length ?? 0}</strong></div>
-      <div><span>Awaiting Finance</span><strong>{data?.projects.filter(row=>row.workflow_status==='pending_finance_approval').length ?? 0}</strong></div>
+      <div><span>Legacy Finance Queue</span><strong>{data?.projects.filter(row=>row.workflow_status==='pending_finance_approval').length ?? 0}</strong></div>
       <div><span>Returned</span><strong>{data?.projects.filter(row=>row.workflow_status==='finance_returned').length ?? 0}</strong></div>
       <div><span>Draft</span><strong>{data?.projects.filter(row=>row.workflow_status==='draft').length ?? 0}</strong></div>
-    </>} actions={<><Link className="operations-button" to="/bd/tracking">View Project Tracking</Link><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></>} meta={<><span className="nk-meta-chip"><Send size={14}/> Correct returned projects and resubmit the same record</span><span className="nk-meta-chip"><UserRoundCheck size={14}/> PM assigned only after Finance approval</span><span className="nk-meta-chip"><Pencil size={14}/> Draft → Finance → PM → Delivery</span></>}/>
+    </>} actions={<><Link className="operations-button" to="/bd/tracking">View Project Tracking</Link><button className="operations-button secondary" onClick={load}><RefreshCcw size={16}/> Refresh</button></>} meta={<><span className="nk-meta-chip"><Send size={14}/> Review drafts and submit projects for Finance visibility</span><span className="nk-meta-chip"><UserRoundCheck size={14}/> PM assignment needs no Finance approval</span><span className="nk-meta-chip"><Pencil size={14}/> Draft → Finance → PM → Delivery</span></>}/>
     {notice&&<div className="operations-alert success" aria-live="polite">{notice}</div>}{error&&<div className="operations-alert error" aria-live="polite">{error}<button className="operations-button secondary" onClick={load} style={{marginLeft:'8px'}}><RefreshCw size={14}/> Retry</button></div>}
     {loading&&<section className="operations-panel"><div className="operations-empty"><span className="spinner"/> Loading projects…</div></section>}
     <section className="operations-panel">
       <ProjectRegisterFilters query={query} onQueryChange={value=>{setQuery(value);setBdPage(1)}} financeFilter={financeFilter} onFinanceFilterChange={value=>{setFinanceFilter(value);setBdPage(1)}} operationalFilter={operationalFilter} onOperationalFilterChange={value=>{setOperationalFilter(value);setBdPage(1)}}/>
-      <ProjectRegisterTable rows={bdVisibleRows} onDetails={row=>{setSelectedId(row.id);setEditing(null)}}
-        renderProjectManager={row=>{if(!['finance_approved','pm_assigned'].includes(row.workflow_status))return null;const candidates=(data?.project_managers_by_department?.[row.performing_department_code||'ortho'])??data?.project_managers??[];return <div className="operations-actions"><select value={pmChoice[row.id]??(row.project_manager_id?String(row.project_manager_id):'')} onChange={e=>setPmChoice({...pmChoice,[row.id]:e.target.value})}><option value="">Select {row.performing_department_label||'Ortho'} PM</option>{candidates.map(pm=><option key={pm.id} value={pm.id}>{pm.employee_id?`${pm.employee_id} · `:''}{pm.full_name}</option>)}</select><button className="operations-button secondary" disabled={busy} onClick={()=>void assignPm(row)}><UserRoundCheck size={14}/>{busy?'Assigning…':'Assign'}</button></div>}}
-        renderActions={row=>{const correctable=['draft','finance_returned'].includes(row.workflow_status);const transferable=['finance_approved','pm_assigned'].includes(row.workflow_status.toLowerCase());if(!correctable&&!transferable)return null;return <>{correctable&&<><button className="operations-button secondary" onClick={()=>startEdit(row)}><Pencil size={14}/> Edit</button><button className="operations-button" disabled={busy} onClick={()=>void submit(row)}><Send size={14}/>{busy?'Submitting…':'Submit'}</button></>}{transferable&&<button className="operations-button secondary" type="button" disabled={busy} onClick={()=>{setSelectedId(row.id);setEditing(null);setDepartmentEdit({projectId:row.id,department:'',manager:'',reason:''})}}>Change Department</button>}</>}}/>
+      <ProjectRegisterTable rows={bdVisibleRows} renderFinanceStatusLabel={bdFinanceDisplayLabel} onDetails={row=>{setSelectedId(row.id);setEditing(null)}}
+        renderProjectManager={row=>{if(!['finance_approved','pm_assigned','pending_finance_approval'].includes(row.workflow_status))return null;const candidates=(data?.project_managers_by_department?.[row.performing_department_code||'ortho'])??data?.project_managers??[];return <div className="operations-actions"><select value={pmChoice[row.id]??(row.project_manager_id?String(row.project_manager_id):'')} onChange={e=>setPmChoice({...pmChoice,[row.id]:e.target.value})}><option value="">Select {row.performing_department_label||'Ortho'} PM</option>{candidates.map(pm=><option key={pm.id} value={pm.id}>{pm.employee_id?`${pm.employee_id} · `:''}{pm.full_name}</option>)}</select><button className="operations-button secondary" disabled={busy} onClick={()=>void assignPm(row)}><UserRoundCheck size={14}/>{busy?'Assigning…':'Assign'}</button></div>}}
+        renderActions={row=>{const correctable=['draft','finance_returned'].includes(row.workflow_status);const transferable=['finance_approved','pm_assigned','pending_finance_approval'].includes(row.workflow_status.toLowerCase());if(!correctable&&!transferable)return null;return <>{correctable&&<><button className="operations-button secondary" onClick={()=>startEdit(row)}><Pencil size={14}/> Edit</button><button className="operations-button" disabled={busy} onClick={()=>void submit(row)}><Send size={14}/>{busy?'Submitting…':'Submit'}</button></>}{transferable&&<button className="operations-button secondary" type="button" disabled={busy} onClick={()=>{setSelectedId(row.id);setEditing(null);setDepartmentEdit({projectId:row.id,department:'',manager:'',reason:''})}}>Change Department</button>}</>}}/>
       {rows.length > 0 && <nav aria-label="BD project pagination" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginTop:16}}>
         <span style={{fontSize:13}}>Showing {(bdCurrentPage-1)*BD_PAGE_SIZE+1}-{Math.min(bdCurrentPage*BD_PAGE_SIZE,rows.length)} of {rows.length} projects</span>
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
@@ -118,7 +124,7 @@ export function BDProjectManagementPage(){
       </nav>}
     </section>
 
-    {selected&&<ProjectDetailsPanel project={selected}/>}
+    {selected&&<ProjectDetailsPanel project={selected} financeStatusLabel={bdFinanceDisplayLabel(selected)}/>}
     {selected&&departmentEdit?.projectId===selected.id&&<DepartmentChangeDialog
       title={`Change Department - ${selected.project_code}`}
       description={`Current: ${selected.performing_department_label} / ${selected.project_manager_name||'Unassigned'}. The project ID and commercial details will not change.`}
