@@ -4,7 +4,7 @@ import {
   IndianRupee, Layers3, Plus, RefreshCcw, Search, Send, ShieldCheck,
   SlidersHorizontal, UsersRound, Wallet, X,
 } from 'lucide-react'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../../../lib/api'
 import { commercialFormProblems, commercialFormToPayload, emptyCommercialForm, type CommercialFormState } from '../../commercial/commercial-form'
 import { CommercialDetailsSection } from '../../commercial/components/CommercialDetailsSection'
@@ -15,6 +15,7 @@ import { DepartmentChangeDialog } from '../../operations/components/DepartmentCh
 import '../../operations/operations.css'
 import './finance-management-projects.css'
 import './finance-management-prussian-theme.css'
+import './PilotProjectDetails.css'
 
 type ManagementClient = {
   id: number; client_code: string; client_name: string; source_person_name: string
@@ -199,6 +200,10 @@ function exportCsv(rows: ManagementProject[], clients: ManagementClient[], lifec
 }
 
 export function FinanceManagementProjectsPage() {
+
+  const [selectedPilotRequest, setSelectedPilotRequest] = useState<AdditionalProjectRequest | null>(null)
+  const pilotDialogRef = useRef<HTMLDialogElement>(null)
+
   const [data, setData] = useState<Register>({ clients: [], projects: [] })
   const [options, setOptions] = useState<Options>({ departments: [], project_managers_by_department: {} })
   const [currencies, setCurrencies] = useState<CurrencyPayload | null>(null)
@@ -251,6 +256,16 @@ export function FinanceManagementProjectsPage() {
       setError(err instanceof Error ? err.message : 'Unable to load Management Projects')
     } finally { setLoading(false) }
   }
+
+  useEffect(() => {
+    if (!selectedPilotRequest) return
+    pilotDialogRef.current?.showModal()
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [selectedPilotRequest])
   useEffect(() => { void load(); void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(() => undefined) }, [])
   // Refresh only management records and their existing financial ledger every 15 seconds.
   useEffect(() => {
@@ -591,6 +606,10 @@ export function FinanceManagementProjectsPage() {
       ? row.project_type === 'pilot'
       : row.project_type !== 'pilot'
   )
+  const filteredRequests = requestsForActiveTab.filter(row =>
+    !requestSearch.trim() || [row.client_code, row.client_name, row.project_name, row.source_person_name]
+      .some(value => (value || '').toLowerCase().includes(requestSearch.trim().toLowerCase()))
+  ).sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING'))
 
   const tabs: Array<{ id: MainTab; label: string; icon: typeof FolderKanban }> = [
     { id: 'projects', label: 'Projects', icon: FolderKanban },
@@ -635,20 +654,111 @@ export function FinanceManagementProjectsPage() {
       {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeTab === id ? 'mp-tab active' : 'mp-tab'} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { setActiveTab(id); setSelectedProjectId(null) }}><Icon size={16}/>{label}{(id === 'requests' || id === 'pilot') && pendingForTab(id) > 0 && <span style={{ marginLeft: 4, background: '#fcebea', color: '#a23e3e', borderRadius: 9, padding: '2px 6px', fontSize: 11 }}>{pendingForTab(id)}</span>}</button>)}
     </nav>
 
-    {(activeTab === 'requests' || activeTab === 'pilot') && <section className="mp-panel" aria-label="Existing client project requests">
-      <div className="mp-panel-heading"><h2>{activeTab === 'pilot' ? 'Pilot Project Requests' : 'Regular Project Requests'}</h2><span>{requestsForActiveTab.filter(r => r.status === 'PENDING').length} awaiting Finance</span></div>
+{activeTab === 'pilot' && (
+  <section className="mp-panel naksha-pilot-requests">
+    <div className="mp-panel-heading">
+      <div>
+        <h2>Pilot Project Requests</h2>
+        <p>Pilot requests submitted by Management</p>
+      </div>
+
+      <span>
+        {additionalRequests.filter(
+          row =>
+            row.project_type === 'pilot' &&
+            row.status === 'PENDING'
+        ).length} awaiting Finance
+      </span>
+    </div>
+
+    {requestFetchError && (
+      <p role="alert">{requestFetchError}</p>
+    )}
+
+    <label className="mp-search" style={{ marginBottom: 12 }}><Search size={17}/><input aria-label="Search pilot project requests" placeholder="Search client, project or Management source…" value={requestSearch} onChange={e => setRequestSearch(e.target.value)}/></label>
+    <div className="naksha-pilot-list">
+      {filteredRequests
+        .map(row => (
+          <div className="naksha-pilot-row" key={row.id}>
+            <div className="naksha-pilot-client">
+              <strong>{row.client_code}</strong>
+              <span>{row.client_name}</span>
+            </div>
+
+            <div className="naksha-pilot-project">
+              <strong>
+                {row.project_name ||
+                  'Project details pending Finance'}
+              </strong>
+              <span>Pilot Project · {row.pilot_payment_type === 'paid' ? 'Paid' : 'Free'}</span>
+            </div>
+
+            <div className="naksha-pilot-status">
+              <span className={
+                row.status === 'PENDING'
+                  ? 'naksha-status-pending'
+                  : 'naksha-status-created'
+              }>
+                {row.status === 'PENDING'
+                  ? 'Awaiting Finance'
+                  : 'Project Created'}
+              </span>
+            </div>
+
+            <div className="naksha-pilot-actions">
+              <button
+                type="button"
+                className="mp-button mp-button-muted mp-button-small"
+                onClick={() => setSelectedPilotRequest(row)}
+              >
+                Details
+              </button>
+
+              {row.status === 'PENDING' && (
+                <button
+                  type="button"
+                  className="mp-button mp-button-primary mp-button-small"
+                  disabled={
+                    !clientById.get(row.management_client_id)?.is_active
+                  }
+                  onClick={() =>
+                    openCreate(
+                      clientById.get(row.management_client_id),
+                      row
+                    )
+                  }
+                >
+                  Create Project
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+    </div>
+
+    {filteredRequests.length === 0 && !requestFetchError && (
+      <div className="mp-empty">
+        No matching Pilot Project requests.
+      </div>
+    )}
+  </section>
+)}
+
+
+    {activeTab === 'requests' && <section className="mp-panel" aria-label="Existing client project requests">
+      <div className="mp-panel-heading"><h2>Regular Project Requests</h2><span>{requestsForActiveTab.filter(r => r.status === 'PENDING').length} awaiting Finance</span></div>
       <p style={{ margin: '8px 0 12px', color: '#46647c', fontSize: 13 }}>When Vinod Sir or Chethan Sir requests another project for an existing client, it appears here. Use the normal Create Project form to complete it.</p>
       {requestFetchError && <p role="alert" style={{ color: '#a23e3e' }}>{requestFetchError}</p>}
       <label className="mp-search" style={{ display: 'block', marginBottom: 12 }}><Search size={17}/><input aria-label="Search project requests" placeholder="Search client, project or Management source…" value={requestSearch} onChange={e => setRequestSearch(e.target.value)}/></label>
       <div className="mp-table-scroll"><table className="mp-table"><thead><tr><th>Client</th><th>Requested Project</th><th>Management Source</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody>
-        {requestsForActiveTab.filter(row => !requestSearch.trim() || [row.client_code, row.client_name, row.project_name, row.source_person_name].some(value => (value || '').toLowerCase().includes(requestSearch.trim().toLowerCase()))).sort((a,b) => (a.status === 'PENDING' ? 0 : 1) - (b.status === 'PENDING' ? 0 : 1)).map(row =>
+        {filteredRequests.map(row =>
           <tr key={row.id}><td><strong>{row.client_code}</strong><small>{row.client_name}</small></td>
             <td><strong>{row.project_name || 'Project details pending Finance'}</strong>{row.project_type === 'pilot' && <small style={{ color: '#176d79', fontWeight: 700 }}>PILOT · {row.pilot_payment_type?.toUpperCase()}</small>}<small>{row.scope_text}</small>{row.remarks && <small>Notes: {row.remarks}</small>}</td>
             <td>{row.source_person_name}</td><td>{row.created_at ? new Date(row.created_at).toLocaleDateString('en-IN') : '—'}</td>
             <td><span style={{ display: 'inline-block', fontSize: 12, fontWeight: 500, borderRadius: 8, padding: '6px 9px', background: row.status === 'CREATED' ? '#e8f6eb' : '#fcebea', border: `1px solid ${row.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}`, color: row.status === 'CREATED' ? '#166534' : '#a23e3e' }}>{row.status === 'CREATED' ? `Project Created: ${row.created_project_code || ''}` : 'Awaiting Finance'}</span></td>
             <td>{row.status === 'PENDING' ? <button className="mp-button mp-button-primary mp-button-small" type="button" disabled={!clientById.get(row.management_client_id)?.is_active} onClick={() => openCreate(clientById.get(row.management_client_id), row)}><Plus size={14}/> Create Project</button> : row.created_project_code}</td></tr>
         )}</tbody></table></div>
-      {requestsForActiveTab.length === 0 && !requestFetchError && <div className="mp-empty">No matching project requests.</div>}
+      {filteredRequests.length === 0 && !requestFetchError && <div className="mp-empty">No matching project requests.</div>}
     </section>}
 
     
@@ -798,6 +908,26 @@ export function FinanceManagementProjectsPage() {
       <div className="mp-workflow-steps">{WORKFLOW_STEPS.map(({ label, sub, icon: Icon }, index) => <div className="mp-workflow-step" key={label}><div className="mp-workflow-icon"><Icon size={20}/></div><strong>{label}</strong><small>{sub}</small>{index < WORKFLOW_STEPS.length - 1 && <ArrowRight className="mp-workflow-arrow" size={15}/>}</div>)}</div>
       <p className="mp-workflow-disclaimer">Management projects require original-source approval after Delivery before the existing Finance Billing engine can draft an invoice. Finance owns management-project creation; BD cannot view these management-sourced records.</p>
     </section>
+
+    {selectedPilotRequest && <dialog ref={pilotDialogRef} className="naksha-pilot-modal" aria-labelledby="pilot-request-title" onCancel={() => setSelectedPilotRequest(null)}>
+      <div className="naksha-pilot-modal-header">
+        <div><p>{selectedPilotRequest.client_code} · {selectedPilotRequest.client_name}</p><h2 id="pilot-request-title">Pilot Request Details</h2></div>
+        <button type="button" className="mp-icon-button" aria-label="Close pilot request details" onClick={() => setSelectedPilotRequest(null)}><X size={19}/></button>
+      </div>
+      <div className="naksha-pilot-modal-content">
+        {[
+          ['Project', selectedPilotRequest.project_name || 'Project details pending Finance'],
+          ['Management Source', selectedPilotRequest.source_person_name],
+          ['Payment Type', selectedPilotRequest.pilot_payment_type === 'paid' ? 'Paid' : 'Free'],
+          ['Requested', shortDate(selectedPilotRequest.created_at)],
+          ['Expected Start', shortDate(selectedPilotRequest.expected_start_date || '')],
+          ['Status', selectedPilotRequest.status === 'PENDING' ? 'Awaiting Finance' : `Project Created: ${selectedPilotRequest.created_project_code || '—'}`],
+          ['Scope', selectedPilotRequest.scope_text || '—'],
+          ['Remarks', selectedPilotRequest.remarks || '—'],
+        ].map(([label, value]) => <div className="naksha-detail-field" key={label}><strong>{label}</strong><p>{value}</p></div>)}
+      </div>
+      <div className="naksha-pilot-modal-footer"><button type="button" className="mp-button mp-button-muted" onClick={() => setSelectedPilotRequest(null)}>Close</button></div>
+    </dialog>}
 
     {showCreate && selectedClient && <div className="mp-overlay" role="presentation"><aside className="mp-create-dialog" role="dialog" aria-modal="true" aria-label="Create Management Project">
       <div className="mp-dialog-heading"><div><span className="mp-eyebrow">FINANCE DEPARTMENT</span><h2>Create Management Project</h2><p>Choose a management client, assign department, then save.</p></div><button type="button" className="mp-icon-button" aria-label="Close project form" disabled={busy} onClick={() => setShowCreate(false)}><X size={19}/></button></div>

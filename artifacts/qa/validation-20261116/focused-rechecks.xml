@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="37.492" timestamp="2026-11-16T11:31:11.256113+05:30" hostname="DESKTOP-SO31FT741"><testcase classname="tests.test_end_to_end" name="test_purchase_permission_approval_conversion_and_excel" time="16.188"><failure message="AssertionError: ('approval.purchase_request.submitted', 'ITPR-20261116113129-742E5578', [])&#10;assert 0 == 1&#10; +  where 0 = len([])">tests\test_end_to_end.py:679: in test_purchase_permission_approval_conversion_and_excel
+    _approval_notification(
+tests\test_end_to_end.py:233: in _approval_notification
+    assert len(matches) == 1, (event_type, record_code, response.json())
+E   AssertionError: ('approval.purchase_request.submitted', 'ITPR-20261116113129-742E5578', [])
+E   assert 0 == 1
+E    +  where 0 = len([])</failure></testcase><testcase classname="tests.test_bad_debt_dual_approval_v8_5" name="test_rejected_proposal_can_be_reproposed_as_a_fresh_cycle" time="8.678" /><testcase classname="tests.test_client_advance_request_form" name="test_advance_summary_reflects_saved_request_with_project_value_unchanged" time="9.251"><failure message="AssertionError: assert 'pending' == 'requested'&#10;  &#10;  - requested&#10;  + pending">tests\test_client_advance_request_form.py:392: in test_advance_summary_reflects_saved_request_with_project_value_unchanged
+    assert row["status"] == "requested"
+E   AssertionError: assert 'pending' == 'requested'
+E     
+E     - requested
+E     + pending</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,200 @@
+
+/* NakshaTech Pilot Requests - Compact List */
+
+.naksha-pilot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.naksha-pilot-row {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 1fr)
+    minmax(160px, 2fr)
+    minmax(115px, 1fr)
+    auto;
+  align-items: center;
+  gap: 16px;
+  padding: 15px;
+  border: 1px solid #dce6f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.naksha-pilot-client,
+.naksha-pilot-project {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.naksha-pilot-client strong,
+.naksha-pilot-project strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.naksha-pilot-client span,
+.naksha-pilot-project span {
+  font-size: 12px;
+  color: #62758b;
+  overflow-wrap: anywhere;
+}
+
+.naksha-pilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.naksha-status-pending,
+.naksha-status-created {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.naksha-status-pending {
+  color: #9a5c13;
+  background: #fff2dc;
+}
+
+.naksha-status-created {
+  color: #17633b;
+  background: #e6f5eb;
+}
+
+/* Centered Details Modal */
+
+.naksha-pilot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(12, 28, 45, 0.62);
+  box-sizing: border-box;
+}
+
+.naksha-pilot-modal {
+  border: 0;
+  padding: 0;
+  box-sizing: border-box;
+  width: min(680px, 100%);
+  max-height: min(90vh, 900px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.naksha-pilot-modal::backdrop {
+  background: rgba(12, 28, 45, 0.62);
+}
+
+.naksha-pilot-modal-header,
+.naksha-pilot-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px;
+  flex-shrink: 0;
+}
+
+.naksha-pilot-modal-header {
+  border-bottom: 1px solid #e5edf5;
+}
+
+.naksha-pilot-modal-header h2 {
+  margin: 5px 0;
+  font-size: 21px;
+  color: #173d5c;
+}
+
+.naksha-pilot-modal-header p {
+  margin: 0;
+  color: #688098;
+  font-size: 12px;
+}
+
+.naksha-pilot-modal-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 22px;
+  overscroll-behavior: contain;
+}
+
+.naksha-pilot-section {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.naksha-pilot-section h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: #173d5c;
+}
+
+.naksha-detail-field {
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.naksha-detail-field strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #607891;
+  margin-bottom: 6px;
+}
+
+.naksha-detail-field p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #213e56;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.naksha-long-description {
+  padding: 13px;
+  border: 1px solid #e0e8f1;
+  border-radius: 9px;
+  background: #f7f9fc;
+}
+
+.naksha-pilot-modal-footer {
+  border-top: 1px solid #e5edf5;
+  justify-content: flex-end;
+}
+
+@media (max-width: 850px) {
+  .naksha-pilot-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .naksha-pilot-actions {
+    justify-content: flex-start;
+  }
+
+  .naksha-pilot-modal {
+    max-height: 94vh;
+  }
+}

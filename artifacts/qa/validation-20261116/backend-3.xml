@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="4" failures="44" skipped="2" tests="169" time="1451.225" timestamp="2026-11-16T11:22:28.602979+05:30" hostname="DESKTOP-SO31FT741"><testcase classname="tests.test_advance_payment_notifications_phase4" name="test_duplicate_refresh_is_idempotent_same_day" time="7.120" /><testcase classname="tests.test_advance_payment_notifications_phase4" name="test_refresh_notifications_api_enforces_permissions" time="6.805" /><testcase classname="tests.test_allocation_member_validation_v8_4" name="test_forged_assignment_to_non_project_member_is_rejected" time="7.933"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_allocation_member_validation_v8_4.py:125: in test_forged_assignment_to_non_project_member_is_rejected
+    ctx, pkg, items = _area(db, "MV-2")
+                      ^^^^^^^^^^^^^^^^^
+tests\test_allocation_member_validation_v8_4.py:46: in _area
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_allocation_member_validation_v8_4" name="test_unstarted_file_can_be_explicitly_reassigned" time="7.424"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_allocation_member_validation_v8_4.py:171: in test_unstarted_file_can_be_explicitly_reassigned
+    ctx, pkg, items = _area(db, "MV-6")
+                      ^^^^^^^^^^^^^^^^^
+tests\test_allocation_member_validation_v8_4.py:46: in _area
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_asset_inventory_lifecycle_integrity" name="test_authoritative_device_and_lifecycle_counts_reconcile" time="8.401" /><testcase classname="tests.test_asset_report_validation" name="test_report_period_errors_are_client_errors_instead_of_server_errors[/api/reports/monthly-assets.xlsx?month=not-a-month]" time="8.445" /><testcase classname="tests.test_asset_report_validation" name="test_report_period_errors_are_client_errors_instead_of_server_errors[/api/reports/complete-monthly.xlsx?month=not-a-month]" time="8.318" /><testcase classname="tests.test_bad_debt_dual_approval_v8_5" name="test_both_approvals_apply_the_write_off_exactly_once" time="7.495" /><testcase classname="tests.test_bad_debt_dual_approval_v8_5" name="test_payment_during_approval_blocks_final_approval_without_negative_outstanding" time="7.191" /><testcase classname="tests.test_bad_debt_lifecycle_v8_1" name="test_bad_debt_requires_overdue_invoice_and_management_decision" time="7.515" /><testcase classname="tests.test_bad_debt_lifecycle_v8_1" name="test_duplicate_bad_debt_proposal_is_blocked_until_management_decides" time="7.085" /><testcase classname="tests.test_bad_debt_lifecycle_v8_1" name="test_bad_debt_endpoints_are_denied_to_operational_roles_and_cross_roles" time="11.006" /><testcase classname="tests.test_batch4_custody_endpoint_boundary" name="test_live_custody_rejects_non_laptop_desktop_asset" time="7.370" /><testcase classname="tests.test_bd_finance_pm_notifications_v7_0_14" name="test_all_active_finance_users_receive_bd_dashboard_notification" time="8.653" /><testcase classname="tests.test_bd_manual_feedback_action_center" name="test_manual_feedback_requires_bd_owner_and_feedback_stage" time="9.590" /><testcase classname="tests.test_bd_ortho_manager_login_v7_0_7" name="test_v707_operations_test_seed_is_rejected_in_production" time="12.071" /><testcase classname="tests.test_bd_ortho_v7" name="test_assigned_employees_update_only_their_responsibility_and_pm_can_override_all" time="8.440" /><testcase classname="tests.test_bd_ortho_v7" name="test_final_delivery_blocked_until_every_package_is_qa_approved" time="9.026" /><testcase classname="tests.test_bd_ortho_v7" name="test_v713_project_team_setup_saves_four_roles_and_fills_only_unassigned_package_owners" time="11.223" /><testcase classname="tests.test_business_history_permissions" name="test_business_history_is_scoped_to_authorized_roles_or_assigned_pm[hr-False-403]" time="8.620" /><testcase classname="tests.test_business_history_permissions" name="test_business_history_is_scoped_to_authorized_roles_or_assigned_pm[management-False-200]" time="9.118" /><testcase classname="tests.test_client_advance_api_phase2" name="test_advance_summary_and_pipeline_use_isolated_inr_totals" time="11.298" /><testcase classname="tests.test_client_advance_api_phase2" name="test_advance_api_permissions_and_pm_redaction" time="8.584" /><testcase classname="tests.test_client_advance_request_form" name="test_schema_rejects_percent_above_100" time="10.681" /><testcase classname="tests.test_client_advance_request_form" name="test_schema_legacy_payload_without_advance_stays_null" time="9.852" /><testcase classname="tests.test_client_advance_request_form" name="test_upsert_update_path_persists_advance_fields_and_repopulates" time="9.114" /><testcase classname="tests.test_client_advance_request_form" name="test_create_estimate_revision_persists_advance_fields" time="12.262" /><testcase classname="tests.test_client_advance_schema_phase1" name="test_commercial_revision_compatibility_is_additive_and_idempotent" time="10.049" /><testcase classname="tests.test_client_advance_settlement_phase5" name="test_apply_advance_guards_and_role_permissions" time="7.820" /><testcase classname="tests.test_client_project_master_v6" name="test_v6_project_status_and_assignment_update_are_soft_and_auditable_friendly" time="8.347" /><testcase classname="tests.test_commercial_cost_layer_v8_1" name="test_legacy_project_without_commercial_records_is_not_blocked_by_commercial_guard" time="9.314" /><testcase classname="tests.test_commercial_workflow_alignment_v8_1" name="test_retrying_create_or_save_never_creates_a_second_revision1" time="9.348" /><testcase classname="tests.test_commercial_workflow_alignment_v8_1" name="test_change_after_approval_creates_revision2_and_never_overwrites_revision1" time="7.182"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_commercial_workflow_alignment_v8_1.py:333: in test_change_after_approval_creates_revision2_and_never_overwrites_revision1
+    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback=None))
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_commercial_workflow_alignment_v8_1" name="test_pm_cannot_edit_commercial_terms_or_read_profitability_and_finance_data" time="7.671" /><testcase classname="tests.test_commercial_workflow_alignment_v8_1" name="test_milestone_recommendation_follows_the_pm_confirmed_milestone" time="9.165" /><testcase classname="tests.test_commercial_workflow_alignment_v8_1" name="test_http_create_project_with_revision1_is_atomic_and_maps_fx_outage_to_503" time="8.258" /><testcase classname="tests.test_department_isolation" name="test_technical_pm_scoped_to_own_department" time="7.419"><error message="failed on setup with &quot;PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access&quot;">tests\test_department_isolation.py:174: in environment
+    projects[department] = _approved_project(db, bd=bd, finance=finance, code=f"ISO-{department.upper()}", department_code=department)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_department_isolation.py:147: in _approved_project
+    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="ok"))
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</error></testcase><testcase classname="tests.test_employee_master_registration" name="test_eligible_employee_registers_with_master_identity[False]" time="14.584" /><testcase classname="tests.test_employee_master_registration" name="test_unknown_email_is_blocked" time="13.266" /><testcase classname="tests.test_employee_password_regression" name="test_forgot_password_old_fails_new_succeeds_and_identity_intact" time="14.309" /><testcase classname="tests.test_end_to_end" name="test_exact_company_excel_and_dashboard_exports" time="22.761" /><testcase classname="tests.test_end_to_end" name="test_purchase_permission_approval_conversion_and_excel" time="13.731"><failure message="AssertionError: ('approval.purchase_request.submitted', 'ITPR-20261116112916-38FF2FB3', [])&#10;assert 0 == 1&#10; +  where 0 = len([])">tests\test_end_to_end.py:679: in test_purchase_permission_approval_conversion_and_excel
+    _approval_notification(
+tests\test_end_to_end.py:233: in _approval_notification
+    assert len(matches) == 1, (event_type, record_code, response.json())
+E   AssertionError: ('approval.purchase_request.submitted', 'ITPR-20261116112916-38FF2FB3', [])
+E   assert 0 == 1
+E    +  where 0 = len([])</failure></testcase><testcase classname="tests.test_end_to_end" name="test_component_change_updates_live_register_and_separate_history_excel" time="21.647" /><testcase classname="tests.test_end_to_end" name="test_drone_workbook_preview_preserves_all_source_structures" time="19.388" /><testcase classname="tests.test_end_to_end" name="test_local_backup_agent_health_and_role_workbooks" time="20.712" /><testcase classname="tests.test_end_to_end" name="test_complete_monthly_and_yearly_excel_reporting" time="25.850" /><testcase classname="tests.test_end_to_end" name="test_batch3b1_asset_register_direct_assignment_and_transfer_clarity" time="14.648" /><testcase classname="tests.test_finance_bad_debt_revenue" name="test_fully_written_off_closed_invoice_has_zero_revenue" time="7.284" /><testcase classname="tests.test_finance_bad_debt_revenue" name="test_finance_project_closure_finalizes_resolved_invoice_after_existing_gates" time="7.579" /><testcase classname="tests.test_finance_client_management_v5" name="test_manual_client_and_project_ids_are_normalized_and_preserved" time="11.221" /><testcase classname="tests.test_finance_expense_claims" name="test_additional_advance_requires_original_released_advance_link" time="8.951" /><testcase classname="tests.test_finance_kpi_reconciliation" name="test_multiple_payments_on_one_invoice_reconcile" time="8.407" /><testcase classname="tests.test_finance_kpi_reconciliation" name="test_multi_department_scope_filters_kpi_summary" time="11.022" /><testcase classname="tests.test_finance_reporting_v2" name="test_partial_payments_preserve_approved_requested_and_payment_ledger" time="7.005" /><testcase classname="tests.test_finance_sales_revenue" name="test_partial_payment_remains_sales_and_not_revenue" time="6.909" /><testcase classname="tests.test_finance_settlement_v3" name="test_advance_settlement_tallies_and_finance_finalizes" time="6.964" /><testcase classname="tests.test_finance_visibility_filtering" name="test_missing_hidden_table_is_a_noop_filter" time="10.096" /><testcase classname="tests.test_global_notification_foundation" name="test_role_fanout_dedupe_and_private_read_state" time="7.521"><failure message="assert 0 == 1&#10; +  where 0 = len([])&#10; +    where [] = json()&#10; +      where json = &lt;Response [200 OK]&gt;.json">tests\test_global_notification_foundation.py:153: in test_role_fanout_dedupe_and_private_read_state
+    assert len(listed.json()) == 1
+E   assert 0 == 1
+E    +  where 0 = len([])
+E    +    where [] = json()
+E    +      where json = &lt;Response [200 OK]&gt;.json</failure></testcase><testcase classname="tests.test_hardening_v7_0_23" name="test_phase9_notification_view_never_exposes_message_body" time="7.640" /><testcase classname="tests.test_hrms_web_attendance" name="test_attendance_and_leave_and_hr_permissions" time="6.789" /><testcase classname="tests.test_invoice_company_address" name="test_configured_address_takes_precedence_over_legal_default[  Configured Company Address  ]" time="0.001" /><testcase classname="tests.test_invoice_company_address" name="test_snapshot_without_address_key_uses_configured_address" time="0.001" /><testcase classname="tests.test_invoice_company_address" name="test_legal_address_prints_below_company_name_in_all_three_headers[green_gold_premium]" time="0.262" /><testcase classname="tests.test_invoice_document_generation" name="test_invoice_document_endpoints_enforce_roles_and_only_add_audit_events" time="17.144" /><testcase classname="tests.test_invoice_generation_v2" name="test_line_item_sum_must_equal_taxable_amount" time="7.282" /><testcase classname="tests.test_invoice_generation_v2" name="test_manual_mode_billing_snapshot_override_is_captured" time="9.736" /><testcase classname="tests.test_invoice_generation_v2" name="test_repeated_document_generation_creates_no_duplicate_invoice_or_line_items" time="8.907" /><testcase classname="tests.test_invoice_layout_pagination" name="test_standalone_single_item_invoice_stays_on_one_a4_page" time="0.426" /><testcase classname="tests.test_invoice_layout_pagination" name="test_printable_document_never_prints_erp_settlement_data" time="0.220" /><testcase classname="tests.test_invoice_payment_status" name="test_no_payment_keeps_payment_pending" time="7.548" /><testcase classname="tests.test_invoice_reference_themes" name="test_long_invoice_repeats_context_and_table_and_finishes_with_totals[blue_topographic]" time="1.252" /><testcase classname="tests.test_invoice_reference_themes" name="test_long_dynamic_fields_and_literal_markup_survive[blue_classic]" time="0.086" /><testcase classname="tests.test_invoice_reference_themes" name="test_oversized_description_splits_without_losing_content[blue_classic]" time="0.172" /><testcase classname="tests.test_invoice_template_edit_isolation" name="test_standalone_edit_reuses_existing_tax_validation_and_does_not_touch_project_ledgers" time="13.645" /><testcase classname="tests.test_invoice_three_templates" name="test_template_pdf_preserves_all_existing_invoice_fields[modern_teal-True]" time="7.356" /><testcase classname="tests.test_invoice_three_templates" name="test_unknown_template_rejected_without_modifying_data" time="6.982" /><testcase classname="tests.test_it_work_role_permissions" name="test_it_work_edit_preserves_admin_equivalent_permissions[management-False]" time="8.156" /><testcase classname="tests.test_item_daily_activity_flow_v8_3" name="test_cross_midnight_duration" time="7.348"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_item_daily_activity_flow_v8_3.py:130: in test_cross_midnight_duration
+    ctx, package, items = _prepare(db, "DA4")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_item_daily_activity_flow_v8_3.py:50: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_item_daily_activity_flow_v8_3" name="test_qc_to_qa_gate" time="9.561"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_item_daily_activity_flow_v8_3.py:187: in test_qc_to_qa_gate
+    ctx, package, items = _prepare(db, "DA8")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_item_daily_activity_flow_v8_3.py:50: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_item_daily_activity_flow_v8_3" name="test_delivery_gate_and_no_auto_finance" time="7.628"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_item_daily_activity_flow_v8_3.py:250: in test_delivery_gate_and_no_auto_finance
+    ctx, package, items = _prepare(db, "DA12")
+                          ^^^^^^^^^^^^^^^^^^^^
+tests\test_item_daily_activity_flow_v8_3.py:50: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_item_multi_session_production_v8_3" name="test_partial_save_does_not_complete_file_or_unlock_qc" time="6.451"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_item_multi_session_production_v8_3.py:75: in test_partial_save_does_not_complete_file_or_unlock_qc
+    ctx, package, items = _prepare(db, "MS1")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_item_multi_session_production_v8_3.py:45: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_item_multi_session_production_v8_3" name="test_qc_reject_allows_production_rework_without_double_counting_file" time="7.845"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_item_multi_session_production_v8_3.py:160: in test_qc_reject_allows_production_rework_without_double_counting_file
+    ctx, package, items = _prepare(db, "MS12")
+                          ^^^^^^^^^^^^^^^^^^^^
+tests\test_item_multi_session_production_v8_3.py:45: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_item_multi_session_production_v8_3" name="test_multi_employee_activity_attributed_to_exact_employee" time="10.084"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_item_multi_session_production_v8_3.py:234: in test_multi_employee_activity_attributed_to_exact_employee
+    ctx, package, items = _prepare(db, "MS8")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_item_multi_session_production_v8_3.py:45: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_management_authentication" name="test_pending_authenticator_setup_retry_keeps_same_qr_secret" time="11.496" /><testcase classname="tests.test_module_route_contracts" name="test_all_bearer_protected_operations_reject_missing_and_invalid_tokens" time="16.513" /><testcase classname="tests.test_multi_department_workflow_v8_1" name="test_ortho_employee_team_assignment_and_team_lead_allocation_unchanged" time="7.165"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_multi_department_workflow_v8_1.py:140: in test_ortho_employee_team_assignment_and_team_lead_allocation_unchanged
+    project, workflow = approved_project(db, bd=bd, finance=finance, code="MD-A3", department_code="ortho")
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_multi_department_workflow_v8_1.py:109: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="ok"))
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_multi_department_workflow_v8_1" name="test_lidar_team_employees_returned_wrong_department_employee_rejected" time="7.387" /><testcase classname="tests.test_multi_department_workflow_v8_1" name="test_department_isolation_smoke[laser_scanning-mdd]" time="8.884"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_multi_department_workflow_v8_1.py:264: in test_department_isolation_smoke
+    project, workflow = approved_project(db, bd=bd, finance=finance, code=f"MD-{tag.upper()}", department_code=department_code)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_multi_department_workflow_v8_1.py:109: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="ok"))
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_multi_department_workflow_v8_1" name="test_wrong_project_role_allocation_is_rejected" time="9.149"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_multi_department_workflow_v8_1.py:323: in test_wrong_project_role_allocation_is_rejected
+    project, workflow = approved_project(db, bd=bd, finance=finance, code="MD-F3", department_code="laser_scanning")
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_multi_department_workflow_v8_1.py:109: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="ok"))
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_multi_department_workflow_v8_1" name="test_multi_department_seed_functions_are_idempotent" time="6.932"><skipped type="pytest.skip" message="Multi-department test account seeding is not enabled in this environment">E:\nakshatech-erp-shreeyansh1\backend\tests\test_multi_department_workflow_v8_1.py:390: Multi-department test account seeding is not enabled in this environment</skipped></testcase><testcase classname="tests.test_new_joiner_onboarding" name="test_normal_employee_cannot_create_onboarding_request_http" time="12.171" /><testcase classname="tests.test_new_joiner_onboarding" name="test_personal_email_notification_has_official_email_and_no_password" time="9.066" /><testcase classname="tests.test_notification_popup_experience" name="test_notification_stays_pending_after_read" time="7.235"><failure message="AssertionError: still awaiting a business decision&#10;assert 0 == 1">tests\test_notification_popup_experience.py:179: in test_notification_stays_pending_after_read
+    assert pending["pending_count"] == 1, "still awaiting a business decision"
+E   AssertionError: still awaiting a business decision
+E   assert 0 == 1</failure></testcase><testcase classname="tests.test_notification_popup_experience" name="test_dedupe_prevents_duplicate_notification_rows" time="7.679" /><testcase classname="tests.test_notification_popup_experience" name="test_other_users_notification_is_not_enumerable" time="10.454" /><testcase classname="tests.test_notification_popup_experience" name="test_authorized_management_can_update_reminder_interval" time="8.475" /><testcase classname="tests.test_notification_popup_experience" name="test_settings_payload_shape" time="7.556" /><testcase classname="tests.test_notification_popup_experience" name="test_popup_api_redacts_amount_for_pm" time="10.681" /><testcase classname="tests.test_notification_recipient_isolation" name="test_reopened_ticket_is_actionable_and_routed_to_the_ticket" time="7.368" /><testcase classname="tests.test_notification_recipient_isolation" name="test_information_only_notification_is_not_pending_action" time="6.421" /><testcase classname="tests.test_notification_recipient_isolation" name="test_settings_endpoint_denies_write_for_every_unauthorized_role" time="8.217" /><testcase classname="tests.test_obsolete_sample_workflow_retirement" name="test_historical_sample_notifications_are_resolved_idempotently_and_preserved" time="12.289" /><testcase classname="tests.test_ortho_item_visibility_v8_3" name="test_production_employee_sees_package_when_assigned_to_one_item" time="8.195"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_ortho_item_visibility_v8_3.py:108: in test_production_employee_sees_package_when_assigned_to_one_item
+    ctx, package, items = _prepare(db, "OV4")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_ortho_item_visibility_v8_3.py:49: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_ortho_item_visibility_v8_3" name="test_pm_still_sees_all_project_packages" time="7.422"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_ortho_item_visibility_v8_3.py:171: in test_pm_still_sees_all_project_packages
+    ctx, package, items = _prepare(db, "OV8")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_ortho_item_visibility_v8_3.py:49: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_ortho_item_visibility_v8_3" name="test_project_operations_and_production_tracking_agree" time="6.952"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_ortho_item_visibility_v8_3.py:214: in test_project_operations_and_production_tracking_agree
+    ctx, package, items = _prepare(db, "OV12")
+                          ^^^^^^^^^^^^^^^^^^^^
+tests\test_ortho_item_visibility_v8_3.py:49: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_payables_workflow" name="test_payables_requires_both_approvals_and_reconciles_partial_payment" time="8.289" /><testcase classname="tests.test_physical_file_workflow_v8_4" name="test_d_reduction_never_deletes_history" time="10.157"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_physical_file_workflow_v8_4.py:158: in test_d_reduction_never_deletes_history
+    ctx, pkg, items = _setup(db, "PF-D", n=30)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_physical_file_workflow_v8_4" name="test_h_employee_sees_only_own_files" time="7.382"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_physical_file_workflow_v8_4.py:231: in test_h_employee_sees_only_own_files
+    ctx, pkg, items = _setup(db, "PF-H", n=6)
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_physical_file_workflow_v8_4" name="test_l_qc_ready_per_file_before_siblings_complete" time="7.238"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_physical_file_workflow_v8_4.py:287: in test_l_qc_ready_per_file_before_siblings_complete
+    ctx, pkg, items = _setup(db, "PF-L", n=3)
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_physical_file_workflow_v8_4" name="test_w_x_delivery_requires_qa_pass_then_is_explicit" time="8.637"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_physical_file_workflow_v8_4.py:391: in test_w_x_delivery_requires_qa_pass_then_is_explicit
+    ctx, pkg, items = _setup(db, "PF-W", n=1)
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_physical_file_workflow_v8_4" name="test_ac_report_no_of_files_matches_physical_count" time="8.028"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_physical_file_workflow_v8_4.py:480: in test_ac_report_no_of_files_matches_physical_count
+    ctx, pkg, items = _setup(db, "PF-AC", n=3)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_e2e_final_v8_3" name="test_full_file_level_e2e_and_read_model_consistency" time="8.105"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_e2e_final_v8_3.py:88: in test_full_file_level_e2e_and_read_model_consistency
+    ctx, package, items = _prepare(db, "E2E")
+                          ^^^^^^^^^^^^^^^^^^^
+tests\test_production_e2e_final_v8_3.py:52: in _prepare
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_area_without_files_still_works" time="7.032"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:152: in test_area_without_files_still_works
+    ctx = make_area(db, code="NOFILE")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_duplicate_file_numbers_rejected" time="10.237"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:197: in test_duplicate_file_numbers_rejected
+    ctx = make_area(db, code="DUP")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_unauthorized_employee_cannot_update_file" time="7.467"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:279: in test_unauthorized_employee_cannot_update_file
+    ctx = make_area(db, code="UNAUTH")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_overnight_session_duration" time="7.614"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:372: in test_overnight_session_duration
+    ctx = make_area(db, code="NIGHT")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_deadline_states_on_target_buffer_overdue" time="9.097"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:468: in test_deadline_states_on_target_buffer_overdue
+    ctx = make_area(db, code="DL")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_qc_reject_preserves_history_then_pass" time="7.149"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:574: in test_qc_reject_preserves_history_then_pass
+    ctx = make_area(db, code="QCR")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_file_tracking_v8_2" name="test_workbook_exact_project_and_sheet_names" time="7.934"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_file_tracking_v8_2.py:683: in test_workbook_exact_project_and_sheet_names
+    ctx_a = make_area(db, code="WBA")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:131: in make_area
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_integrity" name="test_missing_plan_is_blocked_before_assignment_and_can_be_corrected" time="7.333"><error message="failed on setup with &quot;PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access&quot;">tests\test_production_integrity.py:21: in production_case
+    ctx = setup_project(db, "INTEGRITY")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</error></testcase><testcase classname="tests.test_production_integrity" name="test_invalid_progress_keeps_session_open[quantity3-km-quantity]" time="10.201"><error message="failed on setup with &quot;PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access&quot;">tests\test_production_integrity.py:21: in production_case
+    ctx = setup_project(db, "INTEGRITY")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</error></testcase><testcase classname="tests.test_production_integrity" name="test_small_distance_conversion_survives_database_reload" time="7.282"><error message="failed on setup with &quot;PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access&quot;">tests\test_production_integrity.py:21: in production_case
+    ctx = setup_project(db, "INTEGRITY")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</error></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_exact_sample_commit_creates_areas_and_files" time="7.483"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:152: in test_exact_sample_commit_creates_areas_and_files
+    ctx = setup_project(db, "MX2")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_field_validation_errors" time="9.341"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:201: in test_field_validation_errors
+    ctx = setup_project(db, "MX6")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_reimport_preserves_work_history" time="7.986"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:247: in test_reimport_preserves_work_history
+    ctx = setup_project(db, "MX10")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_assign_sets_targets_supply_and_assignees" time="7.354"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:311: in test_assign_sets_targets_supply_and_assignees
+    ctx = setup_project(db, "AL3")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_production_complete_auto_files_and_actual_km" time="9.065"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:395: in test_production_complete_auto_files_and_actual_km
+    ctx = setup_project(db, "WF1")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_qa_reject_history" time="8.814"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:477: in test_qa_reject_history
+    ctx = setup_project(db, "WF5")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_no_file_package_legacy_readiness" time="7.167"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:553: in test_no_file_package_legacy_readiness
+    ctx = setup_project(db, "RD4")
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_master_excel_allocation_v8_3" name="test_file_activity_targets_and_deadlines" time="7.874"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_master_excel_allocation_v8_3.py:656: in test_file_activity_targets_and_deadlines
+    ctx, package, items = _prepare_area(db, "RP2")
+                          ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:496: in _prepare_area
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_production_schema_upgrade" name="test_old_schema_upgrades_idempotently_and_preserves_records[sqlite]" time="9.818" /><testcase classname="tests.test_production_schema_upgrade" name="test_upgrade_detects_wrong_existing_column_type[sqlite]" time="7.572" /><testcase classname="tests.test_production_schema_upgrade" name="test_concurrent_session_requests_have_one_winner[sqlite-start]" time="7.194"><skipped type="pytest.skip" message="Real row-lock concurrency requires PostgreSQL">E:\nakshatech-erp-shreeyansh1\backend\tests\test_production_schema_upgrade.py:97: Real row-lock concurrency requires PostgreSQL</skipped></testcase><testcase classname="tests.test_production_tracking_v8_1" name="test_ortho_and_default_departments_keep_universal_four_stage_workflow" time="9.775" /><testcase classname="tests.test_production_tracking_v8_1" name="test_unknown_legacy_units_remain_opaque_but_usable" time="9.767" /><testcase classname="tests.test_production_tracking_v8_1" name="test_project_weighted_progress_uses_quantity_not_naive_average" time="7.364" /><testcase classname="tests.test_production_tracking_v8_1" name="test_team_lead_can_hold_production_and_qc_roles_simultaneously" time="7.789"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_production_tracking_v8_1.py:284: in test_team_lead_can_hold_production_and_qc_roles_simultaneously
+    _bd, _fin, pm, project, _wf = approved_project(db, code="MULTIROLE", department_code="lidar", department_label="LiDAR")
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_tracking_v8_1.py:107: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", comments="Approved"))
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_project_activation_v6_1_6" name="test_v6_1_6_runtime_patch_route_activates_project" time="7.413" /><testcase classname="tests.test_project_completion_v7_0_19" name="test_department_cannot_complete_until_outgoing_handover_is_accepted" time="7.330" /><testcase classname="tests.test_project_completion_v7_0_19" name="test_finance_closure_requires_billing_start_and_notifies_bd_when_closed" time="10.219" /><testcase classname="tests.test_project_data_handovers_v7_0_17" name="test_receiver_can_request_correction_and_sender_resubmits_new_attempt" time="6.408" /><testcase classname="tests.test_project_monitoring_v7_0_18" name="test_only_reserved_demo_department_pm_can_report_own_progress_during_uat" time="8.011" /><testcase classname="tests.test_project_scope_allocation_v8_6" name="test_file_number_is_unique_only_within_its_area" time="10.063"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_project_scope_allocation_v8_6.py:97: in test_file_number_is_unique_only_within_its_area
+    ctx, items = _two_areas(db, "PS-3")
+                 ^^^^^^^^^^^^^^^^^^^^^^
+tests\test_project_scope_allocation_v8_6.py:26: in _two_areas
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_project_tracking_sales_workflow" name="test_summary_reconciles_with_register_rows" time="7.432" /><testcase classname="tests.test_project_tracking_sales_workflow" name="test_dashboard_http_contract_and_cache_headers" time="7.787" /><testcase classname="tests.test_project_tracking_sales_workflow" name="test_excel_export_contains_register_rows_and_is_formula_safe" time="8.331" /><testcase classname="tests.test_project_workstreams_v7_0_15" name="test_department_dashboard_is_scoped_to_assigned_department_pm_and_status_is_pm_owned" time="8.058" /><testcase classname="tests.test_purchase_approval_email_channel" name="test_email_send_back_requires_remarks_and_resubmission_rotates_token" time="8.188" /><testcase classname="tests.test_ready_delivery_ux_v8_4" name="test_ready_succeeds_once_and_repeat_is_idempotent_without_duplicate_notifications" time="7.058"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_ready_delivery_ux_v8_4.py:60: in test_ready_succeeds_once_and_repeat_is_idempotent_without_duplicate_notifications
+    ctx, pkg, items = _setup(db, "RD-1", n=2)
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_ready_delivery_ux_v8_4" name="test_deliver_blocked_when_a_file_has_not_passed_qa" time="10.141"><failure message="PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access">tests\test_ready_delivery_ux_v8_4.py:157: in test_deliver_blocked_when_a_file_has_not_passed_qa
+    ctx, pkg, items = _setup(db, "RD-5", n=2)
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_physical_file_workflow_v8_4.py:65: in _setup
+    ctx = setup_project(db, code)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_master_excel_allocation_v8_3.py:67: in setup_project
+    bd, finance, pm, project, workflow = approved_project(db, code=code)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_production_file_tracking_v8_2.py:108: in approved_project
+    finance_review_project(db, actor=finance, project_id=project.id,
+app\modules\operations\workflow_service.py:715: in finance_review_project
+    raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
+E   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access</failure></testcase><testcase classname="tests.test_rental_asset_return_integration_guards" name="test_vendor_return_route_blocks_open_procurement_replacement" time="6.430" /><testcase classname="tests.test_rental_asset_vendor_return" name="test_retained_spare_monitor_is_consumed_by_existing_component_change_atomically" time="6.839" /><testcase classname="tests.test_reporting_error_boundaries" name="test_report_errors_keep_expected_status_and_hide_internal_details[error0-403-powerbi/departments.csv-powerbi_semantic_payload]" time="8.776" /><testcase classname="tests.test_reporting_error_boundaries" name="test_report_errors_keep_expected_status_and_hide_internal_details[error1-422-powerbi/departments.csv-powerbi_semantic_payload]" time="8.520" /><testcase classname="tests.test_reporting_error_boundaries" name="test_report_errors_keep_expected_status_and_hide_internal_details[error2-404-powerbi/departments.csv-powerbi_semantic_payload]" time="7.295" /><testcase classname="tests.test_reporting_error_boundaries" name="test_report_errors_keep_expected_status_and_hide_internal_details[error3-500-powerbi/departments.csv-powerbi_semantic_payload]" time="7.079" /><testcase classname="tests.test_sample_requests_v7_0_16" name="test_retired_sample_request_emits_no_technical_notifications" time="10.144" /><testcase classname="tests.test_standalone_invoice_generation" name="test_cgst_sgst_split_and_validation_rejects_inconsistent_inputs" time="7.263" /><testcase classname="tests.test_technical_routing_v7_0_21" name="test_phase7_install_default_is_safe_demo_locked_and_activation_requires_all_six_departments" time="7.041" /><testcase classname="tests.test_technical_routing_v7_0_21" name="test_phase7_real_pm_owns_handover_progress_and_completion_after_activation" time="6.543" /><testcase classname="tests.test_technical_team_directory_v7_0_20" name="test_demo_account_cannot_be_added_to_real_directory" time="8.440" /><testcase classname="tests.test_technical_team_directory_v7_0_20" name="test_management_and_bd_are_read_only_dashboard_viewers" time="5.338" /><testcase classname="tests.test_ticket_description_validation" name="test_ticket_description_requires_ten_characters" time="4.654" /><testcase classname="tests.test_ticket_global_notifications" name="test_ticket_reply_and_resolution_notifications_are_user_scoped" time="5.094" /><testcase classname="tests.test_ticket_sla" name="test_sla_snapshot_on_track_warning_met_and_breached" time="3.877" /><testcase classname="tests.test_travel_km_email_notifications" name="test_submission_email_console_mode_is_audited_without_blocking_claim" time="4.680" /><testcase classname="tests.test_travel_km_smart_verification" name="test_smart_verification_flags_large_odometer_route_variance_without_auto_rejecting" time="3.717" /><testcase classname="tests.test_uat_2026_plan" name="test_default_plan_is_deterministic_and_full_year" time="5.049" /><testcase classname="tests.test_uat_client_advance_e2e" name="test_uat_client_advance_request_save_draft_reload_submit_and_read_side" time="5.276"><failure message="AssertionError: assert 'finance_approved' == 'pending_finance_approval'&#10;  &#10;  - pending_finance_approval&#10;  + finance_approved">tests\test_uat_client_advance_e2e.py:169: in test_uat_client_advance_request_save_draft_reload_submit_and_read_side
+    assert workflow.status == "pending_finance_approval"
+E   AssertionError: assert 'finance_approved' == 'pending_finance_approval'
+E     
+E     - pending_finance_approval
+E     + finance_approved</failure></testcase></testsuite></testsuites>
