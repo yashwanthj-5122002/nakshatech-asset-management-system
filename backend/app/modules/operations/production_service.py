@@ -365,9 +365,23 @@ def employee_work_history(db: Session, *, actor: User, project_id: int | None = 
             "at": at.isoformat() if at else None, "stage": a.stage,
             "work": item.item_number if item else (package.package_code if package else "Work file"),
             "package": package.package_code if package else None,
-            "quantity": float(a.quantity_completed) if a.quantity_completed is not None else None,
-            "unit": a.unit or (item.planned_unit if item else None),
-            "files": int(a.files_completed or 0), "status": a.status,
+            "quantity": (
+                float(item.planned_quantity)
+                if a.stage in {"qc", "qa"} and a.ended_at is not None
+                and item is not None and item.planned_quantity is not None
+                else float(a.quantity_completed)
+                if a.quantity_completed is not None else None
+            ),
+            "unit": (
+                item.planned_unit
+                if a.stage in {"qc", "qa"} and item is not None
+                else a.unit or (item.planned_unit if item else None)
+            ),
+            "files": (
+                1 if a.stage in {"qc", "qa"} and a.ended_at is not None
+                else int(a.files_completed or 0)
+            ),
+            "status": a.status,
             "duration_seconds": a.duration_seconds, "remarks": a.remarks,
             "recorded": a.ended_at is not None,
         })

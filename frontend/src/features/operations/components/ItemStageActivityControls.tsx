@@ -130,14 +130,14 @@ export type ActivityItem = {
 export function fmtQty(
   value: number | null | undefined,
 ): string {
-  if (value === null || value === undefined) return 'Ã¢â‚¬â€'
+  if (value === null || value === undefined) return ' -'
   return String(value)
 }
 
 export function fmtDate(
   value?: string | null,
 ): string {
-  if (!value) return 'Ã¢â‚¬â€'
+  if (!value) return ' -'
   if (value.length <= 10) return value
 
   const ms = parseTimestamp(value)
@@ -168,7 +168,7 @@ export function parseTimestamp(
 export function fmtTime(
   value?: string | null,
 ): string {
-  if (!value) return 'Ã¢â‚¬â€'
+  if (!value) return ' -'
 
   const ms = parseTimestamp(value)
 
@@ -192,7 +192,7 @@ export function fmtDuration(
   seconds?: number | null,
 ): string {
   if (seconds === null || seconds === undefined) {
-    return 'Ã¢â‚¬â€'
+    return ' -'
   }
 
   const total = Math.max(0, Math.floor(seconds))
@@ -432,7 +432,7 @@ export function ItemStageActivityControls({
             body: JSON.stringify({ stage }),
           },
         ),
-      `${stageLabel(stage)} started for ${item.item_number} Ã¢â‚¬â€ the server recorded the start time.`,
+      `${stageLabel(stage)} started for ${item.item_number}  - the server recorded the start time.`,
     )
 
     if (saved) {
@@ -499,7 +499,7 @@ export function ItemStageActivityControls({
         ),
       item.production_rework_pending
         ? `${item.item_number}: Production rework completed. The corrected file is ready for QC/QA review.`
-        : `${item.item_number}: production COMPLETED Ã¢â‚¬â€ QC now ready.`,
+        : `${item.item_number}: production COMPLETED  - QC now ready.`,
     )
 
     if (saved) {
@@ -803,15 +803,15 @@ export function ItemStageActivityControls({
           Delay: {item.delay_category}
 
           {item.affected_item_number
-            ? ` Ã‚Â· ${item.affected_item_number}`
+            ? `  | ${item.affected_item_number}`
             : ''}
 
           {item.system_malfunction
-            ? ' Ã‚Â· SYSTEM MALFUNCTION'
+            ? '  | SYSTEM MALFUNCTION'
             : ''}
 
           {item.delay_reason
-            ? ` Ã‚Â· ${item.delay_reason}`
+            ? `  | ${item.delay_reason}`
             : ''}
         </div>
       )}
@@ -841,7 +841,7 @@ export function ItemStageActivityControls({
           started {fmtTime(openStartedAt)}
 
           {openStartedAt &&
-            ` Ã‚Â· elapsed ${
+            `  | elapsed ${
               fmtDuration(
                 Math.floor(
                   (
@@ -1186,7 +1186,7 @@ export function ItemStageActivityControls({
                   />
 
                   <span>
-                    System Malfunction Ã¢â‚¬â€ the
+                    System Malfunction  - the
                     system affected production
                     speed (not employee-caused)
                   </span>
@@ -1318,7 +1318,7 @@ export function ItemStageActivityControls({
             className="spin"
           />
           {' '}
-          SavingÃ¢â‚¬Â¦
+          Saving...
         </div>
       )}
     </div>
