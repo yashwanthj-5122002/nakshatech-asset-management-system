@@ -361,7 +361,7 @@ def employee_work_history(db: Session, *, actor: User, project_id: int | None = 
         package = packages.get(a.work_package_id)
         at = a.ended_at or a.started_at or a.created_at
         entries.setdefault(a.project_id, []).append({
-            "id": f"item-{a.id}", "date": at.date().isoformat() if at else None,
+            "id": f"item-{a.id}", "work_package_item_id": a.work_package_item_id, "date": at.date().isoformat() if at else None,
             "at": at.isoformat() if at else None, "stage": a.stage,
             "work": item.item_number if item else (package.package_code if package else "Work file"),
             "package": package.package_code if package else None,
@@ -381,6 +381,7 @@ def employee_work_history(db: Session, *, actor: User, project_id: int | None = 
                 1 if a.stage in {"qc", "qa"} and a.ended_at is not None
                 else int(a.files_completed or 0)
             ),
+            "attempt_type": a.attempt_type, "attempt_number": a.attempt_number,
             "status": a.status,
             "duration_seconds": a.duration_seconds, "remarks": a.remarks,
             "recorded": a.ended_at is not None,
@@ -434,7 +435,7 @@ def employee_work_history(db: Session, *, actor: User, project_id: int | None = 
             "project_id": pid, "project_code": project.project_code,
             "department_code": normalize_department_code_or_default(workflow.performing_department_code) if workflow else None,
             "work_days": len(days), "completed_files": completed_files,
-            "totals_by_unit": [{"unit": k, "quantity": round(v, 3)} for k, v in sorted(totals.items())],
+            "totals_by_unit": [{"unit": k, "quantity": round(v, 6)} for k, v in sorted(totals.items())],
             "history": history,
         })
     return {"viewer_mode": "employee", "employee_projects": result,

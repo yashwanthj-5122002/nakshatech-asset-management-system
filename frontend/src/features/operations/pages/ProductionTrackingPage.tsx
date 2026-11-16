@@ -22,6 +22,7 @@ const REPORT_TYPES = [
 
 type EmployeeEntry = {
   id: string
+  work_package_item_id?: number | null
   date: string | null
   stage: string
   work: string
@@ -29,9 +30,25 @@ type EmployeeEntry = {
   quantity: number | null
   unit: string | null
   files: number
+  attempt_type?: string | null
+  attempt_number?: number | null
   status: string
   duration_seconds: number | null
   remarks: string | null
+}
+function historyFilesDisplay(entry: EmployeeEntry) {
+  const isRework = entry.attempt_type?.toUpperCase() === 'REWORK'
+  const isCompleted = entry.status?.toLowerCase() === 'completed'
+
+  if (!isRework || !isCompleted) return entry.files
+
+  const attempt = entry.attempt_number
+
+  if (attempt == null || !Number.isInteger(attempt) || attempt < 2) {
+    return entry.files
+  }
+
+  return <span style={{ color: '#450A0A', fontWeight: 900 }}>{attempt - 1}</span>
 }
 type EmployeeProject = {
   project_id: number
@@ -80,7 +97,45 @@ function CompactEmployeeTracking({ projects, projectId, onProjectChange, refresh
   const [showProjectHistory, setShowProjectHistory] = useState(false)
   const [historyPage, setHistoryPage] = useState(0)
   const chosenProject = projects.find((p) => p.project_id === projectId) ?? projects[0]
-  const selectedActivities = allActivities.filter((entry) => entry.date?.slice(0, 10) === selectedDate)
+  const selectedActivities = useMemo(() => {
+    const byFile = new Map<string, PersonalActivity>()
+
+    for (const entry of allActivities) {
+      if (entry.date?.slice(0, 10) !== selectedDate) continue
+
+      // Legacy records without an item ID remain independent.
+      const key = entry.work_package_item_id == null
+        ? `${entry.project_code}:${entry.id}`
+        : `${entry.project_code}:${entry.work_package_item_id}:${entry.stage}`
+
+      const previous = byFile.get(key)
+
+      if (!previous) {
+        byFile.set(key, entry)
+        continue
+      }
+
+      // Prefer the latest completed attempt for this file and stage.
+      const currentCompleted = entry.status?.toLowerCase() === 'completed'
+      const previousCompleted = previous.status?.toLowerCase() === 'completed'
+
+      if (currentCompleted && !previousCompleted) {
+        byFile.set(key, entry)
+        continue
+      }
+
+      if (currentCompleted === previousCompleted) {
+        const currentAttempt = entry.attempt_number ?? 0
+        const previousAttempt = previous.attempt_number ?? 0
+
+        if (currentAttempt > previousAttempt) {
+          byFile.set(key, entry)
+        }
+      }
+    }
+
+    return [...byFile.values()]
+  }, [allActivities, selectedDate])
   const projectHistory = chosenProject?.history ?? []
   useEffect(() => {
     if (!showProjectHistory) return
@@ -169,7 +224,7 @@ function CompactEmployeeTracking({ projects, projectId, onProjectChange, refresh
         </div>
         {selectedActivities.length ? <>
           <div style={tableWrap}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640, fontSize: 12 }}><thead><tr><th style={thStyle}>Project / Dept</th><th style={thStyle}>Work file / Area</th><th style={thStyle}>Stage</th><th style={thStyle}>Quantity</th><th style={thStyle}>Files</th><th style={thStyle}>Time Taken</th><th style={thStyle}>Status</th></tr></thead><tbody>
-            {dayRecords.map((entry) => <tr key={`${entry.project_code}-${entry.id}`}><td style={tdStyle}><strong>{entry.project_code}</strong><div>{entry.department_code || '—'}</div></td><td style={tdStyle}>{entry.work}{entry.remarks ? <div style={{ color: '#64748b', fontSize: 11 }}>{entry.remarks}</div> : null}</td><td style={tdStyle}>{entry.stage}</td><td style={tdStyle}>{entry.quantity === null ? '—' : `${entry.quantity.toLocaleString('en-IN')} ${entry.unit || ''}`}</td><td style={tdStyle}>{entry.files}</td><td style={tdStyle}>{formatRecordedDuration(entry.duration_seconds)}</td><td style={tdStyle}>{entry.status.replace(/_/g, ' ')}</td></tr>)}
+            {dayRecords.map((entry) => <tr key={`${entry.project_code}-${entry.id}`}><td style={tdStyle}><strong>{entry.project_code}</strong><div>{entry.department_code || '—'}</div></td><td style={tdStyle}>{entry.work}{entry.remarks ? <div style={{ color: '#64748b', fontSize: 11 }}>{entry.remarks}</div> : null}</td><td style={tdStyle}>{entry.stage}</td><td style={tdStyle}>{entry.quantity === null ? '—' : `${entry.quantity.toLocaleString('en-IN')} ${entry.unit || ''}`}</td><td style={tdStyle}>{historyFilesDisplay(entry)}</td><td style={tdStyle}>{formatRecordedDuration(entry.duration_seconds)}</td><td style={tdStyle}>{entry.status.replace(/_/g, ' ')}</td></tr>)}
           </tbody></table></div>
           {selectedActivities.length > 5 && <button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => setShowAllDay((current) => !current)}>{showAllDay ? 'Show fewer activities' : `View all ${selectedActivities.length} activities for this date`}</button>}
         </> : <p style={{ fontSize: 13, color: '#64748b' }}>No work recorded on this date.</p>}
@@ -205,7 +260,7 @@ function CompactEmployeeTracking({ projects, projectId, onProjectChange, refresh
                 <div style={tableWrap}>
                   <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Work file / Area</th><th style={thStyle}>Stage</th><th style={thStyle}>Quantity</th><th style={thStyle}>Files</th><th style={thStyle}>Time Taken</th><th style={thStyle}>Status</th></tr></thead>
-                    <tbody>{projectHistory.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((entry) => <tr key={entry.id}><td style={tdStyle}>{entry.date || '—'}</td><td style={tdStyle}>{entry.work}{entry.remarks && <div style={{ color: '#64748b', fontSize: 11 }}>{entry.remarks}</div>}</td><td style={tdStyle}>{entry.stage}</td><td style={tdStyle}>{entry.quantity === null ? '—' : `${entry.quantity.toLocaleString('en-IN')} ${entry.unit || ''}`}</td><td style={tdStyle}>{entry.files}</td><td style={tdStyle}>{formatRecordedDuration(entry.duration_seconds)}</td><td style={tdStyle}>{entry.status.replace(/_/g, ' ')}</td></tr>)}</tbody>
+                    <tbody>{projectHistory.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((entry) => <tr key={entry.id}><td style={tdStyle}>{entry.date || '—'}</td><td style={tdStyle}>{entry.work}{entry.remarks && <div style={{ color: '#64748b', fontSize: 11 }}>{entry.remarks}</div>}</td><td style={tdStyle}>{entry.stage}</td><td style={tdStyle}>{entry.quantity === null ? '—' : `${entry.quantity.toLocaleString('en-IN')} ${entry.unit || ''}`}</td><td style={tdStyle}>{historyFilesDisplay(entry)}</td><td style={tdStyle}>{formatRecordedDuration(entry.duration_seconds)}</td><td style={tdStyle}>{entry.status.replace(/_/g, ' ')}</td></tr>)}</tbody>
                   </table>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 9, marginTop: 12 }}>
