@@ -32,6 +32,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 PYTEST_DB = Path(tempfile.gettempdir()) / f"nakshatech_pytest_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{PYTEST_DB}"
+os.environ["ENVIRONMENT"] = "development"
+os.environ["APP_ENV"] = "development"
 os.environ["JWT_SECRET"] = "pytest-suite-secret-only-change-me-32-characters"
 os.environ["EMAIL_DELIVERY_MODE"] = "console"
 os.environ["LOCAL_TEST_AUTH_BYPASS"] = "false"

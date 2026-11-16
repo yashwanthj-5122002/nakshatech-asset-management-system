@@ -1,0 +1,130 @@
+[
+  {
+    "name": "normal flow: create BD project",
+    "passed": true
+  },
+  {
+    "name": "normal flow: BD shares with Finance",
+    "passed": true
+  },
+  {
+    "name": "normal flow: handoff requires no Finance approval",
+    "passed": true
+  },
+  {
+    "name": "normal flow: assign department PM",
+    "passed": true
+  },
+  {
+    "name": "normal flow: PM configures team",
+    "passed": true
+  },
+  {
+    "name": "normal flow: import planned files",
+    "passed": true
+  },
+  {
+    "name": "normal flow: allocate production QC QA",
+    "passed": true
+  },
+  {
+    "name": "normal flow: premature delivery blocked",
+    "passed": true
+  },
+  {
+    "name": "normal flow: complete production",
+    "passed": true
+  },
+  {
+    "name": "normal flow: tracking converts item kilometres to package metres",
+    "passed": true
+  },
+  {
+    "name": "normal flow: QC passes",
+    "passed": true
+  },
+  {
+    "name": "normal flow: QA passes",
+    "passed": true
+  },
+  {
+    "name": "normal flow: ready for delivery",
+    "passed": true
+  },
+  {
+    "name": "normal flow: deliver file",
+    "passed": true
+  },
+  {
+    "name": "normal flow: delivered once without Finance closure",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: create BD project",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: BD shares with Finance",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: handoff requires no Finance approval",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: assign department PM",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: PM configures team",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: import planned files",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: allocate production QC QA",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: premature delivery blocked",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: complete production",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: tracking converts item kilometres to package metres",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: QC rejects",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: complete correction",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: QC passes",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: QA passes",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: ready for delivery",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: deliver file",
+    "passed": true
+  },
+  {
+    "name": "with QC rework: delivered once without Finance closure",
+    "passed": true
+  }
+]

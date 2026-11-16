@@ -1,0 +1,306 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Users\\NT01218\\AppData\\Local\\Programs\\NodeJS\\node-v24.22.1-win-x64\\node.exe",
+      "E:\\nakshatech-erp-shreeyansh1\\frontend\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--reporter=json"
+    ],
+    "configFile": "E:\\nakshatech-erp-shreeyansh1\\frontend\\playwright.config.ts",
+    "rootDir": "E:/nakshatech-erp-shreeyansh1/frontend/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "E:/nakshatech-erp-shreeyansh1/frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "E:/nakshatech-erp-shreeyansh1/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "testDir": "E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e",
+        "snapshotDir": "E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 60000,
+        "use": {
+          "baseURL": "http://127.0.0.1:34110",
+          "trace": "retain-on-failure",
+          "screenshot": "only-on-failure",
+          "launchOptions": {
+            "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+          }
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": ""
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.65.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "production-workflow.spec.ts",
+      "file": "production-workflow.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "production through QC, QA and delivery",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "timedOut",
+                  "duration": 60137,
+                  "error": {
+                    "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                    "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                  },
+                  "errors": [
+                    {
+                      "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                    },
+                    {
+                      "location": {
+                        "file": "E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e\\production-workflow.spec.ts",
+                        "column": 73,
+                        "line": 6
+                      },
+                      "message": "Error: locator.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Start Work', exact: true })\u001b[22m\n\n\n  4 |   test(`production through QC, QA and delivery${rework ? ' with rejected correction' : ''}`, async ({ page }) => {\n  5 |     await page.goto('/e2e/workflow.html')\n> 6 |     await page.getByRole('button', { name: 'Start Work', exact: true }).click()\n    |                                                                         ^\n  7 |     await page.getByRole('button', { name: 'Complete File', exact: true }).click()\n  8 |     await page.locator('.isa-form').getByRole('button', { name: 'Complete File', exact: true }).click()\n  9 |     await expect(page.getByLabel('Production quantity')).toHaveText('3')\n    at E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e\\production-workflow.spec.ts:6:73"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-16T05:53:19.949Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-production-through-QC-QA-and-delivery\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-production-through-QC-QA-and-delivery\\error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-production-through-QC-QA-and-delivery\\trace.zip"
+                    }
+                  ]
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "fbb664cd6e289d51d013-5941437c98aaad5fe6e3",
+          "file": "production-workflow.spec.ts",
+          "line": 4,
+          "column": 3
+        },
+        {
+          "title": "production through QC, QA and delivery with rejected correction",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "timedOut",
+                  "duration": 60103,
+                  "error": {
+                    "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                    "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                  },
+                  "errors": [
+                    {
+                      "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                    },
+                    {
+                      "location": {
+                        "file": "E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e\\production-workflow.spec.ts",
+                        "column": 73,
+                        "line": 6
+                      },
+                      "message": "Error: locator.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Start Work', exact: true })\u001b[22m\n\n\n  4 |   test(`production through QC, QA and delivery${rework ? ' with rejected correction' : ''}`, async ({ page }) => {\n  5 |     await page.goto('/e2e/workflow.html')\n> 6 |     await page.getByRole('button', { name: 'Start Work', exact: true }).click()\n    |                                                                         ^\n  7 |     await page.getByRole('button', { name: 'Complete File', exact: true }).click()\n  8 |     await page.locator('.isa-form').getByRole('button', { name: 'Complete File', exact: true }).click()\n  9 |     await expect(page.getByLabel('Production quantity')).toHaveText('3')\n    at E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e\\production-workflow.spec.ts:6:73"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-16T05:54:20.984Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-produc-ad75c-ry-with-rejected-correction\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-produc-ad75c-ry-with-rejected-correction\\error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-produc-ad75c-ry-with-rejected-correction\\trace.zip"
+                    }
+                  ]
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "fbb664cd6e289d51d013-af4939281c48b3df187c",
+          "file": "production-workflow.spec.ts",
+          "line": 4,
+          "column": 3
+        },
+        {
+          "title": "missing source plan can be corrected before allocation",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "timedOut",
+                  "duration": 60124,
+                  "error": {
+                    "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                    "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                  },
+                  "errors": [
+                    {
+                      "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                    },
+                    {
+                      "location": {
+                        "file": "E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e\\production-workflow.spec.ts",
+                        "column": 71,
+                        "line": 44
+                      },
+                      "message": "Error: locator.waitFor: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Start Work', exact: true }) to be visible\u001b[22m\n\n\n  42 | test('missing source plan can be corrected before allocation', async ({ page }) => {\n  43 |   await page.goto('/e2e/workflow.html?draft=true')\n> 44 |   await page.getByRole('button', { name: 'Start Work', exact: true }).waitFor()\n     |                                                                       ^\n  45 |   await page.getByLabel('Acting role').selectOption('tl')\n  46 |   const plan = page.getByRole('form', { name: 'Plan for file DRAFT' })\n  47 |   await plan.getByLabel('Planned quantity').fill('1250')\n    at E:\\nakshatech-erp-shreeyansh1\\frontend\\e2e\\production-workflow.spec.ts:44:71"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-16T05:55:21.825Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-missin-1d7a1-corrected-before-allocation\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-missin-1d7a1-corrected-before-allocation\\error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "E:\\nakshatech-erp-shreeyansh1\\frontend\\test-results\\production-workflow-missin-1d7a1-corrected-before-allocation\\trace.zip"
+                    }
+                  ]
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "fbb664cd6e289d51d013-a5086dcac2084ecf8b51",
+          "file": "production-workflow.spec.ts",
+          "line": 42,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-16T05:53:05.324Z",
+    "duration": 197247.804,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

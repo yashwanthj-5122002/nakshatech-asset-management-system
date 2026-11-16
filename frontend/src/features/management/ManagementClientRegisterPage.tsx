@@ -7,7 +7,7 @@ import { DepartmentChangeDialog } from '../operations/components/DepartmentChang
 import { apiFetch } from '../../lib/api'
 import '../operations/operations.css'
 import './management-project-tracking.css'
-
+import { CountrySelect } from './CountrySelect'
 type Client = {
   id: number
   client_code: string
@@ -42,6 +42,29 @@ type ClientForm = {
   work_description: string
 }
 
+function getTaxField(country: string) {
+  const labels: Record<string, { label: string; placeholder: string }> = {
+    India: { label: 'GSTIN', placeholder: 'Enter GSTIN' },
+    'United Arab Emirates': { label: 'TRN / VAT Number', placeholder: 'Enter TRN' },
+    'United Kingdom': { label: 'VAT Registration Number', placeholder: 'Enter VAT number' },
+    'United States': { label: 'EIN / Tax ID', placeholder: 'Enter applicable tax ID' },
+    Australia: { label: 'ABN', placeholder: 'Enter ABN' },
+    Canada: { label: 'GST/HST Registration Number', placeholder: 'Enter registration number' },
+    Germany: { label: 'VAT ID', placeholder: 'Enter VAT ID' },
+    France: { label: 'VAT Number', placeholder: 'Enter VAT number' },
+    Singapore: { label: 'GST Registration Number', placeholder: 'Enter registration number' },
+    'Saudi Arabia': { label: 'VAT Number', placeholder: 'Enter VAT number' },
+    Qatar: { label: 'Tax Registration Number', placeholder: 'Enter tax number' },
+    Japan: { label: 'Corporate / Tax Number', placeholder: 'Enter applicable tax number' },
+  }
+
+  return labels[country] ?? {
+    label: 'Tax Registration Number',
+    placeholder: 'Enter applicable tax registration number',
+  }
+}
+
+
 const emptyForm: ClientForm = {
   client_code: '', client_name: '', client_email: '', organization_email: '',
   address: '', country: 'India', gst_number: '', contact_person_name: '',
@@ -52,6 +75,7 @@ type AdditionalProjectRequest = {
   id: number; management_client_id: number; client_code: string; client_name: string
   source_person_name: string; project_name: string; scope_text: string
   expected_start_date: string | null; remarks: string | null
+  project_type: 'regular' | 'pilot'; pilot_payment_type: 'free' | 'paid' | null
   status: 'PENDING' | 'CREATED'; created_project_code: string | null; created_at: string
 }
 const endpoint = '/management/client-register'
@@ -69,6 +93,7 @@ type ManagementProject = {
   project_manager_name: string | null; start_date: string; end_date: string
   project_value: number | null; currency: string; tracking: TrackingSummary
   can_approve: boolean; can_revoke: boolean; can_change_department: boolean; source_approved: boolean
+  project_type: 'regular' | 'pilot'; pilot_payment_type: 'free' | 'paid' | null
 }
 type ClientTracking = {
   project_count: number; active_projects: number; completed_projects: number
@@ -250,17 +275,22 @@ export function ManagementClientRegisterPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [form, setForm] = useState<ClientForm>(emptyForm)
+  const [registrationProjectType, setRegistrationProjectType] =
+    useState<'regular' | 'pilot'>('regular')
   const [tracking, setTracking] = useState<TrackingRegister | null>(null)
   const [trackingError, setTrackingError] = useState('')
   const [additionalRequests, setAdditionalRequests] = useState<AdditionalProjectRequest[]>([])
   const [requestingClientId, setRequestingClientId] = useState<number | null>(null)
   const [requestProjectName, setRequestProjectName] = useState('')
+  const [requestProjectType, setRequestProjectType] = useState<'regular' | 'pilot'>('regular')
+  const [requestPilotPaymentType, setRequestPilotPaymentType] = useState<'free' | 'paid'>('free')
   const [requestScope, setRequestScope] = useState('')
   const [requestStart, setRequestStart] = useState('')
   const [requestRemarks, setRequestRemarks] = useState('')
   const [requestBusy, setRequestBusy] = useState(false)
   const [requestError, setRequestError] = useState('')
   const [trackingView, setTrackingView] = useState<'clients' | 'projects'>('clients')
+  const [projectTypeFilter, setProjectTypeFilter] = useState('')
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null)
   const [trackingProjectId, setTrackingProjectId] = useState<number | null>(null)
   const [departmentOptions, setDepartmentOptions] = useState<{departments:{code:string;label:string}[];project_managers_by_department:Record<string,{id:number;full_name:string}[]>}>({departments:[],project_managers_by_department:{}})
@@ -303,6 +333,8 @@ export function ManagementClientRegisterPage() {
     if (!client.can_request_project) return
     setRequestingClientId(client.id)
     setRequestProjectName('')
+    setRequestProjectType('regular')
+    setRequestPilotPaymentType('free')
     setRequestScope('')
     setRequestStart('')
     setRequestRemarks('')
@@ -317,6 +349,8 @@ export function ManagementClientRegisterPage() {
       await apiFetch(requestEndpoint, { method: 'POST', body: JSON.stringify({
         management_client_id: requestingClientId,
         project_name: requestProjectName.trim(), scope_text: requestScope.trim(),
+        project_type: requestProjectType,
+        pilot_payment_type: requestProjectType === 'pilot' ? requestPilotPaymentType : null,
         expected_start_date: requestStart || null, remarks: requestRemarks.trim() || null,
       }) })
       setAdditionalRequests(await apiFetch<AdditionalProjectRequest[]>(requestEndpoint))
@@ -360,7 +394,8 @@ export function ManagementClientRegisterPage() {
   const filteredProjects = projects.filter(project => {
     const client = clients.find(item => item.id === project.management_client_id)
     const term = query.trim().toLowerCase()
-    return (!ownerFilter || project.source_person_name === ownerFilter) && (!term ||
+    return (!projectTypeFilter || project.project_type === projectTypeFilter) &&
+      (!ownerFilter || project.source_person_name === ownerFilter) && (!term ||
       [project.project_code, project.project_name, project.department_label, project.source_person_name,
         client?.client_name, client?.client_code].some(value => (value || '').toLowerCase().includes(term)))
   })
@@ -432,6 +467,7 @@ export function ManagementClientRegisterPage() {
 
   function openCreate() {
     setForm({ ...emptyForm })
+    setRegistrationProjectType('regular')
     setEditingId(null)
     setShowForm(true)
     setSelectedId(null)
@@ -465,6 +501,9 @@ export function ManagementClientRegisterPage() {
         ...form,
         client_code: form.client_code.trim().toUpperCase(),
         gst_number: form.gst_number.trim().toUpperCase(),
+        ...(editingId === null
+          ? { project_type: registrationProjectType }
+          : {}),
       }
       const saved = await apiFetch<Client>(editingId === null ? endpoint : `${endpoint}/${editingId}`, {
         method: editingId === null ? 'POST' : 'PUT', body: JSON.stringify(payload),
@@ -511,21 +550,66 @@ export function ManagementClientRegisterPage() {
     {showForm && <section className="operations-panel">
       <header><div><span className="operations-kicker">{editingId === null ? 'NEW CLIENT' : 'EDIT CLIENT'}</span>
         <h2>{editingId === null ? 'Client Registration' : 'Update Client Details'}</h2>
-        <p>Use the same core client details as BD. This registration does not create a project or assign a department.</p>
+        <p>Use the same core client details as BD. Registration creates a pending Finance request. Finance creates and assigns the project.</p>
       </div></header>
       <form className="operations-form-grid" onSubmit={event => void saveClient(event)}>
         <label className="operations-field"><span>Client ID / Code *</span><input required maxLength={32} value={form.client_code} onChange={event => updateField('client_code', event.target.value.toUpperCase())} placeholder="CLIENT-001" /></label>
         <label className="operations-field"><span>Client Organization Name *</span><input required maxLength={255} value={form.client_name} onChange={event => updateField('client_name', event.target.value)} /></label>
         <label className="operations-field"><span>Client Email ID</span><input type="email" value={form.client_email} onChange={event => updateField('client_email', event.target.value)} /></label>
-        <label className="operations-field"><span>Organization Email ID</span><input type="email" value={form.organization_email} onChange={event => updateField('organization_email', event.target.value)} /></label>
-        <label className="operations-field"><span>Country *</span><input required value={form.country} onChange={event => updateField('country', event.target.value)} /></label>
-        <label className="operations-field"><span>GST / VAT / SUT</span><input maxLength={32} value={form.gst_number} onChange={event => updateField('gst_number', event.target.value.toUpperCase())} /></label>
+        <label className="operations-field"><span>Organization Email ID</span><input type="email" value={form.organization_email} onChange={event => updateField('organization_email',event.target.value)} /></label>       
+
+        <div className={
+          editingId === null
+            ? 'operations-span-2 mct-country-gst-row'
+            : 'operations-span-2 mct-country-gst-row mct-country-gst-row--editing'
+        }>
+<CountrySelect
+  value={form.country || 'India'}
+  onChange={(country) =>
+    setForm((prev) => ({
+      ...prev,
+      country,
+    }))
+  }
+/>
+       
+<label className="operations-field">
+  <span>{getTaxField(form.country).label}</span>
+  <input
+    maxLength={32}
+    placeholder={getTaxField(form.country).placeholder}
+    value={form.gst_number}
+    onChange={event =>
+      updateField('gst_number', event.target.value.toUpperCase())
+    }
+  />
+</label>
+        {editingId === null && (
+          <label className="operations-field">
+            <span>Project Type *</span>
+            <select
+              required
+              value={registrationProjectType}
+              onChange={event =>
+                setRegistrationProjectType(
+                  event.target.value as 'regular' | 'pilot'
+                )
+              }
+            >
+              <option value="regular">Regular Project</option>
+              <option value="pilot">Pilot Project</option>
+            </select>
+          </label>
+        )}
+
+        </div>
+
         <label className="operations-field operations-span-2"><span>Client Address</span><textarea rows={2} value={form.address} onChange={event => updateField('address', event.target.value)} /></label>
         <label className="operations-field"><span>Contact Person Name *</span><input required value={form.contact_person_name} onChange={event => updateField('contact_person_name', event.target.value)} /></label>
         <label className="operations-field"><span>Contact Person Email ID</span><input type="email" value={form.contact_person_email} onChange={event => updateField('contact_person_email', event.target.value)} /></label>
         <label className="operations-field"><span>Contact Person Phone</span><input type="tel" maxLength={40} value={form.contact_person_phone} onChange={event => updateField('contact_person_phone', event.target.value)} /></label>
         <label className="operations-field operations-span-2"><span>Client Work / Initial Requirement</span><textarea rows={4} maxLength={5000} value={form.work_description} onChange={event => updateField('work_description', event.target.value)} placeholder="Describe the work requested by the client. Project creation is handled separately." /></label>
-        <div className="operations-note operations-span-2">The client source is automatically recorded as the logged-in Management user. BD, project creation, and Finance approval workflows are not triggered.</div>
+        <div className="operations-note operations-span-2">The client source is automatically recorded as the logged-in Management user. A pending project request is sent to Finance automatically. No actual project is created at registration.</div>
         <div className="operations-actions operations-span-2">
           <button className="operations-button" type="submit" disabled={busy}>{busy ? 'Saving…' : editingId === null ? 'Create Client' : 'Save Changes'}</button>
           <button className="operations-button secondary" type="button" disabled={busy} onClick={() => setShowForm(false)}>Cancel</button>
@@ -541,6 +625,8 @@ export function ManagementClientRegisterPage() {
       {requestError && <div className="operations-alert error" role="alert">{requestError}</div>}
       <form className="operations-form-grid" onSubmit={event => void submitAdditionalRequest(event)}>
         <div className="operations-field"><span>Client</span><strong>{clients.find(c => c.id === requestingClientId)?.client_name || 'Existing client'} ({clients.find(c => c.id === requestingClientId)?.client_code})</strong></div>
+        <label className="operations-field"><span>Project Type *</span><select value={requestProjectType} onChange={e => setRequestProjectType(e.target.value as 'regular' | 'pilot')}><option value="regular">Regular Project</option><option value="pilot">Pilot Project</option></select></label>
+        {requestProjectType === 'pilot' && <label className="operations-field"><span>Pilot Financial Type *</span><select value={requestPilotPaymentType} onChange={e => setRequestPilotPaymentType(e.target.value as 'free' | 'paid')}><option value="free">Free Pilot</option><option value="paid">Paid Pilot</option></select></label>}
         <label className="operations-field"><span>Requested Project Name *</span><input required minLength={2} maxLength={255} value={requestProjectName} onChange={event => setRequestProjectName(event.target.value)} /></label>
         <label className="operations-field operations-span-2"><span>New Project Scope / Requirements *</span><textarea required minLength={2} maxLength={5000} rows={3} value={requestScope} onChange={event => setRequestScope(event.target.value)} /></label>
         <label className="operations-field"><span>Expected Start (optional)</span><input type="date" value={requestStart} onChange={event => setRequestStart(event.target.value)} /></label>
@@ -584,6 +670,7 @@ export function ManagementClientRegisterPage() {
       <div className="operations-form-grid">
         <label className="operations-field"><span>Search Clients</span><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Search size={16} /><input aria-label="Search management clients" value={query} onChange={event => setQuery(event.target.value)} placeholder="Client ID, company, contact, work…" /></div></label>
         <label className="operations-field"><span>Registered By</span><select value={ownerFilter} onChange={event => setOwnerFilter(event.target.value)}><option value="">Both Management Users</option>{owners.map(owner => <option key={owner} value={owner}>{owner}</option>)}</select></label>
+        {trackingView === 'projects' && <label className="operations-field"><span>Project Type</span><select value={projectTypeFilter} onChange={e => setProjectTypeFilter(e.target.value)}><option value="">All Projects</option><option value="regular">Regular Projects</option><option value="pilot">Pilot Projects</option></select></label>}
       </div>
       {trackingError && <div className="mct-inline-warning" role="alert">Project tracking could not refresh: {trackingError}. Client registration remains available.</div>}
       {trackingView === 'clients' ? (loading ? <div className="operations-empty">Loading clients…</div> : filtered.length === 0 ?
@@ -615,7 +702,7 @@ export function ManagementClientRegisterPage() {
                 {clientProjects.length === 0 ? <p>No Finance-created management projects for this client yet.</p> :
                   <div className="mct-projects-scroll"><table className="mct-projects-table"><thead><tr><th>Project Code</th><th>Project Name</th><th>Department</th><th>Production</th><th>QC</th><th>QA</th><th>Delivery</th><th>Status</th><th>Action</th></tr></thead>
                     <tbody>{clientProjects.map(project => <tr key={project.id}>
-                      <td><strong>{project.project_code}</strong></td><td>{project.project_name}</td><td>{project.department_label}</td>
+                      <td><strong>{project.project_code}</strong></td><td>{project.project_name}{project.project_type === 'pilot' && <span style={{ marginLeft: 8, fontWeight: 700, color: '#176d79' }}>PILOT</span>}</td><td>{project.department_label}</td>
                       {stages.map(stage => <td key={stage}>{percentText(project.tracking.stages[stage].percent)}</td>)}
                       <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
                       <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}{project.can_change_department && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => setDepartmentEdit({projectId:project.id,department:'',manager:'',reason:''})}>Change Department</button>}</div></td>
@@ -639,7 +726,7 @@ export function ManagementClientRegisterPage() {
           const client = clients.find(item => item.id === project.management_client_id)
           return <tr key={project.id}><td><strong>{project.project_code}</strong></td>
             <td><strong>{client?.client_name || 'Management client'}</strong><small>{project.source_person_name}</small></td>
-            <td><strong>{project.project_name}</strong><small>PM: {project.project_manager_name || 'Not assigned'}</small></td>
+            <td><strong>{project.project_name}</strong>{project.project_type === 'pilot' && <small style={{ color: '#176d79', fontWeight: 700 }}>PILOT · {project.pilot_payment_type?.toUpperCase()}</small>}<small>PM: {project.project_manager_name || 'Not assigned'}</small></td>
             <td>{project.department_label}</td><td><div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(project.tracking.overall_percent)}><ProgressMeter value={project.tracking.overall_percent} label={`${project.project_code} stage completion`} /></div><span>{percentText(project.tracking.overall_percent)}</span></div></td>
             <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
             <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}{project.can_revoke && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void revokeProject(project)}>Revoke Approval</button>}{project.can_change_department && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => setDepartmentEdit({projectId:project.id,department:'',manager:'',reason:''})}>Change Department</button>}</div></td>

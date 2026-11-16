@@ -1006,9 +1006,9 @@ def allocation_options(db: Session, *, actor: User, role: str, project_id: int) 
                 "file_number": item.item_number,
                 "file_name": item.item_name,
                 "remarks": package.remarks,  # imported MASTER remarks (read-only)
-                # AREA planned length (the master row), never a fabricated per-file KM.
-                "planned_quantity": float(package.area) if package.area is not None else None,
-                "unit": package.area_unit,
+                "planned_quantity": float(item.planned_quantity) if item.planned_quantity is not None else None,
+                "area_planned_quantity": float(package.area) if package.area is not None else None,
+                "unit": item.planned_unit,
                 "planned_unit": item.planned_unit,
                 "production_employee_id": owner_id,
                 "production_employee_name": (users[owner_id].full_name
@@ -1135,6 +1135,7 @@ def assign_files(
     for item in items:
         if not item.is_active:
             raise ValueError(f"File {item.item_number} is inactive and cannot be allocated")
+        items_service.validate_item_plan(item)
         owner = item.production_user_id
         if owner and int(owner) != int(production_user_id):
             if items_service.open_session_for(db, item_id=item.id, stage="production") is not None \
@@ -1280,6 +1281,8 @@ def assign_project_files(
                 raise ValueError(
                     f"File {item.item_number} is already assigned to another Production employee"
                 )
+    for item in items:
+        items_service.validate_item_plan(item)
     # Assignees must be ACTIVE PM-selected project members of the required role.
     representative = packages.get(items[0].work_package_id)
     for uid, stage in ((production_user_id, "production"), (qc_user_id, "qc"), (qa_user_id, "qa")):

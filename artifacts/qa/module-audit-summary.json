@@ -1,0 +1,2135 @@
+{
+  "generated_at_utc": "2026-11-14T13:40:36.328485+00:00",
+  "tested_commit": "f33f08e755ff7da8b46eb263da0ac20bd0ddc06c",
+  "complete": false,
+  "findings": [
+    {
+      "severity": "high",
+      "title": "Free-pilot customer invoicing is not blocked by the backend",
+      "evidence": "Private zero-value free-pilot fixture accepted a positive INR 1000 invoice and transitioned it to PAYMENT_PENDING.",
+      "source": "backend/app/modules/operations/lifecycle_service.py:create_invoice_draft,raise_invoice",
+      "reproduction": "module_audit_management.py / Free pilot: backend blocks customer invoicing"
+    },
+    {
+      "severity": "medium",
+      "title": "Reapproval popup disappears after approval revocation with an invoice draft",
+      "evidence": "Actual revoke endpoint succeeds and tracking returns can_approve=true, but the source popup queue is empty.",
+      "source": "backend/app/modules/notifications/approval_review.py:_pending_uncached",
+      "reproduction": "module_audit_management.py / Draft exists: reapproval action remains visible in popup"
+    },
+    {
+      "severity": "high",
+      "title": "Pending purchase requests are missing from Management approval notifications",
+      "evidence": "A real purchase request returns pending_approval, but the designated Management recipient receives no matching item from the approval-category notification API. Reproduced by an independent test run.",
+      "source": "backend/app/modules/notifications/approval_review.py:MANAGEMENT_APPROVAL_EVENTS",
+      "reproduction": "tests/test_end_to_end.py::test_purchase_permission_approval_conversion_and_excel; module-audit-purchase-recheck.log"
+    }
+  ],
+  "backend_collected": 677,
+  "backend_progress": {
+    "passed": 459,
+    "failed": 192,
+    "skipped": 12
+  },
+  "backend_completed_reports": 1,
+  "backend_outcomes": {
+    "passed": 116,
+    "failure": 45,
+    "error": 4,
+    "skipped": 4
+  },
+  "backend_test_files": {
+    "tests.test_advance_payment_notifications_phase4": {
+      "passed": 2
+    },
+    "tests.test_allocation_member_validation_v8_4": {
+      "failure": 3
+    },
+    "tests.test_asset_inventory_lifecycle_integrity": {
+      "passed": 1
+    },
+    "tests.test_asset_report_validation": {
+      "passed": 1
+    },
+    "tests.test_bad_debt_dual_approval_v8_5": {
+      "passed": 2
+    },
+    "tests.test_bad_debt_lifecycle_v8_1": {
+      "passed": 3
+    },
+    "tests.test_batch4_complete": {
+      "passed": 1
+    },
+    "tests.test_bd_finance_pm_notifications_v7_0_14": {
+      "passed": 1
+    },
+    "tests.test_bd_manual_feedback_action_center": {
+      "passed": 1
+    },
+    "tests.test_bd_ortho_manager_login_v7_0_7": {
+      "passed": 1
+    },
+    "tests.test_bd_ortho_v7": {
+      "passed": 3
+    },
+    "tests.test_business_history_permissions": {
+      "passed": 3
+    },
+    "tests.test_client_advance_api_phase2": {
+      "passed": 1
+    },
+    "tests.test_client_advance_request_form": {
+      "passed": 4
+    },
+    "tests.test_client_advance_schema_phase1": {
+      "passed": 1
+    },
+    "tests.test_client_advance_settlement_phase5": {
+      "passed": 1
+    },
+    "tests.test_client_project_master_v6": {
+      "passed": 1
+    },
+    "tests.test_commercial_cost_layer_v8_1": {
+      "passed": 1
+    },
+    "tests.test_commercial_workflow_alignment_v8_1": {
+      "passed": 3,
+      "failure": 2
+    },
+    "tests.test_department_isolation": {
+      "error": 1
+    },
+    "tests.test_employee_master_management": {
+      "passed": 1
+    },
+    "tests.test_employee_master_registration": {
+      "passed": 1
+    },
+    "tests.test_employee_password_regression": {
+      "passed": 1
+    },
+    "tests.test_end_to_end": {
+      "passed": 7
+    },
+    "tests.test_finance_bad_debt_revenue": {
+      "passed": 2
+    },
+    "tests.test_finance_client_management_v4": {
+      "passed": 1
+    },
+    "tests.test_finance_expense_claims": {
+      "passed": 1
+    },
+    "tests.test_finance_kpi_reconciliation": {
+      "passed": 2
+    },
+    "tests.test_finance_reporting_v2": {
+      "passed": 1
+    },
+    "tests.test_finance_revenue_targets": {
+      "passed": 1
+    },
+    "tests.test_finance_sales_revenue": {
+      "passed": 1
+    },
+    "tests.test_finance_visibility_filtering": {
+      "passed": 2
+    },
+    "tests.test_hardening_v7_0_23": {
+      "passed": 1
+    },
+    "tests.test_hrms_company_policy": {
+      "passed": 1
+    },
+    "tests.test_invoice_company_address": {
+      "passed": 3
+    },
+    "tests.test_invoice_document_generation": {
+      "passed": 1
+    },
+    "tests.test_invoice_generation_v2": {
+      "passed": 3
+    },
+    "tests.test_invoice_layout_pagination": {
+      "passed": 2
+    },
+    "tests.test_invoice_payment_status": {
+      "passed": 1
+    },
+    "tests.test_invoice_reference_themes": {
+      "passed": 4
+    },
+    "tests.test_invoice_three_templates": {
+      "passed": 2
+    },
+    "tests.test_it_work_role_permissions": {
+      "passed": 1
+    },
+    "tests.test_item_daily_activity_flow_v8_3": {
+      "failure": 4
+    },
+    "tests.test_item_multi_session_production_v8_3": {
+      "failure": 3
+    },
+    "tests.test_module_route_contracts": {
+      "passed": 1
+    },
+    "tests.test_multi_department_workflow_v8_1": {
+      "passed": 1,
+      "failure": 3,
+      "skipped": 1
+    },
+    "tests.test_new_joiner_onboarding": {
+      "passed": 2
+    },
+    "tests.test_notification_popup_experience": {
+      "passed": 5,
+      "failure": 1
+    },
+    "tests.test_notification_recipient_isolation": {
+      "passed": 2,
+      "failure": 1
+    },
+    "tests.test_obsolete_sample_workflow_retirement": {
+      "passed": 1
+    },
+    "tests.test_ortho_item_visibility_v8_3": {
+      "failure": 3
+    },
+    "tests.test_payables_workflow": {
+      "passed": 1
+    },
+    "tests.test_physical_file_workflow_v8_4": {
+      "failure": 6
+    },
+    "tests.test_production_e2e_final_v8_3": {
+      "failure": 1
+    },
+    "tests.test_production_file_tracking_v8_2": {
+      "failure": 6
+    },
+    "tests.test_production_integrity": {
+      "error": 3
+    },
+    "tests.test_production_master_excel_allocation_v8_3": {
+      "failure": 9
+    },
+    "tests.test_production_schema_upgrade": {
+      "skipped": 3
+    },
+    "tests.test_production_tracking_v8_1": {
+      "passed": 2,
+      "failure": 1
+    },
+    "tests.test_project_activation_v6_1_6": {
+      "passed": 1
+    },
+    "tests.test_project_activation_v6_1_7": {
+      "passed": 1
+    },
+    "tests.test_project_completion_v7_0_19": {
+      "passed": 1
+    },
+    "tests.test_project_data_handovers_v7_0_17": {
+      "passed": 1
+    },
+    "tests.test_project_monitoring_v7_0_18": {
+      "passed": 1
+    },
+    "tests.test_project_scope_allocation_v8_6": {
+      "failure": 1
+    },
+    "tests.test_project_tracking_sales_workflow": {
+      "passed": 3
+    },
+    "tests.test_project_workstreams_v7_0_15": {
+      "passed": 1
+    },
+    "tests.test_purchase_approval_email_channel": {
+      "passed": 1
+    },
+    "tests.test_purchase_approval_two_management_visibility": {
+      "passed": 1
+    },
+    "tests.test_ready_delivery_ux_v8_4": {
+      "failure": 1
+    },
+    "tests.test_rental_asset_return_integration_guards": {
+      "passed": 1
+    },
+    "tests.test_rental_asset_vendor_return": {
+      "passed": 1
+    },
+    "tests.test_reporting_error_boundaries": {
+      "passed": 4
+    },
+    "tests.test_reporting_v7_0_22": {
+      "passed": 1
+    },
+    "tests.test_standalone_invoice_generation": {
+      "passed": 2
+    },
+    "tests.test_technical_routing_v7_0_21": {
+      "passed": 1
+    },
+    "tests.test_technical_team_directory_v7_0_20": {
+      "passed": 2
+    },
+    "tests.test_ticket_attachment_validation": {
+      "passed": 1
+    },
+    "tests.test_ticket_global_notifications": {
+      "passed": 1
+    },
+    "tests.test_ticket_simplified_workflow": {
+      "passed": 1
+    },
+    "tests.test_travel_km_email_notifications": {
+      "passed": 1
+    },
+    "tests.test_travel_km_smart_verification": {
+      "passed": 1
+    },
+    "tests.test_travel_km_workflow": {
+      "passed": 1
+    },
+    "tests.test_uat_2026_plan": {
+      "passed": 1
+    }
+  },
+  "backend_failures": [
+    {
+      "test_file": "tests.test_allocation_member_validation_v8_4",
+      "test": "test_options_expose_only_pm_selected_active_members_per_role",
+      "outcome": "failure",
+      "seconds": 8.994,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_allocation_member_validation_v8_4.py:99: in test_options_expose_only_pm_selected_active_members_per_role\n    ctx, pkg, items = _area(db, \"MV-1\")\n                      ^^^^^^^^^^^^^^^^^\ntests\\test_allocation_member_validation_v8_4.py:46: in _area\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_allocation_member_validation_v8_4",
+      "test": "test_assigned_file_is_unavailable_to_a_second_employee",
+      "outcome": "failure",
+      "seconds": 6.661,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_allocation_member_validation_v8_4.py:153: in test_assigned_file_is_unavailable_to_a_second_employee\n    ctx, pkg, items = _area_multi(db, \"MV-5\", 4)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_allocation_member_validation_v8_4.py:57: in _area_multi\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_allocation_member_validation_v8_4",
+      "test": "test_historical_assignment_stays_readable_after_member_removed",
+      "outcome": "failure",
+      "seconds": 6.857,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_allocation_member_validation_v8_4.py:214: in test_historical_assignment_stays_readable_after_member_removed\n    ctx, pkg, items = _area(db, \"MV-9\")\n                      ^^^^^^^^^^^^^^^^^\ntests\\test_allocation_member_validation_v8_4.py:46: in _area\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_commercial_workflow_alignment_v8_1",
+      "test": "test_finance_return_keeps_ids_and_history_and_bd_can_correct_and_resubmit",
+      "outcome": "failure",
+      "seconds": 6.872,
+      "message": "AssertionError: Regex pattern did not match.\n Regex: 'under Finance review'\n Input: 'The Finance-approved baseline is locked; create a new revision instead'",
+      "traceback": "tests\\test_commercial_workflow_alignment_v8_1.py:296: in test_finance_return_keeps_ids_and_history_and_bd_can_correct_and_resubmit\n    upsert_baseline_estimate(db, actor=bd, project_id=project.id, payload=commercial(estimated_amount=Decimal(\"1\")))\napp\\modules\\commercial\\service.py:401: in upsert_baseline_estimate\n    raise ValueError(\"The Finance-approved baseline is locked; create a new revision instead\")\nE   ValueError: The Finance-approved baseline is locked; create a new revision instead\n\nDuring handling of the above exception, another exception occurred:\ntests\\test_commercial_workflow_alignment_v8_1.py:295: in test_finance_return_keeps_ids_and_history_and_bd_can_correct_and_resubmit\n    with pytest.raises(ValueError, match=\"under Finance review\"):\nE   AssertionError: Regex pattern did not match.\nE    Regex: 'under Finance review'\nE    Input: 'The Finance-approved baseline is locked; create a new revision instead'"
+    },
+    {
+      "test_file": "tests.test_commercial_workflow_alignment_v8_1",
+      "test": "test_fixed_price_recommendation_uses_pm_completion_or_acceptance",
+      "outcome": "failure",
+      "seconds": 9.127,
+      "message": "ValueError: Completion cannot be calculated until work packages are recorded",
+      "traceback": "tests\\test_commercial_workflow_alignment_v8_1.py:543: in test_fixed_price_recommendation_uses_pm_completion_or_acceptance\n    record_billing_basis(db, actor=pm, project_id=project.id, payload=BillingBasisInput(completion_percent=Decimal(\"60\")))\napp\\modules\\commercial\\service.py:1817: in record_billing_basis\n    raise ValueError(\"Completion cannot be calculated until work packages are recorded\")\nE   ValueError: Completion cannot be calculated until work packages are recorded"
+    },
+    {
+      "test_file": "tests.test_department_isolation",
+      "test": "test_employee_allowed_own_department_work_package_action",
+      "outcome": "error",
+      "seconds": 7.172,
+      "message": "failed on setup with \"PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access\"",
+      "traceback": "tests\\test_department_isolation.py:174: in environment\n    projects[department] = _approved_project(db, bd=bd, finance=finance, code=f\"ISO-{department.upper()}\", department_code=department)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_department_isolation.py:147: in _approved_project\n    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision=\"approve\", feedback=\"ok\"))\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_daily_activity_flow_v8_3",
+      "test": "test_qa_timestamps_and_duration",
+      "outcome": "failure",
+      "seconds": 6.425,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_daily_activity_flow_v8_3.py:115: in test_qa_timestamps_and_duration\n    ctx, package, items = _prepare(db, \"DA3\")\n                          ^^^^^^^^^^^^^^^^^^^\ntests\\test_item_daily_activity_flow_v8_3.py:50: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_daily_activity_flow_v8_3",
+      "test": "test_production_to_qc_gate",
+      "outcome": "failure",
+      "seconds": 7.152,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_daily_activity_flow_v8_3.py:176: in test_production_to_qc_gate\n    ctx, package, items = _prepare(db, \"DA7\")\n                          ^^^^^^^^^^^^^^^^^^^\ntests\\test_item_daily_activity_flow_v8_3.py:50: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_daily_activity_flow_v8_3",
+      "test": "test_ready_for_delivery_gate",
+      "outcome": "failure",
+      "seconds": 6.681,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_daily_activity_flow_v8_3.py:232: in test_ready_for_delivery_gate\n    ctx, package, items = _prepare(db, \"DA11\")\n                          ^^^^^^^^^^^^^^^^^^^^\ntests\\test_item_daily_activity_flow_v8_3.py:50: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_daily_activity_flow_v8_3",
+      "test": "test_legacy_daily_activity_still_records_manual_files_completed",
+      "outcome": "failure",
+      "seconds": 9.722,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_daily_activity_flow_v8_3.py:343: in test_legacy_daily_activity_still_records_manual_files_completed\n    ctx = make_area(db, code=\"DA15\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_multi_session_production_v8_3",
+      "test": "test_duplicate_finalization_is_blocked",
+      "outcome": "failure",
+      "seconds": 6.968,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_multi_session_production_v8_3.py:140: in test_duplicate_finalization_is_blocked\n    ctx, package, items = _prepare(db, \"MS4\")\n                          ^^^^^^^^^^^^^^^^^^^\ntests\\test_item_multi_session_production_v8_3.py:45: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_multi_session_production_v8_3",
+      "test": "test_cross_midnight_partial_session_duration",
+      "outcome": "failure",
+      "seconds": 6.63,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_multi_session_production_v8_3.py:215: in test_cross_midnight_partial_session_duration\n    ctx, package, items = _prepare(db, \"MS7\")\n                          ^^^^^^^^^^^^^^^^^^^\ntests\\test_item_multi_session_production_v8_3.py:45: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_item_multi_session_production_v8_3",
+      "test": "test_ready_for_delivery_and_delivery_after_full_chain",
+      "outcome": "failure",
+      "seconds": 9.602,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_item_multi_session_production_v8_3.py:358: in test_ready_for_delivery_and_delivery_after_full_chain\n    ctx, package, items = _prepare(db, \"MS11\")\n                          ^^^^^^^^^^^^^^^^^^^^\ntests\\test_item_multi_session_production_v8_3.py:45: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_multi_department_workflow_v8_1",
+      "test": "test_direct_civil_pm_assignment_to_lidar_project_is_rejected_by_backend",
+      "outcome": "failure",
+      "seconds": 7.119,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_multi_department_workflow_v8_1.py:186: in test_direct_civil_pm_assignment_to_lidar_project_is_rejected_by_backend\n    project, workflow = approved_project(db, bd=bd, finance=finance, code=\"MD-B3\", department_code=\"lidar\")\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_multi_department_workflow_v8_1.py:109: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision=\"approve\", feedback=\"ok\"))\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_multi_department_workflow_v8_1",
+      "test": "test_department_isolation_smoke[mobile_mapping-mdc]",
+      "outcome": "failure",
+      "seconds": 8.765,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_multi_department_workflow_v8_1.py:264: in test_department_isolation_smoke\n    project, workflow = approved_project(db, bd=bd, finance=finance, code=f\"MD-{tag.upper()}\", department_code=department_code)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_multi_department_workflow_v8_1.py:109: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision=\"approve\", feedback=\"ok\"))\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_multi_department_workflow_v8_1",
+      "test": "test_unassigned_employee_allocation_is_rejected",
+      "outcome": "failure",
+      "seconds": 7.675,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_multi_department_workflow_v8_1.py:304: in test_unassigned_employee_allocation_is_rejected\n    project, workflow = approved_project(db, bd=bd, finance=finance, code=\"MD-F2\", department_code=\"mobile_mapping\")\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_multi_department_workflow_v8_1.py:109: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision=\"approve\", feedback=\"ok\"))\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_notification_popup_experience",
+      "test": "test_popup_queue_only_returns_own_notifications",
+      "outcome": "failure",
+      "seconds": 12.542,
+      "message": "AssertionError: assert 0 == 1\n +  where 0 = len([])\n +    where [] = json()\n +      where json = <Response [200 OK]>.json\n +        where <Response [200 OK]> = get('/api/notifications/global/popup-queue')\n +          where get = <starlette.testclient.TestClient object at 0x000001EC00A76A10>.get",
+      "traceback": "tests\\test_notification_popup_experience.py:318: in test_popup_queue_only_returns_own_notifications\n    assert len(finance.get(\"/api/notifications/global/popup-queue\").json()) == 1\nE   AssertionError: assert 0 == 1\nE    +  where 0 = len([])\nE    +    where [] = json()\nE    +      where json = <Response [200 OK]>.json\nE    +        where <Response [200 OK]> = get('/api/notifications/global/popup-queue')\nE    +          where get = <starlette.testclient.TestClient object at 0x000001EC00A76A10>.get"
+    },
+    {
+      "test_file": "tests.test_notification_recipient_isolation",
+      "test": "test_finance_approval_notification_is_role_scoped_not_global",
+      "outcome": "failure",
+      "seconds": 8.697,
+      "message": "AssertionError: assert 0 == 1\n +  where 0 = len([])\n +    where [] = _popup(<starlette.testclient.TestClient object at 0x000001EC031DD250>)\n +      where <starlette.testclient.TestClient object at 0x000001EC031DD250> = _client(<fastapi.applications.FastAPI object at 0x000001EC02E80350>, sessionmaker(class_='Session', autocommit=False, bind=Engine(sqlite+pysqlite://), autoflush=False, expire_on_commit=False), 5)",
+      "traceback": "tests\\test_notification_recipient_isolation.py:239: in test_finance_approval_notification_is_role_scoped_not_global\n    assert len(_popup(_client(app, TestingSession, ids[FINANCE]))) == 1\nE   AssertionError: assert 0 == 1\nE    +  where 0 = len([])\nE    +    where [] = _popup(<starlette.testclient.TestClient object at 0x000001EC031DD250>)\nE    +      where <starlette.testclient.TestClient object at 0x000001EC031DD250> = _client(<fastapi.applications.FastAPI object at 0x000001EC02E80350>, sessionmaker(class_='Session', autocommit=False, bind=Engine(sqlite+pysqlite://), autoflush=False, expire_on_commit=False), 5)"
+    },
+    {
+      "test_file": "tests.test_ortho_item_visibility_v8_3",
+      "test": "test_multi_assignee_aggregation_not_lost",
+      "outcome": "failure",
+      "seconds": 8.26,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_ortho_item_visibility_v8_3.py:86: in test_multi_assignee_aggregation_not_lost\n    ctx, package, items = _prepare(db, \"OV3\")\n                          ^^^^^^^^^^^^^^^^^^^\ntests\\test_ortho_item_visibility_v8_3.py:49: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_ortho_item_visibility_v8_3",
+      "test": "test_qc_and_qa_employee_filtering_uses_item_assignment",
+      "outcome": "failure",
+      "seconds": 8.694,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_ortho_item_visibility_v8_3.py:150: in test_qc_and_qa_employee_filtering_uses_item_assignment\n    ctx, package, items = _prepare(db, \"OV7\")\n                          ^^^^^^^^^^^^^^^^^^^\ntests\\test_ortho_item_visibility_v8_3.py:49: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_ortho_item_visibility_v8_3",
+      "test": "test_no_duplicate_file_or_quantity_counting",
+      "outcome": "failure",
+      "seconds": 7.102,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_ortho_item_visibility_v8_3.py:201: in test_no_duplicate_file_or_quantity_counting\n    ctx, package, items = _prepare(db, \"OV11\")\n                          ^^^^^^^^^^^^^^^^^^^^\ntests\\test_ortho_item_visibility_v8_3.py:49: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_physical_file_workflow_v8_4",
+      "test": "test_c_increase_adds_only_missing_files",
+      "outcome": "failure",
+      "seconds": 9.79,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_physical_file_workflow_v8_4.py:146: in test_c_increase_adds_only_missing_files\n    ctx, pkg, items = _setup(db, \"PF-C\", n=30)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_physical_file_workflow_v8_4",
+      "test": "test_g_concurrent_duplicate_assignment_only_one_wins",
+      "outcome": "failure",
+      "seconds": 6.49,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_physical_file_workflow_v8_4.py:196: in test_g_concurrent_duplicate_assignment_only_one_wins\n    ctx, pkg, items = _setup(db1, \"PF-G\", n=5)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_physical_file_workflow_v8_4",
+      "test": "test_k_cross_midnight_duration_is_positive",
+      "outcome": "failure",
+      "seconds": 7.782,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_physical_file_workflow_v8_4.py:274: in test_k_cross_midnight_duration_is_positive\n    ctx, pkg, items = _setup(db, \"PF-K\", n=1)\n                      ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_physical_file_workflow_v8_4",
+      "test": "test_u_ready_blocked_until_all_qa_pass",
+      "outcome": "failure",
+      "seconds": 8.927,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_physical_file_workflow_v8_4.py:370: in test_u_ready_blocked_until_all_qa_pass\n    ctx, pkg, items = _setup(db, \"PF-U\", n=3)\n                      ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_physical_file_workflow_v8_4",
+      "test": "test_ab_employee_productivity_counts_distinct_files",
+      "outcome": "failure",
+      "seconds": 7.601,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_physical_file_workflow_v8_4.py:462: in test_ab_employee_productivity_counts_distinct_files\n    ctx, pkg, items = _setup(db, \"PF-AB\", n=2)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_physical_file_workflow_v8_4",
+      "test": "test_ag_legacy_multi_session_activity_remains_readable",
+      "outcome": "failure",
+      "seconds": 7.239,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_physical_file_workflow_v8_4.py:539: in test_ag_legacy_multi_session_activity_remains_readable\n    ctx, pkg, items = _setup(db, \"PF-AG\", n=1)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_e2e_final_v8_3",
+      "test": "test_no_contradictory_item_states_anywhere",
+      "outcome": "failure",
+      "seconds": 7.079,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_e2e_final_v8_3.py:255: in test_no_contradictory_item_states_anywhere\n    ctx, package, files = _prepare(db, \"E2E-INVARIANTS\")\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_e2e_final_v8_3.py:52: in _prepare\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_file_tracking_v8_2",
+      "test": "test_sequence_generation",
+      "outcome": "failure",
+      "seconds": 9.497,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_file_tracking_v8_2.py:187: in test_sequence_generation\n    ctx = make_area(db, code=\"SEQ\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_file_tracking_v8_2",
+      "test": "test_employee_sees_only_assigned_files",
+      "outcome": "failure",
+      "seconds": 6.882,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_file_tracking_v8_2.py:259: in test_employee_sees_only_assigned_files\n    ctx = make_area(db, code=\"SEEF\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_file_tracking_v8_2",
+      "test": "test_production_start_end_timestamps_and_duration",
+      "outcome": "failure",
+      "seconds": 7.828,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_file_tracking_v8_2.py:341: in test_production_start_end_timestamps_and_duration\n    ctx = make_area(db, code=\"TIME\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_file_tracking_v8_2",
+      "test": "test_target_date_retained_and_buffer_default_one_day",
+      "outcome": "failure",
+      "seconds": 9.422,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_file_tracking_v8_2.py:450: in test_target_date_retained_and_buffer_default_one_day\n    ctx = make_area(db, code=\"BUF\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_file_tracking_v8_2",
+      "test": "test_qc_start_end_duration_pass",
+      "outcome": "failure",
+      "seconds": 7.553,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_file_tracking_v8_2.py:557: in test_qc_start_end_duration_pass\n    ctx = make_area(db, code=\"QCP\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_file_tracking_v8_2",
+      "test": "test_full_chain_rollups",
+      "outcome": "failure",
+      "seconds": 7.117,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_file_tracking_v8_2.py:644: in test_full_chain_rollups\n    ctx = make_area(db, code=\"CHAIN\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:131: in make_area\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_integrity",
+      "test": "test_legacy_completion_snapshot_is_not_added_to_previous_progress",
+      "outcome": "error",
+      "seconds": 7.311,
+      "message": "failed on setup with \"PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access\"",
+      "traceback": "tests\\test_production_integrity.py:21: in production_case\n    ctx = setup_project(db, \"INTEGRITY\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_integrity",
+      "test": "test_invalid_progress_keeps_session_open[quantity2-km-quantity]",
+      "outcome": "error",
+      "seconds": 12.419,
+      "message": "failed on setup with \"PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access\"",
+      "traceback": "tests\\test_production_integrity.py:21: in production_case\n    ctx = setup_project(db, \"INTEGRITY\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_integrity",
+      "test": "test_completed_plan_cannot_rewrite_historical_output",
+      "outcome": "error",
+      "seconds": 6.875,
+      "message": "failed on setup with \"PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access\"",
+      "traceback": "tests\\test_production_integrity.py:21: in production_case\n    ctx = setup_project(db, \"INTEGRITY\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_exact_sample_xlsx_preview",
+      "outcome": "failure",
+      "seconds": 7.129,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:134: in test_exact_sample_xlsx_preview\n    ctx = setup_project(db, \"MX1\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_optional_remarks_and_file_name_accepted",
+      "outcome": "failure",
+      "seconds": 7.17,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:188: in test_optional_remarks_and_file_name_accepted\n    ctx = setup_project(db, \"MX5\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_repeated_import_is_idempotent",
+      "outcome": "failure",
+      "seconds": 7.582,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:235: in test_repeated_import_is_idempotent\n    ctx = setup_project(db, \"MX9\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_area_files_filtering_and_planned_groups",
+      "outcome": "failure",
+      "seconds": 10.049,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:297: in test_area_files_filtering_and_planned_groups\n    ctx = setup_project(db, \"AL2\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_assignment_notifications",
+      "outcome": "failure",
+      "seconds": 6.907,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:372: in test_assignment_notifications\n    ctx = setup_project(db, \"AL6\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_qc_reject_history_and_notification",
+      "outcome": "failure",
+      "seconds": 6.815,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:458: in test_qc_reject_history_and_notification\n    ctx = setup_project(db, \"WF4\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_mark_ready_requires_all_passed",
+      "outcome": "failure",
+      "seconds": 10.2,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:543: in test_mark_ready_requires_all_passed\n    ctx, package, items = _prepare_area(db, \"RD3\")\n                          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:496: in _prepare_area\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_area_master_exact_26_and_file_level_values",
+      "outcome": "failure",
+      "seconds": 7.127,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:634: in test_area_master_exact_26_and_file_level_values\n    ctx, package, items = _prepare_area(db, \"RP1\")\n                          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:496: in _prepare_area\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_master_excel_allocation_v8_3",
+      "test": "test_workbook_is_a_live_snapshot",
+      "outcome": "failure",
+      "seconds": 6.962,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_master_excel_allocation_v8_3.py:711: in test_workbook_is_a_live_snapshot\n    ctx, package, items = _prepare_area(db, \"RP6\")\n                          ^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:496: in _prepare_area\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_production_tracking_v8_1",
+      "test": "test_existing_lidar_workflow_chain_still_runs_end_to_end",
+      "outcome": "failure",
+      "seconds": 6.66,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_production_tracking_v8_1.py:252: in test_existing_lidar_workflow_chain_still_runs_end_to_end\n    _bd, _fin, pm, project, _wf = approved_project(db, code=\"LIDAR-E2E\", department_code=\"lidar\", department_label=\"LiDAR\")\n                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_tracking_v8_1.py:107: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision=\"approve\", comments=\"Approved\"))\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_project_scope_allocation_v8_6",
+      "test": "test_failure_assigns_nothing_atomically",
+      "outcome": "failure",
+      "seconds": 9.526,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_project_scope_allocation_v8_6.py:80: in test_failure_assigns_nothing_atomically\n    ctx, items = _two_areas(db, \"PS-2\")\n                 ^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_project_scope_allocation_v8_6.py:26: in _two_areas\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    },
+    {
+      "test_file": "tests.test_ready_delivery_ux_v8_4",
+      "test": "test_deliver_blocked_before_ready_then_works_and_is_not_repeatable",
+      "outcome": "failure",
+      "seconds": 12.005,
+      "message": "PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access",
+      "traceback": "tests\\test_ready_delivery_ux_v8_4.py:131: in test_deliver_blocked_before_ready_then_works_and_is_not_repeatable\n    ctx, pkg, items = _setup(db, \"RD-4\", n=2)\n                      ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_physical_file_workflow_v8_4.py:65: in _setup\n    ctx = setup_project(db, code)\n          ^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_master_excel_allocation_v8_3.py:67: in setup_project\n    bd, finance, pm, project, workflow = approved_project(db, code=code)\n                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests\\test_production_file_tracking_v8_2.py:108: in approved_project\n    finance_review_project(db, actor=finance, project_id=project.id,\napp\\modules\\operations\\workflow_service.py:715: in finance_review_project\n    raise PermissionError(\"Finance approval/return is disabled for BD-origin projects; Finance has review-only access\")\nE   PermissionError: Finance approval/return is disabled for BD-origin projects; Finance has review-only access"
+    }
+  ],
+  "backend_failure_groups": {
+    "obsolete_bd_finance_approval_setup": 45,
+    "other_requires_review": 2,
+    "notification_assertions": 2
+  },
+  "management_smoke": [
+    {
+      "name": "Finance cannot register Management clients",
+      "passed": true,
+      "expected_status": 403,
+      "actual_status": 403,
+      "response": {
+        "detail": "Management client register access denied"
+      }
+    },
+    {
+      "name": "BD cannot read Finance Management projects",
+      "passed": true,
+      "expected_status": 403,
+      "actual_status": 403,
+      "response": {
+        "detail": "Finance access required"
+      }
+    },
+    {
+      "name": "regular: register client",
+      "passed": true,
+      "expected_status": 201,
+      "actual_status": 201,
+      "response": {
+        "client_code": "AUDIT-REGULAR",
+        "client_name": "Audit regular",
+        "client_email": null,
+        "organization_email": null,
+        "address": null,
+        "country": "India",
+        "gst_number": null,
+        "contact_person_name": "Audit Contact",
+        "contact_person_email": null,
+        "contact_person_phone": "9999999999",
+        "work_description": "Isolated automated module check",
+        "can_request_project": false,
+        "id": 1,
+        "source_person_name": "Management",
+        "is_active": true,
+        "created_at": "2026-11-14T13:23:32.639489",
+        "updated_at": "2026-11-14T13:23:32.639489"
+      }
+    },
+    {
+      "name": "regular: duplicate client blocked",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Client ID is already registered in Management"
+      }
+    },
+    {
+      "name": "regular: Management department options",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "departments": [
+          {
+            "code": "ortho",
+            "label": "Ortho"
+          },
+          {
+            "code": "lidar",
+            "label": "LiDAR"
+          },
+          {
+            "code": "mobile_mapping",
+            "label": "Mobile Mapping"
+          },
+          {
+            "code": "laser_scanning",
+            "label": "Laser Scanning"
+          },
+          {
+            "code": "civil",
+            "label": "Civil"
+          }
+        ],
+        "project_managers_by_department": {
+          "ortho": [
+            {
+              "id": 5,
+              "full_name": "Ortho_Pm",
+              "email": "audit.ortho@example.com",
+              "employee_id": null,
+              "department": null,
+              "designation": null,
+              "performing_department_code": "ortho"
+            }
+          ],
+          "lidar": [
+            {
+              "id": 4,
+              "full_name": "Lidar_Pm",
+              "email": "audit.lidar@example.com",
+              "employee_id": null,
+              "department": null,
+              "designation": null,
+              "performing_department_code": "lidar"
+            }
+          ],
+          "mobile_mapping": [],
+          "laser_scanning": [],
+          "civil": []
+        }
+      }
+    },
+    {
+      "name": "regular: Finance request queue",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": [
+        {
+          "id": 1,
+          "management_client_id": 1,
+          "client_code": "AUDIT-REGULAR",
+          "client_name": "Audit regular",
+          "source_person_name": "Management",
+          "project_name": null,
+          "scope_text": "Isolated automated module check",
+          "expected_start_date": null,
+          "remarks": null,
+          "status": "PENDING",
+          "project_type": "regular",
+          "pilot_payment_type": null,
+          "created_project_id": null,
+          "created_project_code": null,
+          "created_at": "2026-11-14T13:23:32.639809",
+          "completed_at": null
+        }
+      ]
+    },
+    {
+      "name": "regular: Finance action popup",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": [
+        {
+          "id": 1,
+          "recipient_role": "finance",
+          "event_type": "management.additional_project.requested",
+          "category": "approval",
+          "title": "New Regular Project Request",
+          "message": "AUDIT-REGULAR - Audit regular: Regular project request from Management.",
+          "target_url": "/finance/management-projects",
+          "is_read": false,
+          "read_at": null,
+          "created_at": "2026-11-14T13:23:32.643812",
+          "severity": "info",
+          "requires_action": true,
+          "is_resolved": false,
+          "resolved_at": null,
+          "is_reminder": false,
+          "metadata": {
+            "request_id": 1,
+            "client_id": 1,
+            "project_type": "regular",
+            "notification_type": "approval"
+          }
+        }
+      ]
+    },
+    {
+      "name": "regular: real request appears in action popup",
+      "passed": true
+    },
+    {
+      "name": "regular: Finance creates project",
+      "passed": true,
+      "expected_status": 201,
+      "actual_status": 201,
+      "response": {
+        "project_id": 1,
+        "project_code": "AUDIT-PROJECT-REGULAR",
+        "workflow_status": "finance_approved"
+      }
+    },
+    {
+      "name": "regular: fulfilled request cannot be replayed",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Project request was already processed"
+      }
+    },
+    {
+      "name": "regular: Finance pending count after fulfillment",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "pending_count": 0
+      }
+    },
+    {
+      "name": "regular: fulfilled action no longer pending",
+      "passed": true
+    },
+    {
+      "name": "regular: Finance changes department before work",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 1,
+        "project_code": "AUDIT-PROJECT-REGULAR",
+        "old_department": "ortho",
+        "new_department": "lidar",
+        "old_manager_id": null,
+        "new_manager_id": 4,
+        "workflow_status": "pm_assigned",
+        "reason": "Audit pre-start correction"
+      }
+    },
+    {
+      "name": "regular: source changes department before work",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 1,
+        "project_code": "AUDIT-PROJECT-REGULAR",
+        "old_department": "lidar",
+        "new_department": "ortho",
+        "old_manager_id": 4,
+        "new_manager_id": 5,
+        "workflow_status": "pm_assigned",
+        "reason": "Audit pre-start correction"
+      }
+    },
+    {
+      "name": "regular: Finance file tracking",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 1,
+        "as_of": "2026-11-14T13:23:32.783072",
+        "summary": {
+          "overall_percent": 0.0,
+          "operational_status": "Awaiting work allocation",
+          "work_units": 0,
+          "active_files": 0,
+          "legacy_areas": 0,
+          "rework_count": 0,
+          "stages": {
+            "production": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qc": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qa": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "delivery": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            }
+          },
+          "last_activity_at": null
+        },
+        "files": []
+      }
+    },
+    {
+      "name": "regular: Management tracking",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "as_of": "2026-11-14T13:23:32.798131",
+        "projects": [
+          {
+            "id": 1,
+            "management_client_id": 1,
+            "project_code": "AUDIT-PROJECT-REGULAR",
+            "project_name": "Audit regular project",
+            "source_person_name": "Management",
+            "project_type": "regular",
+            "pilot_payment_type": null,
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "pm_assigned",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.700774",
+            "project_value": 10000.0,
+            "currency": "INR",
+            "tracking": {
+              "overall_percent": 0.0,
+              "operational_status": "Awaiting work allocation",
+              "work_units": 0,
+              "active_files": 0,
+              "legacy_areas": 0,
+              "rework_count": 0,
+              "stages": {
+                "production": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qc": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qa": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "delivery": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                }
+              },
+              "last_activity_at": null
+            },
+            "can_change_department": true,
+            "can_revoke": false,
+            "can_approve": false
+          }
+        ],
+        "clients": {
+          "1": {
+            "project_count": 1,
+            "active_projects": 1,
+            "completed_projects": 0,
+            "overall_percent": 0.0,
+            "work_units": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "regular: premature approval blocked",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Project is not awaiting Management approval"
+      }
+    },
+    {
+      "name": "regular: premature revocation blocked",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Billing approval cannot be revoked at this stage"
+      }
+    },
+    {
+      "name": "regular: BD project details blocked",
+      "passed": true,
+      "expected_status": 403,
+      "actual_status": 403,
+      "response": {
+        "detail": "Finance access required"
+      }
+    },
+    {
+      "name": "pilot: register client",
+      "passed": true,
+      "expected_status": 201,
+      "actual_status": 201,
+      "response": {
+        "client_code": "AUDIT-PILOT",
+        "client_name": "Audit pilot",
+        "client_email": null,
+        "organization_email": null,
+        "address": null,
+        "country": "India",
+        "gst_number": null,
+        "contact_person_name": "Audit Contact",
+        "contact_person_email": null,
+        "contact_person_phone": "9999999999",
+        "work_description": "Isolated automated module check",
+        "can_request_project": false,
+        "id": 2,
+        "source_person_name": "Management",
+        "is_active": true,
+        "created_at": "2026-11-14T13:23:32.818602",
+        "updated_at": "2026-11-14T13:23:32.818602"
+      }
+    },
+    {
+      "name": "pilot: duplicate client blocked",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Client ID is already registered in Management"
+      }
+    },
+    {
+      "name": "pilot: Management department options",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "departments": [
+          {
+            "code": "ortho",
+            "label": "Ortho"
+          },
+          {
+            "code": "lidar",
+            "label": "LiDAR"
+          },
+          {
+            "code": "mobile_mapping",
+            "label": "Mobile Mapping"
+          },
+          {
+            "code": "laser_scanning",
+            "label": "Laser Scanning"
+          },
+          {
+            "code": "civil",
+            "label": "Civil"
+          }
+        ],
+        "project_managers_by_department": {
+          "ortho": [
+            {
+              "id": 5,
+              "full_name": "Ortho_Pm",
+              "email": "audit.ortho@example.com",
+              "employee_id": null,
+              "department": null,
+              "designation": null,
+              "performing_department_code": "ortho"
+            }
+          ],
+          "lidar": [
+            {
+              "id": 4,
+              "full_name": "Lidar_Pm",
+              "email": "audit.lidar@example.com",
+              "employee_id": null,
+              "department": null,
+              "designation": null,
+              "performing_department_code": "lidar"
+            }
+          ],
+          "mobile_mapping": [],
+          "laser_scanning": [],
+          "civil": []
+        }
+      }
+    },
+    {
+      "name": "pilot: Finance request queue",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": [
+        {
+          "id": 2,
+          "management_client_id": 2,
+          "client_code": "AUDIT-PILOT",
+          "client_name": "Audit pilot",
+          "source_person_name": "Management",
+          "project_name": null,
+          "scope_text": "Isolated automated module check",
+          "expected_start_date": null,
+          "remarks": null,
+          "status": "PENDING",
+          "project_type": "pilot",
+          "pilot_payment_type": "free",
+          "created_project_id": null,
+          "created_project_code": null,
+          "created_at": "2026-11-14T13:23:32.819602",
+          "completed_at": null
+        },
+        {
+          "id": 1,
+          "management_client_id": 1,
+          "client_code": "AUDIT-REGULAR",
+          "client_name": "Audit regular",
+          "source_person_name": "Management",
+          "project_name": null,
+          "scope_text": "Isolated automated module check",
+          "expected_start_date": null,
+          "remarks": null,
+          "status": "CREATED",
+          "project_type": "regular",
+          "pilot_payment_type": null,
+          "created_project_id": 1,
+          "created_project_code": "AUDIT-PROJECT-REGULAR",
+          "created_at": "2026-11-14T13:23:32.639809",
+          "completed_at": "2026-11-14T13:23:32.711311"
+        }
+      ]
+    },
+    {
+      "name": "pilot: Finance action popup",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": [
+        {
+          "id": 6,
+          "recipient_role": "finance",
+          "event_type": "management.additional_project.requested",
+          "category": "approval",
+          "title": "New Free Pilot Request",
+          "message": "AUDIT-PILOT - Audit pilot: Pilot project request from Management.",
+          "target_url": "/finance/management-projects",
+          "is_read": false,
+          "read_at": null,
+          "created_at": "2026-11-14T13:23:32.820602",
+          "severity": "info",
+          "requires_action": true,
+          "is_resolved": false,
+          "resolved_at": null,
+          "is_reminder": false,
+          "metadata": {
+            "request_id": 2,
+            "client_id": 2,
+            "project_type": "pilot",
+            "notification_type": "approval"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pilot: real request appears in action popup",
+      "passed": true
+    },
+    {
+      "name": "pilot: Finance creates project",
+      "passed": true,
+      "expected_status": 201,
+      "actual_status": 201,
+      "response": {
+        "project_id": 2,
+        "project_code": "AUDIT-PROJECT-PILOT",
+        "workflow_status": "finance_approved"
+      }
+    },
+    {
+      "name": "pilot: fulfilled request cannot be replayed",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Project request was already processed"
+      }
+    },
+    {
+      "name": "pilot: Finance pending count after fulfillment",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "pending_count": 0
+      }
+    },
+    {
+      "name": "pilot: fulfilled action no longer pending",
+      "passed": true
+    },
+    {
+      "name": "pilot: Finance changes department before work",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 2,
+        "project_code": "AUDIT-PROJECT-PILOT",
+        "old_department": "ortho",
+        "new_department": "lidar",
+        "old_manager_id": null,
+        "new_manager_id": 4,
+        "workflow_status": "pm_assigned",
+        "reason": "Audit pre-start correction"
+      }
+    },
+    {
+      "name": "pilot: source changes department before work",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 2,
+        "project_code": "AUDIT-PROJECT-PILOT",
+        "old_department": "lidar",
+        "new_department": "ortho",
+        "old_manager_id": 4,
+        "new_manager_id": 5,
+        "workflow_status": "pm_assigned",
+        "reason": "Audit pre-start correction"
+      }
+    },
+    {
+      "name": "pilot: Finance file tracking",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 2,
+        "as_of": "2026-11-14T13:23:32.913062",
+        "summary": {
+          "overall_percent": 0.0,
+          "operational_status": "Awaiting work allocation",
+          "work_units": 0,
+          "active_files": 0,
+          "legacy_areas": 0,
+          "rework_count": 0,
+          "stages": {
+            "production": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qc": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qa": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "delivery": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            }
+          },
+          "last_activity_at": null
+        },
+        "files": []
+      }
+    },
+    {
+      "name": "pilot: Management tracking",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "as_of": "2026-11-14T13:23:32.930817",
+        "projects": [
+          {
+            "id": 2,
+            "management_client_id": 2,
+            "project_code": "AUDIT-PROJECT-PILOT",
+            "project_name": "Audit pilot project",
+            "source_person_name": "Management",
+            "project_type": "pilot",
+            "pilot_payment_type": "free",
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "pm_assigned",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.856575",
+            "project_value": 0.0,
+            "currency": "INR",
+            "tracking": {
+              "overall_percent": 0.0,
+              "operational_status": "Awaiting work allocation",
+              "work_units": 0,
+              "active_files": 0,
+              "legacy_areas": 0,
+              "rework_count": 0,
+              "stages": {
+                "production": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qc": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qa": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "delivery": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                }
+              },
+              "last_activity_at": null
+            },
+            "can_change_department": true,
+            "can_revoke": false,
+            "can_approve": false
+          },
+          {
+            "id": 1,
+            "management_client_id": 1,
+            "project_code": "AUDIT-PROJECT-REGULAR",
+            "project_name": "Audit regular project",
+            "source_person_name": "Management",
+            "project_type": "regular",
+            "pilot_payment_type": null,
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "pm_assigned",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.700774",
+            "project_value": 10000.0,
+            "currency": "INR",
+            "tracking": {
+              "overall_percent": 0.0,
+              "operational_status": "Awaiting work allocation",
+              "work_units": 0,
+              "active_files": 0,
+              "legacy_areas": 0,
+              "rework_count": 0,
+              "stages": {
+                "production": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qc": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qa": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "delivery": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                }
+              },
+              "last_activity_at": null
+            },
+            "can_change_department": true,
+            "can_revoke": false,
+            "can_approve": false
+          }
+        ],
+        "clients": {
+          "2": {
+            "project_count": 1,
+            "active_projects": 1,
+            "completed_projects": 0,
+            "overall_percent": 0.0,
+            "work_units": 0
+          },
+          "1": {
+            "project_count": 1,
+            "active_projects": 1,
+            "completed_projects": 0,
+            "overall_percent": 0.0,
+            "work_units": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "pilot: premature approval blocked",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Project is not awaiting Management approval"
+      }
+    },
+    {
+      "name": "pilot: premature revocation blocked",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Billing approval cannot be revoked at this stage"
+      }
+    },
+    {
+      "name": "pilot: BD project details blocked",
+      "passed": true,
+      "expected_status": 403,
+      "actual_status": 403,
+      "response": {
+        "detail": "Finance access required"
+      }
+    },
+    {
+      "name": "Finance project list",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "clients": [
+          {
+            "id": 2,
+            "client_code": "AUDIT-PILOT",
+            "client_name": "Audit pilot",
+            "source_person_name": "Management",
+            "contact_person_name": "Audit Contact",
+            "client_email": null,
+            "address": null,
+            "gst_number": null,
+            "work_description": "Isolated automated module check",
+            "is_active": true
+          },
+          {
+            "id": 1,
+            "client_code": "AUDIT-REGULAR",
+            "client_name": "Audit regular",
+            "source_person_name": "Management",
+            "contact_person_name": "Audit Contact",
+            "client_email": null,
+            "address": null,
+            "gst_number": null,
+            "work_description": "Isolated automated module check",
+            "is_active": true
+          }
+        ],
+        "projects": [
+          {
+            "id": 2,
+            "management_client_id": 2,
+            "project_code": "AUDIT-PROJECT-PILOT",
+            "project_name": "Audit pilot project",
+            "source_person_name": "Management",
+            "project_type": "pilot",
+            "pilot_payment_type": "free",
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "pm_assigned",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.856575",
+            "project_value": 0.0,
+            "currency": "INR"
+          },
+          {
+            "id": 1,
+            "management_client_id": 1,
+            "project_code": "AUDIT-PROJECT-REGULAR",
+            "project_name": "Audit regular project",
+            "source_person_name": "Management",
+            "project_type": "regular",
+            "pilot_payment_type": null,
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "pm_assigned",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.700774",
+            "project_value": 10000.0,
+            "currency": "INR"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Finance tracking rollup",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "as_of": "2026-11-14T13:23:32.961748",
+        "projects": {
+          "1": {
+            "overall_percent": 0.0,
+            "operational_status": "Awaiting work allocation",
+            "work_units": 0,
+            "active_files": 0,
+            "legacy_areas": 0,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": null
+          },
+          "2": {
+            "overall_percent": 0.0,
+            "operational_status": "Awaiting work allocation",
+            "work_units": 0,
+            "active_files": 0,
+            "legacy_areas": 0,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": null
+          }
+        }
+      }
+    },
+    {
+      "name": "Finance summary",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "projects": {
+          "1": {
+            "invoice_count": 0,
+            "invoiced_inr": 0.0,
+            "received_inr": 0.0,
+            "outstanding_inr": 0.0,
+            "missing_fx_rows": 0
+          },
+          "2": {
+            "invoice_count": 0,
+            "invoiced_inr": 0.0,
+            "received_inr": 0.0,
+            "outstanding_inr": 0.0,
+            "missing_fx_rows": 0
+          }
+        },
+        "totals": {
+          "invoice_count": 0,
+          "invoiced_inr": 0.0,
+          "received_inr": 0.0,
+          "outstanding_inr": 0.0,
+          "missing_fx_rows": 0,
+          "collection_rate": 0.0
+        }
+      }
+    },
+    {
+      "name": "Delivered project: Management approval popup",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": [
+        {
+          "id": 11,
+          "recipient_role": null,
+          "event_type": "lifecycle.management_approval_requested",
+          "category": "approval",
+          "title": "Management approval required",
+          "message": "Audit delivered project",
+          "target_url": "/management/project-management",
+          "is_read": false,
+          "read_at": null,
+          "created_at": "2026-11-14T13:23:32.974749",
+          "severity": "info",
+          "requires_action": true,
+          "is_resolved": false,
+          "resolved_at": null,
+          "is_reminder": false,
+          "metadata": {
+            "notification_type": "approval"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delivered project: source sees approval action",
+      "passed": true
+    },
+    {
+      "name": "Delivered project: source approves",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 1,
+        "workflow_status": "READY_FOR_BILLING",
+        "approved_by_user_id": 1
+      }
+    },
+    {
+      "name": "Draft exists: source revokes approval",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 1,
+        "workflow_status": "INVOICE_DRAFT",
+        "source_approved": false
+      }
+    },
+    {
+      "name": "Revoked approval blocks raising draft",
+      "passed": true
+    },
+    {
+      "name": "Draft exists: source tracking after revocation",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "as_of": "2026-11-14T13:23:33.034919",
+        "projects": [
+          {
+            "id": 2,
+            "management_client_id": 2,
+            "project_code": "AUDIT-PROJECT-PILOT",
+            "project_name": "Audit pilot project",
+            "source_person_name": "Management",
+            "project_type": "pilot",
+            "pilot_payment_type": "free",
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "pm_assigned",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.856575",
+            "project_value": 0.0,
+            "currency": "INR",
+            "tracking": {
+              "overall_percent": 0.0,
+              "operational_status": "Awaiting work allocation",
+              "work_units": 0,
+              "active_files": 0,
+              "legacy_areas": 0,
+              "rework_count": 0,
+              "stages": {
+                "production": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qc": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "qa": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                },
+                "delivery": {
+                  "completed": 0,
+                  "total": 0,
+                  "percent": 0.0,
+                  "in_progress": 0
+                }
+              },
+              "last_activity_at": null
+            },
+            "can_change_department": true,
+            "can_revoke": false,
+            "can_approve": false
+          },
+          {
+            "id": 1,
+            "management_client_id": 1,
+            "project_code": "AUDIT-PROJECT-REGULAR",
+            "project_name": "Audit regular project",
+            "source_person_name": "Management",
+            "project_type": "regular",
+            "pilot_payment_type": null,
+            "department_code": "ortho",
+            "department_label": "Ortho",
+            "workflow_status": "INVOICE_DRAFT",
+            "source_approved": false,
+            "project_manager_id": 5,
+            "project_manager_name": "Ortho_Pm",
+            "start_date": "2026-11-14",
+            "end_date": "2026-11-20",
+            "created_at": "2026-11-14T13:23:32.700774",
+            "project_value": 10000.0,
+            "currency": "INR",
+            "tracking": {
+              "overall_percent": 100.0,
+              "operational_status": "Delivered",
+              "work_units": 1,
+              "active_files": 0,
+              "legacy_areas": 1,
+              "rework_count": 0,
+              "stages": {
+                "production": {
+                  "completed": 1,
+                  "total": 1,
+                  "percent": 100.0,
+                  "in_progress": 0
+                },
+                "qc": {
+                  "completed": 1,
+                  "total": 1,
+                  "percent": 100.0,
+                  "in_progress": 0
+                },
+                "qa": {
+                  "completed": 1,
+                  "total": 1,
+                  "percent": 100.0,
+                  "in_progress": 0
+                },
+                "delivery": {
+                  "completed": 1,
+                  "total": 1,
+                  "percent": 100.0,
+                  "in_progress": 0
+                }
+              },
+              "last_activity_at": "2026-11-14T13:23:32.973749"
+            },
+            "can_change_department": false,
+            "can_revoke": false,
+            "can_approve": true
+          }
+        ],
+        "clients": {
+          "2": {
+            "project_count": 1,
+            "active_projects": 1,
+            "completed_projects": 0,
+            "overall_percent": 0.0,
+            "work_units": 0
+          },
+          "1": {
+            "project_count": 1,
+            "active_projects": 0,
+            "completed_projects": 1,
+            "overall_percent": 100.0,
+            "work_units": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "Draft exists: source popup after revocation",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": []
+    },
+    {
+      "name": "Draft exists: reapproval action remains visible in popup",
+      "passed": false,
+      "response": {
+        "can_approve": true,
+        "popup_count": 0
+      }
+    },
+    {
+      "name": "Draft exists: source can approve again",
+      "passed": true,
+      "expected_status": 200,
+      "actual_status": 200,
+      "response": {
+        "project_id": 1,
+        "workflow_status": "INVOICE_DRAFT",
+        "approved_by_user_id": 1
+      }
+    },
+    {
+      "name": "Issued invoice locks approval revocation",
+      "passed": true,
+      "expected_status": 409,
+      "actual_status": 409,
+      "response": {
+        "detail": "Billing approval cannot be revoked at this stage"
+      }
+    },
+    {
+      "name": "Free pilot: backend blocks customer invoicing",
+      "passed": false,
+      "response": {
+        "invoice_id": 2,
+        "status": "PAYMENT_PENDING",
+        "amount": "1000"
+      },
+      "detail": "A positive customer invoice was drafted and raised for a zero-value free pilot in a private fixture."
+    }
+  ],
+  "operations_smoke": [
+    {
+      "name": "normal flow: create BD project",
+      "passed": true
+    },
+    {
+      "name": "normal flow: BD shares with Finance",
+      "passed": true
+    },
+    {
+      "name": "normal flow: handoff requires no Finance approval",
+      "passed": true
+    },
+    {
+      "name": "normal flow: assign department PM",
+      "passed": true
+    },
+    {
+      "name": "normal flow: PM configures team",
+      "passed": true
+    },
+    {
+      "name": "normal flow: import planned files",
+      "passed": true
+    },
+    {
+      "name": "normal flow: allocate production QC QA",
+      "passed": true
+    },
+    {
+      "name": "normal flow: premature delivery blocked",
+      "passed": true
+    },
+    {
+      "name": "normal flow: complete production",
+      "passed": true
+    },
+    {
+      "name": "normal flow: tracking converts item kilometres to package metres",
+      "passed": true
+    },
+    {
+      "name": "normal flow: QC passes",
+      "passed": true
+    },
+    {
+      "name": "normal flow: QA passes",
+      "passed": true
+    },
+    {
+      "name": "normal flow: ready for delivery",
+      "passed": true
+    },
+    {
+      "name": "normal flow: deliver file",
+      "passed": true
+    },
+    {
+      "name": "normal flow: delivered once without Finance closure",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: create BD project",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: BD shares with Finance",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: handoff requires no Finance approval",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: assign department PM",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: PM configures team",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: import planned files",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: allocate production QC QA",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: premature delivery blocked",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: complete production",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: tracking converts item kilometres to package metres",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: QC rejects",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: complete correction",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: QC passes",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: QA passes",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: ready for delivery",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: deliver file",
+      "passed": true
+    },
+    {
+      "name": "with QC rework: delivered once without Finance closure",
+      "passed": true
+    }
+  ],
+  "python_syntax": {
+    "files_checked": 240,
+    "errors": []
+  },
+  "browser_original_fixture": {
+    "startTime": "2026-11-14T13:12:39.087Z",
+    "duration": 192776.631,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  },
+  "browser_current_workflow_fixture": {
+    "startTime": "2026-11-14T13:17:17.548Z",
+    "duration": 14242.807,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "frontend_static_verifications": {
+    "passed": 17,
+    "failed": 0
+  },
+  "frontend_typescript": "passed",
+  "frontend_production_build": "passed (bundle size warning)",
+  "limitations": [
+    "Existing browser fixture requires obsolete Finance approval; alternate audit fixture uses current BD handoff.",
+    "Temporary SQLite databases; external PostgreSQL/PostGIS, email delivery and storage integrations are not proven by these checks.",
+    "Existing automated coverage and added focused smoke checks do not cover every possible UI interaction."
+  ]
+}

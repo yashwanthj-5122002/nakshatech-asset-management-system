@@ -82,7 +82,7 @@ export function CommercialDetailsSection({ form, onChange, currencies, disabled 
         }}>Use rate × scope as contract amount</button></div>
       </>}
 
-      <label className="operations-field"><span>Estimated Contract Amount ({form.currency_code}) *</span><input required type="number" min="0.01" step="0.01" value={form.estimated_amount} onChange={e => set({ estimated_amount: e.target.value })} /></label>
+      <label className="operations-field"><span>Estimated Contract Amount ({form.currency_code}) *</span><input required type="number" min="0.0" step="0.01" value={form.estimated_amount} onChange={e => set({ estimated_amount: e.target.value })} /></label>
       <label className="operations-field"><span>Taxable / Base Amount</span><input type="number" min="0" step="0.01" value={form.taxable_base_amount} onChange={e => set({ taxable_base_amount: e.target.value })} placeholder="Defaults to the contract amount" /></label>
       <label className="operations-field"><span>Expected Tax %</span><input type="number" min="0" max="100" step="0.01" value={form.tax_percent} onChange={e => set({ tax_percent: e.target.value })} /></label>
       <div className="operations-field"><span>Expected tax / gross</span><div className="cw-readout">{money(tax, form.currency_code)} tax · {money(base + tax, form.currency_code)} gross</div></div>

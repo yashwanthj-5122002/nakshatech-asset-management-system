@@ -72,7 +72,7 @@ def add_opportunity(db, bd: User, suffix: str) -> BDOpportunity:
     return row
 
 
-def test_sample_request_notifies_only_reserved_demo_technical_accounts():
+def test_retired_sample_request_emits_no_technical_notifications():
     with SessionLocal() as db:
         bd = add_user(db, email="bd.phase2@nakshatech.com", role="bd", employee_id="T-BD-1")
         lidar_demo = add_demo_user(db, "lidar", "lidar")
@@ -94,11 +94,11 @@ def test_sample_request_notifies_only_reserved_demo_technical_accounts():
         created = create_sample_team_notifications(db, sample_request_id=sample.id)
         db.commit()
 
-        assert created == 2
+        assert created == 0  # obsolete sample notifications are retired
         recipients = set(db.scalars(select(GlobalNotification.recipient_user_id).where(
             GlobalNotification.event_type == "technical.sample.requested"
         )).all())
-        assert recipients == {lidar_demo.id, bim_demo.id}
+        assert recipients == set()
         assert real_lidar.id not in recipients
         assert opportunity.stage == "technical_sample"
 
@@ -211,10 +211,9 @@ def test_multi_team_submission_revision_and_client_approval_finance_handoff():
 
         count = create_finance_client_approved_notifications(db, sample_request_id=sample.id)
         db.commit()
-        assert count == 1
+        assert count == 0  # finance sample notifications are also retired
         notification = db.scalar(select(GlobalNotification).where(
             GlobalNotification.recipient_user_id == finance.id,
             GlobalNotification.event_type == "finance.bd_opportunity.client_approved",
         ))
-        assert notification is not None
-        assert "Client ID and Project ID" in notification.message
+        assert notification is None

@@ -1,0 +1,27 @@
+{
+  "python_version": "3.11.9",
+  "node_version": "v24.22.1",
+  "packages": {
+    "pytest": "8.4.2",
+    "fastapi": "0.137.2",
+    "SQLAlchemy": "2.1.6",
+    "psycopg": "3.3.6"
+  },
+  "source_sha256": {
+    "frontend/src/features/finance/pages/FinanceManagementProjectsPage.tsx": "19a75f9fb3e15fac582baf9400b773f3e421c74bce3c065ef734de358d4d38df",
+    "frontend/src/features/finance/pages/PilotProjectDetails.css": "f961f88c4333355e50a7a3d849ccd15598b8f1b63b771a5c57595809f3df5e48",
+    "frontend/package-lock.json": "a93f39b433b7bf4bf181b3e8fc96acb5299516879f3aebfad9d0cecad04dd0d9",
+    "backend/requirements.txt": "7e68037efb9447d369ef1600b941ed762c00da853a507c587ad96ead9a08d8fd"
+  },
+  "tracked_changes_sha256": "2c58d51fa9ced3744de9da57a29bd49e919ca9b6374c61a73cb4fb4d5605be58",
+  "commands": [
+    "backend/.venv/Scripts/python.exe artifacts/qa/run_full_validation_20261116.py",
+    "npm run lint",
+    "npm run test:checks",
+    "npm run build",
+    "playwright test (original and current-workflow configs)",
+    "pytest _pt_patch/tests",
+    "pytest tests/test_production_schema_upgrade.py (original and current-workflow fixtures; temporary PostgreSQL)",
+    "node artifacts/qa/validate_frontend_routes_20261116.mjs"
+  ]
+}

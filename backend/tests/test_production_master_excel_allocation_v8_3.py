@@ -14,7 +14,7 @@ existing workflow engine.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 
@@ -100,19 +100,29 @@ def assign_all(db, ctx, package, item_ids, *, prod=None, qc=None, qa=None,
 
 
 def run_production(db, ctx, item, *, quantity="1.20"):
+    start = next_session_time(db, item)
     activity = items_service.start_activity(
-        db, actor=ctx["team"]["prod"], role=TL_ROLE, work_package_item_id=item.id, stage="production")
+        db, actor=ctx["team"]["prod"], role=TL_ROLE, work_package_item_id=item.id, stage="production", started_at=start)
     return items_service.stop_activity(
         db, actor=ctx["team"]["prod"], activity_id=activity.id, status="completed",
-        quantity_completed=Decimal(quantity), unit=item.planned_unit, remarks="done")
+        quantity_completed=Decimal(quantity), unit=item.planned_unit, remarks="done", ended_at=start + timedelta(hours=1))
+
+
+def next_session_time(db, item):
+    """Keep fixture events chronological and independent of the wall clock."""
+    activities = db.scalars(select(WorkPackageItemActivity).where(
+        WorkPackageItemActivity.work_package_item_id == item.id)).all()
+    return max((value for row in activities for value in (row.started_at, row.ended_at) if value),
+               default=datetime(2026, 10, 13, 8)) + timedelta(minutes=1)
 
 
 def run_review(db, ctx, item, stage: str, status: str, *, remarks=None):
     actor = ctx["team"][stage]
+    start = next_session_time(db, item)
     activity = items_service.start_activity(
-        db, actor=actor, role=TL_ROLE, work_package_item_id=item.id, stage=stage)
+        db, actor=actor, role=TL_ROLE, work_package_item_id=item.id, stage=stage, started_at=start)
     return items_service.stop_activity(
-        db, actor=actor, activity_id=activity.id, status=status, remarks=remarks)
+        db, actor=actor, activity_id=activity.id, status=status, remarks=remarks, ended_at=start + timedelta(minutes=10))
 
 
 # ===========================================================================================
@@ -393,7 +403,7 @@ def test_production_complete_auto_files_and_actual_km():
         payload = items_service.item_list(db, actor=ctx["team"]["tl"], role=TL_ROLE,
                                           work_package_id=package.id)
         row = payload["items"][0]
-        assert row["production_quantity"] == 1.16
+        assert row["production_quantity"] == 1.2  # completed output is locked to the imported plan
         assert row["production_files"] == 1
         assert row["production_deadline"]["status"] == "completed_on_time"  # 20-Oct target
         totals = items_service.employee_file_totals(db, [package.id])
@@ -432,6 +442,7 @@ def test_qa_gate_after_qc_pass():
         with pytest.raises(ValueError, match="QC must pass"):
             items_service.start_activity(db, actor=ctx["team"]["qa"], role=TL_ROLE,
                                          work_package_item_id=item.id, stage="qa")
+        run_production(db, ctx, item)  # correction required after QC rejection
         run_review(db, ctx, item, "qc", "passed")
         qa_ready = db.scalar(select(func.count(GlobalNotification.id)).where(
             GlobalNotification.event_type == "workflow.item.qa_ready",
@@ -632,7 +643,7 @@ def test_area_master_exact_26_and_file_level_values():
         assert row[0] == "LOT-031" and row[2] == "FOGNATURA 1"
         assert row[3] == 1.2            # LENGTH (planned)
         assert str(row[5]).startswith("2026-10-15")   # SUPPLY DATE from allocation
-        assert row[6] == 1.16           # ACTUAL KM (actual production quantity)
+        assert row[6] == 1.2           # ACTUAL KM (actual production quantity)
         assert "prod.ft.RP1" in str(row[10])   # PROD_ALLOTMENT = assignee
         assert row[11] == "completed"   # production STATUS
         assert "qc.ft.RP1" in str(row[13]) and row[14] == "approved"
@@ -652,7 +663,7 @@ def test_file_activity_targets_and_deadlines():
         assert row[6] == 1.2 and row[7] == "km"          # PLANNED LENGTH / UOM
         assert row[8] == "2026-10-15"                    # SUPPLY DATE
         assert row[10] == "2026-10-20"                   # PRODUCTION TARGET DATE
-        assert row[16] == 1.16                           # ACTUAL QUANTITY
+        assert row[16] == 1.2                           # ACTUAL QUANTITY
         assert row[18] == "completed_on_time"            # PRODUCTION DEADLINE STATUS
         assert row[26] == "2026-10-22"                   # QC TARGET DATE
         assert row[36] == "2026-10-24"                   # QA TARGET DATE
