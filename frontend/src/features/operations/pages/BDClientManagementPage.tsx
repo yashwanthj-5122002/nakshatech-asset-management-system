@@ -11,7 +11,7 @@ import { CommercialDetailsSection } from '../../commercial/components/Commercial
 import { PendingDocumentsPicker } from '../../commercial/components/SupportingDocuments'
 import type { CurrencyPayload } from '../../commercial/types'
 import '../operations.css'
-
+import { CountrySelect } from '../../management/CountrySelect'
 type Client = {
   id:number; client_code:string; client_name:string; client_email?:string|null; organization_email?:string|null;
   address?:string|null; location?:string|null; country?:string|null; gst_number?:string|null; contact_person_name:string;
@@ -26,10 +26,10 @@ type Pilot = { id:number;project_id:number;client_id:number;project_code:string;
   satisfaction:string|null;feedback_note:string|null;paid_project_id:number|null;conversion_eligible:boolean;
   conversion_deferred:boolean;status:string }
 
-type ClientForm = {client_code:string;client_name:string;client_email:string;organization_email:string;address:string;gst_number:string;contact_person_name:string;contact_person_email:string;contact_person_phone:string;bd_name:string}
+type ClientForm = {client_code:string;client_name:string;client_email:string;organization_email:string;address:string;country:string;gst_number:string;contact_person_name:string;contact_person_email:string;contact_person_phone:string;bd_name:string}
 type ProjectForm = {project_code:string;project_name:string;scope_text:string;start_date:string;end_date:string;description:string}
 
-const emptyClient:ClientForm={client_code:'',client_name:'',client_email:'',organization_email:'',address:'',gst_number:'',contact_person_name:'',contact_person_email:'',contact_person_phone:'',bd_name:''}
+const emptyClient:ClientForm={client_code:'',client_name:'',client_email:'',organization_email:'',address:'',country:'India',gst_number:'',contact_person_name:'',contact_person_email:'',contact_person_phone:'',bd_name:''}
 const emptyProject:ProjectForm={project_code:'',project_name:'',scope_text:'',start_date:'',end_date:'',description:''}
 
 function automaticBdProjectPriority(startDate: string, endDate: string): string {
@@ -39,6 +39,27 @@ function automaticBdProjectPriority(startDate: string, endDate: string): string 
   if (!Number.isFinite(start) || !Number.isFinite(end)) return ''
   const days = Math.round((end - start) / 86400000)
   return days <= 7 ? 'high' : days <= 14 ? 'medium' : 'low'
+}
+function taxLabelForCountry(country: string): string {
+  const labels: Record<string, string> = {
+    'india': 'GSTIN',
+    'germany': 'VAT ID (USt-IdNr.)',
+    'united kingdom': 'VAT Registration Number',
+    'france': 'VAT Number',
+    'italy': 'Partita IVA',
+    'united states': 'Tax ID / EIN',
+    'united states of america': 'Tax ID / EIN',
+    'united arab emirates': 'VAT TRN',
+    'uae': 'VAT TRN',
+    'saudi arabia': 'VAT Registration Number',
+    'australia': 'ABN',
+    'canada': 'GST/HST Registration Number',
+    'singapore': 'GST Registration Number',
+    'indonesia': 'NPWP',
+    'japan': 'Corporate Number / Invoice Registration Number'
+  }
+
+  return labels[country.trim().toLowerCase()] ?? 'Tax Registration Number'
 }
 export function BDClientManagementPage(){
   const [data,setData]=useState<Dashboard|null>(null);const [selectedId,setSelectedId]=useState<number|null>(null)
@@ -125,7 +146,7 @@ export function BDClientManagementPage(){
         client_code:clientForm.client_code,client_name:clientForm.client_name,client_email:clientForm.client_email||null,
         organization_email:clientForm.organization_email||null,address:clientForm.address||null,gst_number:clientForm.gst_number||null,
         contact_person_name:clientForm.contact_person_name,contact_person_email:clientForm.contact_person_email||null,
-        contact_person_phone:clientForm.contact_person_phone||null,bd_name:clientForm.bd_name||null,country:'India',source_team:'bd_team',is_active:true,
+        contact_person_phone:clientForm.contact_person_phone||null,bd_name:clientForm.bd_name||null,country:clientForm.country,source_team:'bd_team',is_active:true,
       })})
       setClientForm(emptyClient);setShowClientForm(false);setSelectedId(saved.id);setNotice(`Client ID ${saved.client_code} created.`);load()
     }catch(err){showError(err instanceof Error?err.message:'Unable to create client')}finally{setBusy(false)}
@@ -187,8 +208,28 @@ export function BDClientManagementPage(){
       <label className="operations-field"><span>Client ID  (manual)</span><input required value={clientForm.client_code} onChange={e=>setClientForm({...clientForm,client_code:e.target.value.toUpperCase()})}/></label>
       <label className="operations-field"><span>Client Email ID</span><input type="email" value={clientForm.client_email} onChange={e=>setClientForm({...clientForm,client_email:e.target.value})}/></label>
       <label className="operations-field"><span>Organization Email ID</span><input type="email" value={clientForm.organization_email} onChange={e=>setClientForm({...clientForm,organization_email:e.target.value})}/></label>
-      <label className="operations-field"><span>Country</span><input value={clientForm.address} onChange={e=>setClientForm({...clientForm,address:e.target.value})}/></label>
-      <label className="operations-field"><span>GST /VAT/SUT</span><input value={clientForm.gst_number} onChange={e=>setClientForm({...clientForm,gst_number:e.target.value.toUpperCase()})}/></label>
+     <div className="bd-country-align">
+  <CountrySelect
+    value={clientForm.country}
+    onChange={(country) =>
+      setClientForm(prev => ({ ...prev, country }))
+    }
+  />
+</div>
+      <label className="operations-field">
+  <span>{taxLabelForCountry(clientForm.country)}</span>
+  <input
+    maxLength={32}
+    value={clientForm.gst_number}
+    onChange={e =>
+      setClientForm(prev => ({
+        ...prev,
+        gst_number: e.target.value.toUpperCase()
+      }))
+    }
+    placeholder={`Enter ${taxLabelForCountry(clientForm.country)}`}
+  />
+</label>
       <label className="operations-field"><span>Contact Person Name </span><input required value={clientForm.contact_person_name} onChange={e=>setClientForm({...clientForm,contact_person_name:e.target.value})}/></label>
       <label className="operations-field"><span>Contact Person Email ID</span><input type="email" value={clientForm.contact_person_email} onChange={e=>setClientForm({...clientForm,contact_person_email:e.target.value})}/></label>
       <label className="operations-field"><span>Contact Person Ph/no</span><input value={clientForm.contact_person_phone} onChange={e=>setClientForm({...clientForm,contact_person_phone:e.target.value})}/></label>
