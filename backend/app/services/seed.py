@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -413,6 +413,7 @@ def _department_pm_specs() -> list[tuple[str, str, str, str, str]]:
         (settings.seed_mobile_mapping_pm_email, settings.seed_mobile_mapping_pm_password, DEPARTMENT_PM_ROLE[DEPARTMENT_MOBILE_MAPPING], DEPARTMENT_LABELS[DEPARTMENT_MOBILE_MAPPING], "TEST-MOBILEMAPPING-PM"),
         (settings.seed_laser_scanning_pm_email, settings.seed_laser_scanning_pm_password, DEPARTMENT_PM_ROLE[DEPARTMENT_LASER_SCANNING], DEPARTMENT_LABELS[DEPARTMENT_LASER_SCANNING], "TEST-LASERSCANNING-PM"),
         (settings.seed_civil_pm_email, settings.seed_civil_pm_password, DEPARTMENT_PM_ROLE[DEPARTMENT_CIVIL], DEPARTMENT_LABELS[DEPARTMENT_CIVIL], "TEST-CIVIL-PM"),
+        (settings.seed_survey_pm_email, settings.seed_survey_pm_password, DEPARTMENT_PM_ROLE["survey"], DEPARTMENT_LABELS["survey"], "TEST-SURVEY-PM"),
     ]
 
 
@@ -497,6 +498,7 @@ def ensure_multi_department_test_employee_accounts(db: Session) -> None:
         DEPARTMENT_MOBILE_MAPPING: "mobilemapping",
         DEPARTMENT_LASER_SCANNING: "laserscanning",
         DEPARTMENT_CIVIL: "civil",
+        "survey": "survey",
         "Drone": "drone",
     }
     codes = {
@@ -504,6 +506,7 @@ def ensure_multi_department_test_employee_accounts(db: Session) -> None:
         DEPARTMENT_MOBILE_MAPPING: "MOBILEMAPPING",
         DEPARTMENT_LASER_SCANNING: "LASERSCANNING",
         DEPARTMENT_CIVIL: "CIVIL",
+        "survey": "SURVEY",
         "Drone": "DRONE",
     }
     for department_code, slug in slugs.items():

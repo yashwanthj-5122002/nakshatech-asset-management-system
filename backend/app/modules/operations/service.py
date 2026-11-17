@@ -55,6 +55,7 @@ FINANCE_ROLE = "finance"
 SOFTWARE_TEAM_ROLE = "software_team"
 EMPLOYEE_ROLE = "employee"
 LIDAR_ROLE = "lidar"
+SURVEY_ROLE = "survey"
 CIVIL_ROLE = "civil"
 LASER_SCANNING_ROLE = "laser_scanning"
 BIM_ROLE = "bim"
@@ -63,6 +64,7 @@ MOBILE_MAPPING_ROLE = "mobile_mapping"
 TECHNICAL_DEPARTMENT_ROLE_MAP = {
     "ortho": ORTHO_ROLE,
     "lidar": LIDAR_ROLE,
+    "survey": SURVEY_ROLE,
     "civil": CIVIL_ROLE,
     "laser_scanning": LASER_SCANNING_ROLE,
     "bim": BIM_ROLE,
@@ -71,6 +73,7 @@ TECHNICAL_DEPARTMENT_ROLE_MAP = {
 TECHNICAL_DEPARTMENT_LABELS = {
     "ortho": "Ortho",
     "lidar": "LiDAR",
+    "survey": "Survey",
     "civil": "Civil",
     "laser_scanning": "Laser Scanning",
     "bim": "BIM",

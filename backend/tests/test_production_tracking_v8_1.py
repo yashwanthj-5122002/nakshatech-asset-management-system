@@ -104,19 +104,18 @@ def approved_project(db, *, code: str, department_code: str, department_label: s
     db.flush()
     submit_project_to_finance(db, actor=bd, project_id=project.id)
     db.flush()
-    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", comments="Approved"))
     db.flush()
     assign_project_manager(db, actor=bd, project_id=project.id, payload=WorkflowPMAssignment(project_manager_id=pm.id))
     db.flush()
     return bd, finance, pm, project, workflow
 
 
-def full_team(db, pm: User, project, code: str, *, multi_role_tl: bool = False):
+def full_team(db, pm: User, project, code: str, *, multi_role_tl: bool = False, department_label: str = "LiDAR"):
     """PM team setup. With multi_role_tl the Team Lead is ALSO production (+ qc optionally)."""
-    tl = make_user(db, f"tl.pt.{code}@nakshatech.com", "employee", "LiDAR")
-    prod = tl if multi_role_tl else make_user(db, f"prod.pt.{code}@nakshatech.com", "employee", "LiDAR")
-    qc = make_user(db, f"qc.pt.{code}@nakshatech.com", "employee", "LiDAR")
-    qa = make_user(db, f"qa.pt.{code}@nakshatech.com", "employee", "LiDAR")
+    tl = make_user(db, f"tl.pt.{code}@nakshatech.com", "employee", department_label)
+    prod = tl if multi_role_tl else make_user(db, f"prod.pt.{code}@nakshatech.com", "employee", department_label)
+    qc = make_user(db, f"qc.pt.{code}@nakshatech.com", "employee", department_label)
+    qa = make_user(db, f"qa.pt.{code}@nakshatech.com", "employee", department_label)
     configure_team(db, actor=pm, project_id=project.id, payload=WorkflowTeamSetup(
         team_leader_user_id=tl.id, production_user_ids=[prod.id], qc_user_ids=[qc.id], qa_user_ids=[qa.id],
     ))
@@ -328,3 +327,93 @@ def test_qc_reject_creates_rework_and_preserves_attempt_history():
         assert [(r.review_type, r.attempt_no, r.decision) for r in package.reviews] == [("qc", 1, "reject")]
 
 
+
+
+def test_survey_workflow_runs_end_to_end():
+    """Survey uses the shared Production -> QC -> QA -> Delivery workflow."""
+    with SessionLocal() as db:
+        bd, finance, pm, project, workflow = approved_project(
+            db,
+            code="SURVEY-E2E",
+            department_code="survey",
+            department_label="Survey",
+        )
+
+        assert workflow.performing_department_code == "survey"
+        assert stage_profile_for_department("survey") == (
+            "production", "qc", "qa", "delivery"
+        )
+
+        assign_project_manager(
+            db,
+            actor=bd,
+            project_id=project.id,
+            payload=WorkflowPMAssignment(project_manager_id=pm.id),
+        )
+
+        team = full_team(db, pm, project, "SURVEY-E2E", department_label="Survey")
+
+        package = allocate_work(
+            db,
+            actor=team["tl"],
+            project_id=project.id,
+            payload=WorkflowWorkAllocation(
+                package_code="SURVEY-E2E-01",
+                area_name="Survey Area A",
+                quantity=Decimal("10"),
+                quantity_unit="sq.km",
+                target_date=date(2026, 11, 17),
+                instructions="Survey production verification",
+                production_user_id=team["prod"].id,
+                qc_user_id=team["qc"].id,
+                qa_user_id=team["qa"].id,
+            ),
+        )
+
+        record_daily_activity(
+            db,
+            actor=team["prod"],
+            work_package_id=package.id,
+            payload=WorkflowDailyActivity(
+                quantity_completed=Decimal("10"),
+                status="on_track",
+            ),
+        )
+
+        db.expire(package)
+
+        complete_production(
+            db,
+            actor=team["prod"],
+            work_package_id=package.id,
+        )
+
+        review_work(
+            db,
+            actor=team["qc"],
+            work_package_id=package.id,
+            kind="qc",
+            payload=WorkflowReviewRequest(decision="approve"),
+        )
+
+        review_work(
+            db,
+            actor=team["qa"],
+            work_package_id=package.id,
+            kind="qa",
+            payload=WorkflowReviewRequest(decision="approve"),
+        )
+
+        mark_delivered(
+            db,
+            actor=team["tl"],
+            work_package_id=package.id,
+            payload=WorkflowDeliveryRequest(remarks="Survey delivered"),
+        )
+
+        db.flush()
+
+        assert package.production_state == "completed"
+        assert package.qc_state == "approved"
+        assert package.qa_state == "approved"
+        assert package.current_stage == "delivered"
