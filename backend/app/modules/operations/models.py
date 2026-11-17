@@ -442,7 +442,7 @@ class WorkPackageItemActivity(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    quantity_completed: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    quantity_completed: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
     files_completed: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(40), default="in_progress", index=True)
