@@ -106,7 +106,10 @@ def approved_project(db, *, bd: User, finance: User, code: str, department_code:
     client = make_client(db, bd, code)
     project, workflow = create_bd_project(db, actor=bd, payload=project_payload(client, code, department_code, commercial=commercial()))
     submit_project_to_finance(db, actor=bd, project_id=project.id)
-    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="ok"))
+    # BD submission is PM-ready; Finance review requires no approval.
+    assert workflow.status == "finance_approved"
+    assert workflow.approved_at is None
+    assert workflow.finance_reviewer_id is None
     db.flush()
     return project, workflow
 

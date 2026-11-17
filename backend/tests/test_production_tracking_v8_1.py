@@ -104,7 +104,10 @@ def approved_project(db, *, code: str, department_code: str, department_label: s
     db.flush()
     submit_project_to_finance(db, actor=bd, project_id=project.id)
     db.flush()
-    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", comments="Approved"))
+    # BD submission is PM-ready; Finance review requires no approval.
+    assert workflow.status == "finance_approved"
+    assert workflow.approved_at is None
+    assert workflow.finance_reviewer_id is None
     db.flush()
     assign_project_manager(db, actor=bd, project_id=project.id, payload=WorkflowPMAssignment(project_manager_id=pm.id))
     db.flush()
