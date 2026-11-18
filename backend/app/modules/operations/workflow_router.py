@@ -1178,6 +1178,51 @@ async def workflow_master_import_commit(
     return summary
 
 
+class WorkflowUndoMasterAreas(BaseModel):
+    package_ids: list[int] = Field(min_length=1, max_length=5000)
+
+
+@router.get("/ortho/projects/{project_id}/master-import/undo-options")
+def workflow_master_import_undo_options(
+    project_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        return production_allocation.master_import_removal_options(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/ortho/projects/{project_id}/master-import/undo")
+def workflow_master_import_undo(
+    project_id: int,
+    payload: WorkflowUndoMasterAreas,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = production_allocation.undo_master_import_areas(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            package_ids=payload.package_ids,
+        )
+        _audit(request, db, auth, "WORKFLOW_MASTER_IMPORT_UNDONE", "finance_project", project_id, {
+            **result, "work_package_ids": payload.package_ids,
+        })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
 @router.get("/ortho/projects/{project_id}/allocation-options")
 def workflow_allocation_options(
     project_id: int,

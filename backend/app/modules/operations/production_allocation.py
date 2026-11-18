@@ -42,6 +42,7 @@ from app.modules.operations.models import (
     OrthoWorkPackage,
     WorkPackageItem,
     WorkPackageItemActivity,
+    OrthoStageEvent,
 )
 from app.modules.operations import production_items as items_service
 from app.modules.operations.uom import convert_quantity, measurement_type, units_compatible
@@ -903,6 +904,140 @@ def commit_master_import(
         "conflicts": conflicts,
         "rows": len(entries),
     }
+
+
+# ===========================================================================================
+# Step-1 correction: undo imported AREA(S) only while completely untouched.
+# Deliberately remove the area AND its imported files, so re-importing the corrected
+# workbook does not leave empty legacy work packages or duplicate file numbers.
+# This is an explicit exception for unworked accidental imports; recorded work is
+# NEVER deleted. The router audits successful reversals.
+# ===========================================================================================
+
+def master_import_removal_options(
+    db: Session, *, actor: User, role: str, project_id: int
+) -> dict:
+    ctx = ensure_master_manage(db, actor=actor, role=role, project_id=project_id)
+    packages = ctx["packages"]
+    package_ids = [package.id for package in packages]
+    items_by_package: dict[int, list[WorkPackageItem]] = {}
+    if package_ids:
+        for item in db.scalars(select(WorkPackageItem).where(
+            WorkPackageItem.work_package_id.in_(package_ids)
+        )).all():
+            items_by_package.setdefault(item.work_package_id, []).append(item)
+        history_ids = set(db.scalars(select(
+            WorkPackageItemActivity.work_package_item_id
+        ).where(WorkPackageItemActivity.work_package_item_id.in_(
+            [item.id for group in items_by_package.values() for item in group]
+        ))).all())
+        stage_event_packages = set(db.scalars(select(
+            OrthoStageEvent.work_package_id
+        ).where(OrthoStageEvent.work_package_id.in_(package_ids))).all())
+        referenced_by_rework = set(db.scalars(select(
+            OrthoWorkPackage.rework_of_package_id
+        ).where(OrthoWorkPackage.rework_of_package_id.in_(package_ids))).all())
+    else:
+        history_ids, stage_event_packages, referenced_by_rework = set(), set(), set()
+
+    areas: list[dict] = []
+    for package in packages:
+        items = items_by_package.get(package.id, [])
+        sources = {item.import_source for item in items if item.import_source}
+        if not sources:
+            continue
+        source = next(iter(sources)) if len(sources) == 1 else None
+        reason = None
+        if len(sources) != 1 or any(item.import_source != source for item in items):
+            reason = "Area contains files from different imports"
+        elif not ctx["is_tl"] and (
+            package.created_by_id != actor.id
+            or any(i.created_by_id != actor.id for i in items)
+        ):
+            reason = "Only the original importer or the assigned Team Leader can undo this area"
+        elif package.created_at and any(
+            item.created_at is None or abs((item.created_at - package.created_at).total_seconds()) > 300
+            for item in items
+        ):
+            reason = "Area existed before the import; cannot safely remove it"
+        elif package.current_stage != "not_started" or any(
+            getattr(package, state) not in (None, "not_started")
+            for state in ("production_state", "qc_state", "qa_state")
+        ):
+            reason = "Area workflow has already started"
+        elif any(getattr(package, field) is not None for field in (
+            "team_leader_user_id", "production_user_id", "qc_user_id",
+            "qa_user_id", "rework_cycle_id", "rework_of_package_id",
+            "target_date", "supply_date", "production_completed_at",
+            "qc_submitted_at", "qa_submitted_at", "delivered_at",
+            "ready_for_delivery_at", "import_status", "dxf_status",
+            "inspection_status", "upload_status",
+        )):
+            reason = "Area already has assignments, dates or stage actions"
+        elif package.id in referenced_by_rework:
+            reason = "Another work package references this area for rework"
+        elif package.id in stage_event_packages or package.sessions or package.reviews or package.daily_updates:
+            reason = "Area has recorded work or review history"
+        elif any(
+            not item.is_active
+            or item.status != "not_started"
+            or item.production_user_id is not None
+            or item.qc_user_id is not None
+            or item.qa_user_id is not None
+            or item.production_target_date is not None
+            or item.qc_target_date is not None
+            or item.qa_target_date is not None
+            or item.id in history_ids
+            for item in items
+        ):
+            reason = "One or more files are assigned, inactive or have work history"
+        areas.append({
+            "work_package_id": package.id,
+            "source_filename": source or "Mixed sources",
+            "lot": package.lot_batch,
+            "code": package.package_code,
+            "area_name": package.package_name,
+            "file_count": len(items),
+            "can_remove": reason is None,
+            "blocked_reason": reason,
+        })
+    return {"areas": areas}
+
+
+def undo_master_import_areas(
+    db: Session, *, actor: User, role: str, project_id: int,
+    package_ids: list[int],
+) -> dict:
+    ensure_master_manage(db, actor=actor, role=role, project_id=project_id)
+    if not package_ids or len(package_ids) > 5000 or len(set(package_ids)) != len(package_ids):
+        raise ValueError("Select 1 to 5000 distinct imported areas")
+    if any(not isinstance(x, int) or x <= 0 for x in package_ids):
+        raise ValueError("Invalid imported area ID")
+    # Serialize with concurrent file assignment/activity as much as possible.
+    packages = db.scalars(select(OrthoWorkPackage).where(
+        OrthoWorkPackage.project_id == project_id,
+        OrthoWorkPackage.id.in_(package_ids),
+    ).with_for_update()).all()
+    if len(packages) != len(package_ids):
+        raise ValueError("One or more selected areas no longer exist in this project")
+    db.scalars(select(WorkPackageItem).where(
+        WorkPackageItem.work_package_id.in_(package_ids)
+    ).with_for_update()).all()
+    # Recalculate eligibility on the server, AFTER locks; never trust UI flags.
+    options = master_import_removal_options(
+        db, actor=actor, role=role, project_id=project_id,
+    )
+    allowed = {row["work_package_id"]: row for row in options["areas"]}
+    for package_id in package_ids:
+        row = allowed.get(package_id)
+        if row is None or not row["can_remove"]:
+            reason = row["blocked_reason"] if row else "Area is not an imported work-file area"
+            raise ValueError(f"Cannot undo area {package_id}: {reason}")
+    removed_files = sum(allowed[p]["file_count"] for p in package_ids)
+    for package in packages:
+        db.delete(package)
+    db.flush()
+    return {"removed_areas": len(package_ids), "removed_files": removed_files}
 
 
 # ===========================================================================================
