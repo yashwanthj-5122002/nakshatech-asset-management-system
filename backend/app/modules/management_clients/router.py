@@ -25,6 +25,7 @@ from app.modules.operations.lifecycle_service import (
     MANAGEMENT_SOURCE_APPROVED_EVENT, MANAGEMENT_SOURCE_REVOKED_EVENT, _transition, management_source_approval_event,
 )
 from app.modules.operations.production_items import build_item_rows, file_aggregates_for_packages
+from app.modules.operations.models import WorkPackageItem
 from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
 from app.modules.management_clients.schemas import ManagementClientInput, ManagementClientResponse
 from app.modules.notifications.service import create_global_notification, resolve_notifications
@@ -368,6 +369,45 @@ def revoke_management_project_approval(
         db.rollback()
         raise
 
+def _historical_rework_counts(db: Session, package_ids: list[int]) -> dict[int, int]:
+    """Count distinct active files ever rejected during QC or QA."""
+    if not package_ids:
+        return {}
+
+    rows = db.execute(
+        select(
+            WorkPackageItem.work_package_id,
+            func.count(func.distinct(WorkPackageItem.id)),
+        )
+        .join(
+            WorkPackageItemActivity,
+            WorkPackageItemActivity.work_package_item_id == WorkPackageItem.id,
+        )
+        .where(
+            WorkPackageItem.work_package_id.in_(package_ids),
+            WorkPackageItem.is_active.is_(True),
+            WorkPackageItemActivity.stage.in_(("qc", "qa")),
+            WorkPackageItemActivity.status.in_(("rejected", "rework")),
+        )
+        .group_by(WorkPackageItem.work_package_id)
+    ).all()
+
+    return {package_id: int(count) for package_id, count in rows}
+
+
+def _display_rework_count(packages, aggregates, historical_rework):
+    """Historical file rework plus existing pending legacy-area rework."""
+    count = 0
+    for package in packages:
+        agg = aggregates.get(package.id, {})
+        if int(agg.get("files_expected") or 0) > 0:
+            count += historical_rework.get(package.id, 0)
+        elif int(agg.get("files_total") or 0) == 0:
+            if (package.current_stage or "").lower() == "production_rework":
+                count += 1
+    return count
+
+
 # Management tracking and project-specific source approval share the same records.
 @router.get("/project-tracking")
 def management_client_project_tracking(
@@ -381,6 +421,9 @@ def management_client_project_tracking(
     packages_by_project = _project_packages(db, project_ids)
     all_packages = [package for packages in packages_by_project.values() for package in packages]
     aggregates = file_aggregates_for_packages(db, [package.id for package in all_packages])
+    historical_rework = _historical_rework_counts(
+        db, [package.id for package in all_packages]
+    )
     last_activities = {}
     if project_ids:
         last_activities = dict(db.execute(select(
@@ -397,7 +440,13 @@ def management_client_project_tracking(
             packages_by_project[link.project_id], aggregates,
             last_activities.get(link.project_id),
         )
-        projects.append({**project, "tracking": summary, **_approval_flags(
+        display_summary = {
+            **summary,
+            "rework_count": _display_rework_count(
+                packages_by_project[link.project_id], aggregates, historical_rework,
+            ),
+        }
+        projects.append({**project, "tracking": display_summary, **_approval_flags(
             db, link=link, workflow_status=project["workflow_status"],
             summary=summary, viewer_user_id=auth.user.id,
         )})
@@ -441,6 +490,7 @@ def management_client_project_tracking_detail(
     packages = _project_packages(db, [project_id]).get(project_id, [])
     package_ids = [package.id for package in packages]
     aggregates = file_aggregates_for_packages(db, package_ids)
+    historical_rework = _historical_rework_counts(db, package_ids)
     rows = build_item_rows(db, package_ids)
     active_packages = {row["work_package_id"] for row in rows if row["is_active"]}
     package_by_id = {package.id: package for package in packages}
@@ -496,6 +546,12 @@ def management_client_project_tracking_detail(
     ))
     project = _project_payload(db, link)
     summary = _tracking_rollup(packages, aggregates, activity_at)
+    display_summary = {
+        **summary,
+        "rework_count": _display_rework_count(
+            packages, aggregates, historical_rework,
+        ),
+    }
     return {
         "project_id": project_id,
         "as_of": utc_now().isoformat(),
@@ -503,7 +559,7 @@ def management_client_project_tracking_detail(
             db, link=link, workflow_status=project["workflow_status"],
             summary=summary, viewer_user_id=auth.user.id,
         )},
-        "summary": summary,
+        "summary": display_summary,
         "files": file_rows,
     }
 
