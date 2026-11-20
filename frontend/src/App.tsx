@@ -69,6 +69,9 @@ import { TravelKmCreatePage } from './features/travel_km/pages/TravelKmCreatePag
 import { TravelKmDetailPage } from './features/travel_km/pages/TravelKmDetailPage'
 import { TravelKmStaffDashboardPage } from './features/travel_km/pages/TravelKmStaffDashboardPage'
 import { BDDashboardPage } from './features/operations/pages/BDDashboardPage'
+import { BDMyTeamPage } from './features/operations/pages/BDMyTeamPage'
+import { BDEmployeeLoginPage } from './features/bd_employee/BDEmployeeLoginPage'
+import { BDEmployeeWorkspace } from './features/bd_employee/BDEmployeeWorkspace'
 import { BDClientManagementPage } from './features/operations/pages/BDClientManagementPage'
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
 import { BDProjectTrackingPage } from './features/operations/pages/BDProjectTrackingPage'
@@ -117,6 +120,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <WelcomePage />} />
       <Route path="/login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <LoginPage />} />
+      <Route path="/bd-employee/login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <BDEmployeeLoginPage />} />
       <Route path="/employee-login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <LoginPage mode="employee" />} />
       <Route path="/register" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <RegisterPage />} />
       <Route path="/forgot-password" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <ForgotPasswordPage />} />
@@ -175,7 +179,9 @@ export default function App() {
       <Route path="/drone/movements" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneMovementsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/kits" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneKitsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/import" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneImportPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/bd-employee/*" element={<StrictProtectedRoute roles={['bd_employee']}><BDEmployeeWorkspace /></StrictProtectedRoute>} />
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/my-team" element={<StrictProtectedRoute roles={['bd']}><WithLayout><BDMyTeamPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/tracking" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectTrackingPage /></WithLayout></StrictProtectedRoute>} />

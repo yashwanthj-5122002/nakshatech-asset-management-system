@@ -8,6 +8,7 @@ DRONE_ROLE = "drone"
 FINANCE_ROLE = "finance"
 HR_ROLE = "hr"
 BD_ROLE = "bd"
+BD_EMPLOYEE_ROLE = "bd_employee"
 ORTHO_ROLE = "ortho"
 LIDAR_ROLE = "lidar"
 SURVEY_ROLE = "survey"
@@ -26,6 +27,7 @@ VALID_ROLES = {
     FINANCE_ROLE,
     HR_ROLE,
     BD_ROLE,
+    BD_EMPLOYEE_ROLE,
     ORTHO_ROLE,
     LIDAR_ROLE,
     SURVEY_ROLE,
@@ -62,6 +64,7 @@ def role_display_name(role: str) -> str:
         FINANCE_ROLE: "Finance Department",
         HR_ROLE: "HR Department",
         BD_ROLE: "Business Development",
+        BD_EMPLOYEE_ROLE: "BD Employee",
         ORTHO_ROLE: "Ortho",
         LIDAR_ROLE: "LiDAR",
         SURVEY_ROLE: "Survey",

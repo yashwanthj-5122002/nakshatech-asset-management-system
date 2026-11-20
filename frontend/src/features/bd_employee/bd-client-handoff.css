@@ -1,0 +1,10 @@
+/* Scoped BD Employee client register; retains the existing manager operations theme. */
+.bde-client-management .bde-client-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:14px}
+.bde-client-management .bde-client-card{border:1px solid #dbe4ee;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;min-height:230px;background:#fff}
+.bde-client-management .bde-client-card-head{display:flex;align-items:center;justify-content:space-between;color:#123e65}
+.bde-client-management .bde-client-code{font-size:11px;padding:5px 9px;border:1px solid #ebc58f;border-radius:100px;color:#9a621f;background:#fff7eb}
+.bde-client-management .bde-client-card h3{font-size:15px;margin:0;color:#152e4c}
+.bde-client-management .bde-client-card p{font-size:12px;margin:0;color:#73869b}
+.bde-client-management .bde-client-card strong{font-size:13px;color:#183a60;margin-top:auto}
+.bde-client-management .bde-client-card button{align-self:flex-start}
+@media(max-width:680px){.bde-client-management .bde-client-cards{grid-template-columns:1fr}}

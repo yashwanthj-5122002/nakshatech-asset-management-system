@@ -1,4 +1,4 @@
-export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'finance' | 'hr' | 'bd' | 'ortho' | 'lidar' | 'survey' | 'civil' | 'laser_scanning' | 'bim' | 'mobile_mapping' | 'employee'
+export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'finance' | 'hr' | 'bd' | 'bd_employee' | 'ortho' | 'lidar' | 'survey' | 'civil' | 'laser_scanning' | 'bim' | 'mobile_mapping' | 'employee'
 
 export interface ManagementLoginAccount {
   display_name: string

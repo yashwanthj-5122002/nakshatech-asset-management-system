@@ -85,6 +85,7 @@ from app.modules.operations.workflow_service import (
     submit_project_to_finance,
 )
 from app.modules.operations.workflow_reporting import build_project_operations_workbook
+from app.modules.bd_employee.handoff_router import link_new_bd_project_if_requested, synchronize_bd_project_link
 from app.modules.operations.production_service import (
     package_stage_history,
     tracking_summary,
@@ -228,6 +229,7 @@ def workflow_create_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = create_bd_project(db, actor=auth.user, payload=payload)
+        link_new_bd_project_if_requested(db, project=project, manager=auth.user)
         _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
@@ -247,6 +249,7 @@ def workflow_update_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = update_bd_project(db, actor=auth.user, project_id=project_id, payload=payload)
+        synchronize_bd_project_link(db, project=project, manager=auth.user)
         _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}

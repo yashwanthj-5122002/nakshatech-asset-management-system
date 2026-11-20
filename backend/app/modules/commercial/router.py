@@ -141,6 +141,20 @@ def _authorize_attachment(
 ) -> None:
     validate_attachment_owner(db, project_id=project_id, owner_type=owner_type, owner_id=owner_id)
     role = _service_role(auth)
+    if role == "bd_employee":
+        if auth.user.role != "bd_employee":
+            raise HTTPException(403, "BD employee access required")
+        if owner_type != "ESTIMATE_REVISION":
+            raise HTTPException(403, "Employee access limited to own commercial estimates")
+        from app.modules.bd_employee.direct_router import _owned_project
+        from app.modules.commercial.models import ProjectCommercialEstimateRevision
+        _owned_project(db, auth.user, project_id)
+        revision = db.get(ProjectCommercialEstimateRevision, owner_id)
+        if revision is None or revision.project_id != project_id:
+            raise HTTPException(404, "Project commercial estimate not found")
+        if write and revision.is_locked:
+            raise HTTPException(409, "Locked commercial estimate cannot be changed")
+        return
 
     if owner_type == "EXPENSE":
         row = db.get(ProjectExpense, owner_id)
@@ -210,7 +224,13 @@ def project_estimates(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "finance", "management", "admin")
+    if _role(auth) == "bd_employee":
+        if auth.user.role != "bd_employee":
+            raise HTTPException(403, "BD employee access required")
+        from app.modules.bd_employee.direct_router import _owned_project
+        _owned_project(db, auth.user, project_id)
+    else:
+        _roles(auth, "bd", "finance", "management", "admin")
     try:
         return list_estimates(db, project_id=project_id)
     except Exception as exc:

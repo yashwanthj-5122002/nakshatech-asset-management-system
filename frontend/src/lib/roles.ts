@@ -48,6 +48,7 @@ export function roleHomePath(role: Role): string {
     finance: '/finance',
     hr: '/hr/travel-km',
     bd: '/bd',
+    bd_employee: '/bd-employee',
     ortho: '/ortho',
     // Same shared operational dashboard as Ortho (one workflow, department-aware inside).
     lidar: '/ortho',
@@ -71,6 +72,7 @@ export function roleDisplayName(role: Role): string {
     finance: 'Finance Department',
     hr: 'HR Department',
     bd: 'Business Development',
+    bd_employee: 'BD Employee',
     ortho: 'Ortho',
     lidar: 'LiDAR',
     survey: 'Survey',
