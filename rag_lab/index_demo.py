@@ -1,57 +1,63 @@
-﻿import os
+﻿
+import hashlib
+import os
 import time
 from pathlib import Path
+
 from google import genai
 
 BASE = Path(__file__).resolve().parent
-KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+DOCUMENT = BASE / "knowledge" / "drone_demo.txt"
+STORE_FILE = BASE / "store_id.txt"
+INDEX_MARKER = BASE / "drone_demo_indexed.txt"
 
-if not KEY:
-    raise SystemExit("ERROR: Gemini API key is missing")
+key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
-document = BASE / "knowledge" / "drone_demo.txt"
+if not key:
+    raise SystemExit("Gemini API key is missing")
 
-if not document.exists():
-    raise SystemExit("ERROR: drone_demo.md not found")
+if not DOCUMENT.exists():
+    raise SystemExit("drone_demo.txt is missing")
 
-client = genai.Client(api_key=KEY)
+client = genai.Client(api_key=key)
 
-store_file = BASE / "store_id.txt"
-
-if store_file.exists():
-    store_name = store_file.read_text().strip()
+if STORE_FILE.exists() and STORE_FILE.read_text().strip():
+    store_name = STORE_FILE.read_text().strip()
     print("Using existing store:", store_name)
 else:
-    print("Creating Gemini knowledge store...")
-
     store = client.file_search_stores.create(
-        config={
-            "display_name": "NakshaTech RAG Training"
-        }
+        config={"display_name": "NakshaTech RAG Training"}
     )
 
     store_name = store.name
-    store_file.write_text(store_name, encoding="utf-8")
+    STORE_FILE.write_text(store_name, encoding="utf-8")
+    print("Created store:", store_name)
 
-    print("Knowledge store created:", store_name)
+checksum = hashlib.sha256(DOCUMENT.read_bytes()).hexdigest()
+index_signature = f"{store_name}|{checksum}"
 
-print("Uploading knowledge document...")
+if (
+    INDEX_MARKER.exists()
+    and INDEX_MARKER.read_text().strip() == index_signature
+):
+    print("Document already indexed. Skipping duplicate upload.")
+else:
+    print("Uploading document...")
 
-operation = client.file_search_stores.upload_to_file_search_store(
-    file=str(document),
-    file_search_store_name=store_name,
-    config={
-        "display_name": "Drone Survey Training Guide",
-        "mime_type": "text/plain",
-    },
-)
+    operation = client.file_search_stores.upload_to_file_search_store(
+        file=str(DOCUMENT),
+        file_search_store_name=store_name,
+        config={"display_name": "Drone Survey Training Guide"},
+    )
 
-while not operation.done:
-    time.sleep(5)
-    operation = client.operations.get(operation)
+    while not operation.done:
+        time.sleep(5)
+        operation = client.operations.get(operation)
 
-if getattr(operation, "error", None):
-    raise RuntimeError(str(operation.error))
+    if getattr(operation, "error", None):
+        raise RuntimeError(str(operation.error))
 
-print("SUCCESS: Knowledge indexing completed!")
-print("Store ID:", store_name)
+    INDEX_MARKER.write_text(index_signature, encoding="utf-8")
+    print("SUCCESS: Document indexed")
+
+print("Knowledge store:", store_name)
