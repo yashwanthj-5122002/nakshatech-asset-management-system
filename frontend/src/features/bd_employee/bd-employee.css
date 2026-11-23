@@ -44,7 +44,7 @@
 .app-shell.bde-shell .bde-kpi{border-radius:15px;padding:18px;min-height:138px;box-shadow:0 6px 17px #1839570b}
 .app-shell.bde-shell .bde-kpi strong{font-size:29px}
 .app-shell.bde-shell .bde-kpi .bde-unlinked{font-size:20px;line-height:1.15}
-.app-shell.bde-shell .bde-hub-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:0 0 16px;border-radius:13px}
+.app-shell.bde-shell .bde-hub-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:0 0 16px;border-radius:13px}
 .app-shell.bde-shell .bde-hub-tab{display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;border:1px solid #dce5ef;border-radius:10px;min-height:45px;padding:9px 12px;text-decoration:none;color:#183451;font-size:12px;font-weight:750}
 .app-shell.bde-shell .bde-hub-tab.active{background:#0965b2;color:#fff;border-color:#0965b2;box-shadow:0 5px 12px #11589d22}
 .app-shell.bde-shell .bde-small-select{border:1px solid #cad9e6;border-radius:10px;padding:10px 12px;background:#fff;color:#1c3b59;font:inherit;max-width:190px}
@@ -56,4 +56,8 @@
 .app-shell.bde-shell .bde-limited p{line-height:1.7;font-size:13px;max-width:680px;color:#647a91}
 @media(max-width:1320px){.app-shell.bde-shell .bde-five-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1000px){.app-shell.bde-shell .bde-five-cards,.app-shell.bde-shell .bde-four-cards,.app-shell.bde-shell .bde-mini-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:650px){.app-shell.bde-shell .bde-five-cards,.app-shell.bde-shell .bde-four-cards,.app-shell.bde-shell .bde-mini-stats{grid-template-columns:1fr}.app-shell.bde-shell .bde-hub-tabs{grid-template-columns:1fr}.app-shell.bde-shell .bde-section-head{flex-wrap:wrap}}
+@media(max-width:650px){.app-shell.bde-shell .bde-five-cards,.app-shell.bde-shell .bde-four-cards,.app-shell.bde-shell .bde-mini-stats{grid-template-columns:1fr}.app-shell.bde-shell .bde-hub-tabs{grid-template-columns:repeat(4,minmax(155px,1fr));overflow-x:auto}.app-shell.bde-shell .bde-section-head{flex-wrap:wrap}}
+
+/* Personal BD notification bell: reuses the shared ERP notification dropdown. */
+.bde-notification-bell{display:flex;justify-content:flex-end;position:relative;z-index:45;margin:-22px 0 12px;}
+@media(max-width:760px){.bde-notification-bell{margin:0 0 14px}}

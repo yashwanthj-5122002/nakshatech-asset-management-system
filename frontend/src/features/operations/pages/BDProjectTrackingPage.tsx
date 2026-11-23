@@ -85,7 +85,7 @@ function FileCount({ row, kind }: { row: PackageTrackingRow; kind: 'qc' | 'qa' |
 
 function ProjectDetails({ project }: { project: ProjectTrackingRow }) {
   const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(false)
   const dept = departmentVisual(project.department_code)
   const DeptIcon = dept.Icon
   const tableId = `bdpt-project-table-${project.project_id}`

@@ -101,7 +101,7 @@ export function BDClientManagementPage({employeeMode = false}:{employeeMode?:boo
   const [searchParams] = useSearchParams()
   useEffect(() => {
     const requested = Number(searchParams.get('client'))
-    if (Number.isInteger(requested) && requested > 0) { setSelectedId(requested); setShowProjectForm(false) }
+    if (Number.isInteger(requested) && requested > 0) { setSelectedId(requested); setShowProjectForm(searchParams.get('createProject') === '1') }
   }, [searchParams])
 
   useEffect(() => {

@@ -32,6 +32,10 @@ from app.modules.operations.workflow_service import (
 from app.modules.commercial.service import commercial_summary
 from app.modules.business.schemas import BusinessHistoryEntry, BusinessOverview
 from app.modules.business.service import business_employee_history, business_employee_overview
+from app.modules.finance.advance_service import (
+    bd_employee_advance_projects, bd_employee_advance_summary,
+    bd_employee_advance_project_detail,
+)
 from app.modules.employee_portal.service import record_audit
 
 router = APIRouter(prefix="/direct", tags=["BD Employee Direct Clients and Projects"])
@@ -134,6 +138,36 @@ def _visible_employee_project_query(db: Session, employee: User):
 
 def _business_project_ids(db: Session, employee: User) -> set[int]:
     return {project.id for project in db.scalars(_visible_employee_project_query(db, employee)).unique().all()}
+
+
+# These read-only endpoints keep the Finance API's role matrix unchanged. All project
+# IDs originate from the same BD Employee ownership query used by Project Management.
+@router.get("/finance/advance-payments/summary")
+def employee_advance_summary(
+    db: Session = Depends(get_db), employee: User = Depends(_employee),
+) -> dict:
+    return bd_employee_advance_summary(db, allowed_project_ids=_business_project_ids(db, employee))
+
+
+@router.get("/finance/advance-payments/projects")
+def employee_advance_projects(
+    db: Session = Depends(get_db), employee: User = Depends(_employee),
+) -> dict:
+    return {"projects": bd_employee_advance_projects(
+        db, allowed_project_ids=_business_project_ids(db, employee),
+    )}
+
+
+@router.get("/finance/advance-payments/{project_id}")
+def employee_advance_project_detail(
+    project_id: int, db: Session = Depends(get_db), employee: User = Depends(_employee),
+) -> dict:
+    detail = bd_employee_advance_project_detail(
+        db, project_id=project_id, allowed_project_ids=_business_project_ids(db, employee),
+    )
+    if detail is None:
+        raise HTTPException(404, "Your BD project was not found")
+    return detail
 
 
 @router.get("/business/overview", response_model=BusinessOverview)

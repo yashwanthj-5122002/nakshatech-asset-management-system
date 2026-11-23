@@ -35,6 +35,7 @@ class AdvanceAccess:
     user_id: int
     financial_amounts_visible: bool
     can_write: bool
+    allowed_project_ids: frozenset[int] | None = None
 
 
 @dataclass
@@ -232,6 +233,9 @@ def _load_context(
     ).order_by(FinanceProject.id)
     if project_id is not None:
         query = query.where(FinanceProject.id == project_id)
+    # An explicit empty allowlist must yield no rows, never full access.
+    if access.allowed_project_ids is not None:
+        query = query.where(FinanceProject.id.in_(access.allowed_project_ids))
     projects = list(db.scalars(exclude_hidden_projects(db, query)).unique().all())
     if not projects:
         return AdvanceContext([], {}, {}, {}, {}, {}, {}, {})
@@ -398,10 +402,14 @@ def advance_summary(
     access = resolve_advance_access(db, user=user, effective_role=effective_role)
     context = _load_context(db, access=access)
     rows = [_snapshot(context, project, as_of=as_of) for project in context.projects]
+    return _advance_summary_payload(rows, financial_amounts_visible=access.financial_amounts_visible)
+
+
+def _advance_summary_payload(rows: list[dict], *, financial_amounts_visible: bool) -> dict:
     counts = {status: 0 for status in ADVANCE_STATUSES}
     for row in rows:
         counts[row["status"]] += 1
-    visible = access.financial_amounts_visible
+    visible = financial_amounts_visible
     return {
         "currency": "INR" if visible else None,
         "financial_amounts_visible": visible,
@@ -411,6 +419,23 @@ def advance_summary(
         "total_overdue_advance": _money(sum((_decimal(row["pending_amount"]) for row in rows if row["status"] == "overdue"), Decimal("0"))) if visible else None,
         "counts_by_status": counts,
     }
+
+
+
+def bd_employee_advance_projects(db: Session, *, allowed_project_ids: set[int]) -> list[dict]:
+    """Read-only finance snapshots over the existing authorized BD Employee project set.
+
+    The allowlist is computed server-side by direct_router._business_project_ids.
+    Do not accept arbitrary IDs from the browser or expand the global Finance role matrix.
+    """
+    access = AdvanceAccess('bd_employee', 0, True, False, frozenset(allowed_project_ids))
+    context = _load_context(db, access=access)
+    return [_snapshot(context, project) for project in context.projects]
+
+
+def bd_employee_advance_summary(db: Session, *, allowed_project_ids: set[int]) -> dict:
+    rows = bd_employee_advance_projects(db, allowed_project_ids=allowed_project_ids)
+    return _advance_summary_payload(rows, financial_amounts_visible=True)
 
 
 def advance_alert_rows(
@@ -494,6 +519,12 @@ def advance_project_detail(
     as_of: date | None = None,
 ) -> dict | None:
     access = resolve_advance_access(db, user=user, effective_role=effective_role)
+    return _advance_detail_for_access(db, project_id=project_id, access=access, as_of=as_of)
+
+
+def _advance_detail_for_access(
+    db: Session, *, project_id: int, access: AdvanceAccess, as_of: date | None = None,
+) -> dict | None:
     context = _load_context(db, access=access, project_id=project_id, include_details=True)
     if not context.projects:
         return None
@@ -519,6 +550,16 @@ def advance_project_detail(
         "followups": [_followup_payload(row, context.users) for row in context.followups.get(project.id, [])],
         "status_history": [_history_payload(row, context.users) for row in context.histories.get(project.id, [])],
     }
+
+
+def bd_employee_advance_project_detail(
+    db: Session, *, project_id: int, allowed_project_ids: set[int],
+) -> dict | None:
+    # Reject before touching the project query, including guessed IDs.
+    if project_id not in allowed_project_ids:
+        return None
+    access = AdvanceAccess('bd_employee', 0, True, False, frozenset(allowed_project_ids))
+    return _advance_detail_for_access(db, project_id=project_id, access=access)
 
 
 def advance_status_history(

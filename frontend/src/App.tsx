@@ -99,6 +99,12 @@ function WithLayout({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
 }
 
+// BD employees keep their dedicated workspace/sidebar while using the shared expense pages.
+function ExpenseEmployeeLayout({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  return user?.role === 'bd_employee' ? <BDEmployeeWorkspace /> : <WithLayout>{children}</WithLayout>
+}
+
 function ITWorkRoute() {
   const { user } = useAuth()
   return user?.role === 'management' ? <ManagementITWorkReadOnlyPage /> : <WorkFormPage />
@@ -134,21 +140,21 @@ export default function App() {
       <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
-      <Route path="/travel-km" element={<ProtectedRoute roles={['employee', 'bd_employee']}><WithLayout><TravelKmClaimsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee', 'bd_employee']}><WithLayout><TravelKmCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/travel-km/:id" element={<ProtectedRoute roles={['employee', 'admin', 'hr', 'finance', 'management', 'software_team', 'bd_employee']}><WithLayout><TravelKmDetailPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/travel-km" element={<ProtectedRoute roles={['employee', 'bd_employee']}>{user?.role === 'bd_employee' ? <BDEmployeeWorkspace travelContent={<TravelKmClaimsPage />} /> : <WithLayout><TravelKmClaimsPage /></WithLayout>}</ProtectedRoute>} />
+      <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee', 'bd_employee']}>{user?.role === 'bd_employee' ? <BDEmployeeWorkspace travelContent={<TravelKmCreatePage />} /> : <WithLayout><TravelKmCreatePage /></WithLayout>}</ProtectedRoute>} />
+      <Route path="/travel-km/:id" element={<ProtectedRoute roles={['employee', 'admin', 'hr', 'finance', 'management', 'software_team', 'bd_employee']}>{user?.role === 'bd_employee' ? <BDEmployeeWorkspace travelContent={<TravelKmDetailPage />} /> : <WithLayout><TravelKmDetailPage /></WithLayout>}</ProtectedRoute>} />
       <Route path="/admin/travel-km" element={<ProtectedRoute roles={['admin']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/hr/travel-km" element={<ProtectedRoute roles={['hr']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/travel-km" element={<ProtectedRoute roles={['finance']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/travel-km" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/support" element={<ProtectedRoute roles={['employee']}><WithLayout><EmployeeSupportDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/support/new" element={<ProtectedRoute roles={['employee']}><WithLayout><TicketCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimsPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/expenses" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimsPage /></ExpenseEmployeeLayout></ProtectedRoute>} />
       <Route path="/project-costs" element={<ProtectedRoute roles={['employee']}><WithLayout><EmployeeProjectCostsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/new" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/:id/edit" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/:id/settle" element={<ProtectedRoute roles={['employee']}><WithLayout><AdvanceSettlementPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/:id" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/expenses/new" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimCreatePage /></ExpenseEmployeeLayout></ProtectedRoute>} />
+      <Route path="/expenses/:id/edit" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimCreatePage /></ExpenseEmployeeLayout></ProtectedRoute>} />
+      <Route path="/expenses/:id/settle" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><AdvanceSettlementPage /></ExpenseEmployeeLayout></ProtectedRoute>} />
+      <Route path="/expenses/:id" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimDetailPage /></ExpenseEmployeeLayout></ProtectedRoute>} />
       <Route path="/tickets" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketListPage /></WithLayout></ProtectedRoute>} />
       <Route path="/tickets/:id" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/security" element={<ProtectedRoute roles={['software_team']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />

@@ -190,6 +190,9 @@ const navItems: NavItem[] = [
   { to: '/future', label: 'Future Modules', icon: Settings, roles: ['admin'], group: 'system', managementLabel: 'System Settings & Future' },
 ]
 
+// BD and other roles keep their existing navigation; only department employees use this dropdown.
+const employeeExpensePaths = new Set(['/expenses/new', '/expenses', '/travel-km/new', '/travel-km'])
+
 function isPathInItem(pathname: string, item: NavItem): boolean {
   if (item.to === '/management') return pathname === '/management'
   if (item.to === '/drone') return pathname === '/drone'
@@ -327,6 +330,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
       return next
     })
   }
+  // Default closed on normal pages; preserve the menu on direct expense/travel links.
+  const [expensesOpen, setExpensesOpen] = useState(() =>
+    [...employeeExpensePaths].some(path => location.pathname === path || location.pathname.startsWith(`${path}/`))
+  )
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {}
     const currentRole = user?.role
@@ -389,6 +396,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
       ]
     : visibleItems
   const activeNavItem = findActiveNavItem(available, location.pathname)
+  const expenseNavItems = available.filter(item => employeeExpensePaths.has(item.to))
+  const expenseHasActive = Boolean(activeNavItem && employeeExpensePaths.has(activeNavItem.to))
   const groupedNavigation = isFullAccessRole(currentUser.role) || isManagement
 
   // Only surface topbar context that is not already stated elsewhere on screen. The department
@@ -458,6 +467,26 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 )
               })
             : available.map((item, index) => {
+                if (currentUser.role === 'employee' && employeeExpensePaths.has(item.to)) {
+                  // The first existing link becomes the dropdown position; never render duplicates.
+                  if (item.to !== '/expenses/new') return null
+                  return (
+                    <section className={`sidebar-nav-group ${expensesOpen ? 'open' : ''} ${expenseHasActive ? 'has-active' : ''}`} key="employee-my-expenses">
+                      <button
+                        type="button"
+                        className="sidebar-group-toggle"
+                        onClick={() => setExpensesOpen(open => !open)}
+                        aria-expanded={expensesOpen}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <ShoppingCart size={16} aria-hidden="true" /> My Expenses
+                        </span>
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </button>
+                      {expensesOpen && <div className="sidebar-group-items">{expenseNavItems.map(renderNavItem)}</div>}
+                    </section>
+                  )
+                }
                 if (item.group !== 'leave' && item.group !== 'attendance') return renderNavItem(item)
                 const previous = available[index - 1]
                 if (previous?.group === item.group) return null

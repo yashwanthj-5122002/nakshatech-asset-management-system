@@ -644,7 +644,8 @@ function RankingChart({ title, subtitle, rows }: { title: string; subtitle: stri
 
 export function FinanceCommandCenter() {
   const { user } = useAuth()
-  const advanceOnlyView = user?.role === 'bd'
+  const employeeScoped = user?.role === 'bd_employee'
+  const advanceOnlyView = user?.role === 'bd' || employeeScoped
   // Backend is the authority (resolve_advance_access): only Finance/Admin/Software Team can
   // record an advance receipt or apply one to an invoice. This flag only hides the controls.
   const canRecordAdvanceMoney = user?.role === 'finance' || user?.role === 'admin' || user?.role === 'software_team'
@@ -707,8 +708,8 @@ export function FinanceCommandCenter() {
     void Promise.all([
       advanceOnlyView ? Promise.resolve<Overview>({ projects: [], revenue_events: [] }) : apiFetch<Overview>('/finance/sales-revenue'),
       advanceOnlyView ? Promise.resolve<RevenueTargetResponse>({ targets: [] }) : apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
-      getAdvanceSummary(),
-      getAdvanceProjects(),
+      readAdvanceSummary(),
+      readAdvanceProjects(),
     ])
       .then(([overview, targets, summary, projects]) => {
         setData(overview)
@@ -719,7 +720,7 @@ export function FinanceCommandCenter() {
         // project/rule/day, and failures must never break the dashboard. Only
         // roles with advance visibility call it, so operational roles never
         // trigger a 403 audit entry.
-        if (canViewAdvanceAlerts(user?.role ?? null)) {
+        if (!employeeScoped && canViewAdvanceAlerts(user?.role ?? null)) {
           void refreshAdvanceNotifications().catch(() => undefined)
         }
       })
@@ -737,7 +738,7 @@ export function FinanceCommandCenter() {
     void Promise.all([
       advanceOnlyView ? Promise.resolve<Overview>({ projects: [], revenue_events: [] }) : apiFetch<Overview>('/finance/sales-revenue'),
       advanceOnlyView ? Promise.resolve<RevenueTargetResponse>({ targets: [] }) : apiFetch<RevenueTargetResponse>('/finance/revenue-targets'),
-      getAdvanceProjects(),
+      readAdvanceProjects(),
     ])
       .then(([overview, targets, projects]) => {
         setDrilldownData({ overview, targets: targets.targets, advanceProjects: projects })
@@ -754,6 +755,26 @@ export function FinanceCommandCenter() {
     setDrilldownData(null)
     setDrilldownError('')
     setExpandedCalcId(null)
+  }
+
+  // The official Finance advance endpoints intentionally deny bd_employee.
+  // Use separate authenticated, ownership-scoped read endpoints for this view.
+  function readAdvanceSummary() {
+    return employeeScoped
+      ? apiFetch<AdvanceSummary>('/bd-employee/direct/finance/advance-payments/summary')
+      : getAdvanceSummary()
+  }
+
+  async function readAdvanceProjects(): Promise<AdvanceProject[]> {
+    if (!employeeScoped) return getAdvanceProjects()
+    const payload = await apiFetch<{ projects: AdvanceProject[] }>('/bd-employee/direct/finance/advance-payments/projects')
+    return payload.projects
+  }
+
+  function readAdvanceDetail(projectId: number) {
+    return employeeScoped
+      ? apiFetch<AdvanceProjectDetail>(`/bd-employee/direct/finance/advance-payments/${projectId}`)
+      : getAdvanceProjectDetail(projectId)
   }
 
   useEffect(load, [])
@@ -935,7 +956,7 @@ export function FinanceCommandCenter() {
     setAdvanceRecordError('')
     setAdvanceApplyError('')
     setAdvanceDetailLoading(true)
-    void Promise.all([getAdvanceProjectDetail(projectId), getAdvanceCollection(projectId).catch(() => null)])
+    void Promise.all([readAdvanceDetail(projectId), employeeScoped ? Promise.resolve(null) : getAdvanceCollection(projectId).catch(() => null)])
       .then(([nextDetail, nextCollection]) => {
         setSelectedAdvanceDetail(nextDetail)
         setAdvanceCollection(nextCollection)
@@ -947,10 +968,10 @@ export function FinanceCommandCenter() {
   // Refresh every Finance view that the advance money touches.
   function refreshAdvanceViews(projectId: number) {
     return Promise.allSettled([
-      getAdvanceProjectDetail(projectId).then(setSelectedAdvanceDetail),
-      getAdvanceCollection(projectId).then(setAdvanceCollection),
-      getAdvanceSummary().then(setAdvanceSummary),
-      getAdvanceProjects().then(setAdvanceProjects),
+      readAdvanceDetail(projectId).then(setSelectedAdvanceDetail),
+      (employeeScoped ? Promise.resolve(null) : getAdvanceCollection(projectId)).then(setAdvanceCollection),
+      readAdvanceSummary().then(setAdvanceSummary),
+      readAdvanceProjects().then(setAdvanceProjects),
     ])
   }
 
@@ -1205,7 +1226,7 @@ export function FinanceCommandCenter() {
     )
   }
 
-  if (isEmpty) {
+  if (isEmpty && !employeeScoped) {
     return (
       <section aria-labelledby="finance-command-center-title">
         <article className="finance-panel">
@@ -1229,10 +1250,12 @@ export function FinanceCommandCenter() {
         id="finance-command-center-title"
         kicker="Phase 3 · Department Intelligence"
         title="Finance Command Center"
-        description="Real KPI, advance payment tracking, sales visualization, revenue/collection summary and target achievement from live Finance APIs. No forecast, no hard-coded values."
+        description={employeeScoped
+          ? 'Read-only advance reporting for your authorized BD clients and projects. No other employee records are included.'
+          : 'Real KPI, advance payment tracking, sales visualization, revenue/collection summary and target achievement from live Finance APIs. No forecast, no hard-coded values.'}
         icon={BarChart3}
         liveTitle="Live Financial Data"
-        liveNote="Streaming from Finance APIs"
+        liveNote={employeeScoped ? "Your authorized BD projects" : "Streaming from Finance APIs"}
         actions={
           <button className="finance-secondary-button" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>
         }
@@ -1262,7 +1285,7 @@ export function FinanceCommandCenter() {
             <select value={lockedDepartment ?? department} onChange={e => setDepartment(e.target.value)} disabled={Boolean(lockedDepartment)}>
               {lockedDepartment
                 ? DEPARTMENTS.filter(([code]) => code === lockedDepartment).map(([code, label]) => <option key={code} value={code}>{label}</option>)
-                : <><option value="all">All Departments</option>{DEPARTMENTS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</>}
+                : <><option value="all">All Departments</option>{DEPARTMENTS.filter(([code]) => !employeeScoped || advanceProjects.some(row => row.department_code === code)).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</>}
             </select>
             {lockedDepartment && <small style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}><Lock size={11}/> Your department only</small>}
           </label>

@@ -575,6 +575,8 @@ def submit_feedback_response(
     )
     db.add(response)
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=response.project_id, milestone="client_feedback_updated", event_id=response.id)
     for attachment in payload.attachments:
         db.add(ProjectFeedbackAttachment(
             project_id=request_row.project_id,
@@ -676,6 +678,8 @@ def record_manual_feedback_response(
     )
     db.add(response)
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=project_id, milestone="client_feedback_updated", event_id=response.id)
     if positive:
         _transition(
             db,

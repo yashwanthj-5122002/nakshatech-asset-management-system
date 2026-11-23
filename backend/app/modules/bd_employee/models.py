@@ -43,3 +43,22 @@ class BdEmployeeContactActivity(Base):
     outcome: Mapped[str] = mapped_column(String(30), nullable=False)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     contacted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+
+class BdEmployeeProspectClientLink(Base):
+    """Exactly one official client may be linked to each BD employee prospect.
+
+    This association is additive: it preserves the original prospect and its
+    communication history and never duplicates existing FinanceClient records.
+    """
+    __tablename__ = "bd_employee_prospect_client_links"
+
+    prospect_id: Mapped[int] = mapped_column(
+        ForeignKey("bd_employee_prospects.id", ondelete="RESTRICT"), primary_key=True,
+    )
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("finance_clients.id", ondelete="RESTRICT"), nullable=False, index=True,
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)

@@ -118,6 +118,28 @@ def _role(auth: CurrentAuth) -> str:
     return auth.effective_role.strip().lower()
 
 
+def _expense_role(auth: CurrentAuth) -> str:
+    """Map an authenticated BD employee only within employee-facing expense flows."""
+    role = _role(auth)
+    if role == "bd_employee" and auth.user.role == "bd_employee":
+        return EMPLOYEE_ROLE
+    return role
+
+
+def _require_expense_employee(auth: CurrentAuth) -> None:
+    if _expense_role(auth) != EMPLOYEE_ROLE:
+        raise HTTPException(status_code=403, detail="Employee expense access required")
+
+
+def _bd_expense_project_ids(db: Session, auth: CurrentAuth) -> set[int]:
+    """Reuse the BD workspace authorization boundary; never expose management projects."""
+    if _role(auth) != "bd_employee" or auth.user.role != "bd_employee":
+        raise HTTPException(status_code=403, detail="BD employee access required")
+    # Late import avoids any import-time cycle with the BD project module.
+    from app.modules.bd_employee.direct_router import _business_project_ids
+    return _business_project_ids(db, auth.user)
+
+
 def _require_role(auth: CurrentAuth, *roles: str) -> None:
     if _role(auth) not in set(roles):
         raise HTTPException(status_code=403, detail="Insufficient permission for this Finance action")
@@ -145,7 +167,7 @@ def _command_center_department_scope(auth: CurrentAuth) -> str | None:
 
 
 def _visible_claim_or_404(db: Session, auth: CurrentAuth, claim_id: int):
-    claim = get_visible_claim(db, claim_id=claim_id, viewer=auth.user, effective_role=_role(auth))
+    claim = get_visible_claim(db, claim_id=claim_id, viewer=auth.user, effective_role=_expense_role(auth))
     if claim is None:
         raise HTTPException(status_code=404, detail="Expense claim not found")
     return claim
@@ -440,6 +462,9 @@ def list_projects(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
+    if _role(auth) == "bd_employee":
+        allowed_ids = _bd_expense_project_ids(db, auth)
+        return [employee_project_payload(project) for project in all_projects(db) if project.id in allowed_ids]
     role = _role(auth)
     if role not in {EMPLOYEE_ROLE, *VISIBLE_STAFF_ROLES}:
         raise HTTPException(status_code=403, detail="Finance project access is not available for this role")
@@ -565,7 +590,7 @@ def list_claims(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
-    role = _role(auth)
+    role = _expense_role(auth)
     if role not in {EMPLOYEE_ROLE, *VISIBLE_STAFF_ROLES}:
         raise HTTPException(status_code=403, detail="Finance claim access is not available for this role")
     claims = list_visible_claims(db, viewer=auth.user, effective_role=role, status=claim_status)
@@ -579,7 +604,9 @@ def create_expense_claim(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
+    if _role(auth) == "bd_employee" and payload.project_id not in _bd_expense_project_ids(db, auth):
+        raise HTTPException(status_code=404, detail="BD project not available for expense claims")
     # V8: employees may raise expenses only against Project IDs assigned to them.
     # The existing Admin -> Finance -> Payment -> Settlement workflow remains unchanged.
     try:
@@ -599,7 +626,7 @@ def create_expense_claim(
         details={"claim_code": claim.claim_code},
     )
     db.commit()
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.put("/claims/{claim_id}", response_model=ExpenseClaimResponse)
@@ -610,7 +637,9 @@ def update_expense_claim(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
+    if _role(auth) == "bd_employee" and payload.project_id not in _bd_expense_project_ids(db, auth):
+        raise HTTPException(status_code=404, detail="BD project not available for expense claims")
     claim = _visible_claim_or_404(db, auth, claim_id)
     try:
         claim = update_claim(db, claim=claim, requester=auth.user, payload=payload)
@@ -628,7 +657,7 @@ def update_expense_claim(
         target_id=claim.id,
     )
     db.commit()
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.post("/claims/{claim_id}/submit", response_model=ExpenseClaimResponse)
@@ -639,7 +668,7 @@ def submit_expense_claim(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     claim = _visible_claim_or_404(db, auth, claim_id)
     try:
         claim = submit_claim(db, claim=claim, requester=auth.user, request=request)
@@ -648,7 +677,7 @@ def submit_expense_claim(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     background_tasks.add_task(deliver_finance_lifecycle_emails, claim.id, "submitted", auth.user.id)
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.get("/claims/{claim_id}", response_model=ExpenseClaimResponse)
@@ -669,7 +698,7 @@ def get_expense_claim(
         target_id=claim.id,
     )
     db.commit()
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.post("/claims/{claim_id}/admin-decision", response_model=ExpenseClaimResponse)
@@ -697,7 +726,7 @@ def decide_claim_as_admin(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     event = "admin_approved" if payload.action == "approve" else "admin_sent_back" if payload.action == "send_back" else "admin_rejected"
     background_tasks.add_task(deliver_finance_lifecycle_emails, claim.id, event, auth.user.id)
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.post("/claims/{claim_id}/finance-decision", response_model=ExpenseClaimResponse)
@@ -724,7 +753,7 @@ def decide_claim_as_finance(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     event = "finance_approved" if payload.action == "approve" else "finance_sent_back" if payload.action == "send_back" else "finance_rejected"
     background_tasks.add_task(deliver_finance_lifecycle_emails, claim.id, event, auth.user.id)
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.post("/claims/{claim_id}/mark-paid", response_model=ExpenseClaimResponse)
@@ -753,7 +782,7 @@ def record_claim_payment(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(deliver_finance_lifecycle_emails, claim.id, "paid" if claim.status == "paid" else "partially_paid", auth.user.id)
-    return claim_payload(db, claim, auth.user, _role(auth))
+    return claim_payload(db, claim, auth.user, _expense_role(auth))
 
 
 @router.get("/dashboard", response_model=FinanceDashboardResponse)
@@ -892,7 +921,7 @@ async def upload_claim_attachments(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     claim = _visible_claim_or_404(db, auth, claim_id)
     if claim.requester_id != auth.user.id or claim.status not in {"draft", "admin_sent_back", "finance_sent_back"}:
         raise HTTPException(status_code=409, detail="Attachments can be changed only while the claim is editable")
@@ -983,7 +1012,7 @@ def delete_claim_attachment(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> None:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     claim = _visible_claim_or_404(db, auth, claim_id)
     if claim.requester_id != auth.user.id:
         raise HTTPException(status_code=403, detail="You can remove only your own draft expense proof")
@@ -1043,7 +1072,7 @@ def get_claim_attachment_content(
 
 
 def _visible_settlement_or_404(db: Session, auth: CurrentAuth, settlement_id: int):
-    settlement = get_visible_settlement(db, settlement_id=settlement_id, viewer=auth.user, effective_role=_role(auth))
+    settlement = get_visible_settlement(db, settlement_id=settlement_id, viewer=auth.user, effective_role=_expense_role(auth))
     if settlement is None:
         raise HTTPException(status_code=404, detail="Expense settlement not found")
     return settlement
@@ -1058,10 +1087,10 @@ def get_claim_settlement(
     claim = _visible_claim_or_404(db, auth, claim_id)
     if claim.claim_type != "advance":
         raise HTTPException(status_code=409, detail="Only an original Advance Request has a settlement")
-    settlement = get_visible_settlement(db, root_claim_id=claim.id, viewer=auth.user, effective_role=_role(auth))
+    settlement = get_visible_settlement(db, root_claim_id=claim.id, viewer=auth.user, effective_role=_expense_role(auth))
     if settlement is None:
         raise HTTPException(status_code=404, detail="Settlement has not been created yet")
-    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_role(auth))
+    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_expense_role(auth))
 
 
 @router.put("/claims/{claim_id}/settlement", response_model=SettlementResponse)
@@ -1072,7 +1101,7 @@ def save_claim_settlement(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     claim = _visible_claim_or_404(db, auth, claim_id)
     try:
         settlement = upsert_settlement(db, root_claim=claim, requester=auth.user, payload=payload, request=request)
@@ -1080,7 +1109,7 @@ def save_claim_settlement(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_role(auth))
+    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_expense_role(auth))
 
 
 @router.post(
@@ -1095,7 +1124,7 @@ async def upload_settlement_attachments(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> list[dict]:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     settlement = _visible_settlement_or_404(db, auth, settlement_id)
     if settlement.requester_id != auth.user.id or settlement.status not in EDITABLE_SETTLEMENT_STATUSES:
         raise HTTPException(status_code=409, detail="Settlement bills can be added only while the settlement is editable")
@@ -1179,7 +1208,7 @@ def delete_settlement_attachment(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> None:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     settlement = _visible_settlement_or_404(db, auth, settlement_id)
     if settlement.requester_id != auth.user.id or settlement.status not in EDITABLE_SETTLEMENT_STATUSES:
         raise HTTPException(status_code=409, detail="Submitted settlement proof is immutable for audit")
@@ -1231,7 +1260,7 @@ def submit_claim_settlement(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
-    _require_role(auth, EMPLOYEE_ROLE)
+    _require_expense_employee(auth)
     settlement = _visible_settlement_or_404(db, auth, settlement_id)
     try:
         settlement = submit_settlement(db, settlement=settlement, requester=auth.user, request=request)
@@ -1240,7 +1269,7 @@ def submit_claim_settlement(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     background_tasks.add_task(deliver_finance_settlement_emails, settlement.id, "submitted", auth.user.id)
-    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_role(auth))
+    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_expense_role(auth))
 
 
 @router.post("/settlements/{settlement_id}/admin-decision", response_model=SettlementResponse)
@@ -1259,7 +1288,7 @@ def decide_settlement_as_admin(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(deliver_finance_settlement_emails, settlement.id, f"admin_{'approved' if payload.action == 'approve' else 'sent_back' if payload.action == 'send_back' else 'rejected'}", auth.user.id)
-    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_role(auth))
+    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_expense_role(auth))
 
 
 @router.post("/settlements/{settlement_id}/finance-decision", response_model=SettlementResponse)
@@ -1278,7 +1307,7 @@ def decide_settlement_as_finance(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(deliver_finance_settlement_emails, settlement.id, "finance_finalized" if payload.action == "approve" else "finance_sent_back" if payload.action == "send_back" else "finance_rejected", auth.user.id)
-    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_role(auth))
+    return settlement_payload(db, settlement, viewer=auth.user, effective_role=_expense_role(auth))
 
 
 def _document_response(output, *, filename: str, media_type: str):
