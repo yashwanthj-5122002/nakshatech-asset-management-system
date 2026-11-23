@@ -49,12 +49,23 @@ logger = logging.getLogger(__name__)
 
 
 def _role(auth: CurrentAuth) -> str:
+    # BD employees use the existing requester workflow, never staff approval roles.
+    if auth.user.role == "bd_employee" and auth.effective_role.strip().lower() == "bd_employee":
+        return EMPLOYEE_ROLE
     return auth.effective_role.strip().lower()
 
 
 def _require(auth: CurrentAuth, *roles: str) -> None:
     if _role(auth) not in set(roles):
         raise HTTPException(status_code=403, detail="Insufficient permission for this Travel & KM action")
+
+
+def _bd_employee_travel_project_ids(db: Session, auth: CurrentAuth) -> set[int]:
+    # Reuse the existing BD Employee authorization boundary; no browser-supplied IDs.
+    if auth.user.role != "bd_employee" or auth.effective_role.strip().lower() != "bd_employee":
+        raise HTTPException(status_code=403, detail="BD Employee access required")
+    from app.modules.bd_employee.direct_router import _business_project_ids
+    return _business_project_ids(db, auth.user)
 
 
 def _claim(db: Session, auth: CurrentAuth, claim_id: int) -> TravelKmClaim:
@@ -204,7 +215,10 @@ def employee_project_numbers(
     """
     _require(auth, EMPLOYEE_ROLE)
     rows: list[dict] = []
+    bd_project_ids = _bd_employee_travel_project_ids(db, auth) if auth.user.role == "bd_employee" else None
     for project in all_projects(db):
+        if bd_project_ids is not None and project.id not in bd_project_ids:
+            continue
         safe = employee_project_payload(project)
         rows.append({
             "id": project.id,
@@ -241,6 +255,8 @@ def create(
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
     _require(auth, EMPLOYEE_ROLE)
+    if auth.user.role == "bd_employee" and payload.project_id not in _bd_employee_travel_project_ids(db, auth):
+        raise HTTPException(status_code=404, detail="Your BD project was not found")
     # Project lifecycle/status is the access gate. create_claim() validates the
     # selected project against status and project dates.
     try:
@@ -284,6 +300,8 @@ def get_project_site_geofence(
 ) -> dict:
     _require(auth, EMPLOYEE_ROLE, ADMIN_ROLE, HR_ROLE, FINANCE_ROLE, MANAGEMENT_ROLE, SOFTWARE_TEAM_ROLE)
     try:
+        if auth.user.role == "bd_employee" and project_id not in _bd_employee_travel_project_ids(db, auth):
+            raise HTTPException(status_code=404, detail="Your BD project was not found")
         payload = project_geofence_payload(db, project_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

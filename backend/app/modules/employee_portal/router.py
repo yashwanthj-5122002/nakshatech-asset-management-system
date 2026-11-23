@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import CurrentAuth, get_current_auth, get_current_user, require_roles
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.roles import ADMIN_ROLE, EMPLOYEE_ROLE, HR_ROLE, IT_ROLE, SOFTWARE_TEAM_ROLE
+from app.core.roles import ADMIN_ROLE, BD_EMPLOYEE_ROLE, EMPLOYEE_ROLE, HR_ROLE, IT_ROLE, SOFTWARE_TEAM_ROLE
 from app.core.management_access import (
     FIRST_LOGIN_PRIVILEGED_ROLES,
     MANAGEMENT_ROLE,

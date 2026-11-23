@@ -78,12 +78,13 @@ function DraftInput({
   )
 }
 
-export function BusinessDashboardPage() {
+export function BusinessDashboardPage({ employeeScoped = false }: { employeeScoped?: boolean } = {}) {
   const { user } = useAuth()
   const role = user?.role
-  const isFinance = canEnterBusiness(role)
-  const isPrivileged = canSeeBusinessTotals(role)
-  const canVerify = role === 'management' || role === 'admin' || role === 'software_team'
+  const isFinance = !employeeScoped && canEnterBusiness(role)
+  const isPrivileged = employeeScoped || canSeeBusinessTotals(role)
+  const canVerify = !employeeScoped && (role === 'management' || role === 'admin' || role === 'software_team')
+  const overviewPath = employeeScoped ? '/bd-employee/direct/business/overview' : '/business/overview'
 
   const [month, setMonth] = useState(currentReportingMonth)
   const [data, setData] = useState<BusinessOverview | null>(null)
@@ -99,11 +100,11 @@ export function BusinessDashboardPage() {
     setLoading(true)
     setError('')
     setHistory(null)
-    void apiFetch<BusinessOverview>(`/business/overview?month=${encodeURIComponent(month)}`)
+    void apiFetch<BusinessOverview>(`${overviewPath}?month=${encodeURIComponent(month)}`)
       .then((payload) => setData(payload))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load Business data'))
       .finally(() => setLoading(false))
-  }, [month])
+  }, [month, overviewPath])
 
   useEffect(load, [load])
 
@@ -219,7 +220,10 @@ export function BusinessDashboardPage() {
     if (row.record_id == null) return
     setError('')
     try {
-      const entries = await apiFetch<BusinessHistoryEntry[]>(`/business/records/${row.record_id}/history`)
+      const historyPath = employeeScoped
+        ? `/bd-employee/direct/business/records/${row.record_id}/history`
+        : `/business/records/${row.record_id}/history`
+      const entries = await apiFetch<BusinessHistoryEntry[]>(historyPath)
       setHistory({ row, entries })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load history')
@@ -246,10 +250,12 @@ export function BusinessDashboardPage() {
         variant="ops"
         icon={TrendingUp}
         eyebrow="BUSINESS · TOTAL SELL"
-        title={data ? businessViewerLabel(data.viewer) : 'Business & Total Sell'}
-        description={isPrivileged
-          ? 'Figures come from Billing & Invoices for the month. Verify them, save, and every change is kept in history.'
-          : 'Track how much business your projects have done and how much the client has paid.'}
+        title={employeeScoped ? 'My Business & Total Sell' : data ? businessViewerLabel(data.viewer) : 'Business & Total Sell'}
+        description={employeeScoped
+          ? 'Your authorized BD clients and projects only. Monthly figures come from the same Finance business records as the BD Manager view; this page is read-only.'
+          : isPrivileged
+            ? 'Figures come from Billing & Invoices for the month. Verify them, save, and every change is kept in history.'
+            : 'Track how much business your projects have done and how much the client has paid.'}
         actions={headerActions}
         meta={<>
           <span className="nk-meta-chip"><TrendingUp size={14} /> Business done vs client paid</span>
@@ -371,7 +377,9 @@ export function BusinessDashboardPage() {
                 <h2>{isFinance ? 'Monthly Business Entry' : `${monthLabel(data.month)} Business`}</h2>
                 <p>{isFinance
                   ? 'Values are pre-filled from Billing & Invoices. Check them against the billing record, adjust if needed, then Save. Every change is kept in history.'
-                  : 'Project-wise business recorded by Finance for the selected month.'}</p>
+                  : employeeScoped
+                    ? 'Only your authorized BD projects. Values are recorded by Finance and cannot be edited here.'
+                    : 'Project-wise business recorded by Finance for the selected month.'}</p>
               </div>
               {isPrivileged && <small>{verifiedCount} of {enteredRows.length} record(s) verified</small>}
             </div>

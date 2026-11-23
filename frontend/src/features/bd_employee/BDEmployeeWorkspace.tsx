@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity, BarChart3, Bell, BriefcaseBusiness, Building2, CalendarClock, CheckCircle2, ChevronDown,
-  ClipboardList, FolderKanban, IndianRupee, LogOut, Mail, Menu, MessageSquareText,
-  Plus, RefreshCw, Search, Send, TrendingUp, UserRoundPlus, Users, X,
+  Activity, BarChart3, Bell, Building2, CalendarClock, ChevronDown,
+  ClipboardList, FolderKanban, IndianRupee, LifeBuoy, LogOut, Mail, Menu, MessageSquareText,
+  MapPinned, Plus, RefreshCw, Search, TrendingUp, UserRoundPlus, Users, X,
 } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
@@ -12,6 +12,11 @@ import './bd-employee.css'
 import { BDEmployeeProjectManagement } from './BDEmployeeProjectManagement'
 import { BDEmployeeClientManagement } from './BDEmployeeClientManagement'
 import { BDEmployeeProjectTracking } from './BDEmployeeProjectTracking'
+import { BusinessDashboardPage } from '../business/BusinessDashboardPage'
+import { EmployeeSupportDashboard } from '../employee_portal/pages/EmployeeSupportDashboard'
+import { TicketListPage } from '../employee_portal/pages/TicketListPage'
+import { TicketDetailPage } from '../employee_portal/pages/TicketDetailPage'
+import { BDEmployeeTicketEntry } from './BDEmployeeTicketEntry'
 
 type LeadSource = 'linkedin'|'google'|'email'|'phone'|'referral'|'website'|'other'
 type LeadStatus = 'new'|'contacted'|'no_response'|'replied'|'interested'|'not_interested'|'enquiry'|'won'
@@ -25,11 +30,6 @@ type Prospect = {
   created_at: string; updated_at: string;
 }
 type Activity = { id: number; channel: ActivityChannel; outcome: ActivityOutcome; remarks: string|null; contacted_at: string }
-type Overview = {
-  prospects: number; contacted: number; responded: number;
-  open_enquiries: number; followups_due: number; activities_today: number;
-  upcoming_followups: Prospect[];
-}
 const sourceLabels: Record<LeadSource,string> = {
   linkedin:'LinkedIn', google:'Google', email:'Email', phone:'Phone', referral:'Referral', website:'Company Website', other:'Other',
 }
@@ -46,14 +46,17 @@ const outcomes = Object.keys(outcomeLabels) as ActivityOutcome[]
 // Employee-only routes; never point an employee directly at manager/Finance APIs.
 // Preserve the BD Manager's menu order, replacing My Team with the combined Lead Hub.
 const nav = [
-  { to:'/bd-employee', label:'BD Dashboard', icon:Building2 },
-  { to:'/bd-employee/lead-hub', label:'Lead Hub', icon:Users },
+  { to:'/bd-employee', label:'Support Dashboard', icon:LifeBuoy },
+  { to:'/bd-employee/support/new', label:'Raise New Ticket', icon:MessageSquareText },
+  { to:'/bd-employee/lead-hub', label:'Daily Activity Report', icon:Users },
   { to:'/bd-employee/clients', label:'Client Management', icon:Building2 },
   { to:'/bd-employee/projects', label:'Project Management', icon:FolderKanban },
   { to:'/bd-employee/tracking', label:'Project Tracking', icon:Activity },
   { to:'/bd-employee/commercial', label:'Commercial Estimates', icon:BarChart3 },
   { to:'/bd-employee/notifications', label:'Notifications', icon:Bell },
   { to:'/bd-employee/business', label:'Business & Total Sell', icon:TrendingUp },
+  { to:'/travel-km/new', label:'Start Travel / KM Claim', icon:MapPinned },
+  { to:'/travel-km', label:'My Travel / KM Claims', icon:MapPinned },
   { to:'/bd-employee/finance', label:'Finance Command Center', icon:BarChart3 },
 ]
 const leadHubTabs = [
@@ -62,7 +65,7 @@ const leadHubTabs = [
   {to:'/bd-employee/lead-hub/followups',label:'Follow-Up Tracker',icon:CalendarClock},
 ]
 const pageTitles:Record<string,string> = {
-  overview:'Good to see you again', 'lead-hub':'Lead Hub', clients:'Client Management',
+  overview:'Support Dashboard', 'lead-hub':'Daily Activity Report', clients:'Client Management',
   projects:'Project Management', tracking:'Project Tracking', commercial:'Commercial Estimates',
   notifications:'Notifications', business:'Business & Total Sell',
   finance:'Finance Command Center',
@@ -98,9 +101,9 @@ export function BDEmployeeWorkspace() {
   const route = location.pathname.split('/')[2] || 'overview'
   const tab = ['prospects','activities','followups'].includes(route) ? 'lead-hub' : route
   const leadHubPart = location.pathname.split('/')[3]
+  const ticketId = location.pathname.split('/')[3]
   const hubTab = ['prospects','activities','followups'].includes(leadHubPart)
     ? leadHubPart : ['prospects','activities','followups'].includes(route) ? route : 'prospects'
-  const [overview, setOverview] = useState<Overview|null>(null)
   const [leads, setLeads] = useState<Prospect[]>([])
   const [selected, setSelected] = useState<Prospect|null>(null)
   const [history, setHistory] = useState<Activity[]>([])
@@ -115,7 +118,7 @@ export function BDEmployeeWorkspace() {
   const [remarks, setRemarks] = useState('')
   const [followup, setFollowup] = useState('')
   const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -125,11 +128,7 @@ export function BDEmployeeWorkspace() {
     setLoading(true)
     setError('')
     try {
-      const [o, p] = await Promise.all([
-        apiFetch<Overview>('/bd-employee/dashboard'),
-        apiFetch<{items:Prospect[]}>('/bd-employee/prospects'),
-      ])
-      setOverview(o)
+      const p = await apiFetch<{items:Prospect[]}>('/bd-employee/prospects')
       setLeads(p.items)
       setSelected(old => old ? p.items.find(item=>item.id === old.id) || null : null)
     } catch (exc) {
@@ -137,7 +136,7 @@ export function BDEmployeeWorkspace() {
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(()=>{ void refresh() },[refresh])
+  useEffect(()=>{ if (!['overview','support','tickets'].includes(tab)) void refresh() },[refresh,tab])
 
   const openLead = useCallback(async (lead:Prospect) => {
     setSelected(lead)
@@ -203,8 +202,6 @@ export function BDEmployeeWorkspace() {
   const todayDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
   const filtered = leads.filter(p=>[p.company_name,p.contact_person,p.service_interest,p.status].join(' ').toLowerCase().includes(search.toLowerCase()))
   const openEnquiries = filtered.filter(p=>p.status==='enquiry' || p.status==='won')
-  const uniqueClients = new Set(leads.map(p=>p.company_name.trim().toLocaleLowerCase()).filter(Boolean)).size
-  const closedLeads = leads.filter(p=>p.status==='won'||p.status==='not_interested').length
   const followups = filtered.filter(p=>p.next_followup_date && !['won','not_interested'].includes(p.status)).sort((a,b)=>(a.next_followup_date||'').localeCompare(b.next_followup_date||''))
   const selectedFollowups = followups.filter(p=>followupFilter==='all' ? true
     : followupFilter==='today' ? p.next_followup_date===todayDate
@@ -212,7 +209,7 @@ export function BDEmployeeWorkspace() {
     : (p.next_followup_date||'')>todayDate)
 
   // Employee-only routes cannot display the manager's official feedback page.
-  if (route === 'feedback') return <Navigate to="/bd-employee" replace />
+  if (['feedback', 'expenses'].includes(route)) return <Navigate to="/bd-employee" replace />
 
   return <div className="app-shell bde-shell">
     <button type="button" className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open BD employee menu"><Menu size={21}/></button>
@@ -225,7 +222,7 @@ export function BDEmployeeWorkspace() {
       </div>
       <span className="sidebar-section-label">My Workspace</span>
       <nav aria-label="BD employee workspace">
-        {nav.map(item=>{ const Icon = item.icon; const active = item.to==='/bd-employee' ? tab==='overview' : location.pathname===item.to || location.pathname.startsWith(item.to+'/') || (item.label==='Lead Hub' && ['prospects','activities','followups'].includes(route)); return <NavLink to={item.to} end={item.to==='/bd-employee'} key={item.to} onClick={() => setMobileOpen(false)} className={active?'active':''}><Icon size={18}/><span>{item.label}</span>{item.label==='Lead Hub'&&<ChevronDown className="bde-nav-chevron" size={13}/>}</NavLink> })}
+        {nav.map(item=>{ const Icon = item.icon; const active = item.to==='/bd-employee' ? tab==='overview' : location.pathname===item.to || location.pathname.startsWith(item.to+'/') || (item.to==='/bd-employee/lead-hub' && ['prospects','activities','followups'].includes(route)); return <NavLink to={item.to} end={item.to==='/bd-employee'} key={item.to} onClick={() => setMobileOpen(false)} className={active?'active':''}><Icon size={18}/><span>{item.label}</span>{item.to==='/bd-employee/lead-hub'&&<ChevronDown className="bde-nav-chevron" size={13}/>}</NavLink> })}
       </nav>
       <div className="sidebar-footer">
         <button type="button" className="sidebar-footer-toggle" onClick={() => setAccountOpen(open => !open)} aria-expanded={accountOpen} aria-controls="bd-employee-account-card">
@@ -240,26 +237,13 @@ export function BDEmployeeWorkspace() {
     </aside>
     {mobileOpen && <button type="button" className="sidebar-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close BD employee menu"/>}
     <main className="bde-main">
-      {tab !== 'projects' && tab !== 'clients' && tab !== 'tracking' && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
+      {!['overview', 'support', 'tickets', 'projects', 'clients', 'tracking', 'business'].includes(tab) && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
       {error && <p className="bde-error" role="alert">{error}</p>}
       {notice && <p className="bde-success" role="status">{notice}</p>}
       {loading && <p className="bde-muted">Loading your BD records…</p>}
-      {tab==='overview' && <>
-        <div className="bde-kpi-grid bde-five-cards">
-          {[
-            {title:'Prospects Added',value:overview?.prospects ?? 0,Icon:Users},
-            {title:'Clients Contacted',value:overview?.contacted ?? 0,Icon:Send},
-            {title:'Total Clients',value:uniqueClients,Icon:Building2},
-            {title:'Closed',value:closedLeads,Icon:CheckCircle2},
-            {title:'Total Sales',value:'Not linked',Icon:IndianRupee},
-          ].map(item=><section className="bde-kpi" key={item.title}><item.Icon size={22}/><small>{item.title}</small><strong className={item.title==='Total Sales'?'bde-unlinked':''}>{item.value}</strong></section>)}
-        </div>
-        <div className="bde-grid-two"><section className="bde-card"><div className="bde-section-head"><h2>Upcoming Follow-Ups</h2><Link to="/bd-employee/lead-hub/followups">View all</Link></div>
-          {overview?.upcoming_followups.length ? <div className="bde-follow-list">{overview.upcoming_followups.slice(0,7).map(p=><button key={p.id} className="bde-follow" onClick={()=>void openLead(p)}><span><strong>{p.company_name}</strong><small>{statusLabels[p.status]}</small></span><span className={p.next_followup_date && p.next_followup_date<=todayDate?'bde-due':''}>{dayLabel(p.next_followup_date)}</span></button>)}</div> : <p className="bde-muted">No follow-ups scheduled. Add prospects and set a next contact date.</p>}
-        </section><section className="bde-card"><h2>Today's Activity</h2><div className="bde-summary-number">{overview?.activities_today ?? 0}</div><p className="bde-muted">Contact actions logged today</p><div className="bde-microstat"><span>Open enquiries</span><strong>{overview?.open_enquiries ?? 0}</strong></div><p className="bde-muted">Personal prospect notes; official project and sales attribution is not linked yet.</p><Link className="bde-outline bde-link-button" to="/bd-employee/lead-hub/activities">Log a contact</Link></section></div>
-        <div className="bde-section-head"><h2>Recent Prospects</h2><Link to="/bd-employee/lead-hub/prospects">View all</Link></div>
-        <section className="bde-card"><LeadRows rows={leads.slice(0,5)} onOpen={p=>void openLead(p)}/></section>
-      </>}
+      {tab==='overview' && <EmployeeSupportDashboard bdEmployee />}
+      {tab==='support' && (ticketId === 'new' ? <BDEmployeeTicketEntry /> : <Navigate to="/bd-employee" replace />)}
+      {tab==='tickets' && (ticketId ? <TicketDetailPage /> : <TicketListPage />)}
       {tab==='lead-hub' && <>
         <nav className="bde-hub-tabs" aria-label="Lead Hub features">
           {leadHubTabs.map(item=>{ const Icon=item.icon; const part=item.to.split('/').at(-1); return <NavLink to={item.to} key={item.to} className={hubTab===part?'bde-hub-tab active':'bde-hub-tab'}><Icon size={18}/>{item.label}</NavLink> })}
@@ -290,15 +274,7 @@ export function BDEmployeeWorkspace() {
       {tab==='notifications' && <>
         <section className="bde-card"><h2>My Follow-Up Alerts</h2><p className="bde-muted">Reminders derived from your scheduled client follow-ups. Official company-wide notifications are outside this employee workspace.</p><LeadRows rows={followups.filter(p=>(p.next_followup_date||'')<=todayDate)} onOpen={p=>void openLead(p)}/></section>
       </>}
-      {tab==='business' && <>
-        <div className="bde-kpi-grid bde-four-cards">{[
-          {title:'Total Clients',value:uniqueClients,Icon:Building2},
-          {title:'Prospects Added',value:overview?.prospects??0,Icon:Users},
-          {title:'Closed',value:closedLeads,Icon:CheckCircle2},
-          {title:'Total Sales',value:'Not linked',Icon:IndianRupee},
-        ].map(item=><section className="bde-kpi" key={item.title}><item.Icon size={22}/><small>{item.title}</small><strong className={item.title==='Total Sales'?'bde-unlinked':''}>{item.value}</strong></section>)}</div>
-        <section className="bde-card"><h2>My Business & Total Sell</h2><p className="bde-muted">Closed represents your own leads marked Won or Not Interested, not confirmed ERP sales. Sales amounts will be available only after an authorized official project attribution is established.</p><LeadRows rows={filtered} onOpen={p=>void openLead(p)}/></section>
-      </>}
+      {tab==='business' && <BusinessDashboardPage employeeScoped />}
       {tab==='finance' && <>
         <section className="bde-card"><h2>Finance Command Center</h2><div className="bde-limited"><IndianRupee size={25}/><div><strong>Finance data is not authorized for individual BD accounts yet.</strong><p>Financial approval, pricing, invoicing and payment actions remain with authorized BD Manager and Finance roles. Once an approved employee-to-project link exists, a scoped read-only view can be added safely.</p></div></div></section>
       </>}

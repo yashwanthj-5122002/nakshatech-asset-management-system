@@ -134,9 +134,9 @@ export default function App() {
       <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
-      <Route path="/travel-km" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmClaimsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/travel-km/:id" element={<ProtectedRoute roles={['employee', 'admin', 'hr', 'finance', 'management', 'software_team']}><WithLayout><TravelKmDetailPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/travel-km" element={<ProtectedRoute roles={['employee', 'bd_employee']}><WithLayout><TravelKmClaimsPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee', 'bd_employee']}><WithLayout><TravelKmCreatePage /></WithLayout></ProtectedRoute>} />
+      <Route path="/travel-km/:id" element={<ProtectedRoute roles={['employee', 'admin', 'hr', 'finance', 'management', 'software_team', 'bd_employee']}><WithLayout><TravelKmDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/admin/travel-km" element={<ProtectedRoute roles={['admin']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/hr/travel-km" element={<ProtectedRoute roles={['hr']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/travel-km" element={<ProtectedRoute roles={['finance']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
@@ -179,6 +179,7 @@ export default function App() {
       <Route path="/drone/movements" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneMovementsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/kits" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneKitsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/import" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneImportPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/bd-employee/tickets/:id" element={<StrictProtectedRoute roles={['bd_employee']}><BDEmployeeWorkspace /></StrictProtectedRoute>} />
       <Route path="/bd-employee/*" element={<StrictProtectedRoute roles={['bd_employee']}><BDEmployeeWorkspace /></StrictProtectedRoute>} />
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/my-team" element={<StrictProtectedRoute roles={['bd']}><WithLayout><BDMyTeamPage /></WithLayout></StrictProtectedRoute>} />

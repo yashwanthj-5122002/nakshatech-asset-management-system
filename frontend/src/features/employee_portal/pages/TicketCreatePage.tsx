@@ -85,6 +85,7 @@ function componentTag(asset: TicketAsset, component: string): string | undefined
 export function TicketCreatePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const ticketRoot = user?.role === "bd_employee" ? "/bd-employee/tickets" : "/tickets"
   const [form, setForm] = useState(emptyForm)
   const [catalog, setCatalog] = useState<TicketCatalog>({ components: [] })
   const [catalogError, setCatalogError] = useState('')
@@ -277,7 +278,7 @@ export function TicketCreatePage() {
     setAttachmentError('')
     try {
       await uploadTicketEvidence(createdTicket.id)
-      navigate(`/tickets/${createdTicket.id}`, { replace: true })
+      navigate(`${ticketRoot}/${createdTicket.id}`, { replace: true })
     } catch (err) {
       setAttachmentError(err instanceof Error ? err.message : 'The ticket was created, but the images could not be uploaded. Try again or open the ticket without images.')
     } finally {
@@ -342,7 +343,7 @@ export function TicketCreatePage() {
           return
         }
       }
-      navigate(`/tickets/${ticket.id}`, { replace: true })
+      navigate(`${ticketRoot}/${ticket.id}`, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create ticket')
     } finally {
@@ -424,7 +425,7 @@ export function TicketCreatePage() {
         </button>
         {attachments.length > 0 && <div className="ticket-attachment-preview-grid">{attachments.map(item => <article key={item.id} className="ticket-attachment-preview-card"><img src={item.previewUrl} alt={`Preview of ${item.file.name}`} /><div><strong>{item.file.name}</strong><span>{formatAttachmentSize(item.file.size)}</span></div>{!createdTicket && <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.file.name}`}><X size={15} /></button>}</article>)}</div>}
         {attachmentError && <div className={createdTicket ? 'ticket-attachment-warning' : 'error-message'}>{attachmentError}</div>}
-        {createdTicket && <div className="ticket-attachment-recovery"><div><strong>{createdTicket.ticket_code} is already saved.</strong><span>Only the optional image upload needs attention. Retrying will not create a duplicate ticket.</span></div><div>{attachments.length > 0 && <button type="button" className="secondary-button" onClick={retryTicketEvidence} disabled={loading}>{loading ? 'Retrying...' : 'Retry Image Upload'}</button>}<button type="button" className="primary-button" onClick={() => navigate(`/tickets/${createdTicket.id}`, { replace: true })}>Open Ticket</button></div></div>}
+        {createdTicket && <div className="ticket-attachment-recovery"><div><strong>{createdTicket.ticket_code} is already saved.</strong><span>Only the optional image upload needs attention. Retrying will not create a duplicate ticket.</span></div><div>{attachments.length > 0 && <button type="button" className="secondary-button" onClick={retryTicketEvidence} disabled={loading}>{loading ? 'Retrying...' : 'Retry Image Upload'}</button>}<button type="button" className="primary-button" onClick={() => navigate(`${ticketRoot}/${createdTicket.id}`, { replace: true })}>Open Ticket</button></div></div>}
       </section>
 
       {error && <div className="error-message">{error}</div>}

@@ -58,6 +58,7 @@ function TicketAttachmentPreview({ ticketId, attachment, onOpen }: { ticketId: n
 export function TicketDetailPage() {
   const { id } = useParams()
   const { user } = useAuth()
+  const ticketRoot = user?.role === "bd_employee" ? "/bd-employee/tickets" : "/tickets"
   const [ticket, setTicket] = useState<SupportTicket | null>(null)
   const [message, setMessage] = useState('')
   const [resolution, setResolution] = useState('')
@@ -178,7 +179,7 @@ export function TicketDetailPage() {
     <DashboardHeader eyebrow={`${ticket.ticket_code} · ${ticket.department.replace('_', ' ').toUpperCase()}`} title={ticket.title} description={`${ticket.requester_name} · ${ticket.branch_name} · Raised ${formatStandardDateTime(ticket.created_at)}`} />
     <div className="ticket-detail-layout">
       <section className="panel-card ticket-conversation-panel">
-        <Link to="/tickets" className="ticket-back-link"><ArrowLeft size={16} />Back to tickets</Link>
+        <Link to={ticketRoot} className="ticket-back-link"><ArrowLeft size={16} />Back to tickets</Link>
         <div className="ticket-description-card"><span className="section-kicker">ORIGINAL ISSUE</span><p>{ticket.description}</p>{ticket.location && <small>Issue location: {ticket.location}</small>}{ticket.asset_number && !ticket.asset_snapshot && <small>Asset: {ticket.asset_number}</small>}</div>
 
         {(ticket.attachments?.length || 0) > 0 && <section className="ticket-evidence-section">

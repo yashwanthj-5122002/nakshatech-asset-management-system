@@ -30,6 +30,8 @@ from app.modules.operations.workflow_service import (
     WORKFLOW_IN_PROGRESS, WORKFLOW_FINANCE_CLOSURE_PENDING, WORKFLOW_CLOSED,
 )
 from app.modules.commercial.service import commercial_summary
+from app.modules.business.schemas import BusinessHistoryEntry, BusinessOverview
+from app.modules.business.service import business_employee_history, business_employee_overview
 from app.modules.employee_portal.service import record_audit
 
 router = APIRouter(prefix="/direct", tags=["BD Employee Direct Clients and Projects"])
@@ -97,14 +99,11 @@ def _audit(db: Session, request: Request, employee: User, event: str, target: st
                  details=details or {})
 
 
-@router.get("/dashboard")
-def dashboard(db: Session = Depends(get_db), employee: User = Depends(_employee)) -> dict:
+def _visible_employee_project_query(db: Session, employee: User):
+    """Single authorization boundary shared by employee projects and business reporting."""
     ids = _own_client_ids(db, employee)
-    clients = db.scalars(select(FinanceClient).where(
-        FinanceClient.id.in_(ids), FinanceClient.source_team == "bd_team",
-    ).order_by(FinanceClient.created_at.desc())).all()
-    # Direct employee-owned projects PLUS prior manager-created projects explicitly
-    # linked through the approved legacy handoff table. Never widen on user-sent IDs.
+    # Direct ownership, approved historical handoff, or a BD Manager project on
+    # this employee's own client. Never trust IDs submitted from a browser.
     own = and_(FinanceProject.created_by_id == employee.id,
                ProjectWorkflow.bd_owner_user_id == employee.id)
     historical = and_(
@@ -130,6 +129,41 @@ def dashboard(db: Session = Depends(get_db), employee: User = Depends(_employee)
         FinanceClient.source_team == "bd_team",
         or_(own, historical, manager_on_own_client),
     )
+    return query
+
+
+def _business_project_ids(db: Session, employee: User) -> set[int]:
+    return {project.id for project in db.scalars(_visible_employee_project_query(db, employee)).unique().all()}
+
+
+@router.get("/business/overview", response_model=BusinessOverview)
+def employee_business_overview(
+    month: str | None = None,
+    db: Session = Depends(get_db),
+    employee: User = Depends(_employee),
+) -> BusinessOverview:
+    return business_employee_overview(db, month=month, project_ids=_business_project_ids(db, employee))
+
+
+@router.get("/business/records/{record_id}/history", response_model=list[BusinessHistoryEntry])
+def employee_business_history(
+    record_id: int,
+    db: Session = Depends(get_db),
+    employee: User = Depends(_employee),
+) -> list[BusinessHistoryEntry]:
+    return business_employee_history(
+        db, record_id=record_id, actor=employee, project_ids=_business_project_ids(db, employee),
+    )
+
+
+@router.get("/dashboard")
+def dashboard(db: Session = Depends(get_db), employee: User = Depends(_employee)) -> dict:
+    ids = _own_client_ids(db, employee)
+    clients = db.scalars(select(FinanceClient).where(
+        FinanceClient.id.in_(ids), FinanceClient.source_team == "bd_team",
+    ).order_by(FinanceClient.created_at.desc())).all()
+    # Use the exact same project permission check as the employee financial view.
+    query = _visible_employee_project_query(db, employee)
     projects = db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all()
     workflows = {w.project_id: w for w in db.scalars(select(ProjectWorkflow).where(
         ProjectWorkflow.project_id.in_([p.id for p in projects])

@@ -694,6 +694,8 @@ def get_user_branches(db: Session, user: User) -> list[Branch]:
         branch for branch in branches
         if branch.id in allowed_ids or branch.name.strip().lower() == (user.branch or "").strip().lower()
     ]
+    if user.role == "bd_employee":
+        return matched
     return matched or branches[:1]
 
 
