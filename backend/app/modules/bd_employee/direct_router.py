@@ -272,6 +272,10 @@ def create_project(payload: WorkflowProjectCreate, request: Request,
         project, workflow = create_bd_project(db, actor=employee, payload=payload)
         _audit(db, request, employee, "BD_EMPLOYEE_PROJECT_CREATED", "finance_project", project.id,
                {"project_code": project.project_code, "workflow_status": workflow.status})
+        # Notify authorized BD Managers only after the authoritative project exists;
+        # deduped and committed with the existing project creation transaction.
+        from app.modules.bd_employee.manager_notification_service import safe_notify_manager_project_event
+        safe_notify_manager_project_event(db, project_id=project.id, milestone="project_created")
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code,
                 "workflow_status": workflow.status,

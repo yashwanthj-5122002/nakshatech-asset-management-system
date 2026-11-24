@@ -14,6 +14,7 @@ import { GlobalNotificationBell } from '../../components/GlobalNotificationBell'
 import { NotificationsPage } from '../operations/pages/NotificationsPage'
 import './bd-employee.css'
 import { BDEmployeeProjectManagement } from './BDEmployeeProjectManagement'
+import { BDClientFeedbackPage } from '../operations/pages/BDClientFeedbackPage'
 import { BDEmployeeClientManagement } from './BDEmployeeClientManagement'
 import { BDEmployeeProjectTracking } from './BDEmployeeProjectTracking'
 import { BusinessDashboardPage } from '../business/BusinessDashboardPage'
@@ -64,6 +65,7 @@ const nav = [
   { to:'/bd-employee/lead-hub', label:'Daily Activity Report', icon:Users },
   { to:'/bd-employee/clients', label:'Client Management', icon:Building2 },
   { to:'/bd-employee/projects', label:'Project Management', icon:FolderKanban },
+  { to:'/bd-employee/feedback', label:'Client Feedback', icon:MessageSquareText },
   { to:'/bd-employee/tracking', label:'Project Tracking', icon:Activity },
   { to:'/bd-employee/commercial', label:'Commercial Estimates', icon:BarChart3 },
   { to:'/bd-employee/notifications', label:'Notifications', icon:Bell },
@@ -251,8 +253,8 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
     : followupFilter==='overdue' ? (p.next_followup_date||'')<todayDate
     : (p.next_followup_date||'')>todayDate)
 
-  // Employee-only routes cannot display the manager's official feedback page.
-  if (['feedback', 'expenses'].includes(route)) return <Navigate to="/bd-employee" replace />
+  // Reuse the manager feedback UI through the employee-only, backend-scoped lifecycle APIs.
+  if (route === 'expenses') return <Navigate to="/bd-employee" replace />
 
   return <div className="app-shell bde-shell">
     <button type="button" className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open BD employee menu"><Menu size={21}/></button>
@@ -297,7 +299,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
     </aside>
     {mobileOpen && <button type="button" className="sidebar-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close BD employee menu"/>}
     <main className="bde-main"><div className="bde-notification-bell"><GlobalNotificationBell /></div>{travelContent ? travelContent : <>
-      {!['overview', 'support', 'tickets', 'projects', 'clients', 'tracking', 'business', 'expense', 'finance', 'notifications', 'profile'].includes(tab) && tab!=='lead-hub' && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
+      {!['overview', 'support', 'tickets', 'projects', 'clients', 'tracking', 'business', 'expense', 'finance', 'notifications', 'profile', 'feedback'].includes(tab) && tab!=='lead-hub' && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
       {error && <p className="bde-error" role="alert">{error}</p>}
       {notice && <p className="bde-success" role="status">{notice}</p>}
       {loading && <p className="bde-muted">Loading your BD records…</p>}
@@ -340,6 +342,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
       </>}
       {tab==='clients' && <BDEmployeeClientManagement />}
       {tab==='projects' && <BDEmployeeProjectManagement />}
+      {tab==='feedback' && <BDClientFeedbackPage />}
       {tab==='tracking' && <BDEmployeeProjectTracking />}
       {tab==='commercial' && <>
         <section className="bde-card"><h2>Commercial Estimates</h2><p className="bde-muted">Your requested services are listed below. Official quotes, revision controls and pricing require a verified project link and BD Manager/Finance authorization; no financial totals are fabricated.</p><LeadRows rows={openEnquiries} onOpen={p=>void openLead(p)} onConvert={beginConvert} onViewClient={id=>openConvertedClient(id)} /></section>
