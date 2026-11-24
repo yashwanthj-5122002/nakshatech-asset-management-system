@@ -1,4 +1,4 @@
-﻿import { FileSpreadsheet, Loader2, Upload } from 'lucide-react'
+﻿import { FileSpreadsheet, Loader2, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, uploadExcel } from '../../../lib/api'
 
@@ -110,12 +110,72 @@ function fmtQty(value: number | null | undefined): string {
 // STEP 1 â€” WORK FILE MASTER (upload -> preview -> transactional confirm)
 // ===========================================================================================
 
+type ImportedAreaForUndo = {
+  work_package_id: number
+  source_filename: string
+  lot?: string | null
+  code: string
+  area_name: string
+  file_count: number
+  can_remove: boolean
+  blocked_reason?: string | null
+}
+
 export function MasterImportPanel({ projectId, onImported }: { projectId: number; onImported: () => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<MasterPreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  const [removeOpen, setRemoveOpen] = useState(false)
+  const [removeLoading, setRemoveLoading] = useState(false)
+  const [importAreas, setImportAreas] = useState<ImportedAreaForUndo[]>([])
+  const [selectedUndoIds, setSelectedUndoIds] = useState<number[]>([])
+  useEffect(() => {
+    setRemoveOpen(false)
+    setImportAreas([])
+    setSelectedUndoIds([])
+  }, [projectId])
+
+  async function loadUndoOptions() {
+    setRemoveLoading(true); setError('')
+    try {
+      const response = await apiFetch<{ areas: ImportedAreaForUndo[] }>(
+        `/operations/workflow/ortho/projects/${projectId}/master-import/undo-options`,
+      )
+      setImportAreas(response.areas)
+      setSelectedUndoIds([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to load imported areas')
+    } finally {
+      setRemoveLoading(false)
+    }
+  }
+
+  async function removeImportedAreas() {
+    if (!selectedUndoIds.length) return
+    const count = importAreas.filter(a => selectedUndoIds.includes(a.work_package_id))
+      .reduce((sum, a) => sum + a.file_count, 0)
+    if (!window.confirm(
+      `Undo ${selectedUndoIds.length} imported area(s) and their ${count} untouched file(s)? ` +
+      'This cannot be undone. Assigned or worked files are protected.',
+    )) return
+    setRemoveLoading(true); setError(''); setNotice('')
+    try {
+      const result = await apiFetch<{ removed_areas: number; removed_files: number }>(
+        `/operations/workflow/ortho/projects/${projectId}/master-import/undo`,
+        { method: 'POST', body: JSON.stringify({ package_ids: selectedUndoIds }) },
+      )
+      setNotice(`Removed ${result.removed_files} unworked file(s) from ${result.removed_areas} area(s). You can upload the correct Excel now.`)
+      await loadUndoOptions()
+      onImported()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to undo imported areas')
+    } finally {
+      setRemoveLoading(false)
+    }
+  }
 
   async function previewMaster(selected: File) {
     setBusy(true); setError(''); setNotice('')
@@ -153,6 +213,7 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
       )
       setPreview(null)
       setFile(null)
+      if (removeOpen) void loadUndoOptions()
       onImported()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed')
@@ -192,6 +253,49 @@ export function MasterImportPanel({ projectId, onImported }: { projectId: number
       </header>
       {error && <div className="operations-alert error">{error}</div>}
       {notice && <div className="operations-alert success">{notice}</div>}
+      <div className="operations-actions">
+        <button type="button" className="operations-button secondary" disabled={busy || removeLoading}
+          onClick={() => {
+            if (removeOpen) { setRemoveOpen(false); setSelectedUndoIds([]) }
+            else { setRemoveOpen(true); void loadUndoOptions() }
+          }}>
+          <Trash2 size={15} /> {removeOpen ? 'Hide Imported Files' : 'Manage Imported Files'}
+        </button>
+      </div>
+      {removeOpen && <div className="pt-preview">
+        <strong>Undo accidental import (before any allocation or work)</strong>
+        <p>Only newly imported, untouched areas can be removed. Select exactly the areas from the wrong Excel; existing work stays protected.</p>
+        {removeLoading && <p>Checking imported areas...</p>}
+        {!removeLoading && importAreas.length === 0 && <p>No imported areas found for this project.</p>}
+        {importAreas.length > 0 && <>
+          <div className="operations-actions">
+            <label><input type="checkbox"
+              checked={importAreas.some(a => a.can_remove) && importAreas.filter(a => a.can_remove).every(a => selectedUndoIds.includes(a.work_package_id))}
+              onChange={e => setSelectedUndoIds(e.target.checked ? importAreas.filter(a => a.can_remove).map(a => a.work_package_id) : [])}/>
+              {' '}Select all removable areas
+            </label>
+          </div>
+          <div style={{ maxHeight: 250, overflowY: 'auto' }}>
+            {importAreas.map(area => <label key={area.work_package_id} style={{ display: 'block', padding: '5px 0' }}>
+              <input type="checkbox" disabled={!area.can_remove || busy || removeLoading}
+                checked={selectedUndoIds.includes(area.work_package_id)}
+                onChange={e => setSelectedUndoIds(current => e.target.checked
+                  ? [...current, area.work_package_id]
+                  : current.filter(id => id !== area.work_package_id))}/>
+              {' '}{area.source_filename} | {area.lot || '-'} / {area.code} / {area.area_name}
+              {' '}({area.file_count} file(s))
+              {!area.can_remove && <small> - Locked: {area.blocked_reason}</small>}
+            </label>)}
+          </div>
+          <div className="operations-actions">
+            <button type="button" className="operations-button secondary"
+              disabled={!selectedUndoIds.length || busy || removeLoading}
+              onClick={() => { void removeImportedAreas() }}>
+              <Trash2 size={15} /> Remove Selected ({selectedUndoIds.length})
+            </button>
+          </div>
+        </>}
+      </div>}
       {preview && (
         <div className="pt-preview">
           <div className="pt-preview-head">

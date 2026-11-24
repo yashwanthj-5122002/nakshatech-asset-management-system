@@ -119,8 +119,8 @@ const navItems: NavItem[] = [
   { to: '/expenses/new', label: 'New Project Expense', icon: FileCheck2, roles: ['employee'], group: 'support' },
   { to: '/expenses', label: 'My Expense Claims', icon: ShoppingCart, roles: ['employee'], group: 'support' },
   { to: '/project-costs', label: 'Project Cost Entries', icon: FileCheck2, roles: ['employee'], group: 'support' },
-  { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee'], group: 'support' },
-  { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee'], group: 'support' },
+  { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee', 'bd_employee'], group: 'support' },
+  { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee', 'bd_employee'], group: 'support' },
   { to: '/admin/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['admin'], group: 'management', managementGroup: 'governance', managementLabel: 'Travel KM Verification' },
   { to: '/hr/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['hr'], group: 'hr' },
   { to: '/finance/travel-km', label: 'Travel KM Payments', icon: MapPinned, roles: ['finance'], group: 'finance' },
@@ -141,7 +141,9 @@ const navItems: NavItem[] = [
   { to: '/management/project-management', label: 'Client Register', icon: FolderKanban, roles: ['management'], group: 'management', managementGroup: 'executive', managementLabel: 'Client Register' },
   { to: '/management/project-360', label: 'Project 360', icon: FolderKanban, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Project 360' },
   { to: '/management/commercial', label: 'Commercial Analytics', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Commercial Analytics' },
+  { to: '/bd-employee', label: 'BD Employee Workspace', icon: Building2, roles: ['bd_employee'], group: 'business' },
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/bd/my-team', label: 'My Team', icon: Users, roles: ['bd'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   // NAKSHA_BD_AI_NAV
 {
@@ -198,6 +200,9 @@ const navItems: NavItem[] = [
   { to: '/backups', label: 'Backups & History', icon: Database, roles: ['admin', 'management', 'it', 'drone'], group: 'system', managementGroup: 'governance', managementLabel: 'System Backups' },
   { to: '/future', label: 'Future Modules', icon: Settings, roles: ['admin'], group: 'system', managementLabel: 'System Settings & Future' },
 ]
+
+// BD and other roles keep their existing navigation; only department employees use this dropdown.
+const employeeExpensePaths = new Set(['/expenses/new', '/expenses', '/travel-km/new', '/travel-km'])
 
 function isPathInItem(pathname: string, item: NavItem): boolean {
   if (item.to === '/management') return pathname === '/management'
@@ -336,6 +341,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
       return next
     })
   }
+  // Default closed on normal pages; preserve the menu on direct expense/travel links.
+  const [expensesOpen, setExpensesOpen] = useState(() =>
+    [...employeeExpensePaths].some(path => location.pathname === path || location.pathname.startsWith(`${path}/`))
+  )
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {}
     const currentRole = user?.role
@@ -398,6 +407,8 @@ canShowInSidebar(currentUser.role, item))
       ]
     : visibleItems
   const activeNavItem = findActiveNavItem(available, location.pathname)
+  const expenseNavItems = available.filter(item => employeeExpensePaths.has(item.to))
+  const expenseHasActive = Boolean(activeNavItem && employeeExpensePaths.has(activeNavItem.to))
   const groupedNavigation = isFullAccessRole(currentUser.role) || isManagement
 
   // Only surface topbar context that is not already stated elsewhere on screen. The department
@@ -467,6 +478,26 @@ canShowInSidebar(currentUser.role, item))
                 )
               })
             : available.map((item, index) => {
+                if (currentUser.role === 'employee' && employeeExpensePaths.has(item.to)) {
+                  // The first existing link becomes the dropdown position; never render duplicates.
+                  if (item.to !== '/expenses/new') return null
+                  return (
+                    <section className={`sidebar-nav-group ${expensesOpen ? 'open' : ''} ${expenseHasActive ? 'has-active' : ''}`} key="employee-my-expenses">
+                      <button
+                        type="button"
+                        className="sidebar-group-toggle"
+                        onClick={() => setExpensesOpen(open => !open)}
+                        aria-expanded={expensesOpen}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <ShoppingCart size={16} aria-hidden="true" /> My Expenses
+                        </span>
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </button>
+                      {expensesOpen && <div className="sidebar-group-items">{expenseNavItems.map(renderNavItem)}</div>}
+                    </section>
+                  )
+                }
                 if (item.group !== 'leave' && item.group !== 'attendance') return renderNavItem(item)
                 const previous = available[index - 1]
                 if (previous?.group === item.group) return null

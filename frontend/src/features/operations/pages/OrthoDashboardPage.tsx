@@ -44,8 +44,8 @@ type ReworkAllocationDraft={package_code:string;area_name:string;quantity:string
 type AllocationDraft={package_code:string;area_name:string;quantity:string;quantity_unit:string;target_date:string;instructions:string;production_user_id:string;qc_user_id:string;qa_user_id:string}
 type DailyDraft={work_type:string;quantity_completed:string;files_completed:string;hours_spent:string;status:string;blockers:string;remarks:string}
 // One shared operational dashboard for every performing department; only the label changes per PM role.
-const DEPARTMENT_ROLE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
-const DEPARTMENT_CODE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
+const DEPARTMENT_ROLE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',survey:'Survey',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
+const DEPARTMENT_CODE_LABELS:Record<string,string>={ortho:'Ortho',lidar:'LiDAR',survey:'Survey',mobile_mapping:'Mobile Mapping',laser_scanning:'Laser Scanning',civil:'Civil'}
 const emptyAllocation:AllocationDraft={package_code:'',area_name:'',quantity:'',quantity_unit:'km',target_date:'',instructions:'',production_user_id:'',qc_user_id:'',qa_user_id:''}
 const emptyDaily:DailyDraft={work_type:'Production',quantity_completed:'',files_completed:'0',hours_spent:'',status:'on_track',blockers:'',remarks:''}
 const emptyReworkAllocation:ReworkAllocationDraft={...emptyAllocation,rework_of_package_id:'',correct:false,correction_reason:''}

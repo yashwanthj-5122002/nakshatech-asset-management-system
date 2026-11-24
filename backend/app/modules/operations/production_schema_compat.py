@@ -145,6 +145,33 @@ def ensure_production_tracking_schema_compatibility(bind=None) -> None:
             activity_existing = {c["name"]: c for c in inspector.get_columns("work_package_item_activities")}
             _add_missing(connection, "work_package_item_activities", activity_existing,
                          WORK_PACKAGE_ITEM_ACTIVITY_COLUMNS)
+            # Preserve millimetre precision for completed lengths stored in km.
+            # Existing activity values are not recalculated.
+            if engine.dialect.name == "postgresql":
+                quantity_column = next(
+                    (
+                        column
+                        for column in inspector.get_columns("work_package_item_activities")
+                        if column["name"] == "quantity_completed"
+                    ),
+                    None,
+                )
+                if quantity_column is not None:
+                    quantity_type = quantity_column["type"]
+                    current_precision = getattr(quantity_type, "precision", None)
+                    current_scale = getattr(quantity_type, "scale", None)
+
+                    if current_precision == 14 and current_scale == 3:
+                        connection.execute(text(
+                            "ALTER TABLE work_package_item_activities "
+                            "ALTER COLUMN quantity_completed TYPE NUMERIC(18,6)"
+                        ))
+                    elif current_precision != 18 or current_scale != 6:
+                        raise RuntimeError(
+                            "Unexpected quantity_completed precision: "
+                            f"{current_precision},{current_scale}"
+                        )
+
             for ddl in (
                 "CREATE INDEX IF NOT EXISTS ix_work_package_item_activities_project_id ON work_package_item_activities (project_id)",
                 "CREATE INDEX IF NOT EXISTS ix_work_package_item_activities_work_package_id ON work_package_item_activities (work_package_id)",

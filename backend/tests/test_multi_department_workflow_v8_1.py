@@ -255,7 +255,7 @@ def test_unassigned_pm_cannot_see_a_lidar_project_that_is_not_theirs():
 
 
 # =============================================================================================== C/D/E. smoke tests
-@pytest.mark.parametrize("department_code,tag", [("mobile_mapping", "mdc"), ("laser_scanning", "mdd"), ("civil", "mde")])
+@pytest.mark.parametrize("department_code,tag", [("mobile_mapping", "mdc"), ("laser_scanning", "mdd"), ("civil", "mde"), ("survey", "mds")])
 def test_department_isolation_smoke(department_code, tag):
     with SessionLocal() as db:
         bd = make_user(db, f"bd.{tag}@nakshatech.com", "bd")
@@ -425,3 +425,51 @@ def test_existing_fifteen_ortho_employee_fixtures_normalized_to_ortho_department
             f"ortho.employee{number:02d}.test@nakshatech.com" for number in range(1, 16)
         }
         assert all(row.department == "Ortho" and row.role == "employee" for row in rows)
+
+
+def test_survey_project_360_pm_access():
+    with SessionLocal() as db:
+        bd = make_user(db, "bd.survey.360@nakshatech.com", "bd")
+        finance = make_user(db, "fin.survey.360@nakshatech.com", "finance")
+        team = pm_and_team(db, "survey", "survey360")
+
+        other_survey_pm = make_user(
+            db, "pm.survey.360.other@nakshatech.com", "survey", "Survey"
+        )
+        lidar_pm = make_user(
+            db, "pm.survey.360.lidar@nakshatech.com", "lidar", "LiDAR"
+        )
+
+        project, workflow = approved_project(
+            db,
+            bd=bd,
+            finance=finance,
+            code="SURVEY-360",
+            department_code="survey",
+        )
+
+        assign_project_manager(
+            db,
+            actor=bd,
+            project_id=project.id,
+            payload=WorkflowPMAssignment(project_manager_id=team["pm"].id),
+        )
+        db.flush()
+
+        # Assigned Survey PM can access the Survey project.
+        result = project_360(
+            db, actor=team["pm"], role="survey", project_id=project.id
+        )
+        assert isinstance(result, dict) and bool(result)
+
+        # Unassigned Survey PM cannot access another Survey PM's project.
+        with pytest.raises(PermissionError):
+            project_360(
+                db, actor=other_survey_pm, role="survey", project_id=project.id
+            )
+
+        # LiDAR PM cannot access a Survey project.
+        with pytest.raises(PermissionError):
+            project_360(
+                db, actor=lidar_pm, role="lidar", project_id=project.id
+            )

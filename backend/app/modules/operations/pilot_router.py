@@ -52,12 +52,12 @@ def _role(auth: CurrentAuth) -> str:
 
 
 def _bd(auth: CurrentAuth) -> None:
-    if _role(auth) != "bd":
+    if _role(auth) not in {"bd", "bd_employee"} or auth.user.role != _role(auth):
         raise HTTPException(403, "Business Development permission required")
 
 
 def _allowed(auth: CurrentAuth) -> None:
-    if _role(auth) not in {"bd", "finance", "software_team", "management", "admin"}:
+    if _role(auth) not in {"bd", "bd_employee", "finance", "software_team", "management", "admin"}:
         raise HTTPException(403, "Pilot registry access denied")
 
 
@@ -97,7 +97,7 @@ def _as_json(db: Session, record) -> dict:
 def _owner_or_admin(db: Session, auth: CurrentAuth, row) -> None:
     if _role(auth) in {"admin", "management"}:
         return
-    if _role(auth) == "bd" and row["bd_owner_user_id"] == auth.user.id:
+    if _role(auth) in {"bd", "bd_employee"} and row["bd_owner_user_id"] == auth.user.id:
         return
     raise HTTPException(403, "This pilot belongs to another BD owner")
 
@@ -107,7 +107,7 @@ def list_pilots(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_c
     _allowed(auth)
     stmt = "SELECT * FROM ops_pilot_projects"
     args = {}
-    if _role(auth) == "bd":
+    if _role(auth) in {"bd", "bd_employee"}:
         stmt += " WHERE bd_owner_user_id = :owner"
         args["owner"] = auth.user.id
     stmt += " ORDER BY created_at DESC, project_id DESC LIMIT 500"
@@ -119,7 +119,7 @@ def list_pilots(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_c
 def get_pilot(project_id: int, db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
     _allowed(auth)
     row = _record(db, project_id)
-    if _role(auth) == "bd":
+    if _role(auth) in {"bd", "bd_employee"}:
         _owner_or_admin(db, auth, row)
     return _as_json(db, row)
 
@@ -127,6 +127,9 @@ def get_pilot(project_id: int, db: Session = Depends(get_db), auth: CurrentAuth 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_pilot(payload: PilotCreate, db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
     _bd(auth)
+    if _role(auth) == "bd_employee":
+        from app.modules.bd_employee.direct_router import _owned_client
+        _owned_client(db, auth.user, payload.client_id)
     if not payload.project_code.strip().upper().startswith("PILOT-"):
         raise HTTPException(422, "Pilot Project ID must start with PILOT- so all departments recognize it")
     if payload.commercial is not None:

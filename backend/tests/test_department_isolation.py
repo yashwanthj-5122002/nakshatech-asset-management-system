@@ -56,7 +56,7 @@ from app.modules.operations.workflow_service import (  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("isolated_application_database")
 
-DEPARTMENTS = ["laser_scanning", "lidar", "civil", "ortho", "mobile_mapping"]
+DEPARTMENTS = ["laser_scanning", "lidar", "civil", "ortho", "mobile_mapping", "survey"]
 
 
 def _make_user(db, email: str, role: str, department: str | None = None, name: str | None = None) -> User:
@@ -144,7 +144,6 @@ def _approved_project(db, *, bd: User, finance: User, code: str, department_code
         ),
     )
     submit_project_to_finance(db, actor=bd, project_id=project.id)
-    finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="ok"))
     db.flush()
     return project
 
@@ -273,3 +272,98 @@ def test_admin_keeps_full_access(environment) -> None:
         db.flush()
         payload = ortho_dashboard(db, actor=admin, role="admin")
         assert len(payload["projects"]) == len(DEPARTMENTS)
+
+
+def test_survey_employee_denied_lidar_work_package_action(environment) -> None:
+    with TestClient(app) as client:
+        survey = environment["employees"]["survey"]
+        lidar_package = environment["package_ids"]["lidar"]
+
+        response = client.post(
+            f"/api/operations/workflow/ortho/work-packages/{lidar_package}/daily-activity",
+            json={
+                "update_date": "2026-10-15",
+                "work_type": "survey",
+                "quantity_completed": 1,
+                "files_completed": 0,
+                "hours_spent": 1,
+                "status": "completed",
+            },
+            headers=_auth(survey),
+        )
+
+        assert response.status_code == 403, response.text
+
+
+def test_survey_employee_allowed_own_work_package_action(environment) -> None:
+    with TestClient(app) as client:
+        survey = environment["employees"]["survey"]
+        survey_package = environment["package_ids"]["survey"]
+
+        response = client.post(
+            f"/api/operations/workflow/ortho/work-packages/{survey_package}/daily-activity",
+            json={
+                "update_date": "2026-10-15",
+                "work_type": "survey",
+                "quantity_completed": 1,
+                "files_completed": 0,
+                "hours_spent": 1,
+                "status": "completed",
+            },
+            headers=_auth(survey),
+        )
+
+        assert response.status_code in {200, 201}, response.text
+
+
+def test_survey_employee_personal_production_history(environment) -> None:
+    """Personal production history cannot expose another department's work."""
+    from app.modules.operations.production_service import tracking_summary
+
+    survey = environment["employees"]["survey"]
+    lidar = environment["employees"]["lidar"]
+    survey_project_id = environment["projects"]["survey"].id
+    survey_package_id = environment["package_ids"]["survey"]
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/operations/workflow/ortho/work-packages/{survey_package_id}/daily-activity",
+            json={
+                "update_date": "2026-10-16",
+                "work_type": "survey",
+                "quantity_completed": 3,
+                "files_completed": 1,
+                "hours_spent": 2,
+                "status": "completed",
+            },
+            headers=_auth(survey),
+        )
+        assert response.status_code in {200, 201}, response.text
+
+    with SessionLocal() as db:
+        survey_user = db.get(User, survey.id)
+        lidar_user = db.get(User, lidar.id)
+
+        own = tracking_summary(
+            db, actor=survey_user, role="employee",
+            project_id=survey_project_id,
+        )
+
+        assert own["viewer_mode"] == "employee"
+        assert len(own["employee_projects"]) == 1
+
+        project = own["employee_projects"][0]
+        assert project["project_id"] == survey_project_id
+        assert project["history"]
+        assert any(
+            row["quantity"] == 3
+            for row in project["history"]
+        )
+
+        other = tracking_summary(
+            db, actor=lidar_user, role="employee",
+            project_id=survey_project_id,
+        )
+
+        assert other["viewer_mode"] == "employee"
+        assert other["employee_projects"] == []

@@ -85,6 +85,7 @@ from app.modules.operations.workflow_service import (
     submit_project_to_finance,
 )
 from app.modules.operations.workflow_reporting import build_project_operations_workbook
+from app.modules.bd_employee.handoff_router import link_new_bd_project_if_requested, synchronize_bd_project_link
 from app.modules.operations.production_service import (
     package_stage_history,
     tracking_summary,
@@ -228,6 +229,7 @@ def workflow_create_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = create_bd_project(db, actor=auth.user, payload=payload)
+        link_new_bd_project_if_requested(db, project=project, manager=auth.user)
         _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
@@ -247,6 +249,7 @@ def workflow_update_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = update_bd_project(db, actor=auth.user, project_id=project_id, payload=payload)
+        synchronize_bd_project_link(db, project=project, manager=auth.user)
         _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
@@ -1176,6 +1179,51 @@ async def workflow_master_import_commit(
         db.rollback()
         raise _error(exc) from exc
     return summary
+
+
+class WorkflowUndoMasterAreas(BaseModel):
+    package_ids: list[int] = Field(min_length=1, max_length=5000)
+
+
+@router.get("/ortho/projects/{project_id}/master-import/undo-options")
+def workflow_master_import_undo_options(
+    project_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        return production_allocation.master_import_removal_options(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/ortho/projects/{project_id}/master-import/undo")
+def workflow_master_import_undo(
+    project_id: int,
+    payload: WorkflowUndoMasterAreas,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = production_allocation.undo_master_import_areas(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            package_ids=payload.package_ids,
+        )
+        _audit(request, db, auth, "WORKFLOW_MASTER_IMPORT_UNDONE", "finance_project", project_id, {
+            **result, "work_package_ids": payload.package_ids,
+        })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
 
 
 @router.get("/ortho/projects/{project_id}/allocation-options")

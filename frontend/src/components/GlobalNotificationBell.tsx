@@ -104,6 +104,13 @@ export function GlobalNotificationBell() {
   const refreshUnreadCount = useCallback(async () => {
     try {
       const role = user?.role || ''
+      if (role === 'bd_employee') {
+        try {
+          await apiFetch<{ created: number }>('/notifications/global/refresh-bd-reminders', { method: 'POST' })
+        } catch {
+          // Optional reminder refresh must never block the bell.
+        }
+      }
       const now = Date.now()
       if (SLA_REFRESH_ROLES.has(role) && now - lastSlaRefreshRef.current >= SLA_REFRESH_INTERVAL_MS) {
         lastSlaRefreshRef.current = now

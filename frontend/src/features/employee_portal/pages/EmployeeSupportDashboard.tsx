@@ -16,8 +16,10 @@ function formatTicketDepartment(department: string) {
   return department.replace('_', ' ')
 }
 
-export function EmployeeSupportDashboard() {
+export function EmployeeSupportDashboard({ bdEmployee = false }: { bdEmployee?: boolean } = {}) {
   const { user } = useAuth()
+  const ticketRoot = bdEmployee ? "/bd-employee/tickets" : "/tickets"
+  const ticketCreate = bdEmployee ? "/bd-employee/support/new" : "/support/new"
   const [tickets, setTickets] = useState<SupportTicketSummary[]>([])
   const [notifications, setNotifications] = useState<TicketNotification[]>([])
   const [expenseClaims, setExpenseClaims] = useState<ExpenseClaim[]>([])
@@ -35,10 +37,11 @@ export function EmployeeSupportDashboard() {
   // Finance intentionally loads independently. A Finance CRM issue must never
   // block or blank the existing ticket workspace.
   useEffect(() => {
+    if (bdEmployee) return
     void apiFetch<ExpenseClaim[]>('/finance/claims')
       .then(items => { setExpenseClaims(items); setFinanceAvailable(true) })
       .catch(() => setFinanceAvailable(false))
-  }, [])
+  }, [bdEmployee])
 
   const open = useMemo(() => tickets.filter(ticket => !['resolved', 'closed'].includes(ticket.status)).length, [tickets])
   const resolved = useMemo(() => tickets.filter(ticket => ['resolved', 'closed'].includes(ticket.status)).length, [tickets])
@@ -48,7 +51,7 @@ export function EmployeeSupportDashboard() {
 
   return (
     <>
-      <DashboardHeader eyebrow="EMPLOYEE SUPPORT" title="Support & Project Expense Workspace" description={`Raise support tickets and project-linked expense requests. Current branch: ${user?.selected_branch_name || user?.branch || 'Not selected'}.`} meta={<><span className="nk-meta-chip"><LifeBuoy size={14}/> Support tickets and project expense requests</span><span className="nk-meta-chip"><Bell size={14}/> {unread} unread updates</span><span className="nk-meta-chip"><ReceiptIndianRupee size={14}/> Branch: {user?.selected_branch_name || user?.branch || 'Not selected'}</span></>} />
+      <DashboardHeader eyebrow="EMPLOYEE SUPPORT" title={bdEmployee ? "Support Workspace" : "Support & Project Expense Workspace"} description={bdEmployee ? "Raise support tickets and track department responses." : `Raise support tickets and project-linked expense requests. Current branch: ${user?.selected_branch_name || user?.branch || 'Not selected'}.`} meta={<><span className="nk-meta-chip"><LifeBuoy size={14}/> {bdEmployee ? "Support tickets" : "Support tickets and project expense requests"}</span><span className="nk-meta-chip"><Bell size={14}/> {unread} unread updates</span><span className="nk-meta-chip"><ReceiptIndianRupee size={14}/> Branch: {user?.selected_branch_name || user?.branch || 'Not selected'}</span></>} />
       <section className="stats-grid">
         <StatCard icon={TicketCheck} label="My Tickets" value={tickets.length} />
         <StatCard icon={Clock3} label="Open" value={open} tone="orange" />
@@ -57,18 +60,18 @@ export function EmployeeSupportDashboard() {
       </section>
 
       <section className="support-action-grid">
-        <Link className="support-action-card primary" to="/support/new"><MessageSquarePlus /><div><span>IT / DEPARTMENT SUPPORT</span><h2>Raise a New Ticket</h2><p>Select the responsible department, explain the problem, and track the response.</p></div></Link>
-        <Link className="support-action-card" to="/tickets"><LifeBuoy /><div><span>TRACK SUPPORT</span><h2>My Tickets</h2><p>Read department replies, provide updates, and confirm whether an issue is resolved.</p></div></Link>
-        <Link className="support-action-card finance-support-card" to="/expenses/new"><FilePlus2 /><div><span>PROJECT FINANCE</span><h2>Raise Project Expense</h2><p>Select Project ID and raise an Advance, Reimbursement, or Additional Advance request.</p></div></Link>
-        <Link className="support-action-card finance-support-card" to="/expenses"><ReceiptIndianRupee /><div><span>TRACK FINANCE</span><h2>My Expense Claims</h2><p>{financeAvailable ? `${expenseClaims.length} claim(s) · ${expenseInApproval} in approval · ${formatInr(expensePaid)} paid` : 'Open your project expense claims and approval status.'}</p></div></Link>
+        <Link className="support-action-card primary" to={ticketCreate}><MessageSquarePlus /><div><span>IT / DEPARTMENT SUPPORT</span><h2>Raise a New Ticket</h2><p>Select the responsible department, explain the problem, and track the response.</p></div></Link>
+        <Link className="support-action-card" to={ticketRoot}><LifeBuoy /><div><span>TRACK SUPPORT</span><h2>My Tickets</h2><p>Read department replies, provide updates, and confirm whether an issue is resolved.</p></div></Link>
+        {!bdEmployee && <><Link className="support-action-card finance-support-card" to="/expenses/new"><FilePlus2 /><div><span>PROJECT FINANCE</span><h2>Raise Project Expense</h2><p>Select Project ID and raise an Advance, Reimbursement, or Additional Advance request.</p></div></Link>
+        <Link className="support-action-card finance-support-card" to="/expenses"><ReceiptIndianRupee /><div><span>TRACK FINANCE</span><h2>My Expense Claims</h2><p>{financeAvailable ? `${expenseClaims.length} claim(s) · ${expenseInApproval} in approval · ${formatInr(expensePaid)} paid` : 'Open your project expense claims and approval status.'}</p></div></Link></>}
       </section>
 
       <section className="panel-card support-recent-panel">
-        <div className="section-heading"><div><span className="section-kicker">RECENT SUPPORT ACTIVITY</span><h2>Latest tickets</h2></div><Link to="/tickets">View all<ArrowRight size={14} aria-hidden="true" /></Link></div>
-        {tickets.length === 0 ? <div className="empty-state"><LifeBuoy size={18} aria-hidden="true" /><span>No tickets have been raised yet.</span></div> : <div className="support-ticket-list">{tickets.slice(0, 5).map(ticket => { const progress = ticketProgressFromStatus(ticket.status); return <Link key={ticket.id} to={`/tickets/${ticket.id}`} className="support-ticket-row"><div><strong>{ticket.ticket_code} · {ticket.title}</strong><span>{formatTicketDepartment(ticket.department)} · {ticket.branch_name}</span></div><span className={`ticket-progress-pill progress-${progress}`}><i />{ticketProgressShortLabel(ticket.status)}</span></Link> })}</div>}
+        <div className="section-heading"><div><span className="section-kicker">RECENT SUPPORT ACTIVITY</span><h2>Latest tickets</h2></div><Link to={ticketRoot}>View all<ArrowRight size={14} aria-hidden="true" /></Link></div>
+        {tickets.length === 0 ? <div className="empty-state"><LifeBuoy size={18} aria-hidden="true" /><span>No tickets have been raised yet.</span></div> : <div className="support-ticket-list">{tickets.slice(0, 5).map(ticket => { const progress = ticketProgressFromStatus(ticket.status); return <Link key={ticket.id} to={`${ticketRoot}/${ticket.id}`} className="support-ticket-row"><div><strong>{ticket.ticket_code} · {ticket.title}</strong><span>{formatTicketDepartment(ticket.department)} · {ticket.branch_name}</span></div><span className={`ticket-progress-pill progress-${progress}`}><i />{ticketProgressShortLabel(ticket.status)}</span></Link> })}</div>}
       </section>
 
-      {financeAvailable && (
+      {!bdEmployee && financeAvailable && (
         <section className="panel-card support-recent-panel">
           <div className="section-heading"><div><span className="section-kicker">RECENT PROJECT EXPENSES</span><h2>Latest claims</h2></div><Link to="/expenses">View all<ArrowRight size={14} aria-hidden="true" /></Link></div>
           {expenseClaims.length === 0 ? <div className="empty-state"><ReceiptIndianRupee size={18} aria-hidden="true" /><span>No project expense claims have been raised yet.</span></div> : (

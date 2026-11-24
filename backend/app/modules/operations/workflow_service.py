@@ -6,7 +6,7 @@ from decimal import Decimal
 import json
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -390,13 +390,22 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
     query = exclude_hidden_projects(db, query)
     if role == BD_ROLE:
-        query = query.where(
-            ProjectWorkflow.bd_owner_user_id == actor.id,
-            FinanceProject.project_source_team != "management",
-        )
+        employee_ids = select(User.id).where(User.role == "bd_employee")
+        query = query.where(or_(
+            and_(ProjectWorkflow.bd_owner_user_id == actor.id,
+                 FinanceProject.project_source_team != "management"),
+            and_(FinanceProject.project_source_team == "bd_team",
+                 FinanceProject.created_by_id.in_(employee_ids),
+                 ProjectWorkflow.bd_owner_user_id == FinanceProject.created_by_id),
+        ))
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow).where(ProjectWorkflow.project_id.in_([p.id for p in projects]))).all()} if projects else {}
-    payloads = [_full_project_payload(db, project, workflows[project.id]) for project in projects]
+    payloads = []
+    for project in projects:
+        item = _full_project_payload(db, project, workflows[project.id])
+        if role == BD_ROLE:
+            item["can_bd_manage"] = workflows[project.id].bd_owner_user_id == actor.id
+        payloads.append(item)
     return {
         "summary": {
             "total": len(payloads),
@@ -1760,6 +1769,9 @@ def record_daily_activity(db: Session, *, actor: User, work_package_id: int, pay
     )
     db.add(row)
     db.flush()
+    if package.rework_cycle_id is None:
+        from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+        safe_notify_project_milestone(db, project_id=package.project_id, milestone="production_started")
     return row
 
 
@@ -1800,6 +1812,9 @@ def complete_production(db: Session, *, actor: User, work_package_id: int) -> Or
     )
     db.flush()
     _sync_rework_cycle(db, actor=actor, package=package, note=f"Production completed: {package.package_code}")
+    if package.rework_cycle_id is None:
+        from app.modules.bd_employee.notification_service import safe_notify_completed_stage
+        safe_notify_completed_stage(db, project_id=project.id, stage="production")
     return package
 
 
@@ -1978,6 +1993,9 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
     db.flush()
     verdict = "approved" if payload.decision == "approve" else f"rejected - {(payload.comments or '').strip()}"
     _sync_rework_cycle(db, actor=actor, package=package, note=f"{kind.upper()} {verdict}: {package.package_code}")
+    if payload.decision == "approve" and package.rework_cycle_id is None:
+        from app.modules.bd_employee.notification_service import safe_notify_completed_stage
+        safe_notify_completed_stage(db, project_id=project.id, stage=kind)
     return package
 
 
@@ -2085,6 +2103,8 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
         profile.final_delivery_by_id = actor.id
         profile.final_delivery_remarks = workflow.completion_remarks
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=project_id, milestone="project_delivered")
     return workflow
 
 
@@ -2169,6 +2189,8 @@ def finance_close_project(db: Session, *, actor: User, project_id: int, payload:
         recipient_user_ids=recipients,
     )
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=project_id, milestone="project_closed")
     return workflow
 
 

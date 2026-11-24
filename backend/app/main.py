@@ -57,6 +57,8 @@ from app.modules.hrms import models as hrms_models  # noqa: F401
 from app.modules.hrms.router import router as hrms_router
 from app.modules.operations import models as operations_models  # noqa: F401
 from app.modules.operations.router import router as operations_router
+from app.modules.bd_employee.router import router as bd_employee_router
+from app.modules.bd_employee.manager_router import router as bd_my_team_router
 from app.modules.operations.production_schema_compat import ensure_production_tracking_schema_compatibility
 from app.modules.operations.lifecycle_schema_compat import ensure_lifecycle_billing_schema_compatibility
 from app.uat_2026_router import router as uat_2026_router
@@ -603,6 +605,8 @@ app.include_router(commercial_router, prefix=settings.api_prefix)
 app.include_router(travel_km_router, prefix=settings.api_prefix)
 app.include_router(hrms_router, prefix=settings.api_prefix)
 app.include_router(operations_router, prefix=settings.api_prefix)
+app.include_router(bd_employee_router, prefix=settings.api_prefix)
+app.include_router(bd_my_team_router, prefix=settings.api_prefix)
 app.include_router(uat_2026_router, prefix=settings.api_prefix)
 
 

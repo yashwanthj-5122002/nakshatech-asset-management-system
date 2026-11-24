@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     seed_laser_scanning_pm_password: str = ""
     seed_civil_pm_email: str = ""
     seed_civil_pm_password: str = ""
+    seed_survey_pm_email: str = ""
+    seed_survey_pm_password: str = ""
 
     # V8.1 local/test-only normal Employee fixtures. The seed function also
     # refuses to run whenever APP_ENV or ENVIRONMENT identifies production.

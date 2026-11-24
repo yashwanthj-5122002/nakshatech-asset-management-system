@@ -92,6 +92,22 @@ def global_notification_unread_count(
     )
 
 
+@router.post("/refresh-bd-reminders", response_model=NotificationRefreshResponse)
+def refresh_bd_employee_reminders(
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+) -> NotificationRefreshResponse:
+    # Never accept an employee ID from the caller.
+    if auth.effective_role != "bd_employee" or auth.user.role != "bd_employee":
+        from fastapi import HTTPException
+        raise HTTPException(403, "BD Employee access required")
+    from app.modules.bd_employee.notification_service import ensure_due_followup_reminders
+    created = ensure_due_followup_reminders(db, owner_user_id=auth.user.id)
+    if created:
+        db.commit()
+    return NotificationRefreshResponse(created=created)
+
+
 @router.post("/refresh-ticket-sla", response_model=NotificationRefreshResponse)
 def refresh_ticket_sla_notifications(
     db: Session = Depends(get_db),

@@ -61,7 +61,7 @@ function taxLabelForCountry(country: string): string {
 
   return labels[country.trim().toLowerCase()] ?? 'Tax Registration Number'
 }
-export function BDClientManagementPage(){
+export function BDClientManagementPage({employeeMode = false}:{employeeMode?:boolean} = {}){
   const [data,setData]=useState<Dashboard|null>(null);const [selectedId,setSelectedId]=useState<number|null>(null)
   const register=useClientRegister(data?.clients??[])
   const [showClientForm,setShowClientForm]=useState(false);const [showProjectForm,setShowProjectForm]=useState(false)
@@ -75,7 +75,7 @@ export function BDClientManagementPage(){
   const [delivery,setDelivery]=useState({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''})
   const automaticPriority = automaticBdProjectPriority(projectForm.start_date, projectForm.end_date)
   useEffect(()=>{void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(()=>undefined)},[])
-  function load(){clearError();void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>showError(err instanceof Error?err.message:'Unable to load clients'))}
+  function load(){clearError();void apiFetch<Dashboard>(employeeMode?'/bd-employee/direct/dashboard':'/operations/workflow/bd/dashboard').then(setData).catch(err=>showError(err instanceof Error?err.message:'Unable to load clients'))}
   useEffect(load,[])
 
 
@@ -122,7 +122,7 @@ export function BDClientManagementPage(){
   const [searchParams] = useSearchParams()
   useEffect(() => {
     const requested = Number(searchParams.get('client'))
-    if (Number.isInteger(requested) && requested > 0) { setSelectedId(requested); setShowProjectForm(false) }
+    if (Number.isInteger(requested) && requested > 0) { setSelectedId(requested); setShowProjectForm(searchParams.get('createProject') === '1') }
   }, [searchParams])
 
   useEffect(() => {
@@ -142,7 +142,7 @@ export function BDClientManagementPage(){
   async function createClient(event:FormEvent){
     event.preventDefault();setBusy(true);clearError();setNotice('')
     try{
-      const saved=await apiFetch<Client>('/operations/workflow/bd/clients',{method:'POST',body:JSON.stringify({
+      const saved=await apiFetch<Client>(employeeMode?'/bd-employee/direct/clients':'/operations/workflow/bd/clients',{method:'POST',body:JSON.stringify({
         client_code:clientForm.client_code,client_name:clientForm.client_name,client_email:clientForm.client_email||null,
         organization_email:clientForm.organization_email||null,address:clientForm.address||null,gst_number:clientForm.gst_number||null,
         contact_person_name:clientForm.contact_person_name,contact_person_email:clientForm.contact_person_email||null,
@@ -162,7 +162,7 @@ export function BDClientManagementPage(){
     setBusy(true)
     try{
       // Project + Commercial Revision 1 are created in ONE request/transaction: either both exist or neither does.
-      const result=await apiFetch<{project_id:number;project_code:string;commercial?:{baseline?:{id:number}|null}}>('/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
+      const result=await apiFetch<{project_id:number;project_code:string;commercial?:{baseline?:{id:number}|null}}>(employeeMode?'/bd-employee/direct/projects':'/operations/workflow/bd/projects',{method:'POST',body:JSON.stringify({
         client_id:selected.id,project_code:projectForm.project_code,project_name:projectForm.project_name,start_date:projectForm.start_date,end_date:projectForm.end_date,
         scope_text:projectForm.scope_text,quantity:delivery.quantity===''?null:Number(delivery.quantity),quantity_unit:delivery.quantity_unit||'unit',priority:automaticPriority,
         performing_department_code:delivery.performing_department_code,
@@ -187,7 +187,7 @@ export function BDClientManagementPage(){
         showError(`${result.project_code} was saved as a Draft with its commercial details, but ${failed.length} document(s) could not be uploaded (${failed.join(', ')}). Attach them from Project Management, then submit to Finance.`)
         return
       }
-      if(submit)await apiFetch(`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
+      if(submit)await apiFetch(employeeMode?`/bd-employee/direct/projects/${result.project_id}/submit-finance`:`/operations/workflow/bd/projects/${result.project_id}/submit-finance`,{method:'POST'})
       setProjectForm(emptyProject);setCommercial(emptyCommercialForm());setDocs([]);setDelivery({priority:'medium',quantity:'',quantity_unit:'',performing_department_code:''});setShowProjectForm(false)
       setNotice(`${result.project_code} ${submit?'and its Commercial Revision 1 were submitted to Finance':'saved as Draft with Commercial Revision 1'}.`);load()
     }catch(err){showError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}

@@ -200,6 +200,14 @@ def package_workflow_progress(package: Any, department_code: str | None, item_ct
     completed Production/QC/QA can never coexist with a 0 % workflow figure.
     """
     stages = stage_profile_for_department(department_code)
+    # Ignore unused optional LiDAR stages in workflow percentage only.
+    # Existing stage configuration and workflow transitions remain unchanged.
+    if (department_code or "").strip().lower() == "lidar":
+        stages = tuple(
+            stage for stage in stages
+            if stage in UNIVERSAL_STAGES
+            or stage_status(package, stage) is not None
+        )
     if not stages:
         return 0.0
     completed = 0
