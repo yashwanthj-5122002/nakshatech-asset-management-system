@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "esModuleInterop": true,
     "composite": true,
     "skipLibCheck": true,
     "module": "ESNext",
@@ -8,6 +12,8 @@
     "noEmit": true
   },
   "include": [
-    "vite.config.ts"
+    "vite.config.ts",
+    "playwright.config.ts",
+    "e2e/production-workflow.spec.ts"
   ]
 }

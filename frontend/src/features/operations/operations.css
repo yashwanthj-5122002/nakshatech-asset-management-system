@@ -1008,6 +1008,10 @@
     -webkit-text-fill-color: #286947 !important;
     opacity: 1 !important;
 }
+/* BD Client Management - Country input alignment */
+.bd-country-align input {
+    transform: translateY(-8px);
+}
 
 /* Finance Project Register details modal */
 .finance-project-details-backdrop {

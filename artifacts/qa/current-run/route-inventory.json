@@ -1,0 +1,2642 @@
+{
+  "http_operations": 519,
+  "by_endpoint_module": {
+    "app.api.router": 20,
+    "app.main": 1,
+    "app.modules.agent_monitor.excel_export": 1,
+    "app.modules.agent_monitor.router": 15,
+    "app.modules.asset_return.mutation_guards": 8,
+    "app.modules.asset_return.router": 18,
+    "app.modules.backup.router": 5,
+    "app.modules.batch3.router": 8,
+    "app.modules.batch4.router": 9,
+    "app.modules.business.router": 4,
+    "app.modules.commercial.router": 28,
+    "app.modules.data_quality.router": 1,
+    "app.modules.drone.router": 30,
+    "app.modules.employee_portal.router": 45,
+    "app.modules.finance.advance_router": 9,
+    "app.modules.finance.router": 46,
+    "app.modules.finance.standalone_invoice_router": 7,
+    "app.modules.hrms.router": 25,
+    "app.modules.it_activity.router": 18,
+    "app.modules.local_backup.router": 2,
+    "app.modules.management_clients.router": 8,
+    "app.modules.management_projects.router": 8,
+    "app.modules.naksha_copilot.router": 2,
+    "app.modules.notifications.router": 10,
+    "app.modules.operations.completion_router": 4,
+    "app.modules.operations.handover_router": 5,
+    "app.modules.operations.hardening_router": 4,
+    "app.modules.operations.lifecycle_router": 33,
+    "app.modules.operations.monitoring_router": 3,
+    "app.modules.operations.pilot_router": 7,
+    "app.modules.operations.reporting_router": 4,
+    "app.modules.operations.router": 23,
+    "app.modules.operations.technical_directory_router": 4,
+    "app.modules.operations.technical_routing_router": 2,
+    "app.modules.operations.workflow_router": 54,
+    "app.modules.payables.router": 11,
+    "app.modules.travel_km.router": 25,
+    "app.routers.management_project_tracking": 5,
+    "app.routers.project_tracking_sales": 4,
+    "app.uat_2026_router": 3
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/management/accounts",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/privileged/accounts",
+      "module": "app.api.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/profile",
+      "module": "app.api.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/auth/profile",
+      "module": "app.api.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assets/{asset_id}",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/work-records",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/component-replacements",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/replacements",
+      "module": "app.api.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/monthly-snapshots/finalize",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/monthly-changes.xlsx",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/printers.xlsx",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/external-hdds.xlsx",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/replacement-history.xlsx",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/upload-template.xlsx",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drones",
+      "module": "app.api.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drones/{drone_id}/location",
+      "module": "app.api.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/dashboard",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/assets",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/assets",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/assets/{asset_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/drone/assets/{asset_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/projects",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/projects",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/kits",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/kits",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/import/preview",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/import/template-preview",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/import/batches",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/import/{batch_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/import/{batch_id}/commit",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/search",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/attributes",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/audit",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/reports/source-template.xlsx",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/projects/{project_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/drone/projects/{project_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/operations",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/operations/{operation_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/operations/dispatch",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/operations/assign",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/operations/return",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/operations/transfer",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/movements",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/drone/work-records",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/drone/work-records",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/drone/work-records/{record_id}",
+      "module": "app.modules.drone.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups/status",
+      "module": "app.modules.backup.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups/history",
+      "module": "app.modules.backup.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups/export.xlsx",
+      "module": "app.modules.backup.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/backups/run",
+      "module": "app.modules.backup.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups/files/{run_id}/{file_type}",
+      "module": "app.modules.backup.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/local-backup/health",
+      "module": "app.modules.local_backup.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/local-backup/export.xlsx",
+      "module": "app.modules.local_backup.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/handover-records",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/custody-employees",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/handover-records",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/purchase-requests/summary",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/purchase-requests.xlsx",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/purchase-requests",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/purchase-requests/{request_id}",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/purchase-requests",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/it-activity/purchase-requests/{request_id}/resubmit",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/purchase-requests/{request_id}/approval-email",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/purchase-requests/{request_id}/approval-email/resend",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/purchase-requests/{request_id}/decision",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/purchase-approval-email/{token}",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/purchase-approval-email/{token}",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/purchases",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/imports/handover.xlsx",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/imports/purchases.xlsx",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/monthly.xlsx",
+      "module": "app.modules.it_activity.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/capabilities",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/branches",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register/request-otp",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register/verify-otp",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register/complete",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/mfa/confirm",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/privileged/complete-setup",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/management/complete-setup",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/management/change-password",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/mfa/verify-login",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/forgot-password/request-otp",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/forgot-password/verify-otp",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/forgot-password/reset",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/my-branches",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/select-branch",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/audit/page-view",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ticket-catalog",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ticket-priority-preview",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ticket-assets",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tickets",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tickets/{ticket_id}/attachments",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tickets/{ticket_id}/attachments/{attachment_id}/content",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tickets",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tickets/{ticket_id}",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tickets/{ticket_id}/messages",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tickets/{ticket_id}",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/{notification_id}/read",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software/users",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software/audit",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/software/users/{user_id}/reset-authenticator",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/onboarding/requests",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/requests",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/requests/{request_id}/submit",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/requests/{request_id}/it-approve",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/requests/{request_id}/management-approve",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/onboarding/requests/{request_id}/reject",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/employee-master/status",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/employee-master",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/management/employee-master/preview",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/management/employee-master/import",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/management/employee-master/publication",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/management/employee-master/imported",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software/employee-master",
+      "module": "app.modules.employee_portal.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/data-quality/summary",
+      "module": "app.modules.data_quality.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/naksha-copilot/status",
+      "module": "app.modules.naksha_copilot.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/naksha-copilot/ask",
+      "module": "app.modules.naksha_copilot.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/export.xlsx",
+      "module": "app.modules.agent_monitor.excel_export"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/status",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/user-switch-history",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/inventory",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/inventory/history",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/ports",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/boot-sessions",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/sessions",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/users",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/user-usage",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/user-switches",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/activity-summary",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/events",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/software-team/agents/{agent_id}/heartbeats",
+      "module": "app.modules.agent_monitor.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payables/me",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payables",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payables/{payable_id}",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payables",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/payables/{payable_id}",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payables/{payable_id}/bill-document",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payables/{payable_id}/submit",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payables/{payable_id}/decision",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payables/{payable_id}/payments",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payables/{payable_id}/documents/{document_id}",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payables/{payable_id}/audit",
+      "module": "app.modules.payables.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/global",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/global/unread-count",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/global/refresh-ticket-sla",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/global/read-all",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/global/popup-queue",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/global/pending-count",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/global/{notification_id}",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/global/{notification_id}/read",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications/global/settings/notification-settings",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/notifications/global/settings/notification-settings",
+      "module": "app.modules.notifications.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/business/overview",
+      "module": "app.modules.business.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/business/records",
+      "module": "app.modules.business.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/business/verify",
+      "module": "app.modules.business.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/business/records/{record_id}/history",
+      "module": "app.modules.business.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/sales-revenue",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/revenue-targets",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/revenue-targets",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/client-master/import.xlsx",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/client-master/export.xlsx",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/project-master/export.xlsx",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/clients",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/clients",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/clients/{client_id}",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/clients/{client_id}/tracking",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/clients/{client_id}/report.xlsx",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/clients/{client_id}/projects",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/clients/{client_id}/projects",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/clients/{client_id}/projects/{project_id}",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/project-master/users",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/projects",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/report-projects",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/finance/projects/{project_id}/status",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/projects/{project_id}/tracking",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/projects/{project_id}/report.xlsx",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/projects/{project_id}/schedule",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/claims",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/claims/{claim_id}",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/claims/{claim_id}/submit",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims/{claim_id}",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/claims/{claim_id}/admin-decision",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/claims/{claim_id}/finance-decision",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/claims/{claim_id}/mark-paid",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/dashboard",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/reports",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/reports/export.xlsx",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/claims/{claim_id}/attachments",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/finance/claims/{claim_id}/attachments/{attachment_id}",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims/{claim_id}/attachments/{attachment_id}/content",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims/{claim_id}/settlement",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/claims/{claim_id}/settlement",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/settlements/{settlement_id}/attachments",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/finance/settlements/{settlement_id}/attachments/{attachment_id}",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/settlements/{settlement_id}/attachments/{attachment_id}/content",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/settlements/{settlement_id}/submit",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/settlements/{settlement_id}/admin-decision",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/settlements/{settlement_id}/finance-decision",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims/{claim_id}/documents/report.pdf",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims/{claim_id}/documents/all-bills.zip",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/claims/{claim_id}/documents/a4-pack.pdf",
+      "module": "app.modules.finance.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/advance-payments/summary",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/advance-payments/projects",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/advance-payments/{project_id}/history",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/advance-payments/{project_id}/transactions",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/advance-payments/{project_id}/collection",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/advance-payments/{project_id}/apply-to-invoice",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/advance-payments/{project_id}/followups",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/advance-payments/refresh-notifications",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/advance-payments/{project_id}",
+      "module": "app.modules.finance.advance_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/generated-invoices",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/generated-invoices",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/generated-invoices/{invoice_id}/edit",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance/generated-invoices/{invoice_id}",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/generated-invoices/{invoice_id}",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/generated-invoices/{invoice_id}/document",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/generated-invoices/{invoice_id}/document.pdf",
+      "module": "app.modules.finance.standalone_invoice_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking-sales/access",
+      "module": "app.routers.project_tracking_sales"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking-sales/dashboard",
+      "module": "app.routers.project_tracking_sales"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking-sales/projects/{project_id}",
+      "module": "app.routers.project_tracking_sales"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking-sales/export/{file_type}",
+      "module": "app.routers.project_tracking_sales"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/client-register",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/management/client-register",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/management/client-register/{client_id}",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/management/client-register/projects/{project_id}/approve",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/client-register/project-tracking",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/client-register/project-tracking/{project_id}",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/client-register/additional-project-requests",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/management/client-register/additional-project-requests",
+      "module": "app.modules.management_clients.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/management-projects",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/management-projects/tracking",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/management-projects/{project_id}/tracking",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/management-projects/summary",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/management-projects/assignment-options",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/management-projects",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance/management-projects/{project_id}/assign-pm",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance/management-projects/additional-project-requests",
+      "module": "app.modules.management_projects.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/currencies",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/fx/preview",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/projects/{project_id}/estimates",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/commercial/projects/{project_id}/estimates/baseline",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/estimates/baseline/submit",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/estimates/revisions",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/estimates/revisions/queue",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/estimates/revisions/{revision_id}/decision",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/projects/{project_id}/pm-billing-basis",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/pm-billing-basis",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/projects/{project_id}/billing-recommendation",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/expenses",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/expenses",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/commercial/expenses/{expense_id}",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/expenses/{expense_id}/cancel",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/expenses/{expense_id}/submit",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/expenses/{expense_id}/finance-decision",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/expenses/{expense_id}/reimburse",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/expenses/declaration",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/vendor-invoices",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/vendor-invoices",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/vendor-invoices/{vendor_invoice_id}/payments",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/projects/{project_id}/cost-summary",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/management/analytics",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/commercial/projects/{project_id}/attachments",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/projects/{project_id}/attachments",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/commercial/attachments/{attachment_id}/content",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/commercial/attachments/{attachment_id}",
+      "module": "app.modules.commercial.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/projects",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/claims",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/travel-km/claims/{claim_id}/email-routing",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/projects/{project_id}/geofence",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/travel-km/projects/{project_id}/geofence",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/tracking/start",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/tracking/point",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/tracking/stop",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/claims/{claim_id}/tracking",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/claims/{claim_id}/verification",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/claims/{claim_id}",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/travel-km/claims/{claim_id}/end",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/travel-km/claims/{claim_id}/revise",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/attachments",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/claims/{claim_id}/attachments/{attachment_id}/preview",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/claims/{claim_id}/attachments/{attachment_id}/download",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/submit",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/email/retry",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/admin-decision",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/hr-decision",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/finance-decision",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-km/claims/{claim_id}/finance-payment",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/dashboard",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-km/reports.xlsx",
+      "module": "app.modules.travel_km.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/me/attendance",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/me/check-in",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/me/check-out",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/me/absence",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/me/leave",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/me/leave",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/hrms/me/leave/{leave_id}",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/me/leave/{leave_id}/request-cancellation",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/hr/leave/{leave_id}/cancellation-decision",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/me/leave/{leave_id}/cancel",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/me/balance",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/hr/policy",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/hrms/hr/policy",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/hr/employees/classifications",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/hrms/hr/employees/classifications/bulk",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/hr/employees/{user_id}/balance",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/holidays",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/hr/leave-notifications",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/hr/leave-notifications/{leave_id}/read",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/hr/employees/{user_id}/leave-history",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hrms/hr/overview",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/hr/leave/{leave_id}/decision",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/hr/absence/{explanation_id}/decision",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/hrms/hr/entitlement",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/hrms/hr/holidays",
+      "module": "app.modules.hrms.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/bd/dashboard",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/bd/opportunities",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/bd/opportunities/{opportunity_id}/stage",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/bd/opportunities/{opportunity_id}/link-project",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/bd/opportunities/{opportunity_id}/project-manager",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/project-workstreams/dashboard",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/operations/bd/opportunities/{opportunity_id}/workstreams",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/project-workstreams/{workstream_id}/status",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/ortho/dashboard",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/ortho/projects",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/projects/activate",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/projects/{project_id}/members",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/operations/ortho/projects/{project_id}/team",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/projects/{project_id}/team/emails",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/projects/{project_id}/work-packages",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/ortho/work-packages/{work_package_id}/assignments",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/work-packages/{work_package_id}/daily-update",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/work-packages/{work_package_id}/work-action",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/work-packages/{work_package_id}/submit-qc",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/work-packages/{work_package_id}/qc",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/work-packages/{work_package_id}/qa",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/ortho/projects/{project_id}/final-delivery",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/corporate-summary",
+      "module": "app.modules.operations.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/project-handovers/dashboard",
+      "module": "app.modules.operations.handover_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/bd/project-handovers",
+      "module": "app.modules.operations.handover_router"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/operations/bd/project-handovers/{handover_id}",
+      "module": "app.modules.operations.handover_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/project-handovers/{handover_id}/submit",
+      "module": "app.modules.operations.handover_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/project-handovers/{handover_id}/decision",
+      "module": "app.modules.operations.handover_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/project-monitoring/dashboard",
+      "module": "app.modules.operations.monitoring_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/project-monitoring/workstreams/{workstream_id}/progress",
+      "module": "app.modules.operations.monitoring_router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/operations/bd/project-monitoring/handovers/{handover_id}/schedule",
+      "module": "app.modules.operations.monitoring_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/project-completion/dashboard",
+      "module": "app.modules.operations.completion_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/project-completion/workstreams/{workstream_id}/complete",
+      "module": "app.modules.operations.completion_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/bd/project-completion/projects/{project_id}/deliver",
+      "module": "app.modules.operations.completion_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/finance/project-completion/projects/{project_id}/status",
+      "module": "app.modules.operations.completion_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/technical-team-directory/dashboard",
+      "module": "app.modules.operations.technical_directory_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/technical-team-directory/departments/{department_code}/members",
+      "module": "app.modules.operations.technical_directory_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/technical-team-directory/members/{member_id}",
+      "module": "app.modules.operations.technical_directory_router"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/operations/technical-team-directory/members/{member_id}",
+      "module": "app.modules.operations.technical_directory_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/technical-team-routing/status",
+      "module": "app.modules.operations.technical_routing_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/technical-team-routing/activate",
+      "module": "app.modules.operations.technical_routing_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/reporting/dashboard",
+      "module": "app.modules.operations.reporting_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/reporting/powerbi/semantic-model",
+      "module": "app.modules.operations.reporting_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/reporting/powerbi/projects.csv",
+      "module": "app.modules.operations.reporting_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/reporting/powerbi/departments.csv",
+      "module": "app.modules.operations.reporting_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/hardening/overview",
+      "module": "app.modules.operations.hardening_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/hardening/audit",
+      "module": "app.modules.operations.hardening_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/hardening/notifications",
+      "module": "app.modules.operations.hardening_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/hardening/smtp-check",
+      "module": "app.modules.operations.hardening_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/bd/dashboard",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/bd/project-register",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/bd/project-tracking",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/bd/client-register",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/bd/clients",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/bd/projects",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/operations/workflow/bd/projects/{project_id}",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/bd/projects/{project_id}/submit-finance",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/bd/projects/{project_id}/assign-pm",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/finance/dashboard",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/finance/reports/export.xlsx",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/finance/projects/{project_id}/review",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/finance/projects/{project_id}/close",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/ortho/dashboard",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/team",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/rework-cycles/{cycle_id}/team",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/rework-cycles/{cycle_id}/work-packages",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/work-packages",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/daily-activity",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/production-complete",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/qc",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/qa",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/deliver",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/complete",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/stage",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/general",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/history",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/production-tracking",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/production-tracking/export.xlsx",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items/generate",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items/import",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items/assign",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/workflow/ortho/items/{work_package_item_id}",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/start",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/complete",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/rework",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/rework/bulk",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/items/{work_package_item_id}/activity/start",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/activities/{activity_id}/stop",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/items/{work_package_item_id}/delivery",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/ortho/items/{work_package_item_id}/activities",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/timeline",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/master-import/preview",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/master-import/commit",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/allocation-options",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/area-files",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/assign-files",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/assign-files",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/ready-for-delivery",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/cld-review/{stage}/{action}",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/cld-ready-for-delivery",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/workflow/ortho/projects/{project_id}/cld-deliver",
+      "module": "app.modules.operations.workflow_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/public/feedback/{token}",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/public/feedback/{token}",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/public/feedback/{token}/attachments",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/dashboard",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/projects/{project_id}",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/projects/{project_id}/feedback-requests",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/projects/{project_id}/feedback-responses/manual",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/feedback-requests/{request_id}/reminders",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/feedback-responses/{response_id}/confirm-acceptance",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/feedback-responses/{response_id}/classification",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/rework-cycles/{cycle_id}/stage",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/rework-cycles/{cycle_id}/sync",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/rework-cycles/{cycle_id}/resubmit",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/feedback-requests/{request_id}/no-feedback-recommendation",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/feedback-requests/{request_id}/deemed-acceptance",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/change-requests/{change_request_id}/decision",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/projects/{project_id}/invoices/auto-fill",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/projects/{project_id}/invoices",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/draft-details",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/document",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/document.pdf",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/raise",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/payments",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/overdue",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/bad-debts",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/sign",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/bad-debt",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/bad-debt/decision",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/bad-debt/recovery",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/invoices/{invoice_id}/close",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/lifecycle/projects/{project_id}/messages",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/lifecycle/projects/{project_id}/messages",
+      "module": "app.modules.operations.lifecycle_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/pilots",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/operations/pilots/{project_id}",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/pilots",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/pilots/{project_id}/deliver",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/pilots/{project_id}/feedback",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/pilots/{project_id}/defer",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/operations/pilots/{project_id}/link-paid",
+      "module": "app.modules.operations.pilot_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/uat/2026/status",
+      "module": "app.uat_2026_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/uat/2026/load",
+      "module": "app.uat_2026_router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/uat/2026/remove",
+      "module": "app.uat_2026_router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking/dashboard",
+      "module": "app.routers.management_project_tracking"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking/projects/{project_id}",
+      "module": "app.routers.management_project_tracking"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking/projects/{project_id}/items",
+      "module": "app.routers.management_project_tracking"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking/projects/{project_id}/activity",
+      "module": "app.routers.management_project_tracking"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/project-tracking/export/{file_type}",
+      "module": "app.routers.management_project_tracking"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "module": "app.main"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assets",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/imports/assets.xlsx",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/imports/printers.xlsx",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/imports/external-hdds.xlsx",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/it-activity/purchases",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/it-activity/summary",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/batch3/reconciliation",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/batch3/replacements/{replacement_id}/lifecycle",
+      "module": "app.modules.batch3.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/control-center",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/control-center.xlsx",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/management/executive-dashboard",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/management/approvals/{workflow}/{record_id}/decision",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/replacements",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/replacements/{replacement_id}",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/replacements/{replacement_id}/resubmit",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/work-records/{work_id}",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/work-records/{work_id}/decision",
+      "module": "app.modules.batch4.router"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/assets/{asset_id}",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/assets/{asset_id}/status",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assets/{asset_id}/assign",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assets/{asset_id}/return",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/assets/{asset_id}/archive",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/assets/{asset_id}",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "POST",
+      "path": "/api/component-replacements",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "POST",
+      "path": "/api/work-records",
+      "module": "app.modules.asset_return.mutation_guards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assets",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/summary",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/it",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard/it/assets",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assets/{asset_id}/vendor-return",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/asset-vendor-returns",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/spare-monitors",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "POST",
+      "path": "/api/component-replacements/batch",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/returned-assets.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/it-dashboard-assets.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/monthly-assets.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/monthly-summary.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/nakshatech-assets.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/assets.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/dashboard.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/complete-monthly.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/complete-yearly.xlsx",
+      "module": "app.modules.asset_return.router"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/months",
+      "module": "app.modules.asset_return.router"
+    }
+  ]
+}

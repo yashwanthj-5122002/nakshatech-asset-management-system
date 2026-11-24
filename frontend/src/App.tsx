@@ -1,4 +1,5 @@
 import ProjectTrackingPage from './pages/ProjectTrackingPage'
+import { BDAIPage } from './features/bd_ai/BDAIPage'
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { PayablesListPage, PayableNewPage, PayableDetailPage } from './features/payables/PayablesPage' // NAKSHA_PAYABLES_IMPORT
@@ -73,6 +74,7 @@ import { BDMyTeamPage } from './features/operations/pages/BDMyTeamPage'
 import { BDEmployeeLoginPage } from './features/bd_employee/BDEmployeeLoginPage'
 import { BDEmployeeWorkspace } from './features/bd_employee/BDEmployeeWorkspace'
 import { BDClientManagementPage } from './features/operations/pages/BDClientManagementPage'
+
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
 import { BDProjectTrackingPage } from './features/operations/pages/BDProjectTrackingPage'
 import { NotificationsPage } from './features/operations/pages/NotificationsPage'
@@ -190,6 +192,17 @@ export default function App() {
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/my-team" element={<StrictProtectedRoute roles={['bd']}><WithLayout><BDMyTeamPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
+      {/* BD AI - Client Requirements Assistant */}
+<Route
+  path="/bd-ai"
+  element={
+    <StrictProtectedRoute roles={['bd', 'management']}>
+      <WithLayout>
+        <BDAIPage />
+      </WithLayout>
+    </StrictProtectedRoute>
+  }
+/>
       <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/tracking" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectTrackingPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/feedback" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientFeedbackPage /></WithLayout></StrictProtectedRoute>} />

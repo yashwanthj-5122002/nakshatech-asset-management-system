@@ -1,0 +1,28 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-DRONE-201
+TOPIC: Drone/UAV mapping requirement intake
+
+PURPOSE
+Understand whether the client seeks imagery, terrain models, inspection, volumetrics or another use case. A drone flight is a data collection method and not itself a deliverable.
+
+FIRST QUESTIONS
+1. Exact site boundary and approximate area; 2. Site location, access and airspace constraints; 3. Intended application and season/weather limitations; 4. Required GSD; 5. Horizontal/vertical accuracy and coordinate datum; 6. Available GCP/checkpoint network; 7. Confirmed products and output format; 8. Deadline and acceptance criteria.
+
+COMMON POTENTIAL PRODUCTS
+Georeferenced orthophoto mosaic, dense photogrammetric point cloud, DSM, bare-earth DTM if feasible with adequate ground information, contours, CAD linework, 3D mesh, stockpile volume report. Not every product is feasible or included; confirm feasibility and commercial scope.
+
+CRITICAL TECHNICAL DISTINCTIONS
+GSD describes ground distance represented by an image pixel; it is NOT the same as guaranteed positional accuracy. Ground control and independent checkpoints must be planned according to agreed accuracy requirements. Dense vegetation can limit photogrammetric bare-earth visibility. Solar farms, construction sites and urban building sites require different workflows and verification.
+
+EXAMPLE A
+Client: 'Survey 350 acres; deliver an orthophoto and DSM within three weeks.' Confirmed: 350 acres, orthophoto, DSM, three-week target. Missing: location, GSD, accuracy, boundary, CRS and operational constraints. Do not add DTM as a confirmed output.
+
+EXAMPLE B
+Client: 'Map 100 acres; 5 cm GSD, GeoTIFF orthophoto only.' Confirmed: 100 acres, 5 cm GSD, GeoTIFF orthophoto only. Do not insert DSM or DTM into confirmed outputs.
+
+REFERENCE CAUTION
+Synthetic educational content; validate actual method and regulatory permissions independently.

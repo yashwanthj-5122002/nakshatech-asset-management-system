@@ -55,6 +55,7 @@ import { GlobalSearch } from './GlobalSearch'
 import { canAccessRole, isFullAccessRole, isTechnicalProjectManager, roleHomePath, TECHNICAL_PM_ROLES } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import { apiFetch } from '../lib/api'
+import { canAccessBDAI } from '../features/bd_ai/access'
 
 interface NavItem {
   to: string
@@ -144,6 +145,16 @@ const navItems: NavItem[] = [
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/my-team', label: 'My Team', icon: Users, roles: ['bd'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
+  // NAKSHA_BD_AI_NAV
+{
+  to: '/bd-ai',
+  label: 'BD AI',
+  icon: Sparkles,
+  roles: ['bd', 'management'],
+  group: 'business',
+  managementGroup: 'executive',
+  managementLabel: 'BD AI',
+},
   { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/tracking', label: 'Project Tracking', icon: Activity, roles: ['bd'], group: 'business' },
   { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin', 'management'], group: 'business', managementGroup: 'finance', managementLabel: 'Commercial Estimates' },
@@ -386,8 +397,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
         ['vinod@nakshatech.com', 'chethan@nakshatech.com']
           .includes((currentUser.email || '').toLowerCase()))) &&
     (item.to !== '/payables' || currentUser.role !== 'management' || ['vinod@nakshatech.com', 'chethan@nakshatech.com'].includes(currentUser.email.toLowerCase())) &&
-    canShowInSidebar(currentUser.role, item)
-  ) // NAKSHA_PAYABLES_MANAGER_VISIBILITY
+    (item.to !== '/bd-ai' || canAccessBDAI(currentUser)) &&
+canShowInSidebar(currentUser.role, item))
 
   const available = currentUser.role === 'it'
     ? [

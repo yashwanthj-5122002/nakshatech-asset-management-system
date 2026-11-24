@@ -252,12 +252,18 @@ def test_no_contradictory_item_states_anywhere():
     internally contradictory (no QC>0 with Production 0, no 'not started' with
     activity, no delivered without delivery, no files beyond physical count)."""
     with SessionLocal() as db:
+        ctx, package, files = _prepare(db, "E2E-INVARIANTS")
+        _session(db, ctx, files[0], quantity="3", finalize=True,
+                 start=datetime(2026, 10, 13, 9), end=datetime(2026, 10, 13, 10))
+        run_review(db, ctx, files[0], "qc", "passed")
+        run_review(db, ctx, files[0], "qa", "passed")
+        _session(db, ctx, files[1], quantity="0.5", finalize=False,
+                 start=datetime(2026, 10, 13, 9), end=datetime(2026, 10, 13, 10))
         package_ids = [p.id for p in db.scalars(select(OrthoWorkPackage).where(
             OrthoWorkPackage.id.in_(
                 select(WorkPackageItem.work_package_id).where(WorkPackageItem.is_active.is_(True))
             )).order_by(OrthoWorkPackage.id)).all()][:200]
-        if not package_ids:
-            pytest.skip("No file-tracked areas in this database")
+        assert package.id in package_ids
         from app.modules.operations.production_items import (
             build_item_rows, file_aggregates_for_packages,
         )

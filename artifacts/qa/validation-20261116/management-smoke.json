@@ -1,0 +1,1274 @@
+[
+  {
+    "name": "Finance cannot register Management clients",
+    "passed": true,
+    "expected_status": 403,
+    "actual_status": 403,
+    "response": {
+      "detail": "Management client register access denied"
+    }
+  },
+  {
+    "name": "BD cannot read Finance Management projects",
+    "passed": true,
+    "expected_status": 403,
+    "actual_status": 403,
+    "response": {
+      "detail": "Finance access required"
+    }
+  },
+  {
+    "name": "regular: register client",
+    "passed": true,
+    "expected_status": 201,
+    "actual_status": 201,
+    "response": {
+      "client_code": "AUDIT-REGULAR",
+      "client_name": "Audit regular",
+      "client_email": null,
+      "organization_email": null,
+      "address": null,
+      "country": "India",
+      "gst_number": null,
+      "contact_person_name": "Audit Contact",
+      "contact_person_email": null,
+      "contact_person_phone": "9999999999",
+      "work_description": "Isolated automated module check",
+      "can_request_project": false,
+      "id": 1,
+      "source_person_name": "Management",
+      "is_active": true,
+      "created_at": "2026-11-16T05:53:24.050949",
+      "updated_at": "2026-11-16T05:53:24.050949"
+    }
+  },
+  {
+    "name": "regular: duplicate client blocked",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Client ID is already registered in Management"
+    }
+  },
+  {
+    "name": "regular: Management department options",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "departments": [
+        {
+          "code": "ortho",
+          "label": "Ortho"
+        },
+        {
+          "code": "lidar",
+          "label": "LiDAR"
+        },
+        {
+          "code": "mobile_mapping",
+          "label": "Mobile Mapping"
+        },
+        {
+          "code": "laser_scanning",
+          "label": "Laser Scanning"
+        },
+        {
+          "code": "civil",
+          "label": "Civil"
+        }
+      ],
+      "project_managers_by_department": {
+        "ortho": [
+          {
+            "id": 5,
+            "full_name": "Ortho_Pm",
+            "email": "audit.ortho@example.com",
+            "employee_id": null,
+            "department": null,
+            "designation": null,
+            "performing_department_code": "ortho"
+          }
+        ],
+        "lidar": [
+          {
+            "id": 4,
+            "full_name": "Lidar_Pm",
+            "email": "audit.lidar@example.com",
+            "employee_id": null,
+            "department": null,
+            "designation": null,
+            "performing_department_code": "lidar"
+          }
+        ],
+        "mobile_mapping": [],
+        "laser_scanning": [],
+        "civil": []
+      }
+    }
+  },
+  {
+    "name": "regular: Finance request queue",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": [
+      {
+        "id": 1,
+        "management_client_id": 1,
+        "client_code": "AUDIT-REGULAR",
+        "client_name": "Audit regular",
+        "source_person_name": "Management",
+        "project_name": null,
+        "scope_text": "Isolated automated module check",
+        "expected_start_date": null,
+        "remarks": null,
+        "status": "PENDING",
+        "project_type": "regular",
+        "pilot_payment_type": null,
+        "created_project_id": null,
+        "created_project_code": null,
+        "created_at": "2026-11-16T05:53:24.050949",
+        "completed_at": null
+      }
+    ]
+  },
+  {
+    "name": "regular: Finance action popup",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": [
+      {
+        "id": 1,
+        "recipient_role": "finance",
+        "event_type": "management.additional_project.requested",
+        "category": "approval",
+        "title": "New Regular Project Request",
+        "message": "AUDIT-REGULAR - Audit regular: Regular project request from Management.",
+        "target_url": "/finance/management-projects",
+        "is_read": false,
+        "read_at": null,
+        "created_at": "2026-11-16T05:53:24.067475",
+        "severity": "info",
+        "requires_action": true,
+        "is_resolved": false,
+        "resolved_at": null,
+        "is_reminder": false,
+        "metadata": {
+          "request_id": 1,
+          "client_id": 1,
+          "project_type": "regular",
+          "notification_type": "approval"
+        }
+      }
+    ]
+  },
+  {
+    "name": "regular: real request appears in action popup",
+    "passed": true
+  },
+  {
+    "name": "regular: Finance creates project",
+    "passed": true,
+    "expected_status": 201,
+    "actual_status": 201,
+    "response": {
+      "project_id": 1,
+      "project_code": "AUDIT-PROJECT-REGULAR",
+      "workflow_status": "finance_approved"
+    }
+  },
+  {
+    "name": "regular: fulfilled request cannot be replayed",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Project request was already processed"
+    }
+  },
+  {
+    "name": "regular: Finance pending count after fulfillment",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "pending_count": 0
+    }
+  },
+  {
+    "name": "regular: fulfilled action no longer pending",
+    "passed": true
+  },
+  {
+    "name": "regular: Finance changes department before work",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 1,
+      "project_code": "AUDIT-PROJECT-REGULAR",
+      "old_department": "ortho",
+      "new_department": "lidar",
+      "old_manager_id": null,
+      "new_manager_id": 4,
+      "workflow_status": "pm_assigned",
+      "reason": "Audit pre-start correction"
+    }
+  },
+  {
+    "name": "regular: source changes department before work",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 1,
+      "project_code": "AUDIT-PROJECT-REGULAR",
+      "old_department": "lidar",
+      "new_department": "ortho",
+      "old_manager_id": 4,
+      "new_manager_id": 5,
+      "workflow_status": "pm_assigned",
+      "reason": "Audit pre-start correction"
+    }
+  },
+  {
+    "name": "regular: Finance file tracking",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 1,
+      "as_of": "2026-11-16T05:53:24.197882",
+      "summary": {
+        "overall_percent": 0.0,
+        "operational_status": "Awaiting work allocation",
+        "work_units": 0,
+        "active_files": 0,
+        "legacy_areas": 0,
+        "rework_count": 0,
+        "stages": {
+          "production": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          },
+          "qc": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          },
+          "qa": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          },
+          "delivery": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          }
+        },
+        "last_activity_at": null
+      },
+      "files": []
+    }
+  },
+  {
+    "name": "regular: Management tracking",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "as_of": "2026-11-16T05:53:24.200937",
+      "projects": [
+        {
+          "id": 1,
+          "management_client_id": 1,
+          "project_code": "AUDIT-PROJECT-REGULAR",
+          "project_name": "Audit regular project",
+          "source_person_name": "Management",
+          "project_type": "regular",
+          "pilot_payment_type": null,
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "pm_assigned",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.117852",
+          "project_value": 10000.0,
+          "currency": "INR",
+          "tracking": {
+            "overall_percent": 0.0,
+            "operational_status": "Awaiting work allocation",
+            "work_units": 0,
+            "active_files": 0,
+            "legacy_areas": 0,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": null
+          },
+          "can_change_department": true,
+          "can_revoke": false,
+          "can_approve": false
+        }
+      ],
+      "clients": {
+        "1": {
+          "project_count": 1,
+          "active_projects": 1,
+          "completed_projects": 0,
+          "overall_percent": 0.0,
+          "work_units": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "regular: premature approval blocked",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Project is not awaiting Management approval"
+    }
+  },
+  {
+    "name": "regular: premature revocation blocked",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Billing approval cannot be revoked at this stage"
+    }
+  },
+  {
+    "name": "regular: BD project details blocked",
+    "passed": true,
+    "expected_status": 403,
+    "actual_status": 403,
+    "response": {
+      "detail": "Finance access required"
+    }
+  },
+  {
+    "name": "pilot: register client",
+    "passed": true,
+    "expected_status": 201,
+    "actual_status": 201,
+    "response": {
+      "client_code": "AUDIT-PILOT",
+      "client_name": "Audit pilot",
+      "client_email": null,
+      "organization_email": null,
+      "address": null,
+      "country": "India",
+      "gst_number": null,
+      "contact_person_name": "Audit Contact",
+      "contact_person_email": null,
+      "contact_person_phone": "9999999999",
+      "work_description": "Isolated automated module check",
+      "can_request_project": false,
+      "id": 2,
+      "source_person_name": "Management",
+      "is_active": true,
+      "created_at": "2026-11-16T05:53:24.233843",
+      "updated_at": "2026-11-16T05:53:24.233843"
+    }
+  },
+  {
+    "name": "pilot: duplicate client blocked",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Client ID is already registered in Management"
+    }
+  },
+  {
+    "name": "pilot: Management department options",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "departments": [
+        {
+          "code": "ortho",
+          "label": "Ortho"
+        },
+        {
+          "code": "lidar",
+          "label": "LiDAR"
+        },
+        {
+          "code": "mobile_mapping",
+          "label": "Mobile Mapping"
+        },
+        {
+          "code": "laser_scanning",
+          "label": "Laser Scanning"
+        },
+        {
+          "code": "civil",
+          "label": "Civil"
+        }
+      ],
+      "project_managers_by_department": {
+        "ortho": [
+          {
+            "id": 5,
+            "full_name": "Ortho_Pm",
+            "email": "audit.ortho@example.com",
+            "employee_id": null,
+            "department": null,
+            "designation": null,
+            "performing_department_code": "ortho"
+          }
+        ],
+        "lidar": [
+          {
+            "id": 4,
+            "full_name": "Lidar_Pm",
+            "email": "audit.lidar@example.com",
+            "employee_id": null,
+            "department": null,
+            "designation": null,
+            "performing_department_code": "lidar"
+          }
+        ],
+        "mobile_mapping": [],
+        "laser_scanning": [],
+        "civil": []
+      }
+    }
+  },
+  {
+    "name": "pilot: Finance request queue",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": [
+      {
+        "id": 2,
+        "management_client_id": 2,
+        "client_code": "AUDIT-PILOT",
+        "client_name": "Audit pilot",
+        "source_person_name": "Management",
+        "project_name": null,
+        "scope_text": "Isolated automated module check",
+        "expected_start_date": null,
+        "remarks": null,
+        "status": "PENDING",
+        "project_type": "pilot",
+        "pilot_payment_type": "free",
+        "created_project_id": null,
+        "created_project_code": null,
+        "created_at": "2026-11-16T05:53:24.234414",
+        "completed_at": null
+      },
+      {
+        "id": 1,
+        "management_client_id": 1,
+        "client_code": "AUDIT-REGULAR",
+        "client_name": "Audit regular",
+        "source_person_name": "Management",
+        "project_name": null,
+        "scope_text": "Isolated automated module check",
+        "expected_start_date": null,
+        "remarks": null,
+        "status": "CREATED",
+        "project_type": "regular",
+        "pilot_payment_type": null,
+        "created_project_id": 1,
+        "created_project_code": "AUDIT-PROJECT-REGULAR",
+        "created_at": "2026-11-16T05:53:24.050949",
+        "completed_at": "2026-11-16T05:53:24.117852"
+      }
+    ]
+  },
+  {
+    "name": "pilot: Finance action popup",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": [
+      {
+        "id": 6,
+        "recipient_role": "finance",
+        "event_type": "management.additional_project.requested",
+        "category": "approval",
+        "title": "New Free Pilot Request",
+        "message": "AUDIT-PILOT - Audit pilot: Pilot project request from Management.",
+        "target_url": "/finance/management-projects",
+        "is_read": false,
+        "read_at": null,
+        "created_at": "2026-11-16T05:53:24.234414",
+        "severity": "info",
+        "requires_action": true,
+        "is_resolved": false,
+        "resolved_at": null,
+        "is_reminder": false,
+        "metadata": {
+          "request_id": 2,
+          "client_id": 2,
+          "project_type": "pilot",
+          "notification_type": "approval"
+        }
+      }
+    ]
+  },
+  {
+    "name": "pilot: real request appears in action popup",
+    "passed": true
+  },
+  {
+    "name": "pilot: Finance creates project",
+    "passed": true,
+    "expected_status": 201,
+    "actual_status": 201,
+    "response": {
+      "project_id": 2,
+      "project_code": "AUDIT-PROJECT-PILOT",
+      "workflow_status": "finance_approved"
+    }
+  },
+  {
+    "name": "pilot: fulfilled request cannot be replayed",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Project request was already processed"
+    }
+  },
+  {
+    "name": "pilot: Finance pending count after fulfillment",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "pending_count": 0
+    }
+  },
+  {
+    "name": "pilot: fulfilled action no longer pending",
+    "passed": true
+  },
+  {
+    "name": "pilot: Finance changes department before work",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 2,
+      "project_code": "AUDIT-PROJECT-PILOT",
+      "old_department": "ortho",
+      "new_department": "lidar",
+      "old_manager_id": null,
+      "new_manager_id": 4,
+      "workflow_status": "pm_assigned",
+      "reason": "Audit pre-start correction"
+    }
+  },
+  {
+    "name": "pilot: source changes department before work",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 2,
+      "project_code": "AUDIT-PROJECT-PILOT",
+      "old_department": "lidar",
+      "new_department": "ortho",
+      "old_manager_id": 4,
+      "new_manager_id": 5,
+      "workflow_status": "pm_assigned",
+      "reason": "Audit pre-start correction"
+    }
+  },
+  {
+    "name": "pilot: Finance file tracking",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 2,
+      "as_of": "2026-11-16T05:53:24.327271",
+      "summary": {
+        "overall_percent": 0.0,
+        "operational_status": "Awaiting work allocation",
+        "work_units": 0,
+        "active_files": 0,
+        "legacy_areas": 0,
+        "rework_count": 0,
+        "stages": {
+          "production": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          },
+          "qc": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          },
+          "qa": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          },
+          "delivery": {
+            "completed": 0,
+            "total": 0,
+            "percent": 0.0,
+            "in_progress": 0
+          }
+        },
+        "last_activity_at": null
+      },
+      "files": []
+    }
+  },
+  {
+    "name": "pilot: Management tracking",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "as_of": "2026-11-16T05:53:24.334332",
+      "projects": [
+        {
+          "id": 2,
+          "management_client_id": 2,
+          "project_code": "AUDIT-PROJECT-PILOT",
+          "project_name": "Audit pilot project",
+          "source_person_name": "Management",
+          "project_type": "pilot",
+          "pilot_payment_type": "free",
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "pm_assigned",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.267712",
+          "project_value": 0.0,
+          "currency": "INR",
+          "tracking": {
+            "overall_percent": 0.0,
+            "operational_status": "Awaiting work allocation",
+            "work_units": 0,
+            "active_files": 0,
+            "legacy_areas": 0,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": null
+          },
+          "can_change_department": true,
+          "can_revoke": false,
+          "can_approve": false
+        },
+        {
+          "id": 1,
+          "management_client_id": 1,
+          "project_code": "AUDIT-PROJECT-REGULAR",
+          "project_name": "Audit regular project",
+          "source_person_name": "Management",
+          "project_type": "regular",
+          "pilot_payment_type": null,
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "pm_assigned",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.117852",
+          "project_value": 10000.0,
+          "currency": "INR",
+          "tracking": {
+            "overall_percent": 0.0,
+            "operational_status": "Awaiting work allocation",
+            "work_units": 0,
+            "active_files": 0,
+            "legacy_areas": 0,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": null
+          },
+          "can_change_department": true,
+          "can_revoke": false,
+          "can_approve": false
+        }
+      ],
+      "clients": {
+        "2": {
+          "project_count": 1,
+          "active_projects": 1,
+          "completed_projects": 0,
+          "overall_percent": 0.0,
+          "work_units": 0
+        },
+        "1": {
+          "project_count": 1,
+          "active_projects": 1,
+          "completed_projects": 0,
+          "overall_percent": 0.0,
+          "work_units": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "pilot: premature approval blocked",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Project is not awaiting Management approval"
+    }
+  },
+  {
+    "name": "pilot: premature revocation blocked",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Billing approval cannot be revoked at this stage"
+    }
+  },
+  {
+    "name": "pilot: BD project details blocked",
+    "passed": true,
+    "expected_status": 403,
+    "actual_status": 403,
+    "response": {
+      "detail": "Finance access required"
+    }
+  },
+  {
+    "name": "Finance project list",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "clients": [
+        {
+          "id": 2,
+          "client_code": "AUDIT-PILOT",
+          "client_name": "Audit pilot",
+          "source_person_name": "Management",
+          "contact_person_name": "Audit Contact",
+          "client_email": null,
+          "address": null,
+          "gst_number": null,
+          "work_description": "Isolated automated module check",
+          "is_active": true
+        },
+        {
+          "id": 1,
+          "client_code": "AUDIT-REGULAR",
+          "client_name": "Audit regular",
+          "source_person_name": "Management",
+          "contact_person_name": "Audit Contact",
+          "client_email": null,
+          "address": null,
+          "gst_number": null,
+          "work_description": "Isolated automated module check",
+          "is_active": true
+        }
+      ],
+      "projects": [
+        {
+          "id": 2,
+          "management_client_id": 2,
+          "project_code": "AUDIT-PROJECT-PILOT",
+          "project_name": "Audit pilot project",
+          "source_person_name": "Management",
+          "project_type": "pilot",
+          "pilot_payment_type": "free",
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "pm_assigned",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.267712",
+          "project_value": 0.0,
+          "currency": "INR"
+        },
+        {
+          "id": 1,
+          "management_client_id": 1,
+          "project_code": "AUDIT-PROJECT-REGULAR",
+          "project_name": "Audit regular project",
+          "source_person_name": "Management",
+          "project_type": "regular",
+          "pilot_payment_type": null,
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "pm_assigned",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.117852",
+          "project_value": 10000.0,
+          "currency": "INR"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Finance tracking rollup",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "as_of": "2026-11-16T05:53:24.367617",
+      "projects": {
+        "1": {
+          "overall_percent": 0.0,
+          "operational_status": "Awaiting work allocation",
+          "work_units": 0,
+          "active_files": 0,
+          "legacy_areas": 0,
+          "rework_count": 0,
+          "stages": {
+            "production": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qc": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qa": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "delivery": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            }
+          },
+          "last_activity_at": null
+        },
+        "2": {
+          "overall_percent": 0.0,
+          "operational_status": "Awaiting work allocation",
+          "work_units": 0,
+          "active_files": 0,
+          "legacy_areas": 0,
+          "rework_count": 0,
+          "stages": {
+            "production": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qc": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "qa": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            },
+            "delivery": {
+              "completed": 0,
+              "total": 0,
+              "percent": 0.0,
+              "in_progress": 0
+            }
+          },
+          "last_activity_at": null
+        }
+      }
+    }
+  },
+  {
+    "name": "Finance summary",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "projects": {
+        "1": {
+          "invoice_count": 0,
+          "invoiced_inr": 0.0,
+          "received_inr": 0.0,
+          "outstanding_inr": 0.0,
+          "missing_fx_rows": 0
+        },
+        "2": {
+          "invoice_count": 0,
+          "invoiced_inr": 0.0,
+          "received_inr": 0.0,
+          "outstanding_inr": 0.0,
+          "missing_fx_rows": 0
+        }
+      },
+      "totals": {
+        "invoice_count": 0,
+        "invoiced_inr": 0.0,
+        "received_inr": 0.0,
+        "outstanding_inr": 0.0,
+        "missing_fx_rows": 0,
+        "collection_rate": 0.0
+      }
+    }
+  },
+  {
+    "name": "Delivered project: Management approval popup",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": [
+      {
+        "id": 11,
+        "recipient_role": null,
+        "event_type": "lifecycle.management_approval_requested",
+        "category": "approval",
+        "title": "Management approval required",
+        "message": "Audit delivered project",
+        "target_url": "/management/project-management",
+        "is_read": false,
+        "read_at": null,
+        "created_at": "2026-11-16T05:53:24.393823",
+        "severity": "info",
+        "requires_action": true,
+        "is_resolved": false,
+        "resolved_at": null,
+        "is_reminder": false,
+        "metadata": {
+          "notification_type": "approval"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Delivered project: source sees approval action",
+    "passed": true
+  },
+  {
+    "name": "Delivered project: source approves",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 1,
+      "workflow_status": "READY_FOR_BILLING",
+      "approved_by_user_id": 1
+    }
+  },
+  {
+    "name": "Draft exists: source revokes approval",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 1,
+      "workflow_status": "INVOICE_DRAFT",
+      "source_approved": false
+    }
+  },
+  {
+    "name": "Revoked approval blocks raising draft",
+    "passed": true
+  },
+  {
+    "name": "Draft exists: source tracking after revocation",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "as_of": "2026-11-16T05:53:24.455469",
+      "projects": [
+        {
+          "id": 2,
+          "management_client_id": 2,
+          "project_code": "AUDIT-PROJECT-PILOT",
+          "project_name": "Audit pilot project",
+          "source_person_name": "Management",
+          "project_type": "pilot",
+          "pilot_payment_type": "free",
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "pm_assigned",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.267712",
+          "project_value": 0.0,
+          "currency": "INR",
+          "tracking": {
+            "overall_percent": 0.0,
+            "operational_status": "Awaiting work allocation",
+            "work_units": 0,
+            "active_files": 0,
+            "legacy_areas": 0,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 0,
+                "total": 0,
+                "percent": 0.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": null
+          },
+          "can_change_department": true,
+          "can_revoke": false,
+          "can_approve": false
+        },
+        {
+          "id": 1,
+          "management_client_id": 1,
+          "project_code": "AUDIT-PROJECT-REGULAR",
+          "project_name": "Audit regular project",
+          "source_person_name": "Management",
+          "project_type": "regular",
+          "pilot_payment_type": null,
+          "department_code": "ortho",
+          "department_label": "Ortho",
+          "workflow_status": "INVOICE_DRAFT",
+          "source_approved": false,
+          "project_manager_id": 5,
+          "project_manager_name": "Ortho_Pm",
+          "start_date": "2026-11-14",
+          "end_date": "2026-11-20",
+          "created_at": "2026-11-16T05:53:24.117852",
+          "project_value": 10000.0,
+          "currency": "INR",
+          "tracking": {
+            "overall_percent": 100.0,
+            "operational_status": "Delivered",
+            "work_units": 1,
+            "active_files": 0,
+            "legacy_areas": 1,
+            "rework_count": 0,
+            "stages": {
+              "production": {
+                "completed": 1,
+                "total": 1,
+                "percent": 100.0,
+                "in_progress": 0
+              },
+              "qc": {
+                "completed": 1,
+                "total": 1,
+                "percent": 100.0,
+                "in_progress": 0
+              },
+              "qa": {
+                "completed": 1,
+                "total": 1,
+                "percent": 100.0,
+                "in_progress": 0
+              },
+              "delivery": {
+                "completed": 1,
+                "total": 1,
+                "percent": 100.0,
+                "in_progress": 0
+              }
+            },
+            "last_activity_at": "2026-11-16T05:53:24.392824"
+          },
+          "can_change_department": false,
+          "can_revoke": false,
+          "can_approve": true
+        }
+      ],
+      "clients": {
+        "2": {
+          "project_count": 1,
+          "active_projects": 1,
+          "completed_projects": 0,
+          "overall_percent": 0.0,
+          "work_units": 0
+        },
+        "1": {
+          "project_count": 1,
+          "active_projects": 0,
+          "completed_projects": 1,
+          "overall_percent": 100.0,
+          "work_units": 1
+        }
+      }
+    }
+  },
+  {
+    "name": "Draft exists: source popup after revocation",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": []
+  },
+  {
+    "name": "Draft exists: reapproval action remains visible in popup",
+    "passed": false,
+    "response": {
+      "can_approve": true,
+      "popup_count": 0
+    }
+  },
+  {
+    "name": "Draft exists: source can approve again",
+    "passed": true,
+    "expected_status": 200,
+    "actual_status": 200,
+    "response": {
+      "project_id": 1,
+      "workflow_status": "INVOICE_DRAFT",
+      "approved_by_user_id": 1
+    }
+  },
+  {
+    "name": "Issued invoice locks approval revocation",
+    "passed": true,
+    "expected_status": 409,
+    "actual_status": 409,
+    "response": {
+      "detail": "Billing approval cannot be revoked at this stage"
+    }
+  },
+  {
+    "name": "Free pilot: backend blocks customer invoicing",
+    "passed": false,
+    "response": {
+      "invoice_id": 2,
+      "status": "PAYMENT_PENDING",
+      "amount": "1000"
+    },
+    "detail": "A positive customer invoice was drafted and raised for a zero-value free pilot in a private fixture."
+  }
+]

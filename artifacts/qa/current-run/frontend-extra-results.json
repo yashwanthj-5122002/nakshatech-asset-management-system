@@ -1,0 +1,26 @@
+[
+    {
+        "script":  "verify-dashboard-drawer-layout-focus.mjs",
+        "exitCode":  1
+    },
+    {
+        "script":  "verify-dashboard-drawer-visual-toggle.mjs",
+        "exitCode":  1
+    },
+    {
+        "script":  "verify-dashboard-drawer-visuals.mjs",
+        "exitCode":  0
+    },
+    {
+        "script":  "verify-dashboard-drilldown.mjs",
+        "exitCode":  1
+    },
+    {
+        "script":  "verify-dashboard-visual-analytics.mjs",
+        "exitCode":  0
+    },
+    {
+        "script":  "verify-reporting-month-race-fix.mjs",
+        "exitCode":  0
+    }
+]

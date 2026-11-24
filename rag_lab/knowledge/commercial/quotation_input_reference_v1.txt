@@ -1,0 +1,22 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-COMMERCIAL-210
+TOPIC: Gathering inputs for a geospatial project quotation
+
+QUOTE INPUTS
+Service category, measurable extent with units, source-data availability, field collection method, site accessibility and mobilization restrictions, technical accuracy, deliverables and format, number of revisions, schedule, QA requirements, field/office split, assumptions, exclusions, permitted vendors and review/approval owners.
+
+NO AUTOMATIC PRICING
+Never produce a fixed price, unit rate, personnel cost, profit margin or invoice figure from a technical knowledge document unless an authorized, current commercial source explicitly provides it and policy permits release. Internal Finance data must not be exposed to ordinary BD staff via RAG.
+
+SCOPE-CHANGE RULE
+A change from orthophoto-only to orthophoto+DTM is a potential scope revision, not an assumption. A 20 km corridor without width cannot be turned into an area for pricing. Do not confuse estimated effort with confirmed project budget.
+
+EXAMPLE
+Client: 'Need classification of 12 million supplied LiDAR points, five classes, within ten days.' Known: existing data, quantity, broad classes count, proposed deadline. Missing: source file sample/quality, precise class definitions, classification acceptance rules, CRS and deliverable schema. Do not invent an INR quote.
+
+SAFETY
+Price approvals and any approval chain remain governed by existing ERP workflows, not by model recommendations.

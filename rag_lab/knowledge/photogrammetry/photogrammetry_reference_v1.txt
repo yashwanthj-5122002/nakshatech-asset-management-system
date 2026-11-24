@@ -1,0 +1,25 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-PHOTO-202
+TOPIC: Photogrammetry production and deliverable planning
+
+WORKFLOW OVERVIEW
+Input images and calibration metadata -> image matching and bundle adjustment -> georeferencing/control -> dense reconstruction -> surface model and orthorectification -> orthomosaic and optional products -> accuracy/QA report.
+
+INPUTS TO CONFIRM
+Image acquisition method and overlap adequacy, GNSS/IMU metadata, camera model, RTK/PPK availability, GCPs and independent checkpoints, site coverage, desired mapping scale, final GSD, terrain/obstruction factors.
+
+POTENTIAL OUTPUTS
+Orthomosaic GeoTIFF, DSM, point cloud LAS/LAZ or other agreed format, 3D mesh, contours, CAD digitization and technical report. A DTM requires an appropriate bare-earth strategy and may need additional survey data where terrain is obscured.
+
+QA QUESTIONS
+How is horizontal/vertical accuracy measured? Which check points remain independent of adjustment? What holes, seamlines, shadow and haze issues need review? What is the intended ortho extent and edge treatment? Are image rights and re-use permitted?
+
+AMBIGUITIES
+The words '3D model' may refer to a mesh, point cloud, BIM, or terrain model; ask. 'High resolution' is not a numerical specification. Never infer a contour interval from GSD alone.
+
+CASE EXAMPLE
+'Provide orthophoto and 1-m contours for 5 square km' specifies two outputs and extent but does not specify flight parameters, CRS, vertical datum or accuracy requirement.

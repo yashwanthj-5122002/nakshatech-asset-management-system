@@ -85,6 +85,40 @@ function fileLabel(f: AllocationFile): string {
   ].filter(Boolean).join(' | ')
 }
 
+function hasPlan(file: AllocationFile): boolean {
+  return file.planned_quantity !== null && file.planned_quantity !== undefined
+    && Number.isFinite(file.planned_quantity) && file.planned_quantity >= 0
+    && Boolean(file.planned_unit?.trim())
+}
+
+function FilePlanForm({ file, onSaved }: { file: AllocationFile; onSaved: () => void }) {
+  const [quantity, setQuantity] = useState('')
+  const [unit, setUnit] = useState(file.planned_unit || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    if (!quantity.trim() || !Number.isFinite(Number(quantity)) || Number(quantity) < 0 || !unit.trim()) {
+      setError('Enter a planned quantity of zero or greater and its unit.'); return
+    }
+    setBusy(true); setError('')
+    try {
+      await apiFetch(`/operations/workflow/ortho/items/${file.work_package_item_id}`, {
+        method: 'PATCH', body: JSON.stringify({ planned_quantity: quantity, planned_unit: unit.trim() }),
+      })
+      onSaved()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to save the file plan') }
+    finally { setBusy(false) }
+  }
+  return <form className="operations-daily-form" onSubmit={save} aria-label={`Plan for file ${file.file_number}`}>
+    <strong>{fileLabel(file)}</strong>
+    <label className="operations-field"><span>Planned quantity</span><input required type="number" min="0" step="0.001" value={quantity} onChange={e => setQuantity(e.target.value)} /></label>
+    <label className="operations-field"><span>Planned unit</span><input required maxLength={30} value={unit} onChange={e => setUnit(e.target.value)} placeholder="m, km, sq.m, files" /></label>
+    <button className="operations-button" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save file plan'}</button>
+    {error && <div role="alert" className="operations-alert error">{error}</div>}
+  </form>
+}
+
 function newDraft(seedUser = ''): Draft {
   return {
     key: `d${Date.now()}${Math.random().toString(36).slice(2, 7)}`,
@@ -163,6 +197,7 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
   // (explicit edit/reassign of an unstarted file). Assigned-with-history files stay locked.
   function selectableFor(d: Draft): AllocationFile[] {
     return files.filter((f) => {
+      if (!hasPlan(f)) return false
       if (!d.userId) return false
       const owned = Boolean(f.production_employee_id)
       if (!owned) return true
@@ -303,6 +338,11 @@ export function ImportedAllocationPanel({ projectId, onAssigned }: { projectId: 
       {error && <div className="operations-alert error">{error}</div>}
 
       <div className="pt-alloc">
+        {files.some(file => !hasPlan(file)) && <details className="operations-panel" open>
+          <summary>Complete missing file plans ({files.filter(file => !hasPlan(file)).length})</summary>
+          <p>Enter the source quantity and unit for each file before allocation. Area totals are kept separately.</p>
+          {files.filter(file => !hasPlan(file)).map(file => <FilePlanForm key={file.work_package_item_id} file={file} onSaved={() => { loadOptions(); onAssigned() }} />)}
+        </details>}
         <div className="pt-alloc-summary">
           <div><span>Total files</span><strong>{totalFiles}</strong></div>
           <div><span>Assigned</span><strong>{assignedFiles}</strong></div>

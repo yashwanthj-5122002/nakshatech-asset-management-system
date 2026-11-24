@@ -1,0 +1,32 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SHARED-101
+TOPIC: Business Development requirement intake and scope definition
+
+OBJECTIVE
+Convert client descriptions into traceable confirmed requirements, open questions, constraints and possible technical services. A proposal is not a confirmed scope until the client and authorized technical team review it.
+
+CLIENT FACTS TO CAPTURE
+Client/project identifier (fictional in this pack), project location and site access, purpose, project footprint and units, source datasets, requested tasks, explicit deliverables, accuracy/tolerance and coordinate reference system, time frame, acceptance criteria, dependencies, exclusions, and governing standards only if the client identifies them.
+
+OUTPUT CATEGORIES
+1. Confirmed client facts - only details explicitly present in the request or separately verified through an authorized source.
+2. Missing information - parameters that are needed to define or quote the project and are not stated.
+3. Suggested options - possible deliverables, methods and additional tasks; do not silently convert suggestions to confirmed requirements.
+4. Risks and assumptions - clearly labeled, subject to client confirmation.
+5. Clarification questions - specific, prioritized, non-duplicated questions.
+
+UNITS AND DATA QUALITY
+Preserve original units exactly. Do not convert km to area without a corridor width. A 50 km road survey does not specify hectares. An area written as 500 acres is not the same as a 500 m corridor. Never fabricate density, GSD, positional accuracy, price, completion date, or quoted quantity.
+
+WORKED EXAMPLE
+Input: 'Survey a 20 km highway using LiDAR and provide classified LAZ. Corridor width is not decided.'
+Confirmed: service LiDAR, linear length 20 km, deliverable classified LAZ, corridor width not decided.
+Missing: corridor width, point density, required classification scheme, reference system, accuracy, site restrictions, timeline, QA acceptance.
+NOT confirmed: aerial vs mobile LiDAR, output CAD plans, price per km or any survey schedule.
+
+CAVEATS
+This is synthetic, instructional material, not a signed company SOP or approved project specification.

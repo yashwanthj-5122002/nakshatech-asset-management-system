@@ -92,7 +92,7 @@ def test_multi_assignee_aggregation_not_lost():
         db.flush()
         item2 = items_service.add_items(
             db, actor=team["tl"], role=TL_ROLE, work_package_id=package.id,
-            entries=[{"item_number": "EXTRA-1", "production_user_id": extra.id}])[0]
+            entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "EXTRA-1", "production_user_id": extra.id}])[0]
         db.flush()
         payload = _project_row(_dashboard(db, team["tl"], TL_ROLE), ctx)["packages"][0]
         names = {u["full_name"] for u in payload["item_assignees"]["production"]}
@@ -125,7 +125,7 @@ def test_employee_sees_only_their_assigned_files():
         db.flush()
         item2 = items_service.add_items(
             db, actor=team["tl"], role=TL_ROLE, work_package_id=package.id,
-            entries=[{"item_number": "SIBLING-1", "production_user_id": other.id}])[0]
+            entries=[{"planned_quantity": 1, "planned_unit": "km", "item_number": "SIBLING-1", "production_user_id": other.id}])[0]
         db.flush()
         payload = _project_row(_dashboard(db, team["prod"], TL_ROLE), ctx)["packages"][0]
         visible = [row["item_number"] for row in payload["items"]]
@@ -204,9 +204,9 @@ def test_no_duplicate_file_or_quantity_counting():
         assert payload["files_expected"] == 1
         assert payload["files_completed"] == 1            # not 2, not legacy + item
         assert payload["files_production_done"] == 1
-        assert payload["cumulative_completed"] == 1.16    # single occurrence
-        assert abs(payload["remaining_quantity"] - (float(package.area) - 1.16)) < 1e-9
-        assert payload["progress_percent"] == round(1.16 / float(package.area) * 100, 2)
+        assert payload["cumulative_completed"] == 1.2     # one stored plan, ignoring the submitted override
+        assert payload["remaining_quantity"] == 0
+        assert payload["progress_percent"] == 100
 
 
 def test_project_operations_and_production_tracking_agree():

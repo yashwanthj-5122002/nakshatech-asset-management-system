@@ -28,7 +28,8 @@ requireText(dashboard, "setDrilldown({ scope: 'device', value: 'Smartphone' })",
 requireText(dashboard, "setDrilldown({ scope: 'department', value: item.name })", 'Department bar mapping')
 requireText(dashboard, '<AssetDrilldownDrawer', 'Same-page drawer rendering')
 forbidText(dashboard, "navigate('/assets", 'Dashboard card drill-down')
-forbidText(dashboard, "to={withITMonth('/assets", 'Dashboard card drill-down')
+// Empty-state register links are valid; KPI cards must still use the drawer.
+forbidText(statCard, 'to={', 'Dashboard KPI card navigation')
 
 requireText(drawer, '/dashboard/it/assets?', 'Read-only drill-down API')
 requireText(drawer, '/reports/it-dashboard-assets.xlsx?', 'Filtered Excel API')

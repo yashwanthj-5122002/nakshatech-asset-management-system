@@ -83,6 +83,13 @@ def _prod2(db, ctx):
 
 def _assign(db, ctx, pkg, items, *, prod=None, qc=None, qa=None, reassign=False, targets=None):
     t = ctx["team"]
+    # Count imports intentionally do not invent per-file lengths. Complete the
+    # fixture's source plans through the same correction API before allocation.
+    for item in items:
+        if item.planned_quantity is None:
+            items_service.update_item(db, actor=t["tl"], role=TL, work_package_item_id=item.id,
+                                      changes={"planned_quantity": "1.20", "planned_unit": "km"},
+                                      provided={"planned_quantity", "planned_unit"})
     prod_t, qc_t, qa_t = targets or (date(2026, 10, 20), date(2026, 10, 22), date(2026, 10, 24))
     return alloc.assign_files(
         db, actor=t["tl"], role=TL, work_package_id=pkg.id, item_ids=[i.id for i in items],
@@ -192,6 +199,9 @@ def test_g_concurrent_duplicate_assignment_only_one_wins():
         ids = {"tl": ctx["team"]["tl"].id, "prod": ctx["team"]["prod"].id,
                "qc": ctx["team"]["qc"].id, "qa": ctx["team"]["qa"].id, "other": other.id}
         project_id = ctx["project"].id
+        items_service.update_item(db1, actor=ctx["team"]["tl"], role=TL, work_package_item_id=item_id,
+                                  changes={"planned_quantity": "1.20", "planned_unit": "km"},
+                                  provided={"planned_quantity", "planned_unit"})
         # Session 1 wins (locks + commits).
         alloc.assign_files(db1, actor=ctx["team"]["tl"], role=TL, work_package_id=pkg_id,
                            item_ids=[item_id], production_user_id=ids["prod"],
@@ -334,6 +344,8 @@ def test_q_r_qa_pass_and_reject():
         run_review(db, ctx, item, "qa", "rejected", remarks="Attributes")   # R
         assert _row(db, pkg, item)["qa_status"] == "rejected"
         assert _agg(db, pkg)["qa_rework"] == 1
+        from test_production_master_excel_allocation_v8_3 import run_production
+        run_production(db, ctx, item)  # QA rejection requires a completed correction
         run_review(db, ctx, item, "qa", "passed")                            # Q
         assert _row(db, pkg, item)["qa_status"] == "passed"
         row = _row(db, pkg, item)
