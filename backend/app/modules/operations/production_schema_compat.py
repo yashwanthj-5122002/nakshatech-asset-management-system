@@ -164,9 +164,9 @@ def ensure_production_tracking_schema_compatibility(bind=None) -> None:
                     if current_precision == 14 and current_scale == 3:
                         connection.execute(text(
                             "ALTER TABLE work_package_item_activities "
-                            "ALTER COLUMN quantity_completed TYPE NUMERIC(18,6)"
+                            "ALTER COLUMN quantity_completed TYPE NUMERIC(20,9)"
                         ))
-                    elif current_precision != 18 or current_scale != 6:
+                    elif current_precision != 20 or current_scale != 9:
                         raise RuntimeError(
                             "Unexpected quantity_completed precision: "
                             f"{current_precision},{current_scale}"
