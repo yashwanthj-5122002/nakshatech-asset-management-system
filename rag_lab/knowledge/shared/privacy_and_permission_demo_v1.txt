@@ -1,0 +1,28 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SHARED-105
+TOPIC: Demonstration rules for responsible AI and ERP project permissions
+
+SECURITY PRINCIPLE
+Authentication answers who the caller is; authorization answers what data the caller may access. Access control must run in trusted backend code BEFORE retrieving or forwarding project context to any AI API.
+
+SIMULATED ROLE GUIDANCE
+BD personnel: only the BD-origin projects and records visible under their existing authorized role/assignment policy.
+Management: broader project visibility if authorized by the existing ERP policy.
+Finance: only finance records allowed to that role; restricted bill details are not generalized into BD context.
+Operations: assigned operational project data only.
+
+RETRIEVAL REQUIREMENTS
+Do not mix confidential Management/Finance documents into a general BD search store. A document saying 'do not reveal' does not stop retrieval; security requires separate stores, filtering or authorization-aware retrieval outside the language model.
+
+PROTECT
+API keys, passwords, access tokens, payment data, bank details, personal identifiers, client secrets, internal invoices, unpublished proposals and restricted contractual details. Use fictional samples when developing with a free-tier AI service.
+
+FAIL CLOSED
+When a project is not visible to the caller, do not retrieve its content and do not include it in prompts, caches, references, logs, recommendations or generated summaries. Avoid exposing that a restricted project exists. Test directly at the backend API as well as UI.
+
+IMPORTANT
+THIS DOCUMENT IS A TRAINING REFERENCE ONLY. It does not itself implement or prove ERP authorization. Never index restricted real data into a shared test store.

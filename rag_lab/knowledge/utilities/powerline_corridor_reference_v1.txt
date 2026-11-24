@@ -1,0 +1,22 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-UTILITY-207
+TOPIC: LiDAR/GIS power-line corridor and utility mapping
+
+PURPOSE
+Inventory corridor geometry, towers/poles and spans, conductor positions, nearby vegetation and terrain, and provide geospatial evidence for engineering review.
+
+SCOPE QUESTIONS
+Transmission or distribution? Line length and corridor width? Existing classified point cloud or new capture? Required conductor/tower/vegetation classes? Temporal conditions and sag model? Which clearance rules and authority-specific thresholds apply? Desired drawings, feature tables and GIS formats?
+
+IMPORTANT CAUTION
+Clearance results depend on agreed governing regulations, temperature/loading assumptions, measurement uncertainty and line configuration. Do not invent statutory minimum clearance distances. Do not use general training examples for engineering sign-off or switching instructions.
+
+POTENTIAL OUTPUTS
+Power-line feature inventory, clearance screening map, vegetation encroachment candidate list, line profile, CAD or GIS asset layers and anomaly report. A screening report is not an electrical safety certification.
+
+QA
+Validate source CRS, calibration, conductor identification, tower IDs, coverage gaps and time-sensitive changes. Sensitive critical infrastructure should only be handled in an authorized environment.

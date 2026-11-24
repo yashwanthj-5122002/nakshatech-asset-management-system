@@ -1,0 +1,23 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SHARED-104
+TOPIC: Accuracy, provenance and quality control in requirement analysis
+
+HALLUCINATION CHECKS
+Every numerical quantity, unit, location, standard, deadline, deliverable, or company-specific claim must be supported by the client request or an authorized source. Never invent density, contour interval, positional tolerance, GSD, staff, price, turnaround, coverage, government approval, project history or certification.
+
+TECHNICAL REVIEW CHECKS
+1. Scope completeness: are extent, quantity, service and requested outputs clear?
+2. Feasibility blockers: permissions, source data, access, terrain, survey method, safety and timeframe.
+3. Quality requirements: datum/CRS, control network, check points, accuracy metrics, review/acceptance protocol.
+4. Deliverable consistency: are formats supported by selected workflows? Have client-requested outputs been distinguished from optional outputs?
+5. Provenance: show source document IDs where possible; warn if sources are absent or conflicting.
+
+UNSUPPORTED REQUESTS
+If data is insufficient, respond with an open issue rather than inventing a final design. If two documents disagree, state both and flag technical review. If no approved source covers an uncommon specification, request specialist validation.
+
+TEST PRINCIPLE
+Compare generated answers with curated expected outputs. Test factual extraction, omitted information, uncertainty, citations, permission enforcement and stability. Use an evaluation set that was not simply copied into the retrieval source.
