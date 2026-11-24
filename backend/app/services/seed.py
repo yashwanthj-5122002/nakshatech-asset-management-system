@@ -477,6 +477,69 @@ def ensure_multi_department_pm_accounts(db: Session) -> None:
     db.commit()
 
 
+def ensure_bd_employee_accounts(db: Session) -> None:
+    """Idempotently provision BD01-BD05 BD Employee test accounts.
+
+    Same unified authentication and opt-in gate as the other department
+    test logins. Emails are comma-separated in ``SEED_BD_EMPLOYEE_EMAILS``;
+    the shared password comes from ``SEED_BD_EMPLOYEE_PASSWORD``.
+    """
+    if not settings.seed_operations_test_users_enabled:
+        return
+    if settings.is_production:
+        raise RuntimeError("BD employee test seed is forbidden in production")
+
+    raw_emails = settings.seed_bd_employee_emails.strip()
+    password = settings.seed_bd_employee_password
+    if not raw_emails or not password:
+        return
+    if len(password) < 10:
+        raise RuntimeError("SEED_BD_EMPLOYEE_PASSWORD must contain at least 10 characters")
+
+    allowed_domains = set(settings.allowed_email_domain_list)
+    emails = [e.strip().lower() for e in raw_emails.split(",") if e.strip()]
+    for email in emails:
+        if "@" not in email or email.rsplit("@", 1)[1] not in allowed_domains:
+            raise RuntimeError(f"BD employee account must use an allowed organization email: {email}")
+        employee_id = email.split("@", 1)[0].upper()
+        full_name = f"BD Employee {employee_id[2:]}"
+        user = db.scalar(select(User).where(func.lower(User.email) == email))
+        if user is None:
+            user = User(
+                email=email,
+                full_name=full_name,
+                password_hash=hash_password(password),
+                role="bd_employee",
+                branch="Head Office",
+                employee_id=employee_id,
+                department="Business Development",
+                designation="BD Employee",
+                email_verified=True,
+                account_status="active",
+                mfa_required=False,
+                must_change_password=False,
+                is_active=True,
+            )
+            db.add(user)
+            continue
+        user.full_name = user.full_name or full_name
+        if not verify_password(password, user.password_hash):
+            user.password_hash = hash_password(password)
+            user.token_version = (user.token_version or 0) + 1
+        user.role = "bd_employee"
+        user.employee_id = employee_id
+        user.branch = user.branch or "Head Office"
+        user.department = "Business Development"
+        user.designation = "BD Employee"
+        user.email_verified = True
+        user.account_status = "active"
+        user.mfa_required = False
+        user.must_change_password = False
+        user.is_active = True
+
+    db.commit()
+
+
 def ensure_multi_department_test_employee_accounts(db: Session) -> None:
     """Idempotently provision 15 test Employee accounts each for Ortho, LiDAR, Mobile Mapping,
     Laser Scanning, Civil and Drone.

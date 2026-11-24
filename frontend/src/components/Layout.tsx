@@ -146,14 +146,13 @@ const navItems: NavItem[] = [
   { to: '/bd/my-team', label: 'My Team', icon: Users, roles: ['bd'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
   // NAKSHA_BD_AI_NAV
+// NAKSHA_BD_AI_NAV
 {
   to: '/bd-ai',
   label: 'BD AI',
   icon: Sparkles,
-  roles: ['bd', 'management'],
+  roles: ['bd', 'bd_employee', 'management'],
   group: 'business',
-  managementGroup: 'executive',
-  managementLabel: 'BD AI',
 },
   { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/bd/tracking', label: 'Project Tracking', icon: Activity, roles: ['bd'], group: 'business' },

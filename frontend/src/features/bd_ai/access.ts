@@ -8,7 +8,10 @@ export function canAccessBDAI(
 ): boolean {
   if (!user) return false
 
-  if (user.role === 'bd') return true
+ if (
+  user.role === 'bd' ||
+  user.role === 'bd_employee'
+) return true
 
   return (
     user.role === 'management' &&

@@ -1,0 +1,25 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SHARED-106
+TOPIC: Geospatial file formats and deliverable clarification
+
+POINT CLOUD
+LAS and LAZ: point-cloud data; LAZ is compressed. Ask which point attributes, classes, CRS, units, version and tiling conventions are expected. E57: common format for terrestrial scan point clouds, with capabilities varying by software.
+
+RASTER AND TERRAIN
+GeoTIFF: commonly used georeferenced raster delivery. Orthophoto is a geometrically corrected image. DSM represents exposed top surfaces (including structures/vegetation); DTM aims to represent bare-earth terrain. Ask how ground points are defined and how holes and vegetation are handled.
+
+VECTOR AND CAD
+DWG/DXF: CAD drawing formats; ask layering standards, units, scale, coordinate system and entity types. Shapefile: multi-file vector format with field and naming constraints. GeoPackage (GPKG): container for spatial vector/raster information. GeoJSON: exchange format, normally uses geographic coordinates under its specification.
+
+BIM
+IFC: open exchange format for BIM; RVT: Revit project format. Ask discipline, model detail, spatial alignment, deliverable version and exchange requirements.
+
+MAP AND REPORTING
+PDF, static map imagery, interactive web maps, geodatabases and dashboards are different products; do not treat them as interchangeable. Request map scale, symbology, metadata, attribute schema and update requirements.
+
+ADVICE
+A file extension alone never guarantees technical acceptance; agree schema, CRS, units, accuracy, metadata and QA checklist before quoting.

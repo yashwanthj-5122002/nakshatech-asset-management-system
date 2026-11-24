@@ -1,10 +1,11 @@
 
 import hashlib
 
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_roles
+from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.entities import User
@@ -17,6 +18,9 @@ from app.modules.bd_ai.schemas import (
     BDAIRefineRequest,
 )
 from app.modules.bd_ai.service import generate_analysis
+from app.modules.bd_ai import submission_models  # noqa: F401
+
+
 
 
 router = APIRouter(
@@ -30,13 +34,26 @@ AUTHORIZED_MANAGEMENT_EMAILS = {
 }
 
 
+
 def require_bd_ai_user(
-    user: User = Depends(require_roles("bd", "management")),
+    auth: CurrentAuth = Depends(get_current_auth),
 ) -> User:
+    user = auth.user
+
     role = str(user.role or "").strip().lower()
     email = str(user.email or "").strip().lower()
 
-    if role == "bd":
+    if (
+        not user.is_active
+        or user.account_status != "active"
+        or auth.effective_role != role
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="BD AI access denied.",
+        )
+
+    if role in {"bd", "bd_employee"}:
         return user
 
     if (
@@ -50,7 +67,6 @@ def require_bd_ai_user(
         detail="BD AI access denied.",
     )
 
-
 @router.get("/status")
 def bd_ai_status(
     user: User = Depends(require_bd_ai_user),
@@ -60,7 +76,6 @@ def bd_ai_status(
         "model": settings.gemini_model,
         "requests_per_hour": settings.naksha_copilot_requests_per_hour,
     }
-
 
 async def _run_analysis(
     *,
@@ -163,3 +178,8 @@ async def refine_requirements(
         db=db,
         user=user,
     )
+# BD AI Phase 2 - Technical Requirement Handover
+from app.modules.bd_ai.submission_router import (
+    router as submission_router,
+)
+router.include_router(submission_router)

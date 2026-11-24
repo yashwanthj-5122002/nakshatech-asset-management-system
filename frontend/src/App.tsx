@@ -193,10 +193,11 @@ export default function App() {
       <Route path="/bd/my-team" element={<StrictProtectedRoute roles={['bd']}><WithLayout><BDMyTeamPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
       {/* BD AI - Client Requirements Assistant */}
+{/* BD AI - Client Requirements Assistant */}
 <Route
   path="/bd-ai"
   element={
-    <StrictProtectedRoute roles={['bd', 'management']}>
+    <StrictProtectedRoute roles={['bd', 'bd_employee', 'management']}>
       <WithLayout>
         <BDAIPage />
       </WithLayout>

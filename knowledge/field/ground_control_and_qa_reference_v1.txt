@@ -1,0 +1,22 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-FIELD-209
+TOPIC: Survey control, QA/QC and positional accuracy
+
+DEFINE QUALITY
+Specify reference CRS, horizontal datum, vertical datum, epoch if relevant, units, accuracy class, acceptable tolerances, coverage completeness and verification procedure. Accuracy is not the same as pixel resolution, point density or model detail.
+
+CONTROL PLANNING
+Agree control survey source and method, GCPs as applicable, independent checkpoints, accessibility, distribution over the study area and whether transformation/calibration is needed. Independent validation points should not all be used to fit the adjustment they evaluate.
+
+QA RECORDS
+Checklists for data gaps, geometry/registration errors, class-label consistency, topology, coordinate offsets, deliverable formats, file integrity, metadata completeness and revision tracking. Record failures and rework before final acceptance.
+
+CLIENT QUESTIONS
+Who supplies survey control? Which accuracy reporting convention is required? Is a test sample required? Who signs off deliverables? What file naming, tiling, versioning and coordinate grids apply?
+
+CAUTION
+This is an educational framework, not a numerical specification or certification process.

@@ -1,0 +1,30 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SHARED-103
+TOPIC: Stable BD AI response interpretation guidance
+
+RECOMMENDED RESPONSE FIELDS (ILLUSTRATIVE, NOT THE EXISTING ERP SCHEMA)
+service, client_objective, confirmed_scope, location, measurement, measurement_unit, confirmed_deliverables, missing_information, clarification_questions, optional_recommendations, source_references, risks, review_required.
+
+SEMANTIC RULES
+- confirmed_deliverables contains only client-confirmed deliverables.
+- optional_recommendations is separate from confirmed requirements.
+- If missing, use null or a clear 'Not provided', never a guessed value.
+- If the source gives a range, preserve the range and unit rather than replacing it with a midpoint.
+- If the description is internally contradictory, preserve the contradiction and ask for clarification.
+- If a request mixes LiDAR, GIS and BIM, identify each workstream and do not merge unrelated methods.
+- Distinguish source data supplied by a client from datasets to be generated as project outputs.
+- Do not claim a company has completed a past project unless an authorized ERP record confirms it.
+
+EXAMPLE
+Input: 'Need drone images of 125 acres. A DTM might be useful.'
+confirmed_scope: aerial imagery for 125 acres.
+confirmed_deliverables: imagery (exact format not provided).
+optional_recommendations: DTM, subject to confirmation.
+missing_information: location, GSD, imagery format, accuracy, deadline, and whether DTM is required.
+
+IMPORTANT
+Do not alter the live BD AI API response schema based on this file alone. Integrate only after inspecting existing schemas and testing compatibility. RAG text is guidance, not executable authorization.

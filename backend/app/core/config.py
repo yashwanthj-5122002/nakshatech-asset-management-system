@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     seed_employee_test_email: str = ""
     seed_employee_test_password: str = ""
 
+    # BD Employee test accounts (BD01-BD05): same unified authentication,
+    # same opt-in gate (seed_operations_test_users_enabled), password never logged.
+    seed_bd_employee_emails: str = ""
+    seed_bd_employee_password: str = ""
+
     # Multi-department generalization of the Ortho PM login above: one PM/UAT
     # account per additional technical department, same unified authentication,
     # same opt-in gate (seed_operations_test_users_enabled), password never logged.

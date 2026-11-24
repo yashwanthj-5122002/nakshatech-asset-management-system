@@ -1,0 +1,25 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-BIM-205
+TOPIC: Laser scanning and Scan-to-BIM requirement intake
+
+SCOPE DISTINCTION
+Laser scanning creates measured point clouds. Scan-to-BIM transforms appropriate scan evidence into modeled building elements. Point cloud delivery and authored BIM are distinct services.
+
+NECESSARY DETAILS
+Building type, floor area, floors and accessible spaces; source scans or need for new scanning; survey control and coordinate alignment; required disciplines (architecture, structure, MEP etc.); level of information need / expected geometric detail; permitted tolerances; model versions; heritage/deformation concerns; restrictions and target completion date.
+
+POTENTIAL DELIVERABLES
+Registered E57/LAS/RCP point cloud as agreed; BIM in RVT and/or IFC; floor plans, elevations, sections, clash or QA reports; element schedules. Never assume MEP because an architectural model was requested.
+
+QUALITY VALIDATION
+Registration residuals, cloud-to-model checks, modeled versus unmodeled elements, independent spot checks, control alignment, export validation and issue logs. Avoid treating visual similarity as measured accuracy.
+
+COMMON AMBIGUITIES
+'LOD 300' or similar alone may be insufficient; ask the client to specify discipline, element lists, tolerance and information need. 'As built' may require site access and verification rather than assumptions from old drawings.
+
+CASE
+'8-floor office, 18,000 sqm, Revit model' - ask whether source point cloud exists, scanning scope, disciplines, versions, geometric tolerance and floor access; do not invent MEP requirements.

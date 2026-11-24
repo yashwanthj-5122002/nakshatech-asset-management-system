@@ -68,6 +68,7 @@ from app.models.entities import User
 from sqlalchemy import select
 from app.services.monthly_snapshot_service import ensure_previous_month_snapshot
 from app.services.seed import (
+    ensure_bd_employee_accounts,
     ensure_management_accounts,
     ensure_multi_department_pm_accounts,
     ensure_multi_department_test_employee_accounts,
@@ -462,6 +463,7 @@ def initialize_application() -> None:
             ensure_v81_test_employee_accounts(db)
             ensure_multi_department_pm_accounts(db)
             ensure_multi_department_test_employee_accounts(db)
+            ensure_bd_employee_accounts(db)
             default_branch = ensure_default_branch(db)
             ensure_finance_seed_data(db)
             retire_obsolete_sample_notifications(db)

@@ -1,0 +1,25 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-GIS-204
+TOPIC: GIS mapping, spatial analysis and web map scoping
+
+INTAKE
+Identify the business decision or analysis question; study area; datasets and owners; desired geographic scale; coordinate reference system; data currency; expected spatial accuracy; feature schema; confidentiality level; outputs and update frequency.
+
+COMMON TASKS
+Digitization and feature inventory, spatial joins, buffers and proximity, overlays, network analysis, zoning and land-use mapping, cadastral visualization, catchment mapping, utility asset mapping and thematic dashboards. A web map is not necessarily a public portal; auth and hosting need definition.
+
+DATASETS
+Vector features (points/lines/polygons), satellite or drone imagery, DEM/DTM/DSM, census and asset tables, cadastral records and administrative boundaries. Validate CRS, field types, topology, lineage, license and permitted use.
+
+OUTPUTS TO CONFIRM
+GeoPackage, shapefile, GeoJSON, geodatabase, map PDFs, web map service, interactive portal or GIS dashboard. Clarify whether attribute search, editing, authentication, downloads and APIs are needed.
+
+QUALITY AND RISKS
+Topology gaps/overlaps, non-matching projection, stale imagery, inaccurate geocoding, incomplete land ownership evidence, permissions and disputed records. GIS visualization is not independent verification of legal land title.
+
+EXAMPLE
+Client asks 'Show village-level cadastral boundaries and plot search.' Clarify authoritative data provider, permitted API use, survey-to-village reconciliation, search identifiers, update cycle, PDF/image export, disclaimer and user access policies.
