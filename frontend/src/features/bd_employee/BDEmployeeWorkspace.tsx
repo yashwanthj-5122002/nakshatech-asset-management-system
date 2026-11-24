@@ -240,7 +240,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
     setConvertLead(null)
     navigate(`/bd-employee/clients?client=${clientId}${createProject ? '&createProject=1' : ''}`)
   }
-  function signOut() { logout(); navigate('/bd-employee/login',{replace:true}) }
+  function signOut() { logout(); navigate('/login',{replace:true}) }
   const today = new Date()
   const todayDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
   const filtered = leads.filter(p=>[p.company_name,p.contact_person,p.service_interest,p.status].join(' ').toLowerCase().includes(search.toLowerCase()))
