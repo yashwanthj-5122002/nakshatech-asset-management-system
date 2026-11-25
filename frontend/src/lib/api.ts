@@ -75,6 +75,16 @@ export function getToken(): string | null {
   return localStorage.getItem('asset_token') ?? sessionStorage.getItem('asset_token')
 }
 
+// The backend must continue enforcing 401. Only the frontend session is reset.
+export const AUTH_EXPIRED_EVENT = 'naksha:auth-expired'
+
+function notifyExpiredSession(status: number, requestToken: string | null, path: string): void {
+  // Wrong credentials on login/setup pages are not an expired ERP session.
+  // Ignore stale 401 responses from a previous account after a new login.
+  if (status !== 401 || !requestToken || path.startsWith('/auth/') || getToken() !== requestToken) return
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
   const headers = new Headers(options.headers)
@@ -85,6 +95,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 
   const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store', ...options, headers })
   if (!response.ok) {
+    notifyExpiredSession(response.status, token, path)
     const error = await response.json().catch(() => ({ detail: 'Request failed' }))
     throw new ApiError(response.status, apiErrorMessage(error))
   }
@@ -99,6 +110,7 @@ export async function apiBlob(path: string): Promise<Blob> {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!response.ok) {
+    notifyExpiredSession(response.status, token, path)
     const error = await response.json().catch(() => ({ detail: 'Request failed' }))
     throw new Error(apiErrorMessage(error))
   }
@@ -111,6 +123,7 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!response.ok) {
+    notifyExpiredSession(response.status, token, path)
     const error = await response.json().catch(() => ({ detail: 'Download failed' }))
     throw new Error(apiErrorMessage(error, 'Download failed'))
   }
@@ -138,6 +151,9 @@ export async function uploadExcel(path: string, file: File): Promise<Record<stri
     body: formData,
   })
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(apiErrorMessage(data, 'Excel import failed'))
+  if (!response.ok) {
+    notifyExpiredSession(response.status, token, path)
+    throw new Error(apiErrorMessage(data, 'Excel import failed'))
+  }
   return data
 }
