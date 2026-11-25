@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity, BarChart3, Bell, Building2, CalendarClock, ChevronDown,
+  Activity, BarChart3, Bell, Building2, CalendarClock, CalendarDays, CalendarCheck2, Clock3, ChevronDown,
   ClipboardList, FolderKanban, LifeBuoy, LogOut, Mail, Menu, MessageSquareText,
   MapPinned, FileCheck2, ShoppingCart, Plus, RefreshCw, Search, TrendingUp, UserRoundPlus, Users, X,
 } from 'lucide-react'
@@ -84,6 +84,14 @@ const bdeExpenseLabels = new Set([
   'New Project Expense', 'My Expense Claims', 'Start Travel / KM Claim', 'My Travel / KM Claims',
 ])
 const bdeExpenseNav = nav.filter(item => bdeExpenseLabels.has(item.label))
+// Reuse the exact personal leave and attendance routes already used by other employees.
+const bdeAttendanceNav = [
+  { to: '/hrms/leave/balance', label: 'Leave Balance', icon: CalendarDays },
+  { to: '/hrms/leave/apply', label: 'Leave Application', icon: CalendarCheck2 },
+  { to: '/hrms/leave/calendar', label: 'My Leave Calendar', icon: CalendarDays },
+  { to: '/hrms/leave/holidays', label: 'Holiday Calendar', icon: CalendarDays },
+  { to: '/hrms/attendance', label: 'My Attendance / Check-in', icon: Clock3 },
+]
 function bdeExpenseActiveRoute(target: string, pathname: string): boolean {
   if (pathname === target) return true
   // /travel-km/new must not also highlight /travel-km (same for /expenses/new).
@@ -141,12 +149,13 @@ function ClientRows({ rows, onView }: { rows: RegisteredClient[]; onView: (id: n
   </table></div>
 }
 
-export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNode } = {}) {
+export function BDEmployeeWorkspace({ travelContent, attendanceContent }: { travelContent?: ReactNode; attendanceContent?: ReactNode } = {}) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const route = location.pathname.startsWith('/expenses') ? 'expense' : (location.pathname.split('/')[2] || 'overview')
-  const tab = travelContent ? 'travel' : (['prospects','activities','followups'].includes(route) ? 'lead-hub' : route)
+  const embeddedContent = attendanceContent ?? travelContent
+  const tab = embeddedContent ? 'travel' : (['prospects','activities','followups'].includes(route) ? 'lead-hub' : route)
   const leadHubPart = location.pathname.split('/')[3]
   const ticketId = location.pathname.split('/')[3]
   const hubTab = ['dashboard','prospects','activities','followups'].includes(leadHubPart)
@@ -177,6 +186,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
   const [expensesOpen, setExpensesOpen] = useState(() =>
     bdeExpenseNav.some(item => bdeExpenseActiveRoute(item.to, location.pathname))
   )
+  const [attendanceOpen, setAttendanceOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -190,7 +200,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(()=>{ if (!travelContent && (!['overview','support','tickets','expense','profile'].includes(tab))) void refresh() },[refresh,tab, travelContent])
+  useEffect(()=>{ if (!embeddedContent && (!['overview','support','tickets','expense','profile'].includes(tab))) void refresh() },[refresh,tab, embeddedContent])
 
   const loadClients = useCallback(async () => {
     setLoadingClients(true)
@@ -207,10 +217,10 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
   }, [])
 
   useEffect(() => {
-    if (!travelContent && tab === 'lead-hub' && hubTab === 'prospects' && recordType === 'clients') {
+    if (!embeddedContent && tab === 'lead-hub' && hubTab === 'prospects' && recordType === 'clients') {
       void loadClients()
     }
-  }, [travelContent, tab, hubTab, recordType, loadClients])
+  }, [embeddedContent, tab, hubTab, recordType, loadClients])
 
   const openLead = useCallback(async (lead:Prospect) => {
     setSelected(lead)
@@ -314,6 +324,20 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
       </div>
       <span className="sidebar-section-label">My Workspace</span>
       <nav aria-label="BD employee workspace">
+        <section className={`sidebar-nav-group ${attendanceOpen ? 'open' : ''}`}>
+          <button type="button" className="sidebar-group-toggle" aria-expanded={attendanceOpen}
+            onClick={() => setAttendanceOpen(open => !open)}>
+            <span>Attendance</span><ChevronDown size={14}/>
+          </button>
+          {attendanceOpen && <div className="sidebar-group-items">
+            {bdeAttendanceNav.map(item => { const Icon = item.icon; return (
+              <NavLink key={item.to} to={item.to} onClick={() => setMobileOpen(false)}
+                className={location.pathname === item.to ? 'active' : ''}>
+                <Icon size={16}/><span>{item.label}</span>
+              </NavLink>
+            ) })}
+          </div>}
+        </section>
         {nav.filter(item => !bdeExpenseLabels.has(item.label)).map(item=>{ const Icon = item.icon; const isTravelNav = item.to === '/travel-km' || item.to === '/travel-km/new'; const active = isTravelNav ? (item.to === '/travel-km/new' ? location.pathname === '/travel-km/new' : (location.pathname === '/travel-km' || (location.pathname.startsWith('/travel-km/') && location.pathname !== '/travel-km/new'))) : item.to==='/bd-employee' ? tab==='overview' : item.to==='/expenses' ? (location.pathname==='/expenses' || /^\/expenses\/\d+(?:\/(?:edit|settle))?$/.test(location.pathname)) : location.pathname===item.to || location.pathname.startsWith(item.to+'/') || (item.to==='/bd-employee/lead-hub' && ['prospects','activities','followups'].includes(route)); if (item.label === 'My Expenses') return (
           <section className={`sidebar-nav-group bde-expenses-dropdown ${expensesOpen ? 'open' : ''}`} key={item.to}>
             <button type="button" className="sidebar-group-toggle" aria-expanded={expensesOpen}
@@ -345,7 +369,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
       </div>
     </aside>
     {mobileOpen && <button type="button" className="sidebar-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close BD employee menu"/>}
-    <main className="bde-main"><div className="bde-notification-bell"><GlobalNotificationBell /></div>{travelContent ? travelContent : <>
+    <main className="bde-main"><div className="bde-notification-bell"><GlobalNotificationBell /></div>{embeddedContent ? embeddedContent : <>
       {!['overview', 'support', 'tickets', 'projects', 'clients', 'tracking', 'business', 'expense', 'finance', 'notifications', 'profile', 'feedback'].includes(tab) && tab!=='lead-hub' && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
       {error && <p className="bde-error" role="alert">{error}</p>}
       {notice && <p className="bde-success" role="status">{notice}</p>}

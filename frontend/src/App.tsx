@@ -107,6 +107,14 @@ function ExpenseEmployeeLayout({ children }: { children: ReactNode }) {
   return user?.role === 'bd_employee' ? <BDEmployeeWorkspace /> : <WithLayout>{children}</WithLayout>
 }
 
+// BD employees use their own sidebar with the same shared HRMS self-service pages.
+function EmployeeAttendanceLayout({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  return user?.role === 'bd_employee'
+    ? <BDEmployeeWorkspace attendanceContent={children} />
+    : <WithLayout>{children}</WithLayout>
+}
+
 function ITWorkRoute() {
   const { user } = useAuth()
   return user?.role === 'management' ? <ManagementITWorkReadOnlyPage /> : <WorkFormPage />
@@ -134,11 +142,11 @@ export default function App() {
       <Route path="/forgot-password" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <ForgotPasswordPage />} />
       <Route path="/verify-authenticator" element={<AuthenticatorPage />} />
       <Route path="/select-branch" element={<BranchSelectionPage />} />
-      <Route path="/hrms/leave/balance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="balance" /></WithLayout></ProtectedRoute>} />
-      <Route path="/hrms/leave/apply" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="apply" /></WithLayout></ProtectedRoute>} />
-      <Route path="/hrms/leave/calendar" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="calendar" /></WithLayout></ProtectedRoute>} />
-      <Route path="/hrms/leave/holidays" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="holidays" /></WithLayout></ProtectedRoute>} />
-      <Route path="/hrms/attendance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><AttendancePage /></WithLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/balance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="balance" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/apply" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="apply" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/calendar" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="calendar" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/holidays" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="holidays" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/attendance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><AttendancePage /></EmployeeAttendanceLayout></ProtectedRoute>} />
       <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
