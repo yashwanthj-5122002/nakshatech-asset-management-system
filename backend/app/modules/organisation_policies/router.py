@@ -57,6 +57,8 @@ INITIAL_EVENT = "organisation_policy.initial"
 # Serializes policy changes, acknowledgement and reminder
 # generation across PostgreSQL backend workers.
 LOCK_ID = 684201935
+EMPLOYEE_ROLES = ("employee", "bd_employee")
+POLICY_ROLES = ("hr", *EMPLOYEE_ROLES)
 
 
 # ============================================================
@@ -184,7 +186,7 @@ def policy_actor(
     user = auth.user
 
     if (
-        user.role not in {"hr", "employee"}
+        user.role not in {"hr", "employee", "bd_employee"}
         or auth.effective_role != user.role
         or not user.is_active
         or user.account_status != "active"
@@ -211,7 +213,7 @@ def hr_only(
 def employee_only(
     user: User = Depends(policy_actor),
 ) -> User:
-    if user.role != "employee":
+    if user.role not in {"employee", "bd_employee"}:
         raise HTTPException(
             status_code=403,
             detail="Only employees can acknowledge policies.",
@@ -226,11 +228,10 @@ def acquire_lock(db: Session):
             {"key": LOCK_ID},
         )
 
-
 def active_employees(db: Session):
     return db.scalars(
         select(User).where(
-            User.role == "employee",
+            User.role.in_(EMPLOYEE_ROLES),
             User.is_active.is_(True),
             User.account_status == "active",
         ).order_by(User.full_name)

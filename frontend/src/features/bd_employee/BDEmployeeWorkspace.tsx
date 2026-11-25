@@ -7,6 +7,9 @@ import {
   ClipboardList, FolderKanban, LifeBuoy, LogOut, Mail, Menu, MessageSquareText,
   MapPinned, FileCheck2, ShoppingCart, Plus, RefreshCw, Search, TrendingUp, UserRoundPlus, Users, X,
 } from 'lucide-react'
+import { OrganisationPoliciesPage } from '../organisation_policies/OrganisationPoliciesPage'
+import { BookOpen as OrganisationPoliciesIcon } from 'lucide-react'
+
 import { apiFetch } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Logo } from '../../components/Logo'
@@ -63,6 +66,11 @@ const outcomes = Object.keys(outcomeLabels) as ActivityOutcome[]
 // Employee-only routes; never point an employee directly at manager/Finance APIs.
 // Preserve the BD Manager's menu order, replacing My Team with the combined Lead Hub.
 const nav = [
+  {
+  to: '/bd-employee/organisation-policies',
+  label: 'Organisation Policies',
+  icon: OrganisationPoliciesIcon,
+},
   { to:'/bd-employee', label:'Support Dashboard', icon:LifeBuoy },
   { to:'/bd-employee/support/new', label:'Raise New Ticket', icon:MessageSquareText },
   { to:'/bd-employee/my-expenses', label:'My Expenses', icon:Wallet },
@@ -382,6 +390,9 @@ export function BDEmployeeWorkspace({ travelContent, attendanceContent }: { trav
       )}
       {tab==='profile' && <ProfilePage />}
       {tab==='overview' && <EmployeeSupportDashboard bdEmployee />}
+      {tab === 'organisation-policies' && (
+  <OrganisationPoliciesPage />
+)}
       {tab==='support' && (ticketId === 'new' ? <BDEmployeeTicketEntry /> : <Navigate to="/bd-employee" replace />)}
       {tab==='tickets' && (ticketId ? <TicketDetailPage /> : <TicketListPage />)}
       {tab==='lead-hub' && <>

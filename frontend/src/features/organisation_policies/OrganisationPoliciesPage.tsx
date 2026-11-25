@@ -106,6 +106,9 @@ function errorText(error: unknown) {
 export function OrganisationPoliciesPage() {
   const { user } = useAuth()
   const isHR = user?.role === 'hr'
+  const isEmployee =
+  user?.role === 'employee' ||
+  user?.role === 'bd_employee'
 
   const [params, setParams] = useSearchParams()
   const selectedId = Number(params.get('policy') || 0)
@@ -145,10 +148,10 @@ export function OrganisationPoliciesPage() {
   }, [])
 
   useEffect(() => {
-    if (user?.role === 'hr' || user?.role === 'employee') {
+    if (isHR || isEmployee) {
       void reload().catch(err => setError(errorText(err)))
     }
-  }, [reload, user?.role, user?.email])
+  }, [reload, isHR, isEmployee, user?.role, user?.email])
 
   useEffect(() => {
     if (library) {
@@ -515,9 +518,9 @@ export function OrganisationPoliciesPage() {
     return true
   })
 
-  if (user?.role !== 'hr' && user?.role !== 'employee') {
-    return <p>Access denied.</p>
-  }
+  if (!isHR && !isEmployee) {
+  return <p>Access denied.</p>
+}
 
   return (
     <main className="op-page">

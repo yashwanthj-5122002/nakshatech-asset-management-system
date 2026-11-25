@@ -149,7 +149,23 @@ export default function App() {
       <Route path="/hrms/leave/holidays" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="holidays" /></EmployeeAttendanceLayout></ProtectedRoute>} />
       <Route path="/hrms/attendance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><AttendancePage /></EmployeeAttendanceLayout></ProtectedRoute>} />
       {/* NAKSHA_ORG_POLICIES_ROUTE */}
-      <Route path="/organisation-policies" element={<StrictProtectedRoute roles={['hr', 'employee']}><WithLayout><OrganisationPoliciesPage /></WithLayout></StrictProtectedRoute>} />
+      <Route
+  path="/organisation-policies"
+  element={
+    <StrictProtectedRoute roles={['hr', 'employee', 'bd_employee']}>
+      {user?.role === 'bd_employee' ? (
+        <Navigate
+          to={'/bd-employee/organisation-policies' + window.location.search}
+          replace
+        />
+      ) : (
+        <WithLayout>
+          <OrganisationPoliciesPage />
+        </WithLayout>
+      )}
+    </StrictProtectedRoute>
+  }
+/>
       <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
