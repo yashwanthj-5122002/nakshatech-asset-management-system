@@ -61,3 +61,10 @@
 /* Personal BD notification bell: reuses the shared ERP notification dropdown. */
 .bde-notification-bell{display:flex;justify-content:flex-end;position:relative;z-index:45;margin:-22px 0 12px;}
 @media(max-width:760px){.bde-notification-bell{margin:0 0 14px}}
+
+/* Compact Prospects / Clients selector inside the existing Daily Activity Report. */
+.app-shell.bde-shell .bde-record-switch{display:flex;align-items:center;gap:7px;margin:0 0 14px}
+.app-shell.bde-shell .bde-record-switch button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:31px;padding:5px 12px;border:1px solid #cbd9e8;border-radius:18px;background:#fff;color:#244361;font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s}
+.app-shell.bde-shell .bde-record-switch button:hover{border-color:#6b9ccc;background:#f2f7fd}
+.app-shell.bde-shell .bde-record-switch button.active{background:#0c64b2;color:#fff;border-color:#0c64b2}
+.app-shell.bde-shell .bde-record-switch button:focus-visible{outline:3px solid #9bcafb;outline-offset:2px}

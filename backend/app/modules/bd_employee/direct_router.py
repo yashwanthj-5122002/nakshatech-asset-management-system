@@ -240,6 +240,32 @@ def dashboard(db: Session = Depends(get_db), employee: User = Depends(_employee)
     }
 
 
+@router.get("/clients/list")
+def list_employee_clients(
+    db: Session = Depends(get_db), employee: User = Depends(_employee),
+) -> dict:
+    """Official registered BD clients owned by the authenticated employee only.
+
+    Reuse the direct-client / approved-handoff ownership boundary; never treat
+    an unverified 'won' prospect as a registered client.
+    """
+    allowed_ids = _own_client_ids(db, employee)
+    if not allowed_ids:
+        return {"items": []}
+    rows = db.scalars(select(FinanceClient).where(
+        FinanceClient.id.in_(allowed_ids),
+        FinanceClient.source_team == "bd_team",
+        FinanceClient.is_active.is_(True),
+    ).order_by(FinanceClient.created_at.desc(), FinanceClient.id.desc())).all()
+    return {"items": [
+        {"id": row.id, "client_code": row.client_code,
+         "client_name": row.client_name,
+         "contact_person_name": row.contact_person_name,
+         "client_email": row.client_email}
+        for row in rows
+    ]}
+
+
 @router.post("/clients", status_code=status.HTTP_201_CREATED)
 def create_client(payload: FinanceClientCreateRequest, request: Request,
                   db: Session = Depends(get_db), employee: User = Depends(_employee)) -> dict:
@@ -272,6 +298,10 @@ def create_project(payload: WorkflowProjectCreate, request: Request,
         project, workflow = create_bd_project(db, actor=employee, payload=payload)
         _audit(db, request, employee, "BD_EMPLOYEE_PROJECT_CREATED", "finance_project", project.id,
                {"project_code": project.project_code, "workflow_status": workflow.status})
+        # Notify authorized BD Managers only after the authoritative project exists;
+        # deduped and committed with the existing project creation transaction.
+        from app.modules.bd_employee.manager_notification_service import safe_notify_manager_project_event
+        safe_notify_manager_project_event(db, project_id=project.id, milestone="project_created")
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code,
                 "workflow_status": workflow.status,

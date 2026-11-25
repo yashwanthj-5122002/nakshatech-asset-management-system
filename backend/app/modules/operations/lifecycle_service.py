@@ -374,6 +374,31 @@ def enter_feedback_lifecycle(
     )
 
 
+def _employee_feedback_project_ids(db: Session, actor: User) -> set[int]:
+    """Reuse the BD Employee project visibility boundary, including legacy
+    approved handoffs, hidden records and source-team restrictions. Never accept
+    an employee identifier from a request body or trust the frontend filter.
+    """
+    if (actor.role or "").strip().lower() != "bd_employee" or not actor.is_active:
+        return set()
+    # Deferred import avoids a service/router import cycle at application startup.
+    from app.modules.bd_employee.direct_router import _business_project_ids
+
+    return _business_project_ids(db, actor)
+
+
+def _can_manage_feedback(db: Session, actor: User, workflow: ProjectWorkflow) -> bool:
+    """Employee feedback rights apply ONLY to employee-visible BD projects.
+
+    Retain existing BD-owner and Admin access exactly as before. Historical
+    manager-created employee projects remain owned by their original BD manager
+    for Finance/notification purposes; we never rewrite workflow attribution.
+    """
+    if (actor.role or "").strip().lower() == "bd_employee":
+        return workflow.project_id in _employee_feedback_project_ids(db, actor)
+    return workflow.bd_owner_user_id == actor.id or (actor.role or "").lower() == "admin"
+
+
 def create_feedback_request(
     db: Session,
     *,
@@ -385,7 +410,7 @@ def create_feedback_request(
     workflow = _workflow(db, project_id)
     if db.get(ManagementProjectLink, project_id) is not None:
         raise ValueError("Management projects require original-source approval, not BD feedback")
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can send client feedback requests")
     allowed = {FEEDBACK_NOT_SENT, REWORK_RESUBMITTED, FEEDBACK_REMINDER_SENT, AWAITING_CLIENT_FEEDBACK}
     if workflow.status not in allowed:
@@ -481,7 +506,7 @@ def send_feedback_reminder(
     if row is None:
         raise ValueError("Feedback request not found")
     workflow = _workflow(db, row.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can send feedback reminders")
     if row.status != "sent" or row.responded_at is not None:
         raise ValueError("Only an unanswered feedback request can be reminded")
@@ -654,7 +679,7 @@ def record_manual_feedback_response(
     """
     project = _project(db, project_id)
     workflow = _workflow(db, project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can record a manual client feedback response")
     allowed = {FEEDBACK_NOT_SENT, FEEDBACK_REQUESTED, FEEDBACK_REMINDER_SENT, AWAITING_CLIENT_FEEDBACK}
     if workflow.status not in allowed:
@@ -743,11 +768,11 @@ def confirm_client_acceptance(
     response = db.get(ProjectFeedbackResponse, response_id)
     if response is None:
         raise ValueError("Feedback response not found")
+    workflow = _workflow(db, response.project_id)
+    if not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("Only the owning BD user can confirm client acceptance")
     if response.response_type != "accepted":
         raise ValueError("Only positive client feedback can be confirmed as accepted")
-    workflow = _workflow(db, response.project_id)
-    if workflow.bd_owner_user_id != actor.id and (actor.role or "").lower() != "admin":
-        raise PermissionError("Only the owning BD user can confirm client acceptance")
     if response.classification_status == "confirmed" and response.classified_as == "accepted":
         return response
     if response.classification_status != "pending_bd":
@@ -799,7 +824,7 @@ def classify_feedback_response(
     if response is None:
         raise ValueError("Feedback response not found")
     workflow = _workflow(db, response.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can confirm feedback classification")
     if response.classification_status == "confirmed":
         raise ValueError("This feedback response has already been classified")
@@ -1046,7 +1071,10 @@ def reconcile_rework_cycle(db: Session, *, actor: User, cycle_id: int) -> tuple[
     workflow = _workflow(db, cycle.project_id)
     project = _project(db, cycle.project_id)
     pm_id = project.master_profile.project_manager_id if project.master_profile else None
-    if not (actor.role == "admin" or actor.id in {cycle.project_manager_user_id, cycle.team_leader_user_id, workflow.bd_owner_user_id, pm_id}):
+    can_update = _can_manage_feedback(db, actor, workflow)
+    if actor.role != "bd_employee":
+        can_update = can_update or actor.id in {cycle.project_manager_user_id, cycle.team_leader_user_id, pm_id}
+    if not can_update:
         raise PermissionError("Only the assigned PM, Team Lead, BD owner or an Admin can reconcile this rework cycle")
     before = cycle.status
     sync_rework_cycle_with_packages(db, actor=actor, cycle_id=cycle_id, note="Reconciled from work-package state")
@@ -1064,7 +1092,7 @@ def resubmit_rework(
     if cycle is None:
         raise ValueError("Rework cycle not found")
     workflow = _workflow(db, cycle.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can resubmit a rework delivery")
     if cycle.status != REWORK_DELIVERED:
         raise ValueError("The rework must be delivered before client resubmission")
@@ -1089,7 +1117,7 @@ def recommend_no_feedback_closure(
     if row is None:
         raise ValueError("Feedback request not found")
     workflow = _workflow(db, row.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can recommend no-feedback closure")
     if row.status != "sent" or row.responded_at is not None:
         raise ValueError("No-feedback closure requires an unanswered request")
@@ -1168,14 +1196,16 @@ def authorize_deemed_acceptance(
 def decide_change_request(
     db: Session, *, actor: User, change_request_id: int, payload: ChangeRequestDecision
 ) -> ProjectChangeRequest:
-    if actor.role not in (MANAGEMENT_ROLES | BD_ROLES | FINANCE_ROLES):
+    if actor.role not in (MANAGEMENT_ROLES | BD_ROLES | FINANCE_ROLES | {"bd_employee"}):
         raise PermissionError("Only Management, BD, Finance or Admin can decide a change request")
     row = db.get(ProjectChangeRequest, change_request_id)
     if row is None:
         raise ValueError("Change request not found")
+    workflow = _workflow(db, row.project_id)
+    if actor.role == "bd_employee" and not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("This project is not assigned to this BD Employee")
     if row.status != "pending":
         raise ValueError("Change request has already been decided")
-    workflow = _workflow(db, row.project_id)
     if workflow.status != CHANGE_REQUEST_PENDING:
         raise ValueError("Project workflow is not awaiting a change request decision")
     row.status = payload.decision
@@ -2692,6 +2722,8 @@ def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = exclude_hidden_projects(db, query)
     if role == "bd":
         query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
+    elif role == "bd_employee":
+        query = query.where(FinanceProject.id.in_(_employee_feedback_project_ids(db, actor)))
     elif is_technical_pm_role(role):
         query = query.join(FinanceProjectMasterProfile).where(FinanceProjectMasterProfile.project_manager_id == actor.id)
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
@@ -2793,6 +2825,8 @@ def project_360(db: Session, *, actor: User, role: str, project_id: int) -> dict
     workflow = _workflow(db, project_id)
     if role == "bd" and workflow.bd_owner_user_id != actor.id:
         raise PermissionError("Project is not assigned to this BD user")
+    if role == "bd_employee" and not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("Project is not assigned to this BD Employee")
     if is_technical_pm_role(role) and (not project.master_profile or project.master_profile.project_manager_id != actor.id):
         raise PermissionError("Project is not assigned to this Project Manager")
     summary = _project_summary(db, project, workflow)

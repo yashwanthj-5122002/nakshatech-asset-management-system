@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { apiFetch } from '../lib/api'
+import { apiFetch, getToken } from '../lib/api'
 import { formatNotificationTimestamp } from '../lib/dateTime'
 
 type NotificationCategory = 'approval' | 'ticket' | 'system'
@@ -102,6 +102,8 @@ export function GlobalNotificationBell() {
   const [markingAll, setMarkingAll] = useState(false)
 
   const refreshUnreadCount = useCallback(async () => {
+    const requestToken = getToken()
+    if (!user || !requestToken) return
     try {
       const role = user?.role || ''
       if (role === 'bd_employee') {
@@ -111,6 +113,7 @@ export function GlobalNotificationBell() {
           // Optional reminder refresh must never block the bell.
         }
       }
+      if (getToken() !== requestToken) return
       const now = Date.now()
       if (SLA_REFRESH_ROLES.has(role) && now - lastSlaRefreshRef.current >= SLA_REFRESH_INTERVAL_MS) {
         lastSlaRefreshRef.current = now
@@ -120,28 +123,40 @@ export function GlobalNotificationBell() {
           // SLA refresh is best-effort and must never break notification polling.
         }
       }
+      if (getToken() !== requestToken) return
       const response = await apiFetch<UnreadCountResponse>('/notifications/global/unread-count')
-      setUnreadCount(Math.max(0, response.unread_count || 0))
+      if (getToken() === requestToken) setUnreadCount(Math.max(0, response.unread_count || 0))
     } catch {
       // Notification polling must never interrupt the surrounding application UI.
     }
-  }, [user?.role])
+  }, [user?.id, user?.role])
 
   const loadNotifications = useCallback(async (selectedFilter: NotificationFilter) => {
+    const requestToken = getToken()
+    if (!user || !requestToken) return
     const requestId = ++listRequestIdRef.current
     setLoading(true)
     setError('')
     try {
       const response = await apiFetch<GlobalNotification[]>(listPath(selectedFilter))
-      if (requestId === listRequestIdRef.current) setNotifications(response)
+      if (requestId === listRequestIdRef.current && getToken() === requestToken) setNotifications(response)
     } catch {
-      if (requestId === listRequestIdRef.current) setError('Notifications are temporarily unavailable.')
+      if (requestId === listRequestIdRef.current && getToken() === requestToken) setError('Notifications are temporarily unavailable.')
     } finally {
-      if (requestId === listRequestIdRef.current) setLoading(false)
+      if (requestId === listRequestIdRef.current && getToken() === requestToken) setLoading(false)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
+    if (!user || !getToken()) {
+      ++listRequestIdRef.current
+      setOpen(false)
+      setNotifications([])
+      setUnreadCount(0)
+      setError('')
+      setLoading(false)
+      return
+    }
     void refreshUnreadCount()
     const timer = window.setInterval(() => void refreshUnreadCount(), POLL_INTERVAL_MS)
     const handleFocus = () => void refreshUnreadCount()
@@ -150,10 +165,10 @@ export function GlobalNotificationBell() {
       window.clearInterval(timer)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [refreshUnreadCount])
+  }, [refreshUnreadCount, user?.id])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !user || !getToken()) return
     void loadNotifications(filter)
     void refreshUnreadCount()
   }, [filter, loadNotifications, open, refreshUnreadCount])
