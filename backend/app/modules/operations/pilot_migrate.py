@@ -99,11 +99,13 @@ def migrate() -> None:
                ) ORDER BY t.table_name
         """), {"pattern":FINANCIAL_PATTERN}).all()
         if missing:
-            print("FINANCIAL TABLES WITHOUT DIRECT project_id - check indirect write paths:")
+            print(
+                "FINANCIAL TABLES WITHOUT DIRECT project_id "
+                "- check indirect write paths:"
+            )
             for (table,) in missing:
                 print(f" - {table}")
+
     print("MIGRATION COMPLETE: existing project data remains unchanged")
-
-
 if __name__ == "__main__":
     migrate()

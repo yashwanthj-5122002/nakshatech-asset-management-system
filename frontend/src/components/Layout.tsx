@@ -114,6 +114,8 @@ const navItems: NavItem[] = [
 
   // HR department management: retain employee-wide approvals and monitoring.
  { to: '/hrms/hr', label: 'HR Leave & Attendance Dashboard', icon: CalendarCheck2, roles: ['hr', 'admin'], group: 'hr' },
+  // NAKSHA_ORG_POLICIES_NAV
+  { to: '/organisation-policies', label: 'Organisation Policies', icon: FileCheck2, roles: ['hr', 'employee'], group: 'hr' },
   { to: '/support', label: 'Support Dashboard', icon: LifeBuoy, roles: ['employee'], group: 'support' },
   { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
   { to: '/expenses/new', label: 'New Project Expense', icon: FileCheck2, roles: ['employee'], group: 'support' },
@@ -227,6 +229,7 @@ function findActiveNavItem(items: NavItem[], pathname: string): NavItem | undefi
 }
 
 function canViewItem(role: Role, item: NavItem): boolean {
+  if (item.to === '/organisation-policies') return role === 'hr' || role === 'employee'
   if (item.to === '/management/project-management') return role === 'management'
   if (item.to === '/software-team') return role === 'software_team'
   if (item.to === '/admin') return role === 'admin'

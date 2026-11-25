@@ -1,3 +1,4 @@
+import { OrganisationPoliciesPage } from './features/organisation_policies/OrganisationPoliciesPage'
 import ProjectTrackingPage from './pages/ProjectTrackingPage'
 import { BDAIPage } from './features/bd_ai/BDAIPage'
 import type { ReactNode } from 'react'
@@ -139,6 +140,8 @@ export default function App() {
       <Route path="/hrms/leave/calendar" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="calendar" /></WithLayout></ProtectedRoute>} />
       <Route path="/hrms/leave/holidays" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><LeavePage mode="holidays" /></WithLayout></ProtectedRoute>} />
       <Route path="/hrms/attendance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><AttendancePage /></WithLayout></ProtectedRoute>} />
+      {/* NAKSHA_ORG_POLICIES_ROUTE */}
+      <Route path="/organisation-policies" element={<StrictProtectedRoute roles={['hr', 'employee']}><WithLayout><OrganisationPoliciesPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />

@@ -35,6 +35,7 @@ from app.modules.agent_monitor.router import router as agent_monitor_router
 from app.modules.notifications import models as notification_models  # noqa: F401
 from app.modules.payables.router import router as payables_router  # NAKSHA_PAYABLES_INTEGRATION
 from app.modules.notifications.router import router as notification_router
+from app.modules.organisation_policies.router import router as organisation_policies_router, with_policy_lifespan # NAKSHA_ORG_POLICIES_BACKEND
 from app.modules.notifications.service import retire_obsolete_sample_notifications
 from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.finance import standalone_invoice_models as standalone_invoice_models  # noqa: F401
@@ -564,7 +565,7 @@ app = FastAPI(
     root_path=settings.root_path,
     docs_url=settings.docs_url,
     redoc_url=settings.redoc_url,
-    lifespan=lifespan,
+    lifespan=with_policy_lifespan(lifespan),
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
@@ -598,6 +599,7 @@ app.include_router(bd_ai_router, prefix=settings.api_prefix)
 app.include_router(agent_monitor_router, prefix=settings.api_prefix)
 app.include_router(payables_router, prefix=settings.api_prefix)  # NAKSHA_PAYABLES_ROUTE
 app.include_router(notification_router, prefix=settings.api_prefix)
+app.include_router(organisation_policies_router, prefix=settings.api_prefix)
 app.include_router(business_router, prefix=settings.api_prefix)
 app.include_router(finance_router, prefix=settings.api_prefix)
 app.include_router(build_project_tracking_router(get_current_auth, reporting_service))  # NAKSHA_PTS_BACKEND
