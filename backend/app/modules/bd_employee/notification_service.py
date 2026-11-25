@@ -158,6 +158,12 @@ def safe_notify_project_milestone(db: Session, *, project_id: int, milestone: st
             notify_project_milestone(db, project_id=project_id, milestone=milestone, event_id=event_id)
     except Exception:
         logger.exception("BD Employee notification failed: project=%s milestone=%s", project_id, milestone)
+    if milestone in {"project_delivered", "client_feedback_updated", "project_closed"}:
+        # Existing workflow call sites already fire these authoritative milestones.
+        # Dispatch manager receipts separately so an employee-notification error
+        # cannot prevent delivery of the manager notification (or vice versa).
+        from app.modules.bd_employee.manager_notification_service import safe_notify_manager_project_event
+        safe_notify_manager_project_event(db, project_id=project_id, milestone=milestone, event_id=event_id)
 
 
 def safe_notify_completed_stage(db: Session, *, project_id: int, stage: str) -> None:

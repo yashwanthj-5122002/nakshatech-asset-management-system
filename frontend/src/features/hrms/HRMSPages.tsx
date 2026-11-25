@@ -62,7 +62,7 @@ function Header({
 }) {
   const { user } = useAuth()
 
-  const visibleNav = user?.role === 'employee' ? nav : []
+  const visibleNav = (user?.role === 'employee' || user?.role === 'bd_employee') ? nav : []
 
   return (
     <>
@@ -165,6 +165,7 @@ function MonthCalendar({ month, leaves, holidays, governmentReference = false }:
 export function LeavePage({ mode }: { mode: 'balance' | 'apply' | 'calendar' | 'holidays' }) {
   const { user } = useAuth()
   const hrUsesEmail = mode === 'apply' && user?.role === 'hr'
+  const isEmployeeSelfService = user?.role === 'employee' || user?.role === 'bd_employee'
   const year = new Date().getFullYear()
   const [requests, setRequests] = useState<Leave[]>([])
   const [balance, setBalance] = useState<LeaveBalanceResponse | null>(null)
@@ -266,7 +267,7 @@ export function LeavePage({ mode }: { mode: 'balance' | 'apply' | 'calendar' | '
   return <main className="hrms-page">
     <Header title={titles[mode]} description="Review your leave records, applications and NakshaTech-approved holidays." />
     <Failure message={error}/><Success message={notice}/>
-    {mode === 'balance' && user?.role === 'employee' && <section className="hrms-panel hrms-reference-panel">
+    {mode === 'balance' && isEmployeeSelfService && <section className="hrms-panel hrms-reference-panel">
       <div className="hrms-row"><div><p className="hrms-section-eyebrow">MY LEAVE ACCOUNT</p><h2>Leave balances · {year}</h2></div><Link className="hrms-primary hrms-inline-action" to="/hrms/leave/apply">Apply for leave <ArrowUpRight size={15}/></Link></div>
       <SwipeRail title="Your leave types">{balance?.balances.map(item => <article className="hrms-balance-card" key={item.leave_type}>
         <span>{statusName(item.leave_type)} Leave</span><small>Entitlement: {item.entitled ?? 'Awaiting HR setup'}</small>
@@ -276,7 +277,7 @@ export function LeavePage({ mode }: { mode: 'balance' | 'apply' | 'calendar' | '
       <p className="hrms-muted">{balance?.notice || 'HR has not configured the company leave policy.'} These amounts are not posted to payroll.</p>
     </section>}
     {hrUsesEmail && <section className="hrms-panel"><h2>HR personal leave requests</h2><p className="hrms-muted">HR personnel request their own leave through the designated company email procedure. Employee applications and approvals are available in the HR dashboard.</p><Link to="/hrms/hr" className="hrms-primary hrms-inline-action">Open employee leave requests</Link></section>}
-    {mode === 'apply' && user?.role === 'employee' && <section className="hrms-panel hrms-reference-panel" onTouchStart={e => {
+    {mode === 'apply' && isEmployeeSelfService && <section className="hrms-panel hrms-reference-panel" onTouchStart={e => {
       if ((e.target as HTMLElement).closest('input, textarea, select, button')) return
       applyTouchX.current = e.touches[0]?.clientX ?? null
     }} onTouchEnd={e => {
@@ -334,7 +335,7 @@ export function LeavePage({ mode }: { mode: 'balance' | 'apply' | 'calendar' | '
         </div>
       </>}
     </section>}
-    {mode === 'calendar' && user?.role === 'employee' && <section className="hrms-panel">
+    {mode === 'calendar' && isEmployeeSelfService && <section className="hrms-panel">
       <h2>My leave records</h2>
       <p className="hrms-muted">Approved and pending periods are shown below. Cancel pending requests if your plans change.</p>
       <div className="hrms-leave-calendar-layout"><div><MonthNavigator month={calendarMonth} onChange={setCalendarMonth}/>
@@ -395,7 +396,7 @@ export function AttendancePage() {
     try { await apiFetch('/hrms/me/absence', { method: 'POST', body: JSON.stringify({ work_date: reasonDate, reason }) }); setNotice('Your explanation has been submitted to HR.'); setReason(''); await load() }
     catch (err) { setError(errorText(err)) } finally { setBusy(false) }
   }
-  if (user?.role !== 'employee') {
+  if (user?.role !== 'employee' && user?.role !== 'bd_employee') {
   return (
     <main className="hrms-page">
       <section className="hrms-panel">

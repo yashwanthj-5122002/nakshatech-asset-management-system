@@ -15,6 +15,7 @@ from app.routers.management_project_tracking import router as management_project
 from app.api.router import router
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
+from app.core.schema_migrations import run_startup_schema_migrations
 from app.modules.backup import models as backup_models  # noqa: F401
 from app.modules.backup.router import router as backup_router
 from app.modules.business import models as business_models  # noqa: F401
@@ -451,6 +452,7 @@ def initialize_application() -> None:
                 logger.warning("PostGIS extension could not be enabled: %s", exc)
         Base.metadata.create_all(bind=engine)
         ensure_schema_compatibility()
+        run_startup_schema_migrations(engine)
         ensure_production_tracking_schema_compatibility()
         ensure_finance_v2_schema_compatibility()
         ensure_business_schema_compatibility()

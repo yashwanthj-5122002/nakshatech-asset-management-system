@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { useAuth } from '../../../context/AuthContext'
-import { apiFetch, downloadFile } from '../../../lib/api'
+import { apiFetch, downloadFile, getToken } from '../../../lib/api'
 import type { CapturedGps, TravelKmAttachment, TravelKmClaim, TravelKmProjectGeofence, TravelKmSmartVerification, TravelKmTrackingSnapshot } from '../travel-km-types'
 import { EmailRecipientChips, isValidTravelEmail } from '../EmailRecipientChips'
 import { captureLiveGps, displayDate, km, money, statusTone, travelStatusLabels, verificationLabel, workflowStage } from '../travel-km-utils'
@@ -159,10 +159,13 @@ export function TravelKmDetailPage() {
   }
 
   useEffect(() => {
+    if (!id || !user || !getToken()) return
     void loadTracking()
-    const timer = window.setInterval(() => void loadTracking(), 10_000)
+    const timer = window.setInterval(() => {
+      if (getToken()) void loadTracking()
+    }, 10_000)
     return () => window.clearInterval(timer)
-  }, [id])
+  }, [id, user?.id])
 
   useEffect(() => { void loadVerification() }, [id, tracking?.point_count, claim?.updated_at])
 
@@ -196,7 +199,7 @@ export function TravelKmDetailPage() {
   }
 
   async function sendTrackPosition(position: GeolocationPosition, force = false) {
-    if (!claim) return
+    if (!claim || !user || !getToken()) return
     const now = Date.now()
     if (!force && now - lastPointSentAtRef.current < 10_000) return
     lastPointSentAtRef.current = now

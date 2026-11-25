@@ -1,4 +1,3 @@
-import { MapPin } from 'lucide-react'
 import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -699,11 +698,6 @@ export function NakshaBengaluruNetworkGlobe() {
             </small>
           </div>
         </div>
-      </div>
-
-      <div className="naksha-login-globe-city-chip">
-        <MapPin size={14} aria-hidden="true" />
-        <span></span>
       </div>
 
       <div className="naksha-login-globe-source">

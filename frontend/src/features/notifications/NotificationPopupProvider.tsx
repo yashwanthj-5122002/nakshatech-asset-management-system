@@ -25,7 +25,7 @@ import {
   useState,
 } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, getToken } from '../../lib/api'
 import { filterAutomaticPopupQueue } from './notificationPopupPolicy'
 import {
   type FeedbackPayload,
@@ -76,7 +76,7 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
   const [feedback, setFeedback] = useState<FeedbackPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [settings, setSettings] = useState<NotificationSettings | null>(null)
-  const isAuthenticated = Boolean(user)
+  const isAuthenticated = Boolean(user && getToken())
   const deferApprovalPopupSeen = user?.role === 'finance' || user?.role === 'management'
   const seenStorageKey = deferApprovalPopupSeen
     ? `${APPROVAL_SESSION_PREFIX}${user?.id ?? 'unknown'}` : SESSION_KEY
@@ -100,7 +100,8 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
   }, [isAuthenticated])
 
   const load = useCallback(async () => {
-    if (!isAuthenticated) return
+    const requestToken = getToken()
+    if (!isAuthenticated || !requestToken) return
     try {
       let url = '/notifications/global/popup-queue?limit=5'
       if (deferApprovalPopupSeen) {
@@ -114,12 +115,12 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
         if (dismissedIds.length) url += `&exclude_ids=${dismissedIds.join(',')}`
       }
       const rows = await apiFetch<PopupNotification[]>(url)
-      setQueue(Array.isArray(rows) ? rows : [])
+      if (getToken() === requestToken) setQueue(Array.isArray(rows) ? rows : [])
     } catch {
-      // A failed popup fetch must never break the ERP.
-      setQueue([])
+      // A failed popup fetch must never break the ERP or leak stale popups after logout.
+      if (getToken() === requestToken) setQueue([])
     }
-  }, [isAuthenticated, deferApprovalPopupSeen])
+  }, [isAuthenticated, deferApprovalPopupSeen, user?.id])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -129,15 +130,15 @@ export function NotificationPopupProvider({ children }: { children: ReactNode })
   }, [isAuthenticated, load])
 
   const loadSettings = useCallback(async () => {
-    if (!isAuthenticated) return
+    const requestToken = getToken()
+    if (!isAuthenticated || !requestToken) return
     try {
-      setSettings(
-        await apiFetch<NotificationSettings>('/notifications/global/settings/notification-settings'),
-      )
+      const nextSettings = await apiFetch<NotificationSettings>('/notifications/global/settings/notification-settings')
+      if (getToken() === requestToken) setSettings(nextSettings)
     } catch {
-      setSettings(null)
+      if (getToken() === requestToken) setSettings(null)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, user?.id])
 
   useEffect(() => {
     if (!isAuthenticated) {

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity, BarChart3, Bell, Building2, CalendarClock, ChevronDown,
+  Activity, BarChart3, Bell, Building2, CalendarClock, CalendarDays, CalendarCheck2, Clock3, ChevronDown,
   ClipboardList, FolderKanban, LifeBuoy, LogOut, Mail, Menu, MessageSquareText,
   MapPinned, FileCheck2, ShoppingCart, Plus, RefreshCw, Search, TrendingUp, UserRoundPlus, Users, X,
 } from 'lucide-react'
@@ -14,6 +14,7 @@ import { GlobalNotificationBell } from '../../components/GlobalNotificationBell'
 import { NotificationsPage } from '../operations/pages/NotificationsPage'
 import './bd-employee.css'
 import { BDEmployeeProjectManagement } from './BDEmployeeProjectManagement'
+import { BDClientFeedbackPage } from '../operations/pages/BDClientFeedbackPage'
 import { BDEmployeeClientManagement } from './BDEmployeeClientManagement'
 import { BDEmployeeProjectTracking } from './BDEmployeeProjectTracking'
 import { BusinessDashboardPage } from '../business/BusinessDashboardPage'
@@ -41,6 +42,10 @@ type Prospect = {
   status: LeadStatus; notes: string|null; next_followup_date: string|null;
   created_at: string; updated_at: string; converted_client_id?: number|null; is_converted?: boolean;
 }
+type RegisteredClient = {
+  id: number; client_code: string; client_name: string;
+  contact_person_name: string | null; client_email: string | null;
+}
 type Activity = { id: number; channel: ActivityChannel; outcome: ActivityOutcome; remarks: string|null; contacted_at: string }
 const sourceLabels: Record<LeadSource,string> = {
   linkedin:'LinkedIn', google:'Google', email:'Email', phone:'Phone', referral:'Referral', website:'Company Website', other:'Other',
@@ -64,6 +69,7 @@ const nav = [
   { to:'/bd-employee/lead-hub', label:'Daily Activity Report', icon:Users },
   { to:'/bd-employee/clients', label:'Client Management', icon:Building2 },
   { to:'/bd-employee/projects', label:'Project Management', icon:FolderKanban },
+  { to:'/bd-employee/feedback', label:'Client Feedback', icon:MessageSquareText },
   { to:'/bd-employee/tracking', label:'Project Tracking', icon:Activity },
   { to:'/bd-employee/commercial', label:'Commercial Estimates', icon:BarChart3 },
   { to:'/bd-employee/notifications', label:'Notifications', icon:Bell },
@@ -78,6 +84,14 @@ const bdeExpenseLabels = new Set([
   'New Project Expense', 'My Expense Claims', 'Start Travel / KM Claim', 'My Travel / KM Claims',
 ])
 const bdeExpenseNav = nav.filter(item => bdeExpenseLabels.has(item.label))
+// Reuse the exact personal leave and attendance routes already used by other employees.
+const bdeAttendanceNav = [
+  { to: '/hrms/leave/balance', label: 'Leave Balance', icon: CalendarDays },
+  { to: '/hrms/leave/apply', label: 'Leave Application', icon: CalendarCheck2 },
+  { to: '/hrms/leave/calendar', label: 'My Leave Calendar', icon: CalendarDays },
+  { to: '/hrms/leave/holidays', label: 'Holiday Calendar', icon: CalendarDays },
+  { to: '/hrms/attendance', label: 'My Attendance / Check-in', icon: Clock3 },
+]
 function bdeExpenseActiveRoute(target: string, pathname: string): boolean {
   if (pathname === target) return true
   // /travel-km/new must not also highlight /travel-km (same for /expenses/new).
@@ -120,17 +134,36 @@ function LeadRows({ rows, onOpen, onConvert, onViewClient }: { rows:Prospect[]; 
   </table></div>
 }
 
-export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNode } = {}) {
+/** Registered clients are not inferred from prospect status; IDs come from the employee-scoped API. */
+function ClientRows({ rows, onView }: { rows: RegisteredClient[]; onView: (id: number) => void }) {
+  if (!rows.length) return <div className="bde-empty">No registered clients found. Convert a prospect or open Client Management.</div>
+  return <div className="bde-table-wrap"><table className="bde-table">
+    <thead><tr><th>Client ID</th><th>Company / Contact</th><th>Email</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody>{rows.map(client => <tr key={client.id}>
+      <td><strong>{client.client_code}</strong></td>
+      <td><strong>{client.client_name}</strong><small>{client.contact_person_name || 'No contact provided'}</small></td>
+      <td>{client.client_email || '—'}</td>
+      <td><span className="bde-status bde-status--interested">Registered Client</span></td>
+      <td><button type="button" className="bde-convert-mini" onClick={() => onView(client.id)}>View Client</button></td>
+    </tr>)}</tbody>
+  </table></div>
+}
+
+export function BDEmployeeWorkspace({ travelContent, attendanceContent }: { travelContent?: ReactNode; attendanceContent?: ReactNode } = {}) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const route = location.pathname.startsWith('/expenses') ? 'expense' : (location.pathname.split('/')[2] || 'overview')
-  const tab = travelContent ? 'travel' : (['prospects','activities','followups'].includes(route) ? 'lead-hub' : route)
+  const embeddedContent = attendanceContent ?? travelContent
+  const tab = embeddedContent ? 'travel' : (['prospects','activities','followups'].includes(route) ? 'lead-hub' : route)
   const leadHubPart = location.pathname.split('/')[3]
   const ticketId = location.pathname.split('/')[3]
   const hubTab = ['dashboard','prospects','activities','followups'].includes(leadHubPart)
     ? leadHubPart : ['prospects','activities','followups'].includes(route) ? route : 'dashboard'
   const [leads, setLeads] = useState<Prospect[]>([])
+  const [clients, setClients] = useState<RegisteredClient[]>([])
+  const [recordType, setRecordType] = useState<'all' | 'prospects' | 'clients'>('all')
+  const [loadingClients, setLoadingClients] = useState(false)
   const [selected, setSelected] = useState<Prospect|null>(null)
   const [convertLead, setConvertLead] = useState<Prospect|null>(null)
   const [history, setHistory] = useState<Activity[]>([])
@@ -153,6 +186,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
   const [expensesOpen, setExpensesOpen] = useState(() =>
     bdeExpenseNav.some(item => bdeExpenseActiveRoute(item.to, location.pathname))
   )
+  const [attendanceOpen, setAttendanceOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -166,7 +200,27 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(()=>{ if (!travelContent && (!['overview','support','tickets','expense','profile'].includes(tab))) void refresh() },[refresh,tab, travelContent])
+  useEffect(()=>{ if (!embeddedContent && (!['overview','support','tickets','expense','profile'].includes(tab))) void refresh() },[refresh,tab, embeddedContent])
+
+  const loadClients = useCallback(async () => {
+    setLoadingClients(true)
+    setClients([])
+    setError('')
+    try {
+      const result = await apiFetch<{ items: RegisteredClient[] }>('/bd-employee/direct/clients/list')
+      setClients(result.items)
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : 'Unable to load registered clients')
+    } finally {
+      setLoadingClients(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!embeddedContent && tab === 'lead-hub' && hubTab === 'prospects' && recordType === 'clients') {
+      void loadClients()
+    }
+  }, [embeddedContent, tab, hubTab, recordType, loadClients])
 
   const openLead = useCallback(async (lead:Prospect) => {
     setSelected(lead)
@@ -244,6 +298,11 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
   const today = new Date()
   const todayDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
   const filtered = leads.filter(p=>[p.company_name,p.contact_person,p.service_interest,p.status].join(' ').toLowerCase().includes(search.toLowerCase()))
+  const filteredProspects = filtered.filter(p => !p.is_converted && !p.converted_client_id)
+  const clientSearch = search.trim().toLowerCase()
+  const filteredClients = clients.filter(client =>
+    [client.client_code, client.client_name, client.contact_person_name, client.client_email]
+      .join(' ').toLowerCase().includes(clientSearch))
   const openEnquiries = filtered.filter(p=>p.status==='enquiry' || p.status==='won')
   const followups = filtered.filter(p=>p.next_followup_date && !['won','not_interested'].includes(p.status)).sort((a,b)=>(a.next_followup_date||'').localeCompare(b.next_followup_date||''))
   const selectedFollowups = followups.filter(p=>followupFilter==='all' ? true
@@ -251,8 +310,8 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
     : followupFilter==='overdue' ? (p.next_followup_date||'')<todayDate
     : (p.next_followup_date||'')>todayDate)
 
-  // Employee-only routes cannot display the manager's official feedback page.
-  if (['feedback', 'expenses'].includes(route)) return <Navigate to="/bd-employee" replace />
+  // Reuse the manager feedback UI through the employee-only, backend-scoped lifecycle APIs.
+  if (route === 'expenses') return <Navigate to="/bd-employee" replace />
 
   return <div className="app-shell bde-shell">
     <button type="button" className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open BD employee menu"><Menu size={21}/></button>
@@ -265,6 +324,20 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
       </div>
       <span className="sidebar-section-label">My Workspace</span>
       <nav aria-label="BD employee workspace">
+        <section className={`sidebar-nav-group ${attendanceOpen ? 'open' : ''}`}>
+          <button type="button" className="sidebar-group-toggle" aria-expanded={attendanceOpen}
+            onClick={() => setAttendanceOpen(open => !open)}>
+            <span>Attendance</span><ChevronDown size={14}/>
+          </button>
+          {attendanceOpen && <div className="sidebar-group-items">
+            {bdeAttendanceNav.map(item => { const Icon = item.icon; return (
+              <NavLink key={item.to} to={item.to} onClick={() => setMobileOpen(false)}
+                className={location.pathname === item.to ? 'active' : ''}>
+                <Icon size={16}/><span>{item.label}</span>
+              </NavLink>
+            ) })}
+          </div>}
+        </section>
         {nav.filter(item => !bdeExpenseLabels.has(item.label)).map(item=>{ const Icon = item.icon; const isTravelNav = item.to === '/travel-km' || item.to === '/travel-km/new'; const active = isTravelNav ? (item.to === '/travel-km/new' ? location.pathname === '/travel-km/new' : (location.pathname === '/travel-km' || (location.pathname.startsWith('/travel-km/') && location.pathname !== '/travel-km/new'))) : item.to==='/bd-employee' ? tab==='overview' : item.to==='/expenses' ? (location.pathname==='/expenses' || /^\/expenses\/\d+(?:\/(?:edit|settle))?$/.test(location.pathname)) : location.pathname===item.to || location.pathname.startsWith(item.to+'/') || (item.to==='/bd-employee/lead-hub' && ['prospects','activities','followups'].includes(route)); if (item.label === 'My Expenses') return (
           <section className={`sidebar-nav-group bde-expenses-dropdown ${expensesOpen ? 'open' : ''}`} key={item.to}>
             <button type="button" className="sidebar-group-toggle" aria-expanded={expensesOpen}
@@ -296,8 +369,8 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
       </div>
     </aside>
     {mobileOpen && <button type="button" className="sidebar-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close BD employee menu"/>}
-    <main className="bde-main"><div className="bde-notification-bell"><GlobalNotificationBell /></div>{travelContent ? travelContent : <>
-      {!['overview', 'support', 'tickets', 'projects', 'clients', 'tracking', 'business', 'expense', 'finance', 'notifications', 'profile'].includes(tab) && tab!=='lead-hub' && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
+    <main className="bde-main"><div className="bde-notification-bell"><GlobalNotificationBell /></div>{embeddedContent ? embeddedContent : <>
+      {!['overview', 'support', 'tickets', 'projects', 'clients', 'tracking', 'business', 'expense', 'finance', 'notifications', 'profile', 'feedback'].includes(tab) && tab!=='lead-hub' && <header className="bde-topbar"><div><span className="bde-overline">BUSINESS DEVELOPMENT · PERSONAL WORKSPACE</span><h1>{pageTitles[tab]||'My BD Workspace'}</h1><p>{tab==='lead-hub'?'Manage your prospects, client communications and follow-ups in one place.':'Your private BD workspace — only your own records are shown.'}</p></div><button className="bde-outline" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={16}/> Refresh</button></header>}
       {error && <p className="bde-error" role="alert">{error}</p>}
       {notice && <p className="bde-success" role="status">{notice}</p>}
       {loading && <p className="bde-muted">Loading your BD records…</p>}
@@ -322,9 +395,36 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
         </nav>
         {hubTab==='dashboard' && <BDEmployeeDailyDashboard />}
         {hubTab==='prospects'&& <>
-          <div className="bde-section-head"><div><h2>Prospects & Clients</h2><p className="bde-muted">Find, add, update and manage the companies you approach.</p></div><button className="bde-primary" onClick={beginCreate}><Plus size={18}/> Add Prospect</button></div>
-          <div className="bde-toolbar"><Search size={18}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, contact or service…" /></div>
-          <section className="bde-card"><LeadRows rows={filtered} onOpen={p=>void openLead(p)} onConvert={beginConvert} onViewClient={id=>openConvertedClient(id)} /></section>
+          <div className="bde-section-head"><div><h2>Prospects & Clients</h2><p className="bde-muted">Manage your own business contacts and clients.</p></div>
+            {recordType !== 'clients'
+              ? <button className="bde-primary" onClick={beginCreate}><Plus size={18}/> Add Prospect</button>
+              : <button className="bde-outline" onClick={() => navigate('/bd-employee/clients')}><Building2 size={16}/> Client Management</button>}
+          </div>
+          <div className="bde-record-switch" role="group" aria-label="Record type">
+            <button type="button" className={recordType === 'all' ? 'active' : ''}
+              aria-pressed={recordType === 'all'} onClick={() => { setRecordType('all'); setSearch('') }}>
+              <Users size={14}/> All
+            </button>
+            <button type="button" className={recordType === 'prospects' ? 'active' : ''}
+              aria-pressed={recordType === 'prospects'} onClick={() => { setRecordType('prospects'); setSearch('') }}>
+              <Users size={14}/> Prospects
+            </button>
+            <button type="button" className={recordType === 'clients' ? 'active' : ''}
+              aria-pressed={recordType === 'clients'} onClick={() => { setRecordType('clients'); setSearch('') }}>
+              <Building2 size={14}/> Clients
+            </button>
+          </div>
+          <div className="bde-toolbar"><Search size={18}/><input value={search} onChange={e=>setSearch(e.target.value)}
+            aria-label={recordType === 'all' ? 'Search all prospects and clients' : recordType === 'prospects' ? 'Search prospects' : 'Search registered clients'}
+            placeholder={recordType === 'all' ? 'Search company, contact or service…' : recordType === 'prospects' ? 'Search prospects by company, contact or service…' : 'Search registered clients by name, ID or contact…'} /></div>
+          <section className="bde-card">
+            {recordType === 'all'
+              ? <LeadRows rows={filtered} onOpen={p=>void openLead(p)} onConvert={beginConvert} onViewClient={id=>openConvertedClient(id)} />
+              : recordType === 'prospects'
+              ? <LeadRows rows={filteredProspects} onOpen={p=>void openLead(p)} onConvert={beginConvert} onViewClient={id=>openConvertedClient(id)} />
+              : loadingClients ? <p className="bde-muted">Loading your clients…</p>
+              : <ClientRows rows={filteredClients} onView={id=>openConvertedClient(id)} />}
+          </section>
         </>}
         {hubTab==='activities' && <>
           <section className="bde-card"><h2>Contact Activities</h2><p className="bde-muted">Choose a client to log a call, email, LinkedIn message or meeting. Contact history stays attached to the client.</p>
@@ -340,6 +440,7 @@ export function BDEmployeeWorkspace({ travelContent }: { travelContent?: ReactNo
       </>}
       {tab==='clients' && <BDEmployeeClientManagement />}
       {tab==='projects' && <BDEmployeeProjectManagement />}
+      {tab==='feedback' && <BDClientFeedbackPage />}
       {tab==='tracking' && <BDEmployeeProjectTracking />}
       {tab==='commercial' && <>
         <section className="bde-card"><h2>Commercial Estimates</h2><p className="bde-muted">Your requested services are listed below. Official quotes, revision controls and pricing require a verified project link and BD Manager/Finance authorization; no financial totals are fabricated.</p><LeadRows rows={openEnquiries} onOpen={p=>void openLead(p)} onConvert={beginConvert} onViewClient={id=>openConvertedClient(id)} /></section>

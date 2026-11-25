@@ -93,6 +93,8 @@ def _role(auth: CurrentAuth) -> str:
 def _roles(auth: CurrentAuth, *roles: str) -> None:
     if _role(auth) not in set(roles):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission for this lifecycle action")
+    if _role(auth) == "bd_employee" and (auth.user.role != "bd_employee" or not auth.user.is_active):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Active BD Employee account required")
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -233,7 +235,7 @@ async def public_feedback_attachments(
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
-    _roles(auth, "bd", "finance", *TECHNICAL_PM_ROLES, "management", "admin")
+    _roles(auth, "bd", "bd_employee", "finance", *TECHNICAL_PM_ROLES, "management", "admin")
     return lifecycle_dashboard(db, actor=auth.user, role=_role(auth))
 
 
@@ -243,7 +245,7 @@ def project_detail(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "finance", *TECHNICAL_PM_ROLES, "management", "admin")
+    _roles(auth, "bd", "bd_employee", "finance", *TECHNICAL_PM_ROLES, "management", "admin")
     try:
         return project_360(db, actor=auth.user, role=_role(auth), project_id=project_id)
     except Exception as exc:
@@ -258,7 +260,7 @@ def feedback_request_create(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         row, token, external_url = create_feedback_request(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "CLIENT_FEEDBACK_REQUEST_SENT", "project_feedback_request", row.id, {
@@ -289,7 +291,7 @@ def feedback_response_manual_record(
     """BD records an offline client outcome (call, email or letter) that never
     arrived through the secure portal link. Reuses the same BD confirmation /
     classification transitions as a portal response."""
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         row = record_manual_feedback_response(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "CLIENT_FEEDBACK_RESPONSE_RECORDED_BY_BD", "project_feedback_response", row.id, {
@@ -316,7 +318,7 @@ def feedback_request_reminder(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         row, token, external_url = send_feedback_reminder(db, actor=auth.user, request_id=request_id)
         _audit(request, db, auth, "CLIENT_FEEDBACK_REMINDER_SENT", "project_feedback_request", row.id, {
@@ -337,7 +339,7 @@ def feedback_acceptance_confirm(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         row = confirm_client_acceptance(db, actor=auth.user, response_id=response_id)
         _audit(request, db, auth, "CLIENT_ACCEPTANCE_CONFIRMED_BY_BD", "project_feedback_response", row.id, {"project_id": row.project_id})
@@ -356,7 +358,7 @@ def feedback_response_classify(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         row = classify_feedback_response(db, actor=auth.user, response_id=response_id, payload=payload)
         _audit(request, db, auth, "CLIENT_FEEDBACK_CLASSIFIED", type(row).__name__, row.id, {
@@ -402,11 +404,16 @@ def rework_cycle_sync(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     """Idempotent: move the rework cycle to the status its work packages already justify (no rows are duplicated)."""
-    _roles(auth, *TECHNICAL_PM_ROLES, "employee", "bd", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "employee", "bd", "bd_employee", "admin")
     cycle = db.get(ProjectReworkCycle, cycle_id)
     if cycle is None:
         raise HTTPException(status_code=404, detail="Rework cycle not found")
-    ensure_project_department_access(db, auth.user, _role(auth), cycle.project_id)
+    if _role(auth) == "bd_employee":
+        from app.modules.operations.lifecycle_service import _employee_feedback_project_ids
+        if cycle.project_id not in _employee_feedback_project_ids(db, auth.user):
+            raise HTTPException(status_code=403, detail="Project is not assigned to this BD Employee")
+    else:
+        ensure_project_department_access(db, auth.user, _role(auth), cycle.project_id)
     try:
         cycle, before, after = reconcile_rework_cycle(db, actor=auth.user, cycle_id=cycle_id)
         _audit(request, db, auth, "REWORK_CYCLE_RECONCILED", "project_rework_cycle", cycle.id, {
@@ -427,7 +434,7 @@ def rework_resubmit(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         cycle, feedback_request, token, external_url = resubmit_rework(
             db, actor=auth.user, cycle_id=cycle_id, payload=payload
@@ -451,7 +458,7 @@ def no_feedback_recommend(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "admin")
+    _roles(auth, "bd", "bd_employee", "admin")
     try:
         row = recommend_no_feedback_closure(db, actor=auth.user, request_id=request_id, payload=payload)
         _audit(request, db, auth, "NO_FEEDBACK_CLOSURE_RECOMMENDED", "project_feedback_request", row.id, {"project_id": row.project_id})
@@ -489,7 +496,7 @@ def change_request_decide(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "management", "admin", "bd", "finance")
+    _roles(auth, "management", "admin", "bd", "bd_employee", "finance")
     try:
         row = decide_change_request(db, actor=auth.user, change_request_id=change_request_id, payload=payload)
         _audit(request, db, auth, "CHANGE_REQUEST_DECIDED", "project_change_request", row.id, {
