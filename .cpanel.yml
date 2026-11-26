@@ -14,4 +14,4 @@ deployment:
     - /bin/chmod 700 /home/crmnakshatech/erp-releases /home/crmnakshatech/erp-releases/incoming /home/crmnakshatech/erp-releases/releases /home/crmnakshatech/erp-releases/shared
     - /bin/echo "NakshaTech ERP native cPanel deployment workspace is ready."
     - /bin/echo "GitHub Actions is the primary automatic deployment mechanism; nothing was published by this task."
-    - /bin/echo "For a reviewed manual release run: PRODUCTION_DEPLOY_ENABLED=true APPROVED_SCHEMA_SHA=<sha> bash scripts/deploy-production.sh <sha>"
+    - /bin/echo "For a reviewed manual release run: PRODUCTION_DEPLOY_ENABLED=true bash scripts/deploy-production.sh <sha> (add APPROVED_SCHEMA_SHA=<sha> only when the release changes migrations)"

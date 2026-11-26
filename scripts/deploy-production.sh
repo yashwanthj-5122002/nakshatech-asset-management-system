@@ -26,8 +26,6 @@ ensure_layout
 
 sha="${1:?exact release SHA required}"
 release_path "$sha"
-[[ "${APPROVED_SCHEMA_SHA:-}" == "$sha" ]] \
-  || fail "An administrator must review startup schema compatibility and set APPROVED_SCHEMA_SHA to $sha"
 
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || fail "Missing private production environment $ENV_FILE"
 [[ "$(stat -c %a "$ENV_FILE")" == "600" ]] || fail "$ENV_FILE must have mode 600"
@@ -36,13 +34,30 @@ release_path "$sha"
 for key in DATABASE_URL JWT_SECRET TOTP_ENCRYPTION_KEY PRODUCTION_PUBLIC_URL CORS_ORIGINS; do
   [[ -n "$(env_value "$key")" ]] || fail "Missing $key in $ENV_FILE"
 done
-require_sha "$APPROVED_SCHEMA_SHA"
+[[ -n "${APPROVED_SCHEMA_SHA:-}" ]] && require_sha "$APPROVED_SCHEMA_SHA"
 [[ "$(df -Pk "$HOME_ROOT" | awk 'END {print $4}')" -ge 2097152 ]] || fail "At least 2 GiB free space is required"
 
 previous="$(cat "$SHARED/current" 2>/dev/null || true)"
 if [[ -z "$previous" ]]; then
   [[ "${APPROVE_EMPTY_INSTALL:-false}" == true ]] \
     || fail "Initial native installation requires APPROVE_EMPTY_INSTALL=true"
+else
+  [[ -d "$RELEASES/$previous" ]] || fail "Previous release $previous is missing; cannot determine schema changes"
+  # Only releases that change reviewed migrations or startup schema
+  # compatibility code require an administrator to approve the release SHA.
+  # Frontend-only and code-only releases proceed without that manual step, after
+  # the usual verified database backup.
+  if [[ "${APPROVED_SCHEMA_SHA:-}" == "$sha" ]]; then
+    log "Schema changes approved by an administrator for $sha"
+  else
+    previous_schema="$(schema_fingerprint "$RELEASES/$previous")"
+    release_schema="$(schema_fingerprint "$release")"
+    if [[ "$previous_schema" == "$release_schema" ]]; then
+      log "No schema changes between $previous and $sha; APPROVED_SCHEMA_SHA is not required"
+    else
+      fail "Schema-sensitive files changed between $previous and $sha. Review the migration, then set APPROVED_SCHEMA_SHA=$sha"
+    fi
+  fi
 fi
 
 log "Release $sha: backend -> $BACKEND_DIR, frontend -> $FRONTEND_DIR, git checkout metadata -> $REPOSITORY_DIR"

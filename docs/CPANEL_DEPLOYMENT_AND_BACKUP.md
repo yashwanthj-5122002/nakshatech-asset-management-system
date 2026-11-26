@@ -79,6 +79,15 @@ Deployment writes a verified backup (`database.dump`, `database.contents`,
 before any schema-affecting upgrade. Backups are never deleted automatically and
 no database dump is ever stored under `public_html`.
 
+## Release verification
+
+Every release publishes `/release-version.json` next to `index.html`, containing
+only the deployed commit hash (`{"commit":"<sha>"}`). GitHub Actions verifies
+`https://crm.nakshatech.com/release-version.json` and `/api/health` after
+activation, and the server-side verifier compares the marker, `index.html` and
+`.htaccess` with the release it just published. The archive is transferred with
+rsync over SSH; FTP and FTPS are not used.
+
 ## cPanel Cron Jobs
 
 In **cPanel → Advanced → Cron Jobs**, schedule once daily, for example at 11:55 PM:

@@ -1,1 +1,6 @@
 *.sh text eol=lf
+
+# Native deployment assets must stay LF: systemd, sudoers and web-server
+# snippets are consumed verbatim on the Linux cPanel server.
+deploy/** text eol=lf
+*.service text eol=lf

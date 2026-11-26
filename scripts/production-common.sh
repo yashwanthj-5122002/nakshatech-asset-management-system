@@ -9,8 +9,8 @@
 #
 # The running application lives in two directories that are separate copies of
 # this repository:
-#   backend  -> PRODUCTION_BACKEND_PATH      (default /home/crmnakshatech/crm_backend)
-#   frontend -> /home/crmnakshatech/public_html
+#   backend  -> PRODUCTION_BACKEND_PATH   (default /home/crmnakshatech/crm_backend)
+#   frontend -> PRODUCTION_FRONTEND_PATH  (default /home/crmnakshatech/public_html)
 # The cPanel Git checkout (PRODUCTION_REPOSITORY_PATH) is only deployment
 # metadata: updating it never updates the running application.
 set -Eeuo pipefail
@@ -25,7 +25,7 @@ HOME_ROOT="/home/crmnakshatech"
 # Live application directories. Both are configurable through the documented
 # PRODUCTION_* environment variables supplied by the PRODUCTION GitHub
 # environment; the defaults match the current Contabo cPanel account.
-FRONTEND_DIR="$HOME_ROOT/public_html"
+FRONTEND_DIR="${PRODUCTION_FRONTEND_PATH:-$HOME_ROOT/public_html}"
 BACKEND_DIR="${PRODUCTION_BACKEND_PATH:-$HOME_ROOT/crm_backend}"
 REPOSITORY_DIR="${PRODUCTION_REPOSITORY_PATH:-$HOME_ROOT/repositories/nakshatech-asset-management-system}"
 
@@ -67,13 +67,14 @@ validate_native_paths() {
   is_under_home "$REPOSITORY_DIR" || fail "PRODUCTION_REPOSITORY_PATH must be under $HOME_ROOT (got '$REPOSITORY_DIR')"
   is_under_home "$FRONTEND_DIR" || fail "Unexpected frontend document root $FRONTEND_DIR"
   [[ "$BACKEND_DIR" != "$FRONTEND_DIR" && "$BACKEND_DIR" != "$FRONTEND_DIR"/* ]] \
-    || fail "The backend must never live inside public_html"
+    || fail "The backend must never live inside the frontend document root (public_html)"
   [[ "$REPOSITORY_DIR" != "$FRONTEND_DIR" && "$REPOSITORY_DIR" != "$FRONTEND_DIR"/* ]] \
-    || fail "The Git repository checkout must never live inside public_html"
+    || fail "The Git repository checkout must never live inside the frontend document root"
   [[ "$REPOSITORY_DIR" != "$BACKEND_DIR" ]] \
     || fail "PRODUCTION_REPOSITORY_PATH and PRODUCTION_BACKEND_PATH must be different directories"
   [[ ! -L "$BACKEND_DIR" ]] || fail "PRODUCTION_BACKEND_PATH must not be a symlink"
-  [[ ! -L "$FRONTEND_DIR" ]] || fail "public_html must not be a symlink"
+  [[ ! -L "$FRONTEND_DIR" ]] || fail "PRODUCTION_FRONTEND_PATH must not be a symlink"
+  [[ -d "$FRONTEND_DIR" ]] || fail "Missing frontend document root $FRONTEND_DIR"
 }
 
 require_account() {
@@ -202,11 +203,17 @@ sync_frontend() {
   log "Publishing compiled frontend into $FRONTEND_DIR"
   rsync -a --delete "$stage/assets/" "$FRONTEND_DIR/assets/"
 
+  # The public release marker lets HTTPS verification prove which commit the
+  # live frontend serves. It carries the commit hash and nothing else.
+  [[ -f "$stage/release-version.json" ]] || fail "Release is missing frontend/release-version.json"
+  [[ "$(tr -d '[:space:]' < "$stage/release-version.json")" == "{\"commit\":\"$sha\"}" ]] \
+    || fail "frontend/release-version.json does not describe release $sha"
+
   local entry base temp
   for entry in "$stage"/*; do
     base="$(basename "$entry")"
     case "$base" in
-      assets|index.html|.htaccess) continue ;;
+      assets|index.html|.htaccess|release-version.json) continue ;;
     esac
     rsync -a "$entry" "$FRONTEND_DIR/"
   done
@@ -218,11 +225,38 @@ sync_frontend() {
   install -m 644 "$stage/index.html" "$temp"
   mv -f "$temp" "$FRONTEND_DIR/index.html"
 
+  temp="$FRONTEND_DIR/.release-version.json.deploy.$$"
+  install -m 644 "$stage/release-version.json" "$temp"
+  mv -f "$temp" "$FRONTEND_DIR/release-version.json"
+
   [[ -f "$FRONTEND_DIR/index.html" ]] || fail "Frontend publish did not produce index.html"
+  [[ -f "$FRONTEND_DIR/release-version.json" ]] || fail "Frontend publish did not produce release-version.json"
   printf '%s\n' "$sha" > "$SHARED/frontend-sha"
   mkdir -p "$REPOSITORY_DIR/.deployment"
   printf '%s\n' "$sha" > "$REPOSITORY_DIR/.deployment/frontend-sha"
   rm -rf "$stage"
+}
+
+# Schema-sensitive sources: reviewed SQL migrations plus the startup schema
+# compatibility modules that can alter tables. Comparing the fingerprint of the
+# previous release with the new one decides whether an administrator must
+# approve the release SHA before a restart may touch the database.
+schema_fingerprint() {
+  local release="$1" backend="$1/backend"
+  [[ -d "$backend" ]] || { printf 'missing'; return 0; }
+  (
+    cd "$backend"
+    {
+      find app -type f \( \
+        -name 'schema_migrations.py' -o \
+        -name 'schema_compat*.py' -o \
+        -name 'migrate.py' \
+      \) -print 2>/dev/null || true
+      find migrations -maxdepth 1 -type f -name '*.sql' -print 2>/dev/null || true
+    } | LC_ALL=C sort | while IFS= read -r file; do
+        printf '%s  %s\n' "$file" "$(sha256sum "$file" | cut -d' ' -f1)"
+      done | sha256sum | cut -d' ' -f1
+  )
 }
 
 backend_port() {

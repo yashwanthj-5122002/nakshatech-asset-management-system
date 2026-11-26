@@ -67,12 +67,25 @@ check("vars.PRODUCTION_DEPLOY_ENABLED != 'true'" in deploy_text,
       "deployment must be skipped when the gate is disabled")
 check("concurrency:" in deploy_text and "cancel-in-progress: false" in deploy_text,
       "deployments must be serialised without cancelling an in-flight release")
-for variable in ("PRODUCTION_BACKEND_PATH", "PRODUCTION_REPOSITORY_PATH"):
+for variable in ("PRODUCTION_FRONTEND_PATH", "PRODUCTION_BACKEND_PATH", "PRODUCTION_REPOSITORY_PATH"):
     check(variable in deploy_text, f"deploy workflow must support {variable}")
 check("/home/crmnakshatech/crm_backend" in deploy_text,
       "deploy workflow must target the running backend directory /home/crmnakshatech/crm_backend")
-check("/home/crmnakshatech/public_html" in deploy_text or "public_html" in deploy_text,
-      "deploy workflow must target the running frontend directory in public_html")
+check("/home/crmnakshatech/public_html" in deploy_text,
+      "deploy workflow must target the running frontend directory /home/crmnakshatech/public_html")
+
+# --- Transfer must be SSH + rsync only ---------------------------------------
+check("rsync " in deploy_text and "-e \"$rsync_rsh\"" in deploy_text,
+      "deploy workflow must upload the release with rsync over SSH")
+check("scp " not in deploy_text, "deploy workflow must not use scp for the release transfer")
+for token in ("ftp://", "ftps://", "sftp", "lftp", "curl -T"):
+    check(token not in deploy_text.lower(), f"deploy workflow must not use FTP/FTPS ({token})")
+check("release-version.json" in deploy_text,
+      "deploy workflow must publish and verify the public release marker")
+check("PRODUCTION_PUBLIC_URL" in deploy_text,
+      "deploy workflow must verify the live release over HTTPS")
+check("The latest push quality run for the exact main SHA must succeed." in deploy_text,
+      "deploy workflow must keep the exact-SHA quality gate")
 check("workflow_run:" in deploy_text, "deployments must follow a successful quality run")
 check("conclusion == 'success'" in deploy_text, "only successful quality runs may deploy")
 check("head_sha !== sha" in deploy_text, "stale quality runs must be rejected")
@@ -97,7 +110,12 @@ check('BACKEND_DIR="${PRODUCTION_BACKEND_PATH:-$HOME_ROOT/crm_backend}"' in comm
       "backend path must honour PRODUCTION_BACKEND_PATH with the crm_backend default")
 check('REPOSITORY_DIR="${PRODUCTION_REPOSITORY_PATH:-$HOME_ROOT/repositories/nakshatech-asset-management-system}"' in common,
       "repository path must honour PRODUCTION_REPOSITORY_PATH")
-check('FRONTEND_DIR="$HOME_ROOT/public_html"' in common, "frontend must live in /home/crmnakshatech/public_html")
+check('FRONTEND_DIR="${PRODUCTION_FRONTEND_PATH:-$HOME_ROOT/public_html}"' in common,
+      "frontend path must honour PRODUCTION_FRONTEND_PATH with the public_html default")
+check("release-version.json" in common and '{\\"commit\\":\\"$sha\\"}' in common,
+      "frontend publish must write the public release marker atomically")
+check("schema_fingerprint()" in common,
+      "schema changes must be detected from migrations and schema compatibility code")
 check('printf \'%s\\n\' "$sha" > "$BACKEND_DIR/RELEASE_SHA"' in common,
       "the running backend must be marked with the deployed SHA")
 check('printf \'%s\\n\' "$sha" > "$SHARED/frontend-sha"' in common,
@@ -120,6 +138,16 @@ deploy = read("scripts/deploy-production.sh")
 check("AUTO_ROLLBACK_ON_FAILURE" in deploy, "failed activation must support automatic rollback")
 check("sync_backend \"$release\" \"$sha\"" in deploy and "sync_frontend \"$release\" \"$sha\"" in deploy,
       "both running directories must be deployed from the same release")
+check("schema_fingerprint" in deploy and "APPROVED_SCHEMA_SHA is not required" in deploy,
+      "schema approval must only be required when schema-sensitive files change")
+check("release $previous is missing" in deploy,
+      "the deploy script must refuse to guess schema changes without the previous release")
+
+layout = read("scripts/validate-release-layout.sh")
+for required in ("release-version.json", "assets", "data", "RELEASE_SHA"):
+    check(required in layout, f"release layout validation must check {required}")
+check("release-version.json" in verify,
+      "verification must check the published release marker over HTTPS")
 
 # --- GNU/Linux line endings --------------------------------------------------
 for relative in ("scripts/deploy-production.sh", "scripts/backup-production.sh",

@@ -3,7 +3,7 @@ name: Production deployment
 # Uvicorn (or the Passenger alternative), cPanel-managed PostgreSQL/Redis/MinIO
 # and a statically published frontend. No Docker runs on the production server.
 #
-# The Contabo account holds three separate directories:
+# The cPanel account holds three separate directories:
 #   repository  /home/crmnakshatech/repositories/nakshatech-asset-management-system
 #   backend     /home/crmnakshatech/crm_backend        (running Python app)
 #   frontend    /home/crmnakshatech/public_html        (running React build)
@@ -89,9 +89,23 @@ jobs:
           set -Eeuo pipefail
           mkdir -p release
           git archive "$SHA" backend scripts deploy cpanel | tar -x -C release
+          # git archive only contains tracked sources, so the compiled frontend
+          # is copied explicitly from the build produced in this job.
           cp -a frontend/dist release/frontend
           cp -p frontend/public/.htaccess release/frontend/.htaccess
           test -f release/frontend/index.html
+          ls release/frontend/assets/*.js >/dev/null
+          ls release/frontend/assets/*.css >/dev/null
+          # Geographic data and branding images are served by the live site.
+          test -d release/frontend/data
+          ls release/frontend/data/* >/dev/null
+          ls release/frontend/*.webp >/dev/null
+          ls release/frontend/*.png >/dev/null
+          # The production API base URL must be the same-origin /api prefix.
+          grep -q "/api" release/frontend/assets/*.js
+          bash scripts/validate-release-layout.sh "$PWD/release" "$SHA"
+          # Public release marker, served over HTTPS after activation.
+          printf '{"commit":"%s"}\n' "$SHA" > release/frontend/release-version.json
           test -f release/backend/requirements-cpanel.txt
           test -f release/scripts/deploy-production.sh
           test -f release/deploy/systemd/nakshatech-crm.service
@@ -134,6 +148,7 @@ jobs:
           CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
+          PRODUCTION_FRONTEND_PATH: ${{ vars.PRODUCTION_FRONTEND_PATH || '/home/crmnakshatech/public_html' }}
           PRODUCTION_BACKEND_PATH: ${{ vars.PRODUCTION_BACKEND_PATH || '/home/crmnakshatech/crm_backend' }}
           PRODUCTION_REPOSITORY_PATH: ${{ vars.PRODUCTION_REPOSITORY_PATH || '/home/crmnakshatech/repositories/nakshatech-asset-management-system' }}
           APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
@@ -146,13 +161,17 @@ jobs:
           [[ "$CPANEL_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Invalid CPANEL_HOST"; exit 1; }
           [[ "$CPANEL_SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "Invalid CPANEL_SSH_PORT"; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid release SHA"; exit 1; }
-          for path in "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"; do
+          for path in "$PRODUCTION_FRONTEND_PATH" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"; do
             [[ "$path" == /home/crmnakshatech/* ]] || { echo "Production path must live under /home/crmnakshatech: $path"; exit 1; }
             [[ "$path" != *".."* ]] || { echo "Production path must not contain '..': $path"; exit 1; }
-            [[ "$path" != "/home/crmnakshatech/public_html"* ]] || { echo "Application paths must never be inside public_html: $path"; exit 1; }
+            [[ "$path" != "/home/crmnakshatech/public_html"/* ]] || { echo "Application paths must never be inside public_html: $path"; exit 1; }
           done
           [[ "$PRODUCTION_BACKEND_PATH" != "$PRODUCTION_REPOSITORY_PATH" ]] || { echo "Backend and repository paths must differ"; exit 1; }
-          [[ "$APPROVED_SCHEMA_SHA" == "$SHA" ]] || { echo "Administrator must set APPROVED_SCHEMA_SHA to the exact release SHA"; exit 1; }
+          [[ "$PRODUCTION_FRONTEND_PATH" != "$PRODUCTION_BACKEND_PATH" ]] || { echo "Frontend and backend paths must differ"; exit 1; }
+          [[ "$PRODUCTION_FRONTEND_PATH" != "$PRODUCTION_REPOSITORY_PATH" ]] || { echo "Frontend and repository paths must differ"; exit 1; }
+          # Schema approval is optional: the deploy script requires it only when
+          # the release actually changes migrations or schema compatibility code.
+          [[ -z "$APPROVED_SCHEMA_SHA" || "$APPROVED_SCHEMA_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "APPROVED_SCHEMA_SHA must be empty or a 40-character commit SHA"; exit 1; }
           [[ "${APPROVE_EMPTY_INSTALL:-false}" == "true" || "${APPROVE_EMPTY_INSTALL:-false}" == "false" ]] || { echo "APPROVE_EMPTY_INSTALL must be true or false"; exit 1; }
       - name: Transfer and activate the exact release natively
         if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
@@ -163,6 +182,7 @@ jobs:
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
           CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+          PRODUCTION_FRONTEND_PATH: ${{ vars.PRODUCTION_FRONTEND_PATH || '/home/crmnakshatech/public_html' }}
           PRODUCTION_BACKEND_PATH: ${{ vars.PRODUCTION_BACKEND_PATH || '/home/crmnakshatech/crm_backend' }}
           PRODUCTION_REPOSITORY_PATH: ${{ vars.PRODUCTION_REPOSITORY_PATH || '/home/crmnakshatech/repositories/nakshatech-asset-management-system' }}
           APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
@@ -180,36 +200,42 @@ jobs:
           digest="$(cut -d' ' -f1 release.tar.gz.sha256)"
           target="$CPANEL_USERNAME@$CPANEL_HOST"
           ssh_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$CPANEL_SSH_PORT")
-          scp_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -P "$CPANEL_SSH_PORT")
-          printf -v remote_preflight 'bash -s -- %q %q %q' "$SHA" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
+          rsync_rsh="ssh -i $HOME/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p $CPANEL_SSH_PORT"
+          printf -v remote_preflight 'bash -s -- %q %q %q %q' \
+            "$SHA" "$PRODUCTION_FRONTEND_PATH" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
           # Release arguments are %q-quoted above before reaching ssh.
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$target" "$remote_preflight" <<'REMOTE'
           set -Eeuo pipefail
           sha="$1"
-          backend="$2"
-          repository="$3"
+          frontend="$2"
+          backend="$3"
+          repository="$4"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           [[ "$HOME" == "/home/crmnakshatech" ]] || { echo "Unexpected account home $HOME"; exit 1; }
           [[ ! -L "$HOME" ]]
-          for path in "$backend" "$repository"; do
+          for path in "$frontend" "$backend" "$repository"; do
             [[ "$path" == /home/crmnakshatech/* ]] || { echo "Unapproved path $path"; exit 1; }
             [[ "$path" != *".."* ]] || { echo "Unapproved path $path"; exit 1; }
             [[ "$path" != /home/crmnakshatech/public_html* ]] || { echo "Path inside public_html: $path"; exit 1; }
             [[ -d "$path" && ! -L "$path" ]] || { echo "Missing canonical directory $path"; exit 1; }
             [[ -w "$path" ]] || { echo "Directory is not writable: $path"; exit 1; }
           done
-          [[ "$backend" != "$repository" ]] || { echo "Backend and repository paths must differ"; exit 1; }
+          [[ "$backend" != "$repository" && "$frontend" != "$backend" && "$frontend" != "$repository" ]] \
+            || { echo "Frontend, backend and repository paths must differ"; exit 1; }
           [[ -f "$backend/.env" && ! -L "$backend/.env" ]] || { echo "Missing private production environment $backend/.env"; exit 1; }
+          [[ ! -f "$frontend/.htaccess" || ! -L "$frontend/.htaccess" ]] || { echo "Routing rules $frontend/.htaccess must not be a symlink"; exit 1; }
           cd "$HOME"
           mkdir -p erp-releases/incoming erp-releases/releases erp-releases/shared
           chmod 700 erp-releases erp-releases/incoming erp-releases/releases erp-releases/shared
           [[ ! -e "erp-releases/releases/$sha" ]] || { echo "Release $sha already exists; immutable releases are never overwritten"; exit 1; }
           command -v rsync >/dev/null && command -v flock >/dev/null
           REMOTE
-          scp "${scp_opts[@]}" release.tar.gz "$target:erp-releases/incoming/$SHA.tar.gz"
-          printf -v remote_deploy 'bash -s -- %q %q %q %q %q %q' \
-            "$SHA" "$digest" "$APPROVED_SCHEMA_SHA" "${APPROVE_EMPTY_INSTALL:-false}" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
+          # Upload the immutable archive with rsync over SSH (never FTP).
+          rsync -a --checksum --timeout=300 -e "$rsync_rsh" release.tar.gz "$target:erp-releases/incoming/$SHA.tar.gz"
+          printf -v remote_deploy 'bash -s -- %q %q %q %q %q %q %q' \
+            "$SHA" "$digest" "$APPROVED_SCHEMA_SHA" "${APPROVE_EMPTY_INSTALL:-false}" \
+            "$PRODUCTION_FRONTEND_PATH" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$target" "$remote_deploy" <<'REMOTE'
           set -Eeuo pipefail
@@ -217,8 +243,10 @@ jobs:
           digest="$2"
           approved="$3"
           empty_install="${4:-false}"
-          backend="$5"
-          repository="$6"
+          frontend="$5"
+          backend="$6"
+          repository="$7"
+          export PRODUCTION_FRONTEND_PATH="$frontend"
           export PRODUCTION_BACKEND_PATH="$backend"
           export PRODUCTION_REPOSITORY_PATH="$repository"
           cd "$HOME"
@@ -231,6 +259,28 @@ jobs:
           PRODUCTION_DEPLOY_ENABLED=true APPROVED_SCHEMA_SHA="$approved" APPROVE_EMPTY_INSTALL="$empty_install" \
             bash scripts/deploy-production.sh "$sha"
           REMOTE
+      - name: Verify the live release over HTTPS
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true' && success()
+        env:
+          SHA: ${{ needs.prepare.outputs.sha }}
+          PUBLIC_URL: ${{ vars.PRODUCTION_PUBLIC_URL || 'https://crm.nakshatech.com' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          marker=""
+          api=""
+          for attempt in $(seq 1 20); do
+            marker="$(curl -fsS --max-time 20 "$PUBLIC_URL/release-version.json" 2>/dev/null | tr -d '[:space:]' || true)"
+            api="$(curl -fsS --max-time 20 "$PUBLIC_URL/api/health" 2>/dev/null || true)"
+            if [[ "$marker" == "{\"commit\":\"$SHA\"}" ]] && grep -q '"healthy"' <<<"$api"; then
+              echo "Live release $SHA verified at $PUBLIC_URL"
+              exit 0
+            fi
+            echo "Attempt $attempt: marker=${marker:-none}"
+            sleep 15
+          done
+          echo "Live verification failed: $PUBLIC_URL did not serve release $SHA"
+          exit 1
       - name: Report deployment health
         if: vars.PRODUCTION_DEPLOY_ENABLED == 'true' && success()
         run: echo "Release ${{ needs.prepare.outputs.sha }} verified in crm_backend and public_html at https://crm.nakshatech.com"
@@ -258,6 +308,7 @@ jobs:
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
           CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+          PRODUCTION_FRONTEND_PATH: ${{ vars.PRODUCTION_FRONTEND_PATH || '/home/crmnakshatech/public_html' }}
           PRODUCTION_BACKEND_PATH: ${{ vars.PRODUCTION_BACKEND_PATH || '/home/crmnakshatech/crm_backend' }}
           PRODUCTION_REPOSITORY_PATH: ${{ vars.PRODUCTION_REPOSITORY_PATH || '/home/crmnakshatech/repositories/nakshatech-asset-management-system' }}
         shell: bash
@@ -270,15 +321,18 @@ jobs:
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
           trap 'rm -f ~/.ssh/deploy_key' EXIT
           ssh_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$CPANEL_SSH_PORT")
-          printf -v remote_rollback 'bash -s -- %q %q %q' "$SHA" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
+          printf -v remote_rollback 'bash -s -- %q %q %q %q' \
+            "$SHA" "$PRODUCTION_FRONTEND_PATH" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$CPANEL_USERNAME@$CPANEL_HOST" "$remote_rollback" <<'REMOTE'
           set -Eeuo pipefail
           sha="$1"
-          backend="$2"
-          repository="$3"
+          frontend="$2"
+          backend="$3"
+          repository="$4"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           [[ "$HOME" == "/home/crmnakshatech" ]]
+          export PRODUCTION_FRONTEND_PATH="$frontend"
           export PRODUCTION_BACKEND_PATH="$backend"
           export PRODUCTION_REPOSITORY_PATH="$repository"
           cd "$HOME"

@@ -56,7 +56,11 @@ if [[ "$(env_value BACKUP_DATABASE_ENABLED)" == "false" ]]; then
   fail "BACKUP_DATABASE_ENABLED=false. A verified database backup is mandatory before schema changes."
 fi
 
-eval "$(db_export)"
+# Never continue with empty PGHOST/PGDATABASE if the connection settings could
+# not be derived: that would mask the real error with an unbound variable.
+db_env="$(db_export)" || fail "Could not resolve PostgreSQL connection settings from $ENV_FILE"
+[[ -n "$db_env" ]] || fail "Could not resolve PostgreSQL connection settings from $ENV_FILE"
+eval "$db_env"
 export PGCONNECT_TIMEOUT=15
 log "Dumping PostgreSQL database $PGDATABASE on $PGHOST:$PGPORT"
 pg_dump --format=custom --no-owner --no-privileges --file "$destination/database.dump"

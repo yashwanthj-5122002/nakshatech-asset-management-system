@@ -94,8 +94,10 @@ PRODUCTION environment variables:
 | Variable | Purpose |
 | --- | --- |
 | `PRODUCTION_DEPLOY_ENABLED` | `false` by default. `true` enables transfer and activation. |
-| `APPROVED_SCHEMA_SHA` | Exact main SHA whose startup schema changes an administrator reviewed. Must equal the release SHA. |
+| `APPROVED_SCHEMA_SHA` | Optional. Set to the release SHA only when that release changes reviewed migrations or startup schema compatibility code. Releases without schema-sensitive changes deploy without it. |
 | `APPROVE_EMPTY_INSTALL` | `true` only for the very first installation against an approved empty database. |
+| `PRODUCTION_FRONTEND_PATH` | Optional. Running document root; defaults to `/home/crmnakshatech/public_html`. |
+| `PRODUCTION_PUBLIC_URL` | Optional. Origin used for the post-deployment HTTPS check; defaults to `https://crm.nakshatech.com`. |
 | `PRODUCTION_BACKEND_PATH` | Optional. Running backend directory; defaults to `/home/crmnakshatech/crm_backend`. |
 | `PRODUCTION_REPOSITORY_PATH` | Optional. cPanel Git checkout that receives deployment metadata; defaults to `/home/crmnakshatech/repositories/nakshatech-asset-management-system`. |
 
@@ -120,8 +122,10 @@ runner; it is not installed or used on the production server.
 2. **Deploy** – uses the `PRODUCTION` environment. The disabled gate short-circuits
    everything. When enabled it validates the account/path/secrets, re-checks that
    `main` still points at the release SHA, refuses to overwrite an existing
-   immutable release directory, uploads the archive, verifies its checksum on the
-   server, extracts it, and runs `scripts/deploy-production.sh`.
+   immutable release directory, uploads the archive with **rsync over SSH** (no
+   scp, no FTP/FTPS), verifies its SHA-256 checksum on the server, extracts it,
+   and runs `scripts/deploy-production.sh`. The remote preflight re-validates the
+   frontend, backend and repository paths before any file is written.
    The script backs up the running release, installs Python dependencies into
    `crm_venv` **before** touching sources, then publishes the backend to
    `PRODUCTION_BACKEND_PATH` and the compiled frontend to `public_html` from the
@@ -130,9 +134,43 @@ runner; it is not installed or used on the production server.
    is polled while waiting for health), the previous release is restored in
    **both** directories and the job fails, so a mixed or partial release is
    never left active.
-3. **Rollback** – a manual dispatch with `rollback_sha` runs
+3. **Verify** – after activation the job polls
+   `https://crm.nakshatech.com/release-version.json` and `/api/health` until the
+   public marker reports the exact release SHA and the API is healthy. A
+   deployment is never reported successful because Git changed; only the live
+   files and the running backend count.
+4. **Rollback** – a manual dispatch with `rollback_sha` runs
    `scripts/rollback-production.sh` for a previously deployed, schema-compatible
    release. It never restores a database automatically.
+
+### Schema approval policy
+
+`APPROVED_SCHEMA_SHA` is no longer mandatory for every release. Before a
+restart, `scripts/deploy-production.sh` computes a fingerprint of the
+schema-sensitive sources in the previous and the new release:
+
+- `backend/migrations/*.sql` (reviewed SQL upgrades),
+- `backend/app/**/schema_compat*.py`, `schema_migrations.py` and `migrate.py`
+  (startup code that can alter tables).
+
+If the fingerprints match, the release is code-only or frontend-only and
+proceeds after the usual verified database backup. If they differ, the
+administrator must review the change and set `APPROVED_SCHEMA_SHA` to that SHA,
+otherwise the deployment stops before any source is replaced. Initial
+installations still require `APPROVE_EMPTY_INSTALL=true`. The deploy script
+never resets, truncates or re-creates the database and never runs development
+seeders in production.
+
+### Release layout and dry run
+
+`scripts/validate-release-layout.sh <release-dir> [sha]` validates an extracted
+release without any server access: backend entry point, migration directory,
+deployment scripts, systemd/sudoers assets, `index.html`, `.htaccess`, JS/CSS
+bundles, geographic `data/`, the `/api` base URL and a public
+`release-version.json` whose `commit` equals `RELEASE_SHA`. It also refuses a
+release that contains `.env` files or container configuration. The workflow runs
+it on the packaged release before upload; operators can run it against a locally
+extracted archive as a dry run.
 
 Concurrency and stale-deployment protection:
 
@@ -148,7 +186,10 @@ What a deployment preserves:
 - `crm_backend/uploads/`, `crm_backend/tmp/` and logs (excluded, never deleted).
 - The virtual environment, Python packages of other applications, and the
   PostgreSQL database, Redis data and MinIO objects.
-- Every file in `public_html` except the CRM's own compiled `assets/` directory.
+- Every file in `public_html` except the CRM's own `assets/` directory,
+  `index.html`, `.htaccess` and `release-version.json`. NMaps pages, `cgi-bin`,
+  hosting files and SSL verification files are never part of the release and are
+  never deleted.
 - Existing employee passwords, Authenticator/MFA secrets and records: production
   startup skips every development seeder (`app/main.py` guards each seeder with
   `if not settings.is_production`), so nothing is reset by a release.
@@ -412,6 +453,8 @@ and arrange controlled recovery instead of rolling back.
 | `Administrator-approved restart unavailable` | Install `deploy/sudoers/nakshatech-crm-deploy` and the systemd unit, or set `BACKEND_RUNTIME=passenger`. |
 | `Backend did not become healthy` | `journalctl -u nakshatech-crm -n 200`; check `.env` values and database reachability. |
 | `Public API health check failed` | Confirm the Apache/Nginx `/api` proxy or Passenger mount; check that `public_html/.htaccess` excludes `/api`. |
+| `Public release marker at …/release-version.json does not name release` | The live document root still serves an older build (caching, wrong `PRODUCTION_FRONTEND_PATH`, or a reverse proxy pointing elsewhere). Confirm the path variable and that the file is reachable over HTTPS. |
+| `Schema-sensitive files changed between …` | The release modifies migrations or startup schema compatibility code. Review it, then set `APPROVED_SCHEMA_SHA` to the exact release SHA and rerun. |
 | `Missing routes` in `cpanel_route_check.py` | Confirm `API_PREFIX` matches the runtime (table above) and restart the service. |
 | `Release <sha> already exists` | Releases are immutable; deploy a new main SHA or roll back explicitly. |
 | Backup refuses to run | `BACKUP_DATABASE_ENABLED` must not be `false`; `pg_dump`/`pg_restore` must be on `PATH`. |
@@ -473,6 +516,29 @@ PostgreSQL 16 database, Apache 2.4 serving `public_html` with the published
 - Rollback: restored the previous release's backend source, Python dependencies
   and compiled frontend (including replacing hashed assets), re-ran health
   checks, and left the database and object storage untouched.
+- Release layout validator (`scripts/validate-release-layout.sh`, offline):
+  passed on a release assembled from `git archive` plus the built `frontend/dist`
+  — backend entry point, migrations, deployment assets, hashed JS/CSS bundles,
+  geographic data, `.htaccess` `/api` exclusion, `/api` base URL, and
+  `release-version.json` matching `RELEASE_SHA`.
+- Schema-change detection: two releases with identical backend sources produced
+  identical fingerprints (approval not required); adding a migration file to one
+  release changed the fingerprint, proving an administrator approval is demanded
+  exactly when schema-sensitive sources differ.
+- Schema gate behaviour in an isolated account sandbox: a release whose migration
+  set changed was refused **without** `APPROVED_SCHEMA_SHA` (`backend/RELEASE_SHA`
+  and `shared/current` unchanged); the same release with the approval proceeded
+  to the verified-backup step; an unchanged-schema release logged "No schema
+  changes … APPROVED_SCHEMA_SHA is not required" and also proceeded.
+- Frontend publish with a non-default `PRODUCTION_FRONTEND_PATH`: `index.html`,
+  `.htaccess`, `assets/` and `release-version.json` landed in the configured
+  document root atomically, and `shared/frontend-sha` plus the checkout metadata
+  recorded the same SHA.
+- Backup guard: a missing virtual environment now fails with one explicit error
+  instead of continuing into an unbound `PGDATABASE`.
+- Transfer path: the workflow uploads `release.tar.gz` with
+  `rsync -a --checksum -e "ssh …"`; no `scp`, FTP or FTPS command remains in the
+  workflow, and the server-side checksum verification runs before extraction.
 - Two-directory activation: each release updated `crm_backend` and
   `public_html` from the same SHA; `crm_backend/RELEASE_SHA`,
   `erp-releases/shared/frontend-sha`, `shared/current` and the

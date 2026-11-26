@@ -43,6 +43,13 @@ for name in index.html .htaccess; do
   [[ "$live_hash" == "$release_hash" ]] \
     || fail "Published $name does not match release $RELEASE_SHA (frontend was not updated)"
 done
+# --- Public release marker ---------------------------------------------------
+[[ -f "$release/frontend/release-version.json" ]] \
+  || fail "Release $RELEASE_SHA is missing frontend/release-version.json"
+live_marker="$(tr -d '[:space:]' < "$FRONTEND_DIR/release-version.json" 2>/dev/null || true)"
+[[ "$live_marker" == "{\"commit\":\"$RELEASE_SHA\"}" ]] \
+  || fail "Published release-version.json does not name release $RELEASE_SHA (got: ${live_marker:-missing})"
+
 [[ -n "$(ls -A "$FRONTEND_DIR/assets" 2>/dev/null)" ]] || fail "Published frontend has no assets"
 
 # --- Infrastructure ---------------------------------------------------------
@@ -102,6 +109,12 @@ if curl -fsS --max-time 30 "$public_url/" | grep -qi '<html'; then
 else
   fail "Public frontend did not return HTML at $public_url/"
 fi
+
+marker_url="$public_url/release-version.json"
+served_marker="$(curl -fsS --max-time 20 "$marker_url" 2>/dev/null | tr -d '[:space:]' || true)"
+[[ "$served_marker" == "{\"commit\":\"$RELEASE_SHA\"}" ]] \
+  || fail "Public release marker at $marker_url does not name release $RELEASE_SHA (got: ${served_marker:-nothing})"
+log "Public release marker at $marker_url reports $RELEASE_SHA"
 
 isolation_url="$(env_value ISOLATION_CHECK_URL)"
 if [[ -n "$isolation_url" && "$isolation_url" != "REPLACE_ME" ]]; then
