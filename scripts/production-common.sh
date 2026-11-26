@@ -6,6 +6,13 @@
 # server. Docker, Docker Compose, containers and container volumes are NOT used
 # here. The Docker configuration files in this repository remain for local
 # development and the isolated GitHub Actions QA runner only.
+#
+# The running application lives in two directories that are separate copies of
+# this repository:
+#   backend  -> PRODUCTION_BACKEND_PATH      (default /home/crmnakshatech/crm_backend)
+#   frontend -> /home/crmnakshatech/public_html
+# The cPanel Git checkout (PRODUCTION_REPOSITORY_PATH) is only deployment
+# metadata: updating it never updates the running application.
 set -Eeuo pipefail
 umask 077
 
@@ -15,25 +22,23 @@ log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 ACCOUNT="crmnakshatech"
 HOME_ROOT="/home/crmnakshatech"
 
+# Live application directories. Both are configurable through the documented
+# PRODUCTION_* environment variables supplied by the PRODUCTION GitHub
+# environment; the defaults match the current Contabo cPanel account.
+FRONTEND_DIR="$HOME_ROOT/public_html"
+BACKEND_DIR="${PRODUCTION_BACKEND_PATH:-$HOME_ROOT/crm_backend}"
+REPOSITORY_DIR="${PRODUCTION_REPOSITORY_PATH:-$HOME_ROOT/repositories/nakshatech-asset-management-system}"
+
 # Deployment workspace (outside public_html, private to the account).
 DEPLOY_ROOT="$HOME_ROOT/erp-releases"
 RELEASES="$DEPLOY_ROOT/releases"
 INCOMING="$DEPLOY_ROOT/incoming"
 SHARED="$DEPLOY_ROOT/shared"
 
-# Live application locations.
-BACKEND_DIR="$HOME_ROOT/crm_backend"
-FRONTEND_DIR="$HOME_ROOT/public_html"
 ENV_FILE="$BACKEND_DIR/.env"
 VENV="${NAKSHA_VENV:-$HOME_ROOT/crm_venv}"
 BACKUPS="$HOME_ROOT/erp-backups"
 LOCK_FILE="$DEPLOY_ROOT/deploy.lock"
-
-require_account() {
-  [[ "${HOME:-}" == "$HOME_ROOT" ]] || fail "Deployment must run inside the $ACCOUNT cPanel account (HOME=$HOME_ROOT)"
-  [[ "$(id -un)" == "$ACCOUNT" ]] || fail "Deployment must run as $ACCOUNT, not $(id -un)"
-  [[ -d "$HOME_ROOT" && ! -L "$HOME_ROOT" ]] || fail "Missing canonical account home $HOME_ROOT"
-}
 
 require_cmd() {
   local command
@@ -53,6 +58,31 @@ env_value() {
     | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
 }
 
+is_under_home() {
+  [[ "$1" == /* && "$1" == "$HOME_ROOT"/* && "$1" != *".."* ]]
+}
+
+validate_native_paths() {
+  is_under_home "$BACKEND_DIR" || fail "PRODUCTION_BACKEND_PATH must be a canonical path under $HOME_ROOT (got '$BACKEND_DIR')"
+  is_under_home "$REPOSITORY_DIR" || fail "PRODUCTION_REPOSITORY_PATH must be under $HOME_ROOT (got '$REPOSITORY_DIR')"
+  is_under_home "$FRONTEND_DIR" || fail "Unexpected frontend document root $FRONTEND_DIR"
+  [[ "$BACKEND_DIR" != "$FRONTEND_DIR" && "$BACKEND_DIR" != "$FRONTEND_DIR"/* ]] \
+    || fail "The backend must never live inside public_html"
+  [[ "$REPOSITORY_DIR" != "$FRONTEND_DIR" && "$REPOSITORY_DIR" != "$FRONTEND_DIR"/* ]] \
+    || fail "The Git repository checkout must never live inside public_html"
+  [[ "$REPOSITORY_DIR" != "$BACKEND_DIR" ]] \
+    || fail "PRODUCTION_REPOSITORY_PATH and PRODUCTION_BACKEND_PATH must be different directories"
+  [[ ! -L "$BACKEND_DIR" ]] || fail "PRODUCTION_BACKEND_PATH must not be a symlink"
+  [[ ! -L "$FRONTEND_DIR" ]] || fail "public_html must not be a symlink"
+}
+
+require_account() {
+  [[ "${HOME:-}" == "$HOME_ROOT" ]] || fail "Deployment must run inside the $ACCOUNT cPanel account (HOME=$HOME_ROOT)"
+  [[ "$(id -un)" == "$ACCOUNT" ]] || fail "Deployment must run as $ACCOUNT, not $(id -un)"
+  [[ -d "$HOME_ROOT" && ! -L "$HOME_ROOT" ]] || fail "Missing canonical account home $HOME_ROOT"
+  validate_native_paths
+}
+
 gate() {
   [[ "${PRODUCTION_DEPLOY_ENABLED:-false}" == true ]] \
     || fail "Production deployment gate is disabled (PRODUCTION_DEPLOY_ENABLED != true)"
@@ -67,7 +97,8 @@ lock() {
 }
 
 ensure_layout() {
-  mkdir -p "$RELEASES" "$INCOMING" "$SHARED" "$BACKUPS" "$BACKEND_DIR/tmp" "$BACKEND_DIR/uploads"
+  mkdir -p "$RELEASES" "$INCOMING" "$SHARED" "$BACKUPS" \
+    "$BACKEND_DIR/tmp" "$BACKEND_DIR/uploads" "$REPOSITORY_DIR/.deployment"
   chmod 700 "$DEPLOY_ROOT" "$RELEASES" "$INCOMING" "$SHARED" "$BACKUPS" "$BACKEND_DIR/tmp"
 }
 
@@ -110,16 +141,26 @@ install_python_deps() {
   "$VENV/bin/python" -m pip check || fail "Python dependency conflicts detected in $VENV"
 }
 
+write_release_markers() {
+  local sha="$1"
+  mkdir -p "$REPOSITORY_DIR/.deployment"
+  printf '%s\n' "$sha" > "$REPOSITORY_DIR/.deployment/release-sha"
+  printf '%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" > "$REPOSITORY_DIR/.deployment/deployed-at"
+  printf '%s\n' "$BACKEND_DIR" > "$REPOSITORY_DIR/.deployment/backend-path"
+  printf '%s\n' "$FRONTEND_DIR" > "$REPOSITORY_DIR/.deployment/frontend-path"
+}
+
 # Backend source is synchronised in place so the existing .env, virtual
 # environment, uploads, tmp and logs are preserved. Excluded paths are protected
 # from --delete, so this never removes production data or configuration.
 sync_backend() {
-  local release="$1"
+  local release="$1" sha="$2"
   [[ -d "$release/backend" ]] || fail "Release is missing backend sources"
   log "Synchronising backend sources into $BACKEND_DIR"
   rsync -a --delete \
     --exclude '.env' \
     --exclude '.env.*' \
+    --exclude 'RELEASE_SHA' \
     --exclude 'tmp/' \
     --exclude 'uploads/' \
     --exclude 'logs/' \
@@ -132,35 +173,56 @@ sync_backend() {
     "$release/backend/" "$BACKEND_DIR/"
   mkdir -p "$BACKEND_DIR/tmp" "$BACKEND_DIR/uploads"
   chmod 700 "$BACKEND_DIR/tmp" "$BACKEND_DIR/uploads" 2>/dev/null || true
+  printf '%s\n' "$sha" > "$BACKEND_DIR/RELEASE_SHA"
+  mkdir -p "$REPOSITORY_DIR/.deployment"
+  printf '%s\n' "$sha" > "$REPOSITORY_DIR/.deployment/backend-sha"
 }
 
-# Only the compiled frontend is published. public_html may also host the existing
-# NMaps application, so this never deletes anything outside public_html/assets.
-# Hashed build assets are the only directory replaced wholesale.
+# Only the compiled frontend is published. public_html may also host the
+# existing NMaps application, so this never deletes anything outside
+# public_html/assets. Hashed assets are the only directory replaced wholesale;
+# index.html and .htaccess are swapped with an atomic rename.
 sync_frontend() {
-  local release="$1" previous="${2:-}" staging
+  local release="$1" sha="$2" previous="${3:-}" stage
   [[ -f "$release/frontend/index.html" ]] || fail "Release is missing the compiled frontend (frontend/index.html)"
-  mkdir -p "$FRONTEND_DIR/assets" "$SHARED/frontend-previous"
+
+  stage="$SHARED/frontend-stage/$sha"
+  rm -rf "$stage"
+  mkdir -p "$stage" "$FRONTEND_DIR/assets" "$SHARED/frontend-previous"
+  rsync -a "$release/frontend/" "$stage/"
+
   if [[ -n "$previous" ]]; then
-    staging="$SHARED/frontend-previous/$previous"
-    mkdir -p "$staging"
+    mkdir -p "$SHARED/frontend-previous/$previous"
+    local name
     for name in index.html .htaccess; do
-      [[ ! -f "$FRONTEND_DIR/$name" ]] || cp -p "$FRONTEND_DIR/$name" "$staging/$name"
+      [[ ! -f "$FRONTEND_DIR/$name" ]] || cp -p "$FRONTEND_DIR/$name" "$SHARED/frontend-previous/$previous/$name"
     done
   fi
+
   log "Publishing compiled frontend into $FRONTEND_DIR"
-  rsync -a --delete "$release/frontend/assets/" "$FRONTEND_DIR/assets/"
-  local entry base
-  for entry in "$release"/frontend/*; do
+  rsync -a --delete "$stage/assets/" "$FRONTEND_DIR/assets/"
+
+  local entry base temp
+  for entry in "$stage"/*; do
     base="$(basename "$entry")"
-    [[ "$base" == "assets" ]] && continue
+    case "$base" in
+      assets|index.html|.htaccess) continue ;;
+    esac
     rsync -a "$entry" "$FRONTEND_DIR/"
   done
-  if [[ -f "$release/frontend/.htaccess" ]]; then
-    rsync -a "$release/frontend/.htaccess" "$FRONTEND_DIR/.htaccess"
+  if [[ -f "$stage/.htaccess" ]]; then
+    temp="$FRONTEND_DIR/.htaccess.deploy.$$"
+    install -m 644 "$stage/.htaccess" "$temp" && mv -f "$temp" "$FRONTEND_DIR/.htaccess"
   fi
+  temp="$FRONTEND_DIR/.index.html.deploy.$$"
+  install -m 644 "$stage/index.html" "$temp"
+  mv -f "$temp" "$FRONTEND_DIR/index.html"
+
   [[ -f "$FRONTEND_DIR/index.html" ]] || fail "Frontend publish did not produce index.html"
-  chmod 644 "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/.htaccess" 2>/dev/null || true
+  printf '%s\n' "$sha" > "$SHARED/frontend-sha"
+  mkdir -p "$REPOSITORY_DIR/.deployment"
+  printf '%s\n' "$sha" > "$REPOSITORY_DIR/.deployment/frontend-sha"
+  rm -rf "$stage"
 }
 
 backend_port() {
@@ -175,8 +237,6 @@ backend_runtime() {
   printf '%s' "${mode:-systemd}"
 }
 
-# Waits for the local backend to answer its health endpoint. Works for the
-# systemd/uvicorn runtime; Passenger is validated through the public URL only.
 # Startup runs idempotent schema compatibility routines, which can take several
 # minutes on a first installation or a large database. Allow up to 300 seconds.
 wait_for_backend() {
@@ -185,6 +245,14 @@ wait_for_backend() {
     if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
       log "Backend answered $url after ${attempt}s"
       return 0
+    fi
+    # A service that exited during startup (import error, bad migration) is
+    # reported as inactive by systemd; stop waiting instead of burning the full
+    # startup budget and leave the previous release active sooner.
+    if (( attempt % 5 == 0 )) && [[ "$(backend_runtime)" == "systemd" ]]; then
+      if ! sudo -n /usr/bin/systemctl is-active --quiet nakshatech-crm.service 2>/dev/null; then
+        fail "nakshatech-crm.service is not active; inspect journalctl -u nakshatech-crm -n 100"
+      fi
     fi
     if (( attempt % 30 == 0 )); then
       log "Waiting for backend startup (${attempt}s of ${attempts}s)"

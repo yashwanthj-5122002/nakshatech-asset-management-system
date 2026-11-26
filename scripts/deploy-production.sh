@@ -5,8 +5,15 @@
 #   PRODUCTION_DEPLOY_ENABLED=true \
 #   APPROVED_SCHEMA_SHA=<sha> \
 #   APPROVE_EMPTY_INSTALL=false \
+#   PRODUCTION_BACKEND_PATH=/home/crmnakshatech/crm_backend \
+#   PRODUCTION_REPOSITORY_PATH=/home/crmnakshatech/repositories/nakshatech-asset-management-system \
 #   bash releases/<sha>/scripts/deploy-production.sh <sha>
 #
+# Both running directories are updated from the same release archive:
+#   backend  -> PRODUCTION_BACKEND_PATH
+#   frontend -> /home/crmnakshatech/public_html
+# Updating the cPanel Git checkout alone would NOT update the application, so
+# this script never relies on it for runtime code.
 # No Docker, Docker Compose, container or container volume is involved.
 set -Eeuo pipefail
 source "$(dirname "$0")/production-common.sh"
@@ -14,7 +21,7 @@ source "$(dirname "$0")/production-common.sh"
 gate
 lock
 require_account
-require_cmd rsync curl tar sha256sum pg_dump pg_restore flock
+require_cmd rsync curl tar sha256sum pg_dump pg_restore flock install
 ensure_layout
 
 sha="${1:?exact release SHA required}"
@@ -38,7 +45,7 @@ if [[ -z "$previous" ]]; then
     || fail "Initial native installation requires APPROVE_EMPTY_INSTALL=true"
 fi
 
-trap 'echo "Deployment of $sha failed. No database restore was attempted. The release directory $RELEASES/$sha and any verified backup in $BACKUPS are retained; review logs before running scripts/rollback-production.sh." >&2' ERR
+log "Release $sha: backend -> $BACKEND_DIR, frontend -> $FRONTEND_DIR, git checkout metadata -> $REPOSITORY_DIR"
 
 # A verified database backup always precedes the restart that may apply
 # idempotent startup schema compatibility routines.
@@ -53,15 +60,37 @@ fi
 # leaves the running release untouched.
 install_python_deps "$release"
 
-sync_backend "$release"
-sync_frontend "$release" "$previous"
-
-bash "$release/scripts/restart-production.sh"
-bash "$release/scripts/verify-production.sh" "$sha"
+# Both directories are published from this single immutable release, then
+# restarted and verified. A failure restores the previous release in both
+# directories so a mixed frontend/backend version is never left active.
+if ! {
+  sync_backend "$release" "$sha"
+  sync_frontend "$release" "$sha" "$previous"
+  bash "$release/scripts/restart-production.sh"
+  bash "$release/scripts/verify-production.sh" "$sha"
+}; then
+  trap - ERR
+  if [[ -n "$previous" && "${AUTO_ROLLBACK_ON_FAILURE:-true}" != "false" && -d "$RELEASES/$previous" ]]; then
+    log "Activation of $sha failed; restoring previous release $previous in both directories"
+    if install_python_deps "$RELEASES/$previous" \
+      && sync_backend "$RELEASES/$previous" "$previous" \
+      && sync_frontend "$RELEASES/$previous" "$previous" "" \
+      && bash "$RELEASES/$previous/scripts/restart-production.sh" \
+      && bash "$RELEASES/$previous/scripts/verify-production.sh" "$previous"; then
+      printf '%s\n' "$previous" > "$SHARED/current.tmp"
+      mv "$SHARED/current.tmp" "$SHARED/current"
+      write_release_markers "$previous"
+      fail "Deployment of $sha failed and was automatically rolled back to $previous. Inspect logs before retrying."
+    fi
+    fail "Deployment of $sha failed AND automatic rollback to $previous failed. Manual intervention is required; verified databases are in $BACKUPS."
+  fi
+  fail "Deployment of $sha failed. No previous release was available for automatic rollback."
+fi
 
 if [[ -n "$previous" ]]; then
   printf '%s\n' "$previous" > "$SHARED/previous"
 fi
 printf '%s\n' "$sha" > "$SHARED/current.tmp"
 mv "$SHARED/current.tmp" "$SHARED/current"
-log "Deployed and verified $sha (previous: ${previous:-none})"
+write_release_markers "$sha"
+log "Deployed and verified $sha in backend and frontend (previous: ${previous:-none})"

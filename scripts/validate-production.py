@@ -67,6 +67,12 @@ check("vars.PRODUCTION_DEPLOY_ENABLED != 'true'" in deploy_text,
       "deployment must be skipped when the gate is disabled")
 check("concurrency:" in deploy_text and "cancel-in-progress: false" in deploy_text,
       "deployments must be serialised without cancelling an in-flight release")
+for variable in ("PRODUCTION_BACKEND_PATH", "PRODUCTION_REPOSITORY_PATH"):
+    check(variable in deploy_text, f"deploy workflow must support {variable}")
+check("/home/crmnakshatech/crm_backend" in deploy_text,
+      "deploy workflow must target the running backend directory /home/crmnakshatech/crm_backend")
+check("/home/crmnakshatech/public_html" in deploy_text or "public_html" in deploy_text,
+      "deploy workflow must target the running frontend directory in public_html")
 check("workflow_run:" in deploy_text, "deployments must follow a successful quality run")
 check("conclusion == 'success'" in deploy_text, "only successful quality runs may deploy")
 check("head_sha !== sha" in deploy_text, "stale quality runs must be rejected")
@@ -87,8 +93,33 @@ for relative in (".env.production.example", "scripts/production-common.sh",
 
 common = read("scripts/production-common.sh")
 check('HOME_ROOT="/home/crmnakshatech"' in common, "production home directory must be /home/crmnakshatech")
-check('BACKEND_DIR="$HOME_ROOT/crm_backend"' in common, "backend must live in /home/crmnakshatech/crm_backend")
+check('BACKEND_DIR="${PRODUCTION_BACKEND_PATH:-$HOME_ROOT/crm_backend}"' in common,
+      "backend path must honour PRODUCTION_BACKEND_PATH with the crm_backend default")
+check('REPOSITORY_DIR="${PRODUCTION_REPOSITORY_PATH:-$HOME_ROOT/repositories/nakshatech-asset-management-system}"' in common,
+      "repository path must honour PRODUCTION_REPOSITORY_PATH")
 check('FRONTEND_DIR="$HOME_ROOT/public_html"' in common, "frontend must live in /home/crmnakshatech/public_html")
+check('printf \'%s\\n\' "$sha" > "$BACKEND_DIR/RELEASE_SHA"' in common,
+      "the running backend must be marked with the deployed SHA")
+check('printf \'%s\\n\' "$sha" > "$SHARED/frontend-sha"' in common,
+      "the published frontend must be marked with the deployed SHA")
+check('rsync -a --delete "$stage/assets/" "$FRONTEND_DIR/assets/"' in common,
+      "only public_html/assets may be replaced with --delete")
+check('"$release/frontend/" "$stage/"' in common, "frontend must be staged before publishing")
+check('mv -f "$temp" "$FRONTEND_DIR/index.html"' in common, "index.html must be swapped atomically")
+check(".deployment" in common, "repository checkout must record deployment metadata")
+
+verify = read("scripts/verify-production.sh")
+check("Backend directory $BACKEND_DIR is not running release" in verify,
+      "verification must prove the backend directory matches the release")
+check("was not published from release" in verify,
+      "verification must prove the frontend directory matches the release")
+check("Published $name does not match release" in verify,
+      "verification must compare published frontend files with the release")
+
+deploy = read("scripts/deploy-production.sh")
+check("AUTO_ROLLBACK_ON_FAILURE" in deploy, "failed activation must support automatic rollback")
+check("sync_backend \"$release\" \"$sha\"" in deploy and "sync_frontend \"$release\" \"$sha\"" in deploy,
+      "both running directories must be deployed from the same release")
 
 # --- GNU/Linux line endings --------------------------------------------------
 for relative in ("scripts/deploy-production.sh", "scripts/backup-production.sh",

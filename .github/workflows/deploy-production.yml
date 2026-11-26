@@ -1,7 +1,14 @@
 name: Production deployment
 # Native cPanel deployment: Python 3.12 virtual environment, systemd-managed
-# Uvicorn (or Passenger alternative), cPanel-managed PostgreSQL/Redis/MinIO and
-# a statically published frontend. No Docker runs on the production server.
+# Uvicorn (or the Passenger alternative), cPanel-managed PostgreSQL/Redis/MinIO
+# and a statically published frontend. No Docker runs on the production server.
+#
+# The Contabo account holds three separate directories:
+#   repository  /home/crmnakshatech/repositories/nakshatech-asset-management-system
+#   backend     /home/crmnakshatech/crm_backend        (running Python app)
+#   frontend    /home/crmnakshatech/public_html        (running React build)
+# The running directories are copies, so this workflow deploys both of them from
+# one validated commit. Updating the Git checkout alone never updates the app.
 on:
   workflow_run:
     workflows: [ERP quality checks]
@@ -127,6 +134,8 @@ jobs:
           CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
+          PRODUCTION_BACKEND_PATH: ${{ vars.PRODUCTION_BACKEND_PATH || '/home/crmnakshatech/crm_backend' }}
+          PRODUCTION_REPOSITORY_PATH: ${{ vars.PRODUCTION_REPOSITORY_PATH || '/home/crmnakshatech/repositories/nakshatech-asset-management-system' }}
           APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
           APPROVE_EMPTY_INSTALL: ${{ vars.APPROVE_EMPTY_INSTALL }}
         shell: bash
@@ -137,6 +146,12 @@ jobs:
           [[ "$CPANEL_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Invalid CPANEL_HOST"; exit 1; }
           [[ "$CPANEL_SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "Invalid CPANEL_SSH_PORT"; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid release SHA"; exit 1; }
+          for path in "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"; do
+            [[ "$path" == /home/crmnakshatech/* ]] || { echo "Production path must live under /home/crmnakshatech: $path"; exit 1; }
+            [[ "$path" != *".."* ]] || { echo "Production path must not contain '..': $path"; exit 1; }
+            [[ "$path" != "/home/crmnakshatech/public_html"* ]] || { echo "Application paths must never be inside public_html: $path"; exit 1; }
+          done
+          [[ "$PRODUCTION_BACKEND_PATH" != "$PRODUCTION_REPOSITORY_PATH" ]] || { echo "Backend and repository paths must differ"; exit 1; }
           [[ "$APPROVED_SCHEMA_SHA" == "$SHA" ]] || { echo "Administrator must set APPROVED_SCHEMA_SHA to the exact release SHA"; exit 1; }
           [[ "${APPROVE_EMPTY_INSTALL:-false}" == "true" || "${APPROVE_EMPTY_INSTALL:-false}" == "false" ]] || { echo "APPROVE_EMPTY_INSTALL must be true or false"; exit 1; }
       - name: Transfer and activate the exact release natively
@@ -148,6 +163,8 @@ jobs:
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
           CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+          PRODUCTION_BACKEND_PATH: ${{ vars.PRODUCTION_BACKEND_PATH || '/home/crmnakshatech/crm_backend' }}
+          PRODUCTION_REPOSITORY_PATH: ${{ vars.PRODUCTION_REPOSITORY_PATH || '/home/crmnakshatech/repositories/nakshatech-asset-management-system' }}
           APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
           APPROVE_EMPTY_INSTALL: ${{ vars.APPROVE_EMPTY_INSTALL }}
         shell: bash
@@ -164,15 +181,26 @@ jobs:
           target="$CPANEL_USERNAME@$CPANEL_HOST"
           ssh_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$CPANEL_SSH_PORT")
           scp_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -P "$CPANEL_SSH_PORT")
-          printf -v remote_preflight 'bash -s -- %q' "$SHA"
+          printf -v remote_preflight 'bash -s -- %q %q %q' "$SHA" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
           # Release arguments are %q-quoted above before reaching ssh.
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$target" "$remote_preflight" <<'REMOTE'
           set -Eeuo pipefail
           sha="$1"
+          backend="$2"
+          repository="$3"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           [[ "$HOME" == "/home/crmnakshatech" ]] || { echo "Unexpected account home $HOME"; exit 1; }
           [[ ! -L "$HOME" ]]
+          for path in "$backend" "$repository"; do
+            [[ "$path" == /home/crmnakshatech/* ]] || { echo "Unapproved path $path"; exit 1; }
+            [[ "$path" != *".."* ]] || { echo "Unapproved path $path"; exit 1; }
+            [[ "$path" != /home/crmnakshatech/public_html* ]] || { echo "Path inside public_html: $path"; exit 1; }
+            [[ -d "$path" && ! -L "$path" ]] || { echo "Missing canonical directory $path"; exit 1; }
+            [[ -w "$path" ]] || { echo "Directory is not writable: $path"; exit 1; }
+          done
+          [[ "$backend" != "$repository" ]] || { echo "Backend and repository paths must differ"; exit 1; }
+          [[ -f "$backend/.env" && ! -L "$backend/.env" ]] || { echo "Missing private production environment $backend/.env"; exit 1; }
           cd "$HOME"
           mkdir -p erp-releases/incoming erp-releases/releases erp-releases/shared
           chmod 700 erp-releases erp-releases/incoming erp-releases/releases erp-releases/shared
@@ -180,8 +208,8 @@ jobs:
           command -v rsync >/dev/null && command -v flock >/dev/null
           REMOTE
           scp "${scp_opts[@]}" release.tar.gz "$target:erp-releases/incoming/$SHA.tar.gz"
-          printf -v remote_deploy 'bash -s -- %q %q %q %q' "$SHA" "$digest" "$APPROVED_SCHEMA_SHA" "${APPROVE_EMPTY_INSTALL:-false}"
-          # Release arguments are %q-quoted above before reaching ssh.
+          printf -v remote_deploy 'bash -s -- %q %q %q %q %q %q' \
+            "$SHA" "$digest" "$APPROVED_SCHEMA_SHA" "${APPROVE_EMPTY_INSTALL:-false}" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$target" "$remote_deploy" <<'REMOTE'
           set -Eeuo pipefail
@@ -189,6 +217,10 @@ jobs:
           digest="$2"
           approved="$3"
           empty_install="${4:-false}"
+          backend="$5"
+          repository="$6"
+          export PRODUCTION_BACKEND_PATH="$backend"
+          export PRODUCTION_REPOSITORY_PATH="$repository"
           cd "$HOME"
           archive="erp-releases/incoming/$sha.tar.gz"
           echo "$digest  $archive" | sha256sum -c -
@@ -201,7 +233,7 @@ jobs:
           REMOTE
       - name: Report deployment health
         if: vars.PRODUCTION_DEPLOY_ENABLED == 'true' && success()
-        run: echo "Release ${{ needs.prepare.outputs.sha }} verified at https://crm.nakshatech.com"
+        run: echo "Release ${{ needs.prepare.outputs.sha }} verified in crm_backend and public_html at https://crm.nakshatech.com"
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.rollback_sha != ''
     runs-on: ubuntu-latest
@@ -226,6 +258,8 @@ jobs:
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
           CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+          PRODUCTION_BACKEND_PATH: ${{ vars.PRODUCTION_BACKEND_PATH || '/home/crmnakshatech/crm_backend' }}
+          PRODUCTION_REPOSITORY_PATH: ${{ vars.PRODUCTION_REPOSITORY_PATH || '/home/crmnakshatech/repositories/nakshatech-asset-management-system' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -236,14 +270,17 @@ jobs:
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
           trap 'rm -f ~/.ssh/deploy_key' EXIT
           ssh_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$CPANEL_SSH_PORT")
-          printf -v remote_rollback 'bash -s -- %q' "$SHA"
-          # Release arguments are %q-quoted above before reaching ssh.
+          printf -v remote_rollback 'bash -s -- %q %q %q' "$SHA" "$PRODUCTION_BACKEND_PATH" "$PRODUCTION_REPOSITORY_PATH"
           # shellcheck disable=SC2029
           ssh "${ssh_opts[@]}" "$CPANEL_USERNAME@$CPANEL_HOST" "$remote_rollback" <<'REMOTE'
           set -Eeuo pipefail
           sha="$1"
+          backend="$2"
+          repository="$3"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           [[ "$HOME" == "/home/crmnakshatech" ]]
+          export PRODUCTION_BACKEND_PATH="$backend"
+          export PRODUCTION_REPOSITORY_PATH="$repository"
           cd "$HOME"
           [[ -f "erp-releases/releases/$sha/RELEASE_SHA" ]] || { echo "Release $sha is not present on the server"; exit 1; }
           PRODUCTION_DEPLOY_ENABLED=true ROLLBACK_SCHEMA_COMPATIBLE_SHA="$sha" \

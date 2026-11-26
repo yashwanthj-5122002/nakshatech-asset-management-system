@@ -21,6 +21,14 @@ The runtime consists of:
 - `deploy/apache` or `deploy/nginx` snippets for the `/api` proxy, installed for
   this domain only
 
+The account keeps three separate copies: the cPanel Git checkout at
+`/home/crmnakshatech/repositories/nakshatech-asset-management-system`, the
+running backend at `/home/crmnakshatech/crm_backend` and the running frontend at
+`/home/crmnakshatech/public_html`. Pulling into the Git checkout alone does not
+deploy anything; the workflow publishes both running directories from one
+validated commit and records the deployed SHA in the checkout's `.deployment/`
+directory.
+
 Raw WebSocket telemetry is available on the systemd/Uvicorn runtime when the
 proxy forwards Upgrade headers. Passenger's WSGI adapter supports normal HTTP
 (uploads, Excel/PDF downloads) but not WebSocket upgrades.

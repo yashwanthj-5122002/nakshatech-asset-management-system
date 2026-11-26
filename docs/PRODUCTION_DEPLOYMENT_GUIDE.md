@@ -49,6 +49,32 @@ for the production browser and API cookies keep working.
 `public_html` is never a deployment root for backend code, `erp-releases` is
 never web-accessible, and no secret is stored under `public_html`.
 
+The three directories serve different purposes and must not be confused:
+
+- `repositories/nakshatech-asset-management-system` is the cPanel **Git
+  checkout**. A pull or cPanel Git deployment there changes no running code; the
+  release scripts only write `.deployment/` metadata into it (`release-sha`,
+  `deployed-at`, `backend-path`, `frontend-path`, `backend-sha`, `frontend-sha`)
+  so operators can see which commit is live and where.
+- `crm_backend` is the **running Python application**. It receives the release's
+  `backend/` sources, its own private `.env`, `tmp/`, `uploads/` and logs.
+- `public_html` is the **running frontend**. It receives the compiled build
+  (`index.html`, `assets/`, `.htaccess`) and keeps every other file, including
+  the NMaps pages, untouched.
+
+Deploying only the Git checkout is never reported as a deployment: the workflow
+updates both runtime directories from the same validated SHA and verifies the
+markers afterwards.
+
+Both runtime paths are configurable through the `PRODUCTION` environment
+variables `PRODUCTION_BACKEND_PATH` (default
+`/home/crmnakshatech/crm_backend`) and `PRODUCTION_REPOSITORY_PATH` (default
+`/home/crmnakshatech/repositories/nakshatech-asset-management-system`). The
+frontend document root stays `/home/crmnakshatech/public_html`. Paths must live
+under `/home/crmnakshatech`, must differ from each other, and must never be
+inside `public_html`; the values are validated on the runner and again in the
+remote preflight before any file is written.
+
 ## GitHub configuration
 
 Reuse the existing **PRODUCTION** environment (restricted to `main`, reviewers
@@ -70,6 +96,8 @@ PRODUCTION environment variables:
 | `PRODUCTION_DEPLOY_ENABLED` | `false` by default. `true` enables transfer and activation. |
 | `APPROVED_SCHEMA_SHA` | Exact main SHA whose startup schema changes an administrator reviewed. Must equal the release SHA. |
 | `APPROVE_EMPTY_INSTALL` | `true` only for the very first installation against an approved empty database. |
+| `PRODUCTION_BACKEND_PATH` | Optional. Running backend directory; defaults to `/home/crmnakshatech/crm_backend`. |
+| `PRODUCTION_REPOSITORY_PATH` | Optional. cPanel Git checkout that receives deployment metadata; defaults to `/home/crmnakshatech/repositories/nakshatech-asset-management-system`. |
 
 `PRODUCTION_DEPLOY_ENABLED=false` means the prepare job still builds, validates
 and packages the release, but no SSH connection is opened and nothing on the
@@ -94,6 +122,14 @@ runner; it is not installed or used on the production server.
    `main` still points at the release SHA, refuses to overwrite an existing
    immutable release directory, uploads the archive, verifies its checksum on the
    server, extracts it, and runs `scripts/deploy-production.sh`.
+   The script backs up the running release, installs Python dependencies into
+   `crm_venv` **before** touching sources, then publishes the backend to
+   `PRODUCTION_BACKEND_PATH` and the compiled frontend to `public_html` from the
+   same release, restarts the approved service and verifies both. If any step
+   fails, including a service that exits during startup (`systemctl is-active`
+   is polled while waiting for health), the previous release is restored in
+   **both** directories and the job fails, so a mixed or partial release is
+   never left active.
 3. **Rollback** – a manual dispatch with `rollback_sha` runs
    `scripts/rollback-production.sh` for a previously deployed, schema-compatible
    release. It never restores a database automatically.
@@ -350,6 +386,11 @@ monthly for 12 months, copy encrypted backups off-host and prune only through a
 reviewed retention process. A failed backup aborts the deployment before any
 source is replaced.
 
+`erp-releases/shared/previous` always names an older release than
+`erp-releases/shared/current`; a rollback to the release that is already current
+leaves the pointer unchanged, so a repeated bare rollback cannot silently do
+nothing.
+
 A database restore is always a separate, explicitly reviewed operation: stop
 writers, verify `SHA256SUMS`, restore into a new empty database with
 `pg_restore`, restore MinIO objects, then validate counts, logins and document
@@ -432,6 +473,18 @@ PostgreSQL 16 database, Apache 2.4 serving `public_html` with the published
 - Rollback: restored the previous release's backend source, Python dependencies
   and compiled frontend (including replacing hashed assets), re-ran health
   checks, and left the database and object storage untouched.
+- Two-directory activation: each release updated `crm_backend` and
+  `public_html` from the same SHA; `crm_backend/RELEASE_SHA`,
+  `erp-releases/shared/frontend-sha`, `shared/current` and the
+  `.deployment/` metadata in the Git checkout all matched, and the swapped
+  `index.html`/assets proved the frontend came from that release.
+- Automatic rollback on a failed release: a deliberately broken backend (an
+  import-time exception) reached the server, the restart produced an inactive
+  service, activation was aborted within seconds of the failed start, and the
+  previous release was restored in **both** directories (`current`,
+  `RELEASE_SHA`, `frontend-sha` and `index.html` back to the previous SHA). The
+  job exited non-zero and the API served 200 again; `nmaps.html` and `nmaps/`
+  were untouched.
 - Preservation: `crm_backend/.env` stayed mode 600 and unchanged across
   deployments; `tmp/` and `uploads/` survived `rsync`, which never uses
   `--delete` outside the exclusion list.
