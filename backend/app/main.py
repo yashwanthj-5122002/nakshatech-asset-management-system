@@ -459,16 +459,18 @@ def initialize_application() -> None:
         ensure_commercial_schema_compatibility()
         ensure_lifecycle_billing_schema_compatibility()
         with SessionLocal() as db:
-            if settings.seed_default_users:
-                seed_database(db)
-            ensure_management_accounts(db)
-            ensure_operations_test_accounts(db)
-            ensure_v81_test_employee_accounts(db)
-            ensure_multi_department_pm_accounts(db)
-            ensure_multi_department_test_employee_accounts(db)
-            ensure_bd_employee_accounts(db)
+            if not settings.is_production:
+                if settings.seed_default_users:
+                    seed_database(db)
+                ensure_management_accounts(db)
+                ensure_operations_test_accounts(db)
+                ensure_v81_test_employee_accounts(db)
+                ensure_multi_department_pm_accounts(db)
+                ensure_multi_department_test_employee_accounts(db)
+                ensure_bd_employee_accounts(db)
             default_branch = ensure_default_branch(db)
-            ensure_finance_seed_data(db)
+            if not settings.is_production:
+                ensure_finance_seed_data(db)
             retire_obsolete_sample_notifications(db)
             for user in db.scalars(select(User)).all():
                 if not user.branch:
@@ -490,7 +492,7 @@ def initialize_application() -> None:
             # real source dates instead of presenting empty historical periods.
             # SQLite is used by the isolated test suite, where this production
             # data import must remain disabled.
-            if engine.dialect.name != "sqlite":
+            if engine.dialect.name != "sqlite" and not settings.is_production:
                 import_lock_acquired = True
                 if engine.dialect.name == "postgresql":
                     import_lock_acquired = bool(db.scalar(text(
