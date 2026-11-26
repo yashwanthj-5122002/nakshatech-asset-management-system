@@ -1,95 +1,121 @@
-# cPanel Subdomain Deployment and Backup Requirements
+# cPanel subdomain deployment and backup requirements
 
-## Critical deployment distinction
+## Native hosting status
 
-Creating a subdomain in cPanel does not automatically provide the runtime required by this application.
+Production for `https://crm.nakshatech.com` runs **natively** on the Contabo
+Ubuntu 24.04 cPanel server, account `crmnakshatech`. Docker is not installed or
+used there.
 
-This system currently uses:
+The runtime consists of:
 
-- React/Vite frontend
-- FastAPI ASGI backend
-- PostgreSQL
-- Redis
-- MinIO
-- WebSocket telemetry
+- React/Vite frontend compiled on GitHub Actions and published to
+  `/home/crmnakshatech/public_html`
+- FastAPI backend at `/home/crmnakshatech/crm_backend`, served by Uvicorn under
+  an administrator-installed systemd unit on `127.0.0.1:8010`, or by Passenger
+  WSGI as the documented alternative
+- Python 3.12 in a dedicated virtual environment
+  (`/home/crmnakshatech/crm_venv`)
+- PostgreSQL, Redis and MinIO/S3 through private production environment
+  variables (cPanel-managed or approved external services)
+- SMTP for email/OTP and Authenticator MFA for privileged accounts
+- `deploy/apache` or `deploy/nginx` snippets for the `/api` proxy, installed for
+  this domain only
 
-### Recommended full-feature deployment
+The account keeps three separate copies: the cPanel Git checkout at
+`/home/crmnakshatech/repositories/nakshatech-asset-management-system`, the
+running backend at `/home/crmnakshatech/crm_backend` and the running frontend at
+`/home/crmnakshatech/public_html`. Pulling into the Git checkout alone does not
+deploy anything; the workflow publishes both running directories from one
+validated commit and records the deployed SHA in the checkout's `.deployment/`
+directory.
 
-Use cPanel for the subdomain/DNS and point the subdomain to a VPS or server running the application stack. Run the scheduled backup on the same server that can reach PostgreSQL and MinIO.
+Raw WebSocket telemetry is available on the systemd/Uvicorn runtime when the
+proxy forwards Upgrade headers. Passenger's WSGI adapter supports normal HTTP
+(uploads, Excel/PDF downloads) but not WebSocket upgrades.
 
-This is the reliable route for all existing features, including WebSockets.
+Authoritative instructions, including the systemd unit, the scoped sudoers rule,
+Passenger configuration, API prefix matrix and rollback procedure:
+[PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md).
 
-### Direct shared-cPanel deployment
+## Hosting prerequisites
 
-Proceed only when the hosting provider confirms all of the following:
+The hosting administrator must confirm/enable:
 
-- cPanel Application Manager is enabled.
-- Python 3.11 or 3.12 is available.
-- PostgreSQL is available and remote/local connections are permitted.
-- `pg_dump` and `pg_restore` are available.
-- Cron Jobs are enabled.
-- Redis and MinIO are available as external services or supported services.
-- The provider supports an ASGI deployment method compatible with FastAPI and WebSockets.
+- shell/SSH access for `crmnakshatech` with a dedicated deploy key
+- Python 3.12 and the ability to create a virtual environment
+- PostgreSQL database + user, `pg_dump` and `pg_restore`
+- Redis and MinIO/S3 (local or approved external endpoints)
+- Cron Jobs
+- systemd unit installation, the restricted sudoers rule and the `/api` proxy
+- DNS and AutoSSL for `crm.nakshatech.com`
 
-cPanel's standard Python Passenger documentation describes WSGI applications. A normal Passenger WSGI deployment does not provide the existing Drone WebSocket telemetry path. Do not claim full feature parity on ordinary shared hosting without provider confirmation.
+## Backup storage
 
-Official references:
-
-- https://docs.cpanel.net/cpanel/software/application-manager/
-- https://docs.cpanel.net/knowledge-base/web-services/how-to-install-a-python-wsgi-application/
-- https://docs.cpanel.net/cpanel/advanced/cron-jobs/
-- https://docs.cpanel.net/cpanel/domains/domains/create-a-new-domain/
-
-## Backup storage on cPanel
-
-Use a private directory under the account home, not the subdomain document root:
+Use a private directory under the account home, never the subdomain document
+root:
 
 ```text
-/home/CPANEL_USER/nakshatech_backups
+/home/crmnakshatech/erp-backups
 ```
 
-Set:
+Set in the private environment:
 
 ```text
-BACKUP_ROOT=/home/CPANEL_USER/nakshatech_backups
+BACKUP_ROOT=/home/crmnakshatech/erp-backups
 BACKUP_TIMEZONE=Asia/Kolkata
+BACKUP_DATABASE_ENABLED=true
+BACKUP_MINIO_ENABLED=false
 PG_DUMP_BIN=/usr/bin/pg_dump
 ```
 
 Recommended permissions:
 
 ```bash
-chmod 700 /home/CPANEL_USER/nakshatech_backups
+chmod 700 /home/crmnakshatech/erp-backups
 ```
 
-Do not store database dumps under `public_html`.
+Deployment writes a verified backup (`database.dump`, `database.contents`,
+`uploads.tar.gz`, optional `minio/`, `production.env`, `SHA256SUMS`, `VERIFIED`)
+before any schema-affecting upgrade. Backups are never deleted automatically and
+no database dump is ever stored under `public_html`.
+
+## Release verification
+
+Every release publishes `/release-version.json` next to `index.html`, containing
+only the deployed commit hash (`{"commit":"<sha>"}`). GitHub Actions verifies
+`https://crm.nakshatech.com/release-version.json` and `/api/health` after
+activation, and the server-side verifier compares the marker, `index.html` and
+`.htaccess` with the release it just published. The archive is transferred with
+rsync over SSH; FTP and FTPS are not used.
 
 ## cPanel Cron Jobs
 
 In **cPanel → Advanced → Cron Jobs**, schedule once daily, for example at 11:55 PM:
 
 ```cron
-55 23 * * * /home/CPANEL_USER/virtualenv/nakshatech_asset_management/3.12/bin/python /home/CPANEL_USER/nakshatech_asset_management/backend/scripts/run_backup.py --scheduled --created-by "cPanel Cron" >> /home/CPANEL_USER/nakshatech_backups/Logs/backup-cron.log 2>&1
+55 23 * * * /home/crmnakshatech/crm_venv/bin/python /home/crmnakshatech/crm_backend/scripts/run_backup.py --scheduled --created-by "cPanel Cron" >> /home/crmnakshatech/erp-backups/cron.log 2>&1
 ```
-
-Use the exact virtual-environment and application paths shown in your cPanel account.
 
 ## Subdomain and CORS
 
-After the final subdomain is known, set:
+Production is same-origin, so the browser calls `/api` on the same host. Set:
 
 ```text
-CORS_ORIGINS=https://assets.example.com
+CORS_ORIGINS=https://crm.nakshatech.com
+TRUSTED_HOSTS=crm.nakshatech.com,127.0.0.1,localhost
 ```
 
-Use HTTPS and replace all development credentials and secrets before public access.
+Use HTTPS and replace every development credential and secret before public
+access.
 
 ## Preflight
 
-Upload and run:
+Run the read-only check on the server:
 
 ```bash
 bash cpanel/preflight_check.sh
 ```
 
-The script checks Python, `pg_dump`, `pg_restore` and backup-folder write access. It does not change the server.
+It reports Python, PostgreSQL client tools, `rsync`, `flock`, the native
+directories, the private `.env` mode and the available restart mechanism. It does
+not change the server.

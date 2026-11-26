@@ -1,0 +1,44 @@
+[Unit]
+Description=NakshaTech ERP CRM backend (native cPanel, FastAPI/Uvicorn)
+Documentation=https://crm.nakshatech.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=crmnakshatech
+Group=crmnakshatech
+WorkingDirectory=/home/crmnakshatech/crm_backend
+# The application reads /home/crmnakshatech/crm_backend/.env through
+# pydantic-settings. The private environment file is never passed to the shell.
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=ENVIRONMENT=production
+Environment=APP_ENV=production
+Environment=API_PREFIX=/api
+Environment=ENABLE_BACKGROUND_WATCHER=false
+ExecStart=/home/crmnakshatech/crm_venv/bin/uvicorn app.batch4_main:app \
+    --host 127.0.0.1 \
+    --port 8010 \
+    --workers 1 \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=30
+KillSignal=SIGINT
+# Startup runs idempotent schema compatibility routines; keep a single worker
+# until an administrator confirms concurrent migration safety.
+LimitNOFILE=8192
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/crmnakshatech/crm_backend
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nakshatech-crm
+
+[Install]
+WantedBy=multi-user.target
