@@ -42,3 +42,12 @@ dist/
 /backups/
 frontend/test-results/
 frontend/playwright-report/
+
+!.env.production.example
+*.pem
+*.key
+/production-backups/
+/release.tar.gz*
+production.env
+id_rsa*
+id_ed25519*

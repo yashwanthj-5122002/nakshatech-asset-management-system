@@ -1,0 +1,122 @@
+name: Production deployment
+on:
+  workflow_run:
+    workflows: [ERP quality checks]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nakshatech-production
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.approve.outputs.sha }}
+    steps:
+      - uses: actions/github-script@v7
+        id: approve
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const main = await github.rest.repos.getBranch({owner, repo, branch: 'main'});
+            const sha = main.data.commit.sha;
+            if (context.eventName === 'workflow_run' && context.payload.workflow_run.head_sha !== sha)
+              throw new Error('Stale quality run. Only current main may deploy.');
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner, repo, workflow_id: 'quality.yml', branch: 'main', head_sha: sha, per_page: 100
+            });
+            const eligible = runs.filter(r => r.head_sha === sha && r.event === 'push' && r.head_repository.full_name === context.repo.owner + '/' + context.repo.repo);
+            eligible.sort((a,b) => b.id - a.id);
+            if (!eligible.length || eligible[0].conclusion !== 'success')
+              throw new Error('Latest push quality run for exact main SHA must succeed.');
+            core.setOutput('sha', sha);
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.approve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - run: |
+          python -m pip install PyYAML
+          bash scripts/validate-production.sh
+          docker build -f frontend/Dockerfile.production -t nakshatech-frontend:validation frontend
+          docker build -t nakshatech-backend:validation backend
+      - name: Create source release from reviewed tracked files
+        env:
+          SHA: ${{ steps.approve.outputs.sha }}
+        run: |
+          mkdir release
+          git archive "$SHA" backend frontend nginx scripts docker-compose.production.yml | tar -x -C release
+          printf '%s\n' "$SHA" > release/RELEASE_SHA
+          tar -czf release.tar.gz -C release .
+          sha256sum release.tar.gz > release.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-release
+          path: |
+            release.tar.gz
+            release.tar.gz.sha256
+          retention-days: 14
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: PRODUCTION
+    steps:
+      - name: Disabled gate
+        if: vars.PRODUCTION_DEPLOY_ENABLED != 'true'
+        run: echo "Production connection disabled. Build and configuration validation completed."
+      - uses: actions/download-artifact@v4
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+        with:
+          name: production-release
+      - name: Recheck main immediately before deployment
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+        uses: actions/github-script@v7
+        env:
+          SHA: ${{ needs.prepare.outputs.sha }}
+        with:
+          script: |
+            const result = await github.rest.repos.getBranch({...context.repo, branch:'main'});
+            if (result.data.commit.sha !== process.env.SHA) throw new Error('Release became stale');
+      - name: Transfer and deploy exact release
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+        env:
+          SHA: ${{ needs.prepare.outputs.sha }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+          CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
+          APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
+          APPROVE_EMPTY_INSTALL: ${{ vars.APPROVE_EMPTY_INSTALL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$CPANEL_DEPLOY_PATH" == /home/crmnakshatech/erp-production ]]
+          [[ "$CPANEL_USERNAME" == crmnakshatech ]]
+          [[ "$CPANEL_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$CPANEL_SSH_PORT" =~ ^[0-9]+$ ]]
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ && "$APPROVED_SCHEMA_SHA" == "$SHA" ]]
+          [[ "$APPROVE_EMPTY_INSTALL" == true || "$APPROVE_EMPTY_INSTALL" == false || -z "$APPROVE_EMPTY_INSTALL" ]]
+          mkdir -p ~/.ssh
+          printf '%s\n' "$CPANEL_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$CPANEL_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          trap 'rm -f ~/.ssh/deploy_key' EXIT
+          sha256sum -c release.tar.gz.sha256
+          options=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+          target="$CPANEL_USERNAME@$CPANEL_HOST"
+          ssh "${options[@]}" -p "$CPANEL_SSH_PORT" "$target" "test -d '$CPANEL_DEPLOY_PATH/incoming' && test ! -e '$CPANEL_DEPLOY_PATH/releases/$SHA'"
+          scp "${options[@]}" -P "$CPANEL_SSH_PORT" release.tar.gz "$target:$CPANEL_DEPLOY_PATH/incoming/$SHA.tar.gz"
+          digest="$(sha256sum release.tar.gz | cut -d' ' -f1)"
+          ssh "${options[@]}" -p "$CPANEL_SSH_PORT" "$target" "set -eu; cd '$CPANEL_DEPLOY_PATH'; test ! -L incoming; test ! -L releases; echo '$digest  incoming/$SHA.tar.gz' | sha256sum -c -; mkdir 'releases/$SHA'; tar -xzf 'incoming/$SHA.tar.gz' -C 'releases/$SHA'; PRODUCTION_DEPLOY_ENABLED=true APPROVED_SCHEMA_SHA='$SHA' APPROVE_EMPTY_INSTALL='$APPROVE_EMPTY_INSTALL' bash 'releases/$SHA/scripts/deploy-production.sh' '$SHA'"

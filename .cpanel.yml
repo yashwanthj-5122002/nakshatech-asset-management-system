@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - /bin/echo "NakshaTech ERP deployment configuration initialized"
+    - /bin/echo "Production deployment is currently disabled"
+    - /bin/echo "Awaiting server configuration and CI validation"
