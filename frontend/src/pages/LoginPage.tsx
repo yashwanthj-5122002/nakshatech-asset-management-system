@@ -236,7 +236,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
           <form className="final-login-panel" ref={panelRef} onSubmit={submit}>
             <Link className="final-login-back" to="/">
               <ArrowLeft size={17} aria-hidden="true" />
-              <span>Back 2 Welcome Page</span>
+              <span>Back to Welcome Page</span>
             </Link>
 
             <div className="final-login-heading">
