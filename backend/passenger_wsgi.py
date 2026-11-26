@@ -31,11 +31,15 @@ except Exception:
     # pydantic-settings will still read .env after os.chdir(APP_ROOT).
     pass
 
-# Safe mount defaults. Values explicitly present in .env remain authoritative.
 os.environ.setdefault("ENVIRONMENT", "production")
-os.environ.setdefault("API_PREFIX", "")
-os.environ.setdefault("ROOT_PATH", "/api")
 os.environ.setdefault("ENABLE_BACKGROUND_WATCHER", "false")
+# Passenger always mounts this application at /api and supplies that prefix as
+# SCRIPT_NAME. These two values are therefore forced rather than defaulted:
+# load_dotenv() above may already have loaded a native ASGI .env that sets
+# API_PREFIX=/api, which would double-prefix and break every route under the
+# Passenger mount. The systemd/Uvicorn runtime never imports this module.
+os.environ["API_PREFIX"] = ""
+os.environ["ROOT_PATH"] = "/api"
 
 try:
     from app.main import app, initialize_application

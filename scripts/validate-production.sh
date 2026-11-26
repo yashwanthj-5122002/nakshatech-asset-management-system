@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
+# Offline validation of the native cPanel production deployment.
+# Runs on GitHub Actions and any developer machine. It never connects to the
+# production server and never requires Docker.
 set -Eeuo pipefail
-for file in scripts/*production*.sh; do bash -n "$file"; done
-# Parse with dummy values in a temporary private environment file.
-temporary="$(mktemp)"
-trap 'rm -f "$temporary"' EXIT
-cp .env.production.example "$temporary"
-export PRODUCTION_ENV_FILE="$temporary"
-export RELEASE_SHA=0000000000000000000000000000000000000000
-docker compose --env-file "$temporary" -f docker-compose.production.yml config --quiet
-python scripts/validate-production.py
+cd "$(dirname "$0")/.."
+
+for file in \
+  scripts/deploy-production.sh \
+  scripts/backup-production.sh \
+  scripts/verify-production.sh \
+  scripts/rollback-production.sh \
+  scripts/restart-production.sh \
+  scripts/production-common.sh \
+  scripts/validate-production.sh \
+  cpanel/preflight_check.sh; do
+  bash -n "$file"
+done
+
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      PYTHON_BIN="$candidate"
+      break
+    fi
+  done
+fi
+[[ -n "$PYTHON_BIN" ]] || { echo "ERROR: Python 3 is required for deployment validation" >&2; exit 1; }
+exec "$PYTHON_BIN" scripts/validate-production.py

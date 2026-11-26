@@ -33,4 +33,4 @@ Compress-Archive -Path (Join-Path $Output '*') -DestinationPath $Zip -Compressio
 Write-Host ''
 Write-Host 'Frontend production ZIP created:' -ForegroundColor Green
 Write-Host $Zip
-Write-Host 'Upload and extract its contents directly into /home/nakshatechws/crm.nakshatech.com'
+Write-Host 'Publish the extracted contents into /home/crmnakshatech/public_html (native cPanel static hosting)'

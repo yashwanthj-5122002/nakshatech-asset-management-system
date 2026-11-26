@@ -1,39 +1,54 @@
 name: Production deployment
+# Native cPanel deployment: Python 3.12 virtual environment, systemd-managed
+# Uvicorn (or Passenger alternative), cPanel-managed PostgreSQL/Redis/MinIO and
+# a statically published frontend. No Docker runs on the production server.
 on:
   workflow_run:
     workflows: [ERP quality checks]
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: 'Previously verified release SHA to roll back to (leave empty for a normal deployment)'
+        required: false
+        default: ''
 permissions:
   contents: read
   actions: read
 concurrency:
   group: nakshatech-production
   cancel-in-progress: false
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '24'
 jobs:
   prepare:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.rollback_sha == '')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.approve.outputs.sha }}
     steps:
-      - uses: actions/github-script@v7
+      - name: Approve only the tested current main commit
         id: approve
+        uses: actions/github-script@v7
         with:
           script: |
             const {owner, repo} = context.repo;
             const main = await github.rest.repos.getBranch({owner, repo, branch: 'main'});
             const sha = main.data.commit.sha;
             if (context.eventName === 'workflow_run' && context.payload.workflow_run.head_sha !== sha)
-              throw new Error('Stale quality run. Only current main may deploy.');
+              throw new Error('Stale quality run. Only the current main commit may deploy.');
             const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
               owner, repo, workflow_id: 'quality.yml', branch: 'main', head_sha: sha, per_page: 100
             });
-            const eligible = runs.filter(r => r.head_sha === sha && r.event === 'push' && r.head_repository.full_name === context.repo.owner + '/' + context.repo.repo);
-            eligible.sort((a,b) => b.id - a.id);
+            const eligible = runs.filter(r =>
+              r.head_sha === sha &&
+              r.event === 'push' &&
+              r.head_repository.full_name === context.repo.owner + '/' + context.repo.repo);
+            eligible.sort((a, b) => b.id - a.id);
             if (!eligible.length || eligible[0].conclusion !== 'success')
-              throw new Error('Latest push quality run for exact main SHA must succeed.');
+              throw new Error('The latest push quality run for the exact main SHA must succeed.');
             core.setOutput('sha', sha);
       - uses: actions/checkout@v4
         with:
@@ -41,22 +56,38 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci && npm run build
+      - name: Compile the frontend on GitHub Actions
         working-directory: frontend
-      - run: |
-          python -m pip install PyYAML
+        env:
+          VITE_API_URL: /api
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+          test -d dist/assets
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate deployment configuration offline
+        run: |
+          python -m pip install --quiet 'PyYAML>=6,<7'
           bash scripts/validate-production.sh
-          docker build -f frontend/Dockerfile.production -t nakshatech-frontend:validation frontend
-          docker build -t nakshatech-backend:validation backend
-      - name: Create source release from reviewed tracked files
+      - name: Package the exact reviewed release
         env:
           SHA: ${{ steps.approve.outputs.sha }}
         run: |
-          mkdir release
-          git archive "$SHA" backend frontend nginx scripts docker-compose.production.yml | tar -x -C release
+          set -Eeuo pipefail
+          mkdir -p release
+          git archive "$SHA" backend scripts deploy cpanel | tar -x -C release
+          cp -a frontend/dist release/frontend
+          cp -p frontend/public/.htaccess release/frontend/.htaccess
+          test -f release/frontend/index.html
+          test -f release/backend/requirements-cpanel.txt
+          test -f release/scripts/deploy-production.sh
+          test -f release/deploy/systemd/nakshatech-crm.service
           printf '%s\n' "$SHA" > release/RELEASE_SHA
           tar -czf release.tar.gz -C release .
           sha256sum release.tar.gz > release.tar.gz.sha256
@@ -74,21 +105,41 @@ jobs:
     steps:
       - name: Disabled gate
         if: vars.PRODUCTION_DEPLOY_ENABLED != 'true'
-        run: echo "Production connection disabled. Build and configuration validation completed."
+        run: echo "Production connection disabled. Release build and configuration validation completed."
       - uses: actions/download-artifact@v4
         if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
         with:
           name: production-release
-      - name: Recheck main immediately before deployment
+      - name: Recheck main immediately before transfer
         if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
         uses: actions/github-script@v7
         env:
           SHA: ${{ needs.prepare.outputs.sha }}
         with:
           script: |
-            const result = await github.rest.repos.getBranch({...context.repo, branch:'main'});
+            const result = await github.rest.repos.getBranch({...context.repo, branch: 'main'});
             if (result.data.commit.sha !== process.env.SHA) throw new Error('Release became stale');
-      - name: Transfer and deploy exact release
+      - name: Validate deployment inputs
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+        env:
+          SHA: ${{ needs.prepare.outputs.sha }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
+          CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
+          APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
+          APPROVE_EMPTY_INSTALL: ${{ vars.APPROVE_EMPTY_INSTALL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$CPANEL_DEPLOY_PATH" == "/home/crmnakshatech" ]] || { echo "CPANEL_DEPLOY_PATH must be /home/crmnakshatech"; exit 1; }
+          [[ "$CPANEL_USERNAME" == "crmnakshatech" ]] || { echo "CPANEL_USERNAME must be crmnakshatech"; exit 1; }
+          [[ "$CPANEL_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Invalid CPANEL_HOST"; exit 1; }
+          [[ "$CPANEL_SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "Invalid CPANEL_SSH_PORT"; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid release SHA"; exit 1; }
+          [[ "$APPROVED_SCHEMA_SHA" == "$SHA" ]] || { echo "Administrator must set APPROVED_SCHEMA_SHA to the exact release SHA"; exit 1; }
+          [[ "${APPROVE_EMPTY_INSTALL:-false}" == "true" || "${APPROVE_EMPTY_INSTALL:-false}" == "false" ]] || { echo "APPROVE_EMPTY_INSTALL must be true or false"; exit 1; }
+      - name: Transfer and activate the exact release natively
         if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
         env:
           SHA: ${{ needs.prepare.outputs.sha }}
@@ -97,26 +148,104 @@ jobs:
           CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
           CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
           CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
-          CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
           APPROVED_SCHEMA_SHA: ${{ vars.APPROVED_SCHEMA_SHA }}
           APPROVE_EMPTY_INSTALL: ${{ vars.APPROVE_EMPTY_INSTALL }}
         shell: bash
         run: |
           set -Eeuo pipefail
           umask 077
-          [[ "$CPANEL_DEPLOY_PATH" == /home/crmnakshatech/erp-production ]]
-          [[ "$CPANEL_USERNAME" == crmnakshatech ]]
-          [[ "$CPANEL_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$CPANEL_SSH_PORT" =~ ^[0-9]+$ ]]
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ && "$APPROVED_SCHEMA_SHA" == "$SHA" ]]
-          [[ "$APPROVE_EMPTY_INSTALL" == true || "$APPROVE_EMPTY_INSTALL" == false || -z "$APPROVE_EMPTY_INSTALL" ]]
           mkdir -p ~/.ssh
           printf '%s\n' "$CPANEL_SSH_KEY" > ~/.ssh/deploy_key
           printf '%s\n' "$CPANEL_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
           trap 'rm -f ~/.ssh/deploy_key' EXIT
           sha256sum -c release.tar.gz.sha256
-          options=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+          digest="$(cut -d' ' -f1 release.tar.gz.sha256)"
           target="$CPANEL_USERNAME@$CPANEL_HOST"
-          ssh "${options[@]}" -p "$CPANEL_SSH_PORT" "$target" "test -d '$CPANEL_DEPLOY_PATH/incoming' && test ! -e '$CPANEL_DEPLOY_PATH/releases/$SHA'"
-          scp "${options[@]}" -P "$CPANEL_SSH_PORT" release.tar.gz "$target:$CPANEL_DEPLOY_PATH/incoming/$SHA.tar.gz"
-          digest="$(sha256sum release.tar.gz | cut -d' ' -f1)"
-          ssh "${options[@]}" -p "$CPANEL_SSH_PORT" "$target" "set -eu; cd '$CPANEL_DEPLOY_PATH'; test ! -L incoming; test ! -L releases; echo '$digest  incoming/$SHA.tar.gz' | sha256sum -c -; mkdir 'releases/$SHA'; tar -xzf 'incoming/$SHA.tar.gz' -C 'releases/$SHA'; PRODUCTION_DEPLOY_ENABLED=true APPROVED_SCHEMA_SHA='$SHA' APPROVE_EMPTY_INSTALL='$APPROVE_EMPTY_INSTALL' bash 'releases/$SHA/scripts/deploy-production.sh' '$SHA'"
+          ssh_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$CPANEL_SSH_PORT")
+          scp_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -P "$CPANEL_SSH_PORT")
+          printf -v remote_preflight 'bash -s -- %q' "$SHA"
+          # Release arguments are %q-quoted above before reaching ssh.
+          # shellcheck disable=SC2029
+          ssh "${ssh_opts[@]}" "$target" "$remote_preflight" <<'REMOTE'
+          set -Eeuo pipefail
+          sha="$1"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HOME" == "/home/crmnakshatech" ]] || { echo "Unexpected account home $HOME"; exit 1; }
+          [[ ! -L "$HOME" ]]
+          cd "$HOME"
+          mkdir -p erp-releases/incoming erp-releases/releases erp-releases/shared
+          chmod 700 erp-releases erp-releases/incoming erp-releases/releases erp-releases/shared
+          [[ ! -e "erp-releases/releases/$sha" ]] || { echo "Release $sha already exists; immutable releases are never overwritten"; exit 1; }
+          command -v rsync >/dev/null && command -v flock >/dev/null
+          REMOTE
+          scp "${scp_opts[@]}" release.tar.gz "$target:erp-releases/incoming/$SHA.tar.gz"
+          printf -v remote_deploy 'bash -s -- %q %q %q %q' "$SHA" "$digest" "$APPROVED_SCHEMA_SHA" "${APPROVE_EMPTY_INSTALL:-false}"
+          # Release arguments are %q-quoted above before reaching ssh.
+          # shellcheck disable=SC2029
+          ssh "${ssh_opts[@]}" "$target" "$remote_deploy" <<'REMOTE'
+          set -Eeuo pipefail
+          sha="$1"
+          digest="$2"
+          approved="$3"
+          empty_install="${4:-false}"
+          cd "$HOME"
+          archive="erp-releases/incoming/$sha.tar.gz"
+          echo "$digest  $archive" | sha256sum -c -
+          mkdir "erp-releases/releases/$sha"
+          tar -xzf "$archive" -C "erp-releases/releases/$sha"
+          rm -f "$archive"
+          cd "erp-releases/releases/$sha"
+          PRODUCTION_DEPLOY_ENABLED=true APPROVED_SCHEMA_SHA="$approved" APPROVE_EMPTY_INSTALL="$empty_install" \
+            bash scripts/deploy-production.sh "$sha"
+          REMOTE
+      - name: Report deployment health
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true' && success()
+        run: echo "Release ${{ needs.prepare.outputs.sha }} verified at https://crm.nakshatech.com"
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.rollback_sha != ''
+    runs-on: ubuntu-latest
+    environment: PRODUCTION
+    steps:
+      - name: Disabled gate
+        if: vars.PRODUCTION_DEPLOY_ENABLED != 'true'
+        run: echo "Production rollback disabled by PRODUCTION_DEPLOY_ENABLED."
+      - name: Validate rollback inputs
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+        env:
+          SHA: ${{ inputs.rollback_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "rollback_sha must be a 40-character commit SHA"; exit 1; }
+      - name: Roll the application back natively
+        if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+        env:
+          SHA: ${{ inputs.rollback_sha }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_KNOWN_HOSTS: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$CPANEL_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$CPANEL_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          trap 'rm -f ~/.ssh/deploy_key' EXIT
+          ssh_opts=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -p "$CPANEL_SSH_PORT")
+          printf -v remote_rollback 'bash -s -- %q' "$SHA"
+          # Release arguments are %q-quoted above before reaching ssh.
+          # shellcheck disable=SC2029
+          ssh "${ssh_opts[@]}" "$CPANEL_USERNAME@$CPANEL_HOST" "$remote_rollback" <<'REMOTE'
+          set -Eeuo pipefail
+          sha="$1"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HOME" == "/home/crmnakshatech" ]]
+          cd "$HOME"
+          [[ -f "erp-releases/releases/$sha/RELEASE_SHA" ]] || { echo "Release $sha is not present on the server"; exit 1; }
+          PRODUCTION_DEPLOY_ENABLED=true ROLLBACK_SCHEMA_COMPATIBLE_SHA="$sha" \
+            bash "erp-releases/releases/$sha/scripts/rollback-production.sh" "$sha"
+          REMOTE

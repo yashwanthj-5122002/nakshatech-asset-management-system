@@ -1,16 +1,38 @@
 #!/usr/bin/env bash
+# Rolls production back to a previously deployed, schema-compatible release.
+#
+# Usage:
+#   PRODUCTION_DEPLOY_ENABLED=true \
+#   ROLLBACK_SCHEMA_COMPATIBLE_SHA=<previous-sha> \
+#   bash releases/<current-sha>/scripts/rollback-production.sh [previous-sha]
+#
+# Only application files and Python dependencies are restored. Database and
+# object storage are NEVER restored automatically: a database restore is a
+# separate, explicitly reviewed operation.
 set -Eeuo pipefail
 source "$(dirname "$0")/production-common.sh"
+
 gate
 lock
-sha="$(cat "$root/shared/previous")"
+require_account
+ensure_layout
+
+sha="${1:-$(cat "$SHARED/previous" 2>/dev/null || true)}"
 require_sha "$sha"
-[[ "${ROLLBACK_SCHEMA_COMPATIBLE_SHA:-}" == "$sha" ]] || fail "Review schema compatibility and approve the exact rollback SHA"
+[[ "${ROLLBACK_SCHEMA_COMPATIBLE_SHA:-}" == "$sha" ]] \
+  || fail "An administrator must confirm schema compatibility and set ROLLBACK_SCHEMA_COMPATIBLE_SHA=$sha"
 release_path "$sha"
-# Use retained images only. Never restore a database automatically.
-for image in backend frontend; do docker image inspect "nakshatech-$image:$sha" >/dev/null; done
-compose up -d --no-build --pull never --wait --wait-timeout 300
+
+current="$(cat "$SHARED/current" 2>/dev/null || true)"
+
+log "Rolling application back to $sha"
+install_python_deps "$release"
+sync_backend "$release"
+sync_frontend "$release" "$current"
+bash "$release/scripts/restart-production.sh"
 bash "$release/scripts/verify-production.sh" "$sha"
-printf '%s\n' "$sha" > "$root/shared/current.tmp"
-mv "$root/shared/current.tmp" "$root/shared/current"
-echo "Application rolled back to $sha"
+
+[[ -z "$current" ]] || printf '%s\n' "$current" > "$SHARED/previous"
+printf '%s\n' "$sha" > "$SHARED/current.tmp"
+mv "$SHARED/current.tmp" "$SHARED/current"
+log "Application rolled back to $sha; database and object storage were left untouched"
