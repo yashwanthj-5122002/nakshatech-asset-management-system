@@ -8,11 +8,13 @@ from app.core.database import get_db
 from app.models.entities import User
 from app.modules.employee_portal.service import record_audit
 from app.modules.operations.models import BDOpportunity, OrthoProjectMember, OrthoProjectProfile, ProjectWorkstream
+from app.modules.operations.workflow_service import change_project_department_before_work
 from app.modules.operations.schemas import (
     BDOpportunityCreate,
     BDProjectLink,
     BDProjectManagerUpdate,
     BDStageUpdate,
+    WorkflowDepartmentChange,
     OrthoDailyUpdateRequest,
     OrthoDeliveryRequest,
     OrthoMemberUpsert,
@@ -110,6 +112,27 @@ def bd_dashboard(
 ):
     _exact_roles(auth, BD_ROLE, MANAGEMENT_ROLE, ADMIN_ROLE)
     return bd_dashboard_payload(db, actor=auth.user, effective_role=_role(auth))
+
+
+@router.post("/bd/projects/{project_id}/change-department")
+def bd_change_project_department(
+    project_id: int, payload: WorkflowDepartmentChange, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _exact_roles(auth, BD_ROLE)
+    try:
+        result = change_project_department_before_work(
+            db, actor=auth.user, project_id=project_id, payload=payload, source="bd",
+        )
+        _audit(request, db, auth, "BD_PROJECT_DEPARTMENT_CHANGED", "finance_project", project_id, result)
+        db.commit()
+        return result
+    except (ValueError, PermissionError) as exc:
+        db.rollback()
+        raise _write_error(exc) from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/bd/opportunities")
@@ -702,11 +725,8 @@ def corporate_summary(
     return corporate_summary_payload(db)
 
 
-# V7.0.16 Phase 2 - multi-team technical sample workflow.
-# Imported at the end to avoid circular imports while keeping /operations as the
-# single authoritative operational router.
-from app.modules.operations.sample_router import router as phase2_sample_router
-router.include_router(phase2_sample_router)
+# The rejected V7.0.16 Sample Request API is intentionally not mounted. Its
+# tables and read model remain available for historical reporting only.
 
 # V7.0.17 Phase 3 - connected peer-department project data handovers.
 from app.modules.operations.handover_router import router as phase3_handover_router
@@ -745,3 +765,7 @@ router.include_router(workflow_router)
 # V8.1 post-operational client feedback, rework, billing, payment and closure lifecycle.
 from app.modules.operations.lifecycle_router import router as lifecycle_router
 router.include_router(lifecycle_router)
+
+# Isolated client-data Pilot Projects; no changes to paid-project routers.
+from app.modules.operations.pilot_router import router as pilot_router
+router.include_router(pilot_router)

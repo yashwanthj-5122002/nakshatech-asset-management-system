@@ -1,0 +1,884 @@
+/* ═══════════════════════════════════════════════════════════════
+   PROJECT 360 V2 – Executive & Operational Workspace
+   Light Enterprise Theme: Crisp Navy & Slate Typography on Clean White Surfaces
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Top Header and Summary Filter Cards ── */
+.p360-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.p360-summary-card {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(8, 42, 82, 0.05);
+}
+
+.p360-summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(8, 42, 82, 0.1);
+  border-color: #93c5fd;
+}
+
+.p360-summary-card.active {
+  border-color: #2563eb;
+  background: #f0f7ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
+.p360-summary-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.p360-summary-icon.blue { background: #eff6ff; color: #1d4ed8; }
+.p360-summary-icon.orange { background: #fffbeb; color: #b45309; }
+.p360-summary-icon.red { background: #fef2f2; color: #b91c1c; }
+.p360-summary-icon.green { background: #f0fdf4; color: #15803d; }
+.p360-summary-icon.purple { background: #faf5ff; color: #6d28d9; }
+
+.p360-summary-data {
+  display: flex;
+  flex-direction: column;
+}
+
+.p360-summary-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.p360-summary-value {
+  font-size: 1.55rem;
+  font-weight: 900;
+  color: #082a52;
+  line-height: 1.2;
+}
+
+/* ── Main Layout: Master-Detail ── */
+.p360-workspace-grid {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .p360-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Left Register / Project Sidebar ── */
+.p360-sidebar {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 4px 14px rgba(8, 42, 82, 0.04);
+}
+
+.p360-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.p360-sidebar-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #082a52;
+  margin: 0;
+}
+
+.p360-sidebar-count {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #1e3a5f;
+  background: #e2e8f0;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+/* Search input with icon */
+.p360-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.p360-search-icon {
+  position: absolute;
+  left: 12px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.p360-search-input {
+  width: 100%;
+  padding: 10px 12px 10px 38px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  background: #ffffff;
+  color: #082a52;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.p360-search-input:focus {
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.p360-search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* Filter chips */
+.p360-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.p360-filter-chip {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.p360-filter-chip:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.p360-filter-chip.active {
+  background: #082a52;
+  color: #ffffff;
+  border-color: #082a52;
+}
+
+/* Project Item Cards in list */
+.p360-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 720px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.p360-project-item {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 13px 15px;
+  border: 1px solid #d8e4ef;
+  border-radius: 12px;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+}
+
+.p360-project-item:hover {
+  background: #f8fafc;
+  border-color: #93c5fd;
+  transform: translateX(2px);
+}
+
+.p360-project-item.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  box-shadow: inset 4px 0 0 #2563eb, 0 3px 10px rgba(37, 99, 235, 0.1);
+}
+
+.p360-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.p360-item-code {
+  font-size: 0.92rem;
+  font-weight: 900;
+  color: #082a52;
+  letter-spacing: 0.02em;
+}
+
+.p360-item-name {
+  font-size: 0.84rem;
+  color: #1e3a5f;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.p360-item-client {
+  font-size: 0.76rem;
+  color: #475569;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.p360-item-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.p360-item-progress-wrap {
+  flex: 1;
+  max-width: 90px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.p360-item-progress-bar {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 99px;
+}
+
+/* Overdue warning tag */
+.p360-badge-overdue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #b91c1c;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+/* ── Right Detail Panel ── */
+.p360-detail-panel {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 16px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  box-shadow: 0 4px 14px rgba(8, 42, 82, 0.04);
+}
+
+/* Detail Hero Header */
+.p360-hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 18px;
+  border-bottom: 1.5px solid #e2e8f0;
+}
+
+.p360-hero-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.p360-hero-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.p360-hero-code {
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 3px 9px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+}
+
+.p360-hero-client {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #082a52;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.p360-hero-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #082a52;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.p360-hero-status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Status pills */
+.p360-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.p360-status-pill.success { background: #dcfce7; color: #166534; border: 1.5px solid #86efac; }
+.p360-status-pill.warning { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; }
+.p360-status-pill.danger { background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; }
+.p360-status-pill.info { background: #e0f2fe; color: #075985; border: 1.5px solid #7dd3fc; }
+
+/* ── Lifecycle Stepper / Pipeline ── */
+.p360-stepper-container {
+  background: #f8fbfe;
+  border: 1px solid #d8e4ef;
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+
+.p360-stepper-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #082a52;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 14px;
+}
+
+.p360-stepper-steps {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  position: relative;
+}
+
+@media (max-width: 860px) {
+  .p360-stepper-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.p360-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  position: relative;
+}
+
+.p360-step-indicator {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 900;
+  background: #ffffff;
+  border: 2px solid #64748b;
+  color: #082a52;
+  transition: all 0.25s ease;
+  z-index: 2;
+}
+
+.p360-step.completed .p360-step-indicator {
+  background: #15803d;
+  border-color: #15803d;
+  color: #ffffff;
+}
+
+.p360-step.active .p360-step-indicator {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25);
+  transform: scale(1.08);
+}
+
+.p360-step-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.2;
+}
+
+.p360-step.completed .p360-step-label { color: #15803d; font-weight: 800; }
+.p360-step.active .p360-step-label { color: #1d4ed8; font-weight: 900; }
+
+/* ── Key Metrics Cards Grid ── */
+.p360-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 860px) {
+  .p360-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.p360-metric-card {
+  background: #f8fbfe;
+  border: 1px solid #d8e4ef;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.p360-metric-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.p360-metric-val {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #082a52 !important;
+}
+
+.p360-metric-sub {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155 !important;
+}
+
+/* ── Action Notice Banners ── */
+.p360-action-banner {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.p360-banner-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #92400e;
+}
+
+.p360-banner-desc {
+  font-size: 0.84rem;
+  color: #78350f;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* ── Tabs Navigation ── */
+.p360-tabs-nav {
+  display: flex;
+  gap: 6px;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 2px;
+  overflow-x: auto;
+}
+
+.p360-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #334155;
+  background: transparent;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  margin-bottom: -4px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.p360-tab-btn:hover {
+  color: #082a52;
+  background: #f1f5f9;
+}
+
+.p360-tab-btn.active {
+  color: #1d4ed8;
+  font-weight: 800;
+  border-bottom-color: #2563eb;
+  background: #eff6ff;
+}
+
+.p360-tab-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: #e2e8f0;
+  color: #1e293b;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.p360-tab-btn.active .p360-tab-badge {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+/* ── Tab Content Container ── */
+.p360-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: p360FadeIn 0.2s ease;
+}
+
+@keyframes p360FadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Financial Cards & Table in Invoices Tab ── */
+.p360-fin-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.p360-fin-kpi {
+  background: #f8fbfe;
+  border: 1px solid #d8e4ef;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.p360-fin-kpi-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+.p360-fin-kpi-value {
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.p360-fin-kpi-value.green { color: #15803d; }
+.p360-fin-kpi-value.blue { color: #1d4ed8; }
+.p360-fin-kpi-value.orange { color: #b45309; }
+.p360-fin-kpi-value.red { color: #b91c1c; }
+
+/* ── Clean Data Tables ── */
+.p360-table-card {
+  border: 1px solid #d8e4ef;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.p360-table-title {
+  padding: 14px 18px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #082a52 !important;
+  background: #f8fbfe;
+  border-bottom: 1px solid #d8e4ef;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.p360-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.p360-table th {
+  padding: 11px 16px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #082a52 !important;
+  background: #eef4fa !important;
+  border-bottom: 1.5px solid #d8e4ef;
+  text-align: left;
+}
+
+.p360-table td {
+  padding: 12px 16px;
+  font-size: 0.85rem;
+  color: #0f172a !important;
+  font-weight: 600;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.p360-table tr:last-child td {
+  border-bottom: none;
+}
+
+.p360-table tr:hover td {
+  background: #f8fafc;
+}
+
+/* ── Activity Feed Timeline ── */
+.p360-timeline-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  padding-left: 28px;
+}
+
+.p360-timeline-feed::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: #cbd5e1;
+}
+
+.p360-timeline-item {
+  position: relative;
+  padding: 10px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.p360-timeline-dot {
+  position: absolute;
+  left: -28px;
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px #bfdbfe;
+}
+
+.p360-timeline-dot.green { background: #16a34a; box-shadow: 0 0 0 2px #bbf7d0; }
+.p360-timeline-dot.orange { background: #d97706; box-shadow: 0 0 0 2px #fde68a; }
+.p360-timeline-dot.red { background: #dc2626; box-shadow: 0 0 0 2px #fecaca; }
+
+.p360-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.p360-timeline-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #082a52 !important;
+}
+
+.p360-timeline-time {
+  font-size: 0.74rem;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.p360-timeline-desc {
+  font-size: 0.84rem;
+  color: #1e293b !important;
+  font-weight: 500;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.p360-timeline-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.76rem;
+  color: #475569;
+  margin-top: 3px;
+}
+
+.p360-timeline-actor {
+  font-weight: 700;
+  color: #082a52 !important;
+}
+
+/* ── Chat Widget ── */
+.p360-chat-card {
+  border: 1px solid #d8e4ef;
+  border-radius: 14px;
+  padding: 18px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.p360-chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.p360-chat-bubble {
+  max-width: 80%;
+  padding: 11px 15px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.86rem;
+}
+
+.p360-chat-bubble.mine {
+  align-self: flex-end;
+  background: #1d4ed8;
+  color: #ffffff;
+  border-bottom-right-radius: 2px;
+}
+
+.p360-chat-bubble.theirs {
+  align-self: flex-start;
+  background: #f1f5f9;
+  color: #082a52;
+  border-bottom-left-radius: 2px;
+}
+
+.p360-chat-bubble-sender {
+  font-size: 0.7rem;
+  font-weight: 800;
+  opacity: 0.9;
+}
+
+.p360-chat-bubble-text {
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.p360-chat-bubble-time {
+  font-size: 0.68rem;
+  opacity: 0.75;
+  align-self: flex-end;
+}
+
+.p360-chat-input-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-top: 1.5px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.p360-chat-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  color: #082a52;
+  background: #ffffff;
+  outline: none;
+}
+
+.p360-chat-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.p360-chat-send-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-weight: 800;
+  font-size: 0.86rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.p360-chat-send-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.p360-chat-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

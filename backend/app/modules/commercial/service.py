@@ -44,6 +44,7 @@ from app.modules.commercial.schemas import (
     BillingBasisInput,
     CommercialEstimateDecision,
     CommercialEstimateInput,
+    ProjectExpenseCancellation,
     ProjectExpenseDecision,
     ProjectExpenseDeclarationInput,
     ProjectExpenseInput,
@@ -52,6 +53,7 @@ from app.modules.commercial.schemas import (
     VendorPaymentInput,
 )
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectAssignment
+from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import OrthoWorkPackage, ProjectWorkflow, ProjectWorkflowEvent
 
@@ -59,7 +61,7 @@ from app.modules.operations.models import OrthoWorkPackage, ProjectWorkflow, Pro
 EXPENSE_EDITABLE = {"DRAFT", "RETURNED"}
 EXPENSE_OPEN = {"DRAFT", "SUBMITTED", "RETURNED", "APPROVED"}
 EXPENSE_FINANCE_QUEUE = {"SUBMITTED"}
-EXPENSE_FINAL = {"REJECTED", "REIMBURSED"}
+EXPENSE_FINAL = {"REJECTED", "REIMBURSED", "CANCELLED"}
 
 
 def _project(db: Session, project_id: int) -> FinanceProject:
@@ -282,6 +284,21 @@ def _tax_values(payload: CommercialEstimateInput) -> tuple[Decimal, Decimal, Dec
     return base, tax, gross
 
 
+def _advance_values(payload: CommercialEstimateInput) -> dict:
+    """Client Advance Request terms (input only). Never projected into Sales/Revenue/Outstanding
+    and never applied to invoice commercial value; they only feed the Finance advance ledger."""
+    return {
+        "advance_required": payload.advance_required,
+        "advance_payment_type": payload.advance_payment_type,
+        "advance_percent": payload.advance_percent,
+        "advance_amount": money(payload.advance_amount) if payload.advance_amount is not None else None,
+        "advance_base_amount": money(payload.advance_base_amount) if payload.advance_base_amount is not None else None,
+        "advance_currency_code": payload.advance_currency_code,
+        "expected_advance_date": payload.expected_advance_date,
+        "final_advance_date": payload.final_advance_date,
+    }
+
+
 def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
     return {
         "id": row.id,
@@ -296,6 +313,7 @@ def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
         "billing_type": row.billing_type,
         "payment_terms": row.payment_terms,
         "expected_billing_milestone": row.expected_billing_milestone,
+        "projected_payment_date": row.projected_payment_date.isoformat() if row.projected_payment_date else None,
         "notes": row.notes,
         "currency_code": row.currency_code,
         "estimated_amount": float(row.estimated_amount),
@@ -304,6 +322,14 @@ def _estimate_payload(row: ProjectCommercialEstimateRevision) -> dict:
         "expected_tax": float(row.expected_tax),
         "expected_gross": float(row.expected_gross),
         "estimated_direct_cost_inr": float(row.estimated_direct_cost_inr) if row.estimated_direct_cost_inr is not None else None,
+        "advance_required": row.advance_required,
+        "advance_payment_type": row.advance_payment_type,
+        "advance_percent": float(row.advance_percent) if row.advance_percent is not None else None,
+        "advance_amount": float(row.advance_amount) if row.advance_amount is not None else None,
+        "advance_base_amount": float(row.advance_base_amount) if row.advance_base_amount is not None else None,
+        "advance_currency_code": row.advance_currency_code,
+        "expected_advance_date": row.expected_advance_date.isoformat() if row.expected_advance_date else None,
+        "final_advance_date": row.final_advance_date.isoformat() if row.final_advance_date else None,
         "billing_type_label": BILLING_TYPES.get(row.billing_type, row.billing_type),
         "unit_rate": float(row.unit_rate) if row.unit_rate is not None else None,
         "estimated_quantity": float(row.estimated_quantity) if row.estimated_quantity is not None else None,
@@ -350,6 +376,8 @@ def list_estimate_queue(db: Session, *, statuses: tuple[str, ...] = ("PENDING_AP
         row for row in rows
         if not (row.revision_no == 1 and _status_key(_workflow(db, row.project_id)) in PROJECT_APPROVAL_STATES)
     ]
+    visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+    rows = [row for row in rows if row.project_id in visible]
     return [_estimate_payload(row) for row in rows]
 
 
@@ -445,12 +473,16 @@ def upsert_baseline_estimate(db: Session, *, actor: User, project_id: int, paylo
     row.billing_type = payload.billing_type
     row.payment_terms = payload.payment_terms
     row.expected_billing_milestone = payload.expected_billing_milestone
+    row.projected_payment_date = payload.projected_payment_date
     row.notes = payload.notes
     row.estimated_direct_cost_inr = money(payload.estimated_direct_cost_inr) if payload.estimated_direct_cost_inr is not None else None
     row.unit_rate = payload.unit_rate
     row.estimated_quantity = payload.estimated_quantity
     row.quantity_unit = payload.quantity_unit
     row.reason = payload.reason
+    # Client Advance Request terms (input only; commercial value / tax / FX above stay untouched).
+    for column, value in _advance_values(payload).items():
+        setattr(row, column, value)
     row.fx_snapshot_id = snapshot.id
     db.flush()
     snapshot.event_ref_id = row.id
@@ -483,6 +515,50 @@ def submit_baseline_estimate(db: Session, *, actor: User, project_id: int) -> Pr
         raise PermissionError("Only the BD owner can submit the commercial estimate")
     row.status = "PENDING_APPROVAL"
     row.submitted_at = utc_now()
+    db.flush()
+    return row
+
+
+def finalize_bd_baseline_without_finance_approval(
+    db: Session, *, actor: User, project_id: int,
+) -> ProjectCommercialEstimateRevision | None:
+    """Lock submitted BD Revision 1 for billing without a Finance decision.
+
+    APPROVED is the legacy internal billing-compatible revision state, NOT a
+    Finance approval: reviewer, approval timestamp and FX verifier remain null.
+    """
+    from app.modules.finance.models import FinanceProject
+
+    project = db.get(FinanceProject, project_id)
+    if project is None or project.project_source_team != "bd_team":
+        raise PermissionError("Review-only baseline finalization is for BD-origin projects only")
+    row = db.scalar(select(ProjectCommercialEstimateRevision).where(
+        ProjectCommercialEstimateRevision.project_id == project_id,
+        ProjectCommercialEstimateRevision.revision_no == 1,
+    ))
+    if row is None:
+        if settings.commercial_estimate_required_on_submit:
+            raise ValueError("Commercial Revision 1 is required for BD project submission")
+        return None
+    if row.is_locked and row.status == "APPROVED":
+        return row
+    if row.status not in {"DRAFT", "PENDING_APPROVAL", "RETURNED"} or row.is_locked:
+        raise ValueError("Commercial Revision 1 cannot be finalized in its current state")
+    row.status = "APPROVED"  # Internal baseline/billing status, not Finance signoff.
+    row.is_baseline = True
+    row.is_locked = True
+    row.approved_by_id = None
+    row.approved_at = None
+    row.decision_comments = "Auto-locked when BD submitted for Finance viewing; no Finance approval"
+    if row.fx_snapshot_id:
+        snap = db.get(ProjectFxSnapshot, row.fx_snapshot_id)
+        if snap:
+            snap.fx_locked = True
+            snap.verified_by_id = None
+            snap.verified_at = None
+    _workflow_event(db, workflow=_workflow(db, project_id), actor=actor,
+                    event_type="commercial_bd_review_only_baseline_locked",
+                    comments="Revision 1 locked for billing without Finance approval")
     db.flush()
     return row
 
@@ -597,6 +673,7 @@ def create_estimate_revision(db: Session, *, actor: User, project_id: int, paylo
         billing_type=payload.billing_type,
         payment_terms=payload.payment_terms,
         expected_billing_milestone=payload.expected_billing_milestone,
+        projected_payment_date=payload.projected_payment_date,
         notes=payload.notes,
         currency_code=payload.currency_code,
         estimated_amount=money(payload.estimated_amount),
@@ -608,6 +685,8 @@ def create_estimate_revision(db: Session, *, actor: User, project_id: int, paylo
         unit_rate=payload.unit_rate,
         estimated_quantity=payload.estimated_quantity,
         quantity_unit=payload.quantity_unit,
+        # Client Advance Request terms (input only; never projected into commercial value).
+        **_advance_values(payload),
         fx_snapshot_id=snapshot.id,
         fx_rate_to_inr=snapshot.fx_rate_to_inr,
         fx_rate_date=snapshot.fx_rate_date,
@@ -778,6 +857,38 @@ def update_project_expense(db: Session, *, actor: User, expense_id: int, payload
     return row
 
 
+def cancel_project_expense(
+    db: Session, *, actor: User, role: str, expense_id: int, payload: ProjectExpenseCancellation,
+) -> ProjectExpense:
+    """Cancel an unsubmitted/unresolved expense without deleting its audit trail.
+
+    A draft is NOT an Admin KM Travel claim; its cancellation is independent.
+    This never cancels approved, reimbursed or submitted liabilities.
+    """
+    row = db.scalar(select(ProjectExpense).where(ProjectExpense.id == expense_id).with_for_update())
+    if row is None:
+        raise ValueError("Project expense not found")
+    if role.strip().lower() not in {"admin", "finance"} and row.employee_id != actor.id:
+        raise PermissionError("Only the expense owner or authorized Finance/Admin can cancel this draft")
+    if row.status not in {"DRAFT", "RETURNED"}:
+        raise ValueError("Only Draft or Returned project expenses can be cancelled")
+    if row.approved_amount is not None or row.reimbursed_at is not None or row.reimbursement_reference:
+        raise ValueError("An expense with an approval or reimbursement record cannot be cancelled")
+    if row.linked_vendor_invoice_id is not None or db.scalar(select(ProjectVendorInvoice.id).where(
+        ProjectVendorInvoice.linked_employee_expense_id == row.id,
+    ).limit(1)) is not None:
+        raise ValueError("Unlink or resolve the vendor invoice before cancelling this expense")
+    old_status = row.status
+    row.status = "CANCELLED"
+    db.add(ProjectExpenseEvent(
+        expense_id=row.id, action="CANCELLED", from_status=old_status, to_status="CANCELLED",
+        actor_id=actor.id, old_amount=row.amount, new_amount=row.amount,
+        comments=payload.reason,
+    ))
+    db.flush()
+    return row
+
+
 def submit_project_expense(db: Session, *, actor: User, expense_id: int) -> ProjectExpense:
     row = _expense(db, expense_id)
     if row.employee_id != actor.id:
@@ -862,6 +973,9 @@ def list_project_expenses(db: Session, *, actor: User, role: str, project_id: in
     if status:
         query = query.where(ProjectExpense.status == status.strip().upper())
     rows = list(db.scalars(query.order_by(ProjectExpense.expense_date.desc(), ProjectExpense.id.desc())).all())
+    if project_id is None:
+        visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+        rows = [row for row in rows if row.project_id in visible]
     return [_expense_payload(row) for row in rows]
 
 
@@ -1027,6 +1141,9 @@ def list_vendor_invoices(db: Session, *, project_id: int | None = None) -> list[
         _project(db, project_id)
         query = query.where(ProjectVendorInvoice.project_id == project_id)
     rows = list(db.scalars(query.order_by(ProjectVendorInvoice.invoice_date.desc(), ProjectVendorInvoice.id.desc())).all())
+    if project_id is None:
+        visible = set(filter_visible_project_ids(db, (row.project_id for row in rows)))
+        rows = [row for row in rows if row.project_id in visible]
     return [_vendor_invoice_payload(db, row) for row in rows]
 
 
@@ -1316,7 +1433,7 @@ def management_analytics(
     if display not in MANAGEMENT_DISPLAY_CURRENCIES:
         raise ValueError("Selected Management display currency is not enabled")
 
-    project_query = select(FinanceProject)
+    project_query = exclude_hidden_projects(db, select(FinanceProject))
     if project_id:
         project_query = project_query.where(FinanceProject.id == project_id)
     projects = list(db.scalars(project_query.order_by(FinanceProject.project_code)).all())
@@ -1608,6 +1725,33 @@ def _invoiced_quantity(invoices: list[ProjectInvoice], *, exclude_invoice_id: in
     )
 
 
+def _automatic_completion_percent(
+    db: Session,
+    project: FinanceProject,
+    workflow: ProjectWorkflow | None,
+) -> Decimal | None:
+    """Calculate completion from existing delivered operational work."""
+    reference = _operational_reference(db, project, workflow)
+    total = reference["total_area"]
+    delivered = reference["delivered_area"]
+
+    if (
+        reference["area_unit"] is not None
+        and total is not None
+        and delivered is not None
+        and total > 0
+    ):
+        percent = Decimal(str(delivered)) * Decimal("100") / Decimal(str(total))
+    elif reference["completion_percent_by_packages"] is not None:
+        percent = Decimal(str(reference["completion_percent_by_packages"]))
+    else:
+        return None
+
+    return max(
+        Decimal("0"),
+        min(Decimal("100"), percent),
+    ).quantize(Decimal("0.01"))
+
 def pm_billing_basis_view(db: Session, *, actor: User, project_id: int) -> dict:
     """What the assigned PM sees: billing TYPE, unit and milestone NAMES only. No rate, value, FX or margin."""
     project = _project(db, project_id)
@@ -1668,10 +1812,9 @@ def record_billing_basis(db: Session, *, actor: User, project_id: int, payload: 
         if any(inv.billed_milestone_id == milestone.id for inv in invoices):
             raise ValueError("This milestone has already been invoiced")
     elif revision is not None and billing_type == "fixed_price":
-        if completion is None and not payload.delivery_accepted:
-            raise ValueError("Confirm the completion percentage or that delivery has been accepted")
+        completion = _automatic_completion_percent(db, project, workflow)
         if completion is None:
-            completion = Decimal("100.00")
+            raise ValueError("Completion cannot be calculated until work packages are recorded")
     else:
         if not payload.pm_remarks and quantity is None:
             raise ValueError("Describe the billable work in the remarks or enter a quantity")

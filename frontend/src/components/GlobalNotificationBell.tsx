@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { apiFetch } from '../lib/api'
+import { apiFetch, getToken } from '../lib/api'
 import { formatNotificationTimestamp } from '../lib/dateTime'
 
 type NotificationCategory = 'approval' | 'ticket' | 'system'
@@ -28,6 +28,24 @@ interface GlobalNotification {
   is_read: boolean
   read_at?: string | null
   created_at: string
+  // Popup experience (additive). READ and RESOLVED are independent concepts.
+  severity?: string
+  requires_action?: boolean
+  resolved_at?: string | null
+  is_resolved?: boolean
+  is_reminder?: boolean
+}
+
+/**
+ * Bell status chip. READ means "seen"; RESOLVED means "the required business
+ * action completed". A notification can be read yet still pending, so the bell
+ * must not collapse the two.
+ */
+function notificationStatus(notification: GlobalNotification): { id: string; label: string } {
+  if (notification.is_resolved) return { id: 'resolved', label: 'Resolved' }
+  if (notification.severity === 'danger') return { id: 'overdue', label: 'Overdue' }
+  if (notification.requires_action) return { id: 'pending', label: 'Pending Action' }
+  return { id: 'information', label: 'Information' }
 }
 
 interface UnreadCountResponse {
@@ -84,8 +102,18 @@ export function GlobalNotificationBell() {
   const [markingAll, setMarkingAll] = useState(false)
 
   const refreshUnreadCount = useCallback(async () => {
+    const requestToken = getToken()
+    if (!user || !requestToken) return
     try {
       const role = user?.role || ''
+      if (role === 'bd_employee') {
+        try {
+          await apiFetch<{ created: number }>('/notifications/global/refresh-bd-reminders', { method: 'POST' })
+        } catch {
+          // Optional reminder refresh must never block the bell.
+        }
+      }
+      if (getToken() !== requestToken) return
       const now = Date.now()
       if (SLA_REFRESH_ROLES.has(role) && now - lastSlaRefreshRef.current >= SLA_REFRESH_INTERVAL_MS) {
         lastSlaRefreshRef.current = now
@@ -95,28 +123,40 @@ export function GlobalNotificationBell() {
           // SLA refresh is best-effort and must never break notification polling.
         }
       }
+      if (getToken() !== requestToken) return
       const response = await apiFetch<UnreadCountResponse>('/notifications/global/unread-count')
-      setUnreadCount(Math.max(0, response.unread_count || 0))
+      if (getToken() === requestToken) setUnreadCount(Math.max(0, response.unread_count || 0))
     } catch {
       // Notification polling must never interrupt the surrounding application UI.
     }
-  }, [user?.role])
+  }, [user?.id, user?.role])
 
   const loadNotifications = useCallback(async (selectedFilter: NotificationFilter) => {
+    const requestToken = getToken()
+    if (!user || !requestToken) return
     const requestId = ++listRequestIdRef.current
     setLoading(true)
     setError('')
     try {
       const response = await apiFetch<GlobalNotification[]>(listPath(selectedFilter))
-      if (requestId === listRequestIdRef.current) setNotifications(response)
+      if (requestId === listRequestIdRef.current && getToken() === requestToken) setNotifications(response)
     } catch {
-      if (requestId === listRequestIdRef.current) setError('Notifications are temporarily unavailable.')
+      if (requestId === listRequestIdRef.current && getToken() === requestToken) setError('Notifications are temporarily unavailable.')
     } finally {
-      if (requestId === listRequestIdRef.current) setLoading(false)
+      if (requestId === listRequestIdRef.current && getToken() === requestToken) setLoading(false)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
+    if (!user || !getToken()) {
+      ++listRequestIdRef.current
+      setOpen(false)
+      setNotifications([])
+      setUnreadCount(0)
+      setError('')
+      setLoading(false)
+      return
+    }
     void refreshUnreadCount()
     const timer = window.setInterval(() => void refreshUnreadCount(), POLL_INTERVAL_MS)
     const handleFocus = () => void refreshUnreadCount()
@@ -125,10 +165,10 @@ export function GlobalNotificationBell() {
       window.clearInterval(timer)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [refreshUnreadCount])
+  }, [refreshUnreadCount, user?.id])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !user || !getToken()) return
     void loadNotifications(filter)
     void refreshUnreadCount()
   }, [filter, loadNotifications, open, refreshUnreadCount])
@@ -275,33 +315,40 @@ export function GlobalNotificationBell() {
               </div>
             )}
 
-            {!loading && !error && notifications.map(notification => (
-              <button
-                type="button"
-                key={notification.id}
-                className={`notification-item ${notification.is_read ? 'read' : 'unread'}`}
-                onClick={() => void openNotification(notification)}
-              >
-                <span className={`notification-category-icon ${notification.category}`}>
-                  <NotificationCategoryIcon category={notification.category} />
-                </span>
-                <span className="notification-item-copy">
-                  <span className="notification-item-meta">
-                    <span className={`notification-category-chip ${notification.category}`}>{categoryLabel(notification.category)}</span>
-                    <span className="notification-item-time">{formatNotificationTimestamp(notification.created_at)}</span>
-                  </span>
-                  <strong>{notification.title}</strong>
-                  <span className="notification-message">{notification.message}</span>
-                </span>
-                <span
-                  className={`notification-item-status ${notification.is_read ? 'read' : 'unread'}`}
-                  aria-label={notification.is_read ? 'Read' : 'Unread'}
+            {!loading && !error && notifications.map(notification => {
+              const status = notificationStatus(notification)
+              return (
+                <button
+                  type="button"
+                  key={notification.id}
+                  className={`notification-item ${notification.is_read ? 'read' : 'unread'}`}
+                  onClick={() => void openNotification(notification)}
                 >
-                  {notification.is_read ? <Check size={12} aria-hidden="true" /> : <span className="notification-unread-dot" aria-hidden="true" />}
-                  <span>{notification.is_read ? 'Read' : 'New'}</span>
-                </span>
-              </button>
-            ))}
+                  <span className={`notification-category-icon ${notification.category}`}>
+                    <NotificationCategoryIcon category={notification.category} />
+                  </span>
+                  <span className="notification-item-copy">
+                    <span className="notification-item-meta">
+                      <span className={`notification-category-chip ${notification.category}`}>
+                        {(user?.role === 'finance' || user?.role === 'management') && notification.category === 'system'
+                          ? 'Information' : categoryLabel(notification.category)}
+                      </span>
+                      <span className={`notification-item-status is-${status.id}`}>{status.label}</span>
+                      <span className="notification-item-time">{formatNotificationTimestamp(notification.created_at)}</span>
+                    </span>
+                    <strong>{notification.title}</strong>
+                    <span className="notification-message">{notification.message}</span>
+                  </span>
+                  <span
+                    className={`notification-item-status ${notification.is_read ? 'read' : 'unread'}`}
+                    aria-label={notification.is_read ? 'Read' : 'Unread'}
+                  >
+                    {notification.is_read ? <Check size={12} aria-hidden="true" /> : <span className="notification-unread-dot" aria-hidden="true" />}
+                    <span>{notification.is_read ? 'Read' : 'New'}</span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </section>
       )}

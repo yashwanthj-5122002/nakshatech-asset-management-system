@@ -1,0 +1,407 @@
+{
+  "protected_routes_checked": 97,
+  "results": [
+    {
+      "route": "/hrms/leave/balance",
+      "passed": true
+    },
+    {
+      "route": "/hrms/leave/apply",
+      "passed": true
+    },
+    {
+      "route": "/hrms/leave/calendar",
+      "passed": true
+    },
+    {
+      "route": "/hrms/leave/holidays",
+      "passed": true
+    },
+    {
+      "route": "/hrms/attendance",
+      "passed": true
+    },
+    {
+      "route": "/hrms/hr",
+      "passed": true
+    },
+    {
+      "route": "/profile",
+      "passed": true
+    },
+    {
+      "route": "/travel-km",
+      "passed": true
+    },
+    {
+      "route": "/travel-km/new",
+      "passed": true
+    },
+    {
+      "route": "/travel-km/999999",
+      "passed": true
+    },
+    {
+      "route": "/admin/travel-km",
+      "passed": true
+    },
+    {
+      "route": "/hr/travel-km",
+      "passed": true
+    },
+    {
+      "route": "/finance/travel-km",
+      "passed": true
+    },
+    {
+      "route": "/management/travel-km",
+      "passed": true
+    },
+    {
+      "route": "/support",
+      "passed": true
+    },
+    {
+      "route": "/support/new",
+      "passed": true
+    },
+    {
+      "route": "/expenses",
+      "passed": true
+    },
+    {
+      "route": "/project-costs",
+      "passed": true
+    },
+    {
+      "route": "/expenses/new",
+      "passed": true
+    },
+    {
+      "route": "/expenses/999999/edit",
+      "passed": true
+    },
+    {
+      "route": "/expenses/999999/settle",
+      "passed": true
+    },
+    {
+      "route": "/expenses/999999",
+      "passed": true
+    },
+    {
+      "route": "/tickets",
+      "passed": true
+    },
+    {
+      "route": "/tickets/999999",
+      "passed": true
+    },
+    {
+      "route": "/software-team/security",
+      "passed": true
+    },
+    {
+      "route": "/software-team/employee-master",
+      "passed": true
+    },
+    {
+      "route": "/management/employee-master",
+      "passed": true
+    },
+    {
+      "route": "/onboarding",
+      "passed": true
+    },
+    {
+      "route": "/software-team/agents",
+      "passed": true
+    },
+    {
+      "route": "/management/activity",
+      "passed": true
+    },
+    {
+      "route": "/it",
+      "passed": true
+    },
+    {
+      "route": "/assets",
+      "passed": true
+    },
+    {
+      "route": "/assets/new",
+      "passed": true
+    },
+    {
+      "route": "/assets/999999/edit",
+      "passed": true
+    },
+    {
+      "route": "/replacements",
+      "passed": true
+    },
+    {
+      "route": "/it/handover-return",
+      "passed": true
+    },
+    {
+      "route": "/it/rental-returns",
+      "passed": true
+    },
+    {
+      "route": "/it/purchase-requests",
+      "passed": true
+    },
+    {
+      "route": "/it/purchases",
+      "passed": true
+    },
+    {
+      "route": "/it/recent-changes",
+      "passed": true
+    },
+    {
+      "route": "/drone",
+      "passed": true
+    },
+    {
+      "route": "/drone/assets",
+      "passed": true
+    },
+    {
+      "route": "/drone/assets/new",
+      "passed": true
+    },
+    {
+      "route": "/drone/assets/999999",
+      "passed": true
+    },
+    {
+      "route": "/drone/assets/999999/edit",
+      "passed": true
+    },
+    {
+      "route": "/drone/projects",
+      "passed": true
+    },
+    {
+      "route": "/drone/projects/999999",
+      "passed": true
+    },
+    {
+      "route": "/drone/operations",
+      "passed": true
+    },
+    {
+      "route": "/drone/work-records",
+      "passed": true
+    },
+    {
+      "route": "/drone/movements",
+      "passed": true
+    },
+    {
+      "route": "/drone/kits",
+      "passed": true
+    },
+    {
+      "route": "/drone/import",
+      "passed": true
+    },
+    {
+      "route": "/bd",
+      "passed": true
+    },
+    {
+      "route": "/bd/clients",
+      "passed": true
+    },
+    {
+      "route": "/bd/projects",
+      "passed": true
+    },
+    {
+      "route": "/bd/tracking",
+      "passed": true
+    },
+    {
+      "route": "/bd/feedback",
+      "passed": true
+    },
+    {
+      "route": "/bd/commercial",
+      "passed": true
+    },
+    {
+      "route": "/notifications",
+      "passed": true
+    },
+    {
+      "route": "/ortho",
+      "passed": true
+    },
+    {
+      "route": "/production-tracking",
+      "passed": true
+    },
+    {
+      "route": "/ortho/project-360/999999",
+      "passed": true
+    },
+    {
+      "route": "/payables",
+      "passed": true
+    },
+    {
+      "route": "/payables/new",
+      "passed": true
+    },
+    {
+      "route": "/payables/999999",
+      "passed": true
+    },
+    {
+      "route": "/finance",
+      "passed": true
+    },
+    {
+      "route": "/management/project-tracking-sales",
+      "passed": true
+    },
+    {
+      "route": "/finance/claims",
+      "passed": true
+    },
+    {
+      "route": "/finance/reports",
+      "passed": true
+    },
+    {
+      "route": "/finance/clients",
+      "passed": true
+    },
+    {
+      "route": "/finance/projects",
+      "passed": true
+    },
+    {
+      "route": "/finance/management-projects",
+      "passed": true
+    },
+    {
+      "route": "/finance/billing",
+      "passed": true
+    },
+    {
+      "route": "/finance/generate-invoice",
+      "passed": true
+    },
+    {
+      "route": "/finance/sales",
+      "passed": true
+    },
+    {
+      "route": "/finance/revenue",
+      "passed": true
+    },
+    {
+      "route": "/finance/command-center",
+      "passed": true
+    },
+    {
+      "route": "/finance/uat-2026",
+      "passed": true
+    },
+    {
+      "route": "/business",
+      "passed": true
+    },
+    {
+      "route": "/finance/commercial",
+      "passed": true
+    },
+    {
+      "route": "/admin/client-master",
+      "passed": true
+    },
+    {
+      "route": "/finance/claims/999999",
+      "passed": true
+    },
+    {
+      "route": "/management",
+      "passed": true
+    },
+    {
+      "route": "/management/approvals",
+      "passed": true
+    },
+    {
+      "route": "/management/project-management",
+      "passed": true
+    },
+    {
+      "route": "/management/project-360",
+      "passed": true
+    },
+    {
+      "route": "/management/commercial",
+      "passed": true
+    },
+    {
+      "route": "/management/project-360/999999",
+      "passed": true
+    },
+    {
+      "route": "/software-team",
+      "passed": true
+    },
+    {
+      "route": "/admin",
+      "passed": true
+    },
+    {
+      "route": "/work",
+      "passed": true
+    },
+    {
+      "route": "/reports",
+      "passed": true
+    },
+    {
+      "route": "/data-quality",
+      "passed": true
+    },
+    {
+      "route": "/naksha-copilot",
+      "passed": true
+    },
+    {
+      "route": "/backups",
+      "passed": true
+    },
+    {
+      "route": "/future",
+      "passed": true
+    },
+    {
+      "route": "/management/project-tracking",
+      "passed": true
+    },
+    {
+      "route": "/",
+      "viewport_width": 1440,
+      "passed": true,
+      "horizontal_overflow": false
+    },
+    {
+      "route": "/",
+      "viewport_width": 390,
+      "passed": true,
+      "horizontal_overflow": false
+    }
+  ],
+  "page_errors": [],
+  "passed": true
+}

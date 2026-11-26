@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react'
+import { Boxes, ChevronLeft, ChevronRight, Plus, Search, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -36,7 +36,7 @@ export function DroneAssetsPage() {
 
   return (
     <>
-      <DashboardHeader eyebrow="PERMANENT MASTER" title="Drone & Survey Asset Register" description="New drones, DGPS equipment, batteries, cameras, controllers, HDDs and future equipment are created once and tracked permanently." actions={<Link className="primary-button" to="/drone/assets/new"><Plus size={17} /> Add Asset</Link>} />
+      <DashboardHeader eyebrow="PERMANENT MASTER" title="Drone & Survey Asset Register" description="New drones, DGPS equipment, batteries, cameras, controllers, HDDs and future equipment are created once and tracked permanently." actions={<Link className="primary-button" to="/drone/assets/new"><Plus size={17} /> Add Asset</Link>} meta={<><span className="nk-meta-chip"><Boxes size={14} /> Permanent equipment master — created once</span><span className="nk-meta-chip"><Search size={14} /> Search tag, serial, model or employee</span><span className="nk-meta-chip"><ShieldCheck size={14} /> {data.total} assets in register</span></>} />
       <section className="panel drone-assets-panel">
         <div className="table-toolbar drone-toolbar">
           <label className="search-field"><Search size={17} /><input value={search} onChange={event => { setSearch(event.target.value); setPage(0) }} placeholder="Search asset tag, imported ID, serial, model, employee…" /></label>

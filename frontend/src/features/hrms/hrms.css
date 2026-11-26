@@ -1,0 +1,87 @@
+.hrms-page{padding:0 0 35px;color:#0a2946;display:grid;gap:18px;font-family:inherit}
+.hrms-header{padding:30px 32px;border-radius:17px;background:linear-gradient(115deg,#063357,#0c6088 56%,#08766e);color:#fff;box-shadow:0 15px 30px #08385720}
+.hrms-header h1{font-size:clamp(24px,2.8vw,34px);margin:7px 0}.hrms-header p{margin:0;color:#def7ff}
+.hrms-eyebrow{text-transform:uppercase;letter-spacing:.13em;color:#8ff4ec;font-size:11px;font-weight:800}
+.hrms-tabs{display:flex;flex-wrap:wrap;gap:8px}.hrms-tabs a{padding:9px 14px;color:#064b74;text-decoration:none;border-radius:999px;border:1px solid #c8e5f4;background:#fff;font-size:13px;font-weight:700}.hrms-tabs a:hover{border-color:#009cbb;background:#ecf9fd}
+.hrms-panel{background:linear-gradient(145deg,#fff,#f8fcff);border:1px solid #c7dff0;border-radius:17px;padding:22px;box-shadow:0 8px 20px #0f4b6b0d;min-width:0}
+.hrms-panel h2{font-size:18px;margin:0 0 14px;color:#0b3155}.hrms-muted{color:#57718b;font-size:13px;line-height:1.7}
+.hrms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}.hrms-metric{border:1px solid #c5e7ed;background:#f0f9fd;border-radius:12px;padding:17px;display:grid;gap:8px}.hrms-metric span{font-size:12px;color:#47728e}.hrms-metric strong{font-size:26px;color:#073e61}.hrms-metric small{font-size:11px;color:#688399}
+.hrms-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;max-width:950px}.hrms-form-wide{grid-column:1/-1}
+.hrms-page label{display:grid;gap:6px;color:#385c76;font-size:12px;font-weight:700}.hrms-page input,.hrms-page select,.hrms-page textarea{width:100%;box-sizing:border-box;border:1px solid #b8d6e8;border-radius:10px;padding:11px;font:inherit;color:#153b53;background:#fff}.hrms-page label:has(input[type=checkbox]){display:flex;align-items:center}.hrms-page input[type=checkbox]{width:auto}
+.hrms-primary,.hrms-secondary,.hrms-small{display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:0;border-radius:9px;padding:10px 15px;font:inherit;font-size:13px;font-weight:700}.hrms-primary{color:#fff;background:linear-gradient(110deg,#009fbe,#0954b8)}.hrms-secondary{background:#e1f5f8;color:#08637d;border:1px solid #b3e4ed}.hrms-small{background:#e8f4fc;border:1px solid #b1d9ed;color:#05597b;padding:6px 9px}.hrms-page button:disabled{opacity:.45;cursor:not-allowed}
+.hrms-actions{display:flex;flex-wrap:wrap;gap:9px}.hrms-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}.hrms-two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hrms-table-wrap{max-width:100%;overflow-x:auto}.hrms-table-wrap table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}.hrms-table-wrap th{color:#155579;background:#edf7fb;font-size:11px;text-transform:uppercase;letter-spacing:.06em}.hrms-table-wrap td,.hrms-table-wrap th{padding:11px;border-bottom:1px solid #dbe9f1;vertical-align:top}.hrms-table-wrap small{display:block;color:#647c91;margin-top:4px}.hrms-table-wrap a{color:#04658c}
+.hrms-status{display:inline-block;padding:4px 8px;border-radius:999px;background:#e4eff5;color:#286080;font-weight:700;font-size:11px;text-transform:capitalize;white-space:nowrap}.hrms-status--approved,.hrms-status--checked_out,.hrms-status--checked_in{background:#e0f9ee;color:#08734a}.hrms-status--rejected{background:#ffe6e8;color:#a92340}.hrms-status--pending{background:#fff3d6;color:#89540a}
+.hrms-error,.hrms-success{padding:12px 14px;border-radius:11px;border:1px solid #f4bbc4;background:#fff1f2;color:#a52939}.hrms-success{border-color:#b0e7d3;background:#e8fff7;color:#08764c}.hrms-empty{border:1px dashed #92cbe6;padding:30px;text-align:center;border-radius:12px;color:#54758c}.hrms-explanation{border-top:1px solid #e2edf4;padding:9px 0;font-size:12px}
+@media(max-width:800px){.hrms-two-col{grid-template-columns:1fr}.hrms-header{padding:21px}.hrms-panel{padding:15px}.hrms-form{grid-template-columns:1fr}}
+
+.hrms-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid #d1e7f2;border-radius:12px;overflow:hidden;margin:14px 0 20px;background:white}.hrms-calendar-head{padding:10px 3px;text-align:center;background:#e6f4fb;color:#134b72;font-size:12px;font-weight:800}.hrms-calendar-day{min-height:92px;padding:8px 5px;border-top:1px solid #e0edf4;border-right:1px solid #e0edf4;font-size:12px;overflow:hidden}.hrms-calendar-day strong{display:block;text-align:right;color:#386784;padding:0 4px}.hrms-calendar-empty{background:#f6fafc}.hrms-calendar-event{display:block;overflow-wrap:anywhere;padding:3px 5px;font-size:10px;border-radius:5px;margin-top:4px;background:#dceeff;color:#115382}.hrms-calendar-event.approved{background:#d9f6e8;color:#0d714f}.hrms-calendar-event.holiday{background:#fff1db;color:#795013}.hrms-calendar-month{max-width:230px}@media(max-width:670px){.hrms-calendar-day{min-height:55px;padding:3px}.hrms-calendar-event{font-size:8px;padding:2px}}
+
+/* Stage 2: greytHR-inspired spacious employee self-service UI, NakshaTech identity */
+.hrms-reference-panel{background:#fff;border:1px solid #dde7ef;box-shadow:0 8px 26px rgba(20,68,94,.05)}
+.hrms-section-eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;color:#0088b8;text-transform:uppercase;margin:0 0 6px}
+.hrms-inline-action{text-decoration:none;white-space:nowrap}
+.hrms-swipe-wrap{min-width:0;margin:12px 0 18px}
+.hrms-swipe-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:#526c82;font-weight:700;margin-bottom:8px}
+.hrms-swipe-arrows{display:flex;gap:7px}
+.hrms-swipe-arrows button,.hrms-month-nav>button{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid #cddfeb;background:#fff;border-radius:9px;color:#1b577e;cursor:pointer}
+.hrms-swipe-track{display:flex;gap:13px;overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x mandatory;overscroll-behavior-inline:contain;padding:3px 3px 12px;touch-action:pan-x;scrollbar-color:#b2d8e6 transparent}
+.hrms-swipe-track>*{flex:none;scroll-snap-align:start}
+.hrms-swipe-hint{font-size:10px;color:#738c9f}
+.hrms-balance-card{width:clamp(192px,23vw,270px);min-height:185px;border:1px solid #d7e4ed;background:#fff;border-radius:11px;padding:19px;display:flex;flex-direction:column;gap:10px;box-shadow:0 3px 15px #105d8e0b}
+.hrms-balance-card>span:first-child{font-size:13px;color:#33546a;font-weight:700}.hrms-balance-card small{color:#6a8397;font-size:10px}
+.hrms-balance-card strong{font-size:35px;line-height:1.1;color:#12354c;text-align:center;margin:8px 0 0}.hrms-balance-caption{text-align:center;font-size:11px;color:#5d7890}
+.hrms-balance-divider{height:4px;background:linear-gradient(90deg,#0fc0d5,#1b81e6);border-radius:6px;margin-top:auto}
+.hrms-segmented{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:3px;background:#eef4f8;border-radius:10px;padding:4px;width:fit-content;max-width:100%;margin:12px auto 24px}
+.hrms-segmented button{border:0;border-radius:8px;background:transparent;color:#56748d;padding:10px 18px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.hrms-segmented button.active{background:linear-gradient(110deg,#03add2,#0769c5);color:white;box-shadow:0 2px 10px #0089cc24}
+.hrms-apply-form{margin:auto;max-width:790px}.hrms-apply-form label:last-of-type textarea{min-height:90px}
+.hrms-month-nav{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px;margin:14px 0;touch-action:pan-y}
+.hrms-month-nav>.hrms-calendar-month{flex:0 1 220px}.hrms-month-hint{font-size:11px;color:#647f97;align-self:center}
+.hrms-leave-calendar-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(245px,.8fr);gap:15px}
+.hrms-transaction-side{background:#f9fcff;border:1px solid #dce8f1;border-radius:12px;padding:16px;margin:14px 0 20px}
+.hrms-transaction-side h3{font-size:13px;margin:0 0 15px;color:#17466b}
+.hrms-transaction-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #e3ebf2}
+.hrms-transaction-row div{display:grid;gap:5px}.hrms-transaction-row strong{font-size:12px}.hrms-transaction-row small{font-size:11px;color:#708ba0}
+.hrms-gov-source{display:flex;align-items:center;gap:15px;border:1px solid #b9dfec;border-radius:12px;padding:16px;background:linear-gradient(115deg,#f2faff,#eef8f7)}
+.hrms-gov-icon{display:grid;place-items:center;background:#def4f8;border-radius:12px;min-width:51px;height:51px;color:#05658d}
+.hrms-gov-source>div:nth-child(2){flex:1}.hrms-gov-source strong{font-size:13px;color:#074c68}.hrms-gov-source p{font-size:11px;color:#59798a;margin:7px 0 0;line-height:1.5}
+.hrms-source-link{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;color:#fff;background:#087bb9;border-radius:8px;padding:10px 13px;text-decoration:none;font-size:12px;font-weight:700}
+.hrms-year-selector{min-width:110px}.hrms-year-selector select{padding:8px}
+.hrms-month-tile{display:flex;flex-direction:column;text-align:left;gap:7px;min-height:176px;width:clamp(210px,24vw,274px);background:#fff;border:1px solid #dbe7ef;border-radius:11px;padding:13px 14px;cursor:pointer;color:#173b53;font:inherit}
+.hrms-month-tile:hover,.hrms-month-tile:focus-visible{border-color:#069fc4;box-shadow:0 5px 14px #087db217}
+.hrms-month-tile-title{display:flex;justify-content:space-between;font-weight:800;font-size:11px;color:#215675;letter-spacing:.05em;margin-bottom:4px}
+.hrms-mini-holiday{display:flex;align-items:center;gap:9px;font-size:11px;line-height:1.3}.hrms-mini-holiday strong{font-weight:700;color:#0096c4;min-width:22px}.hrms-mini-holiday span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrms-mini-empty{font-size:12px;color:#a5b6c3;margin:auto}.hrms-month-tile small{color:#087fad;margin-top:auto;font-size:10px}
+.hrms-month-summary{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:10px}.hrms-month-summary h3{margin:0;font-size:17px}.hrms-month-summary span{color:#728a9c;font-size:12px}
+.hrms-calendar-event.holiday{background:#e7e0f6;color:#5e4488}.hrms-calendar-event.holiday[title='Awaiting HR verification']{background:#e7e0f6;color:#5e4488}
+@media(max-width:850px){.hrms-leave-calendar-layout{grid-template-columns:1fr}.hrms-gov-source{align-items:flex-start;flex-wrap:wrap}.hrms-source-link{margin-left:0}}
+@media(max-width:640px){.hrms-reference-panel{padding:14px}.hrms-balance-card{width:235px}.hrms-month-tile{width:225px}.hrms-segmented{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;max-width:100%}.hrms-segmented button{white-space:nowrap}.hrms-calendar-day{min-height:59px}.hrms-gov-source p{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.hrms-swipe-track{scroll-behavior:auto}}
+
+@media(min-width:1050px){.hrms-year-months .hrms-swipe-track{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible;gap:12px}.hrms-year-months .hrms-month-tile{width:auto;min-width:0}.hrms-year-months .hrms-swipe-arrows,.hrms-year-months .hrms-swipe-hint{display:none}}
+
+/* Stage 3: employee leave notices and HR-only history panel */
+.hrms-alert-panel{border-color:#a5dbe8;background:linear-gradient(130deg,#f1fbff,#fff)}
+.hrms-alert-panel h2,.hrms-history-panel h2{display:flex;align-items:center;gap:9px}
+.hrms-notice-count{background:#0d6fa0;color:#fff;font-size:12px;border-radius:999px;padding:7px 12px;font-weight:800}
+.hrms-notice-list{display:grid;gap:9px;max-height:290px;overflow:auto}
+.hrms-notice-item{display:flex;justify-content:space-between;align-items:center;gap:15px;text-align:left;border:1px solid #badbe8;border-radius:11px;padding:12px 15px;cursor:pointer;background:#fff;font:inherit;color:#123a56}
+.hrms-notice-item.unread{background:#eafaff;border-left:5px solid #089ad0}
+.hrms-notice-item:hover,.hrms-employee-link:hover{border-color:#1599cc;color:#036a97}
+.hrms-notice-item>span:first-child{display:grid;gap:5px}.hrms-notice-item small{color:#5e7f94;font-size:12px}
+.hrms-notice-state{color:#007ba4;font-weight:750;white-space:nowrap;font-size:12px}
+.hrms-employee-link{display:grid;gap:3px;border:0;background:transparent;padding:5px 0;text-align:left;color:#055e8b;font:inherit;cursor:pointer}
+.hrms-employee-link small{color:#688399}.hrms-history-panel{border:2px solid #8fdaeb}
+@media(max-width:600px){.hrms-notice-item{flex-direction:column;align-items:flex-start}.hrms-notice-state{white-space:normal}}
+
+/* Stage 4 — HR company-wide policy and bulk employee assignment */
+.hrms-weekday-field { border: 1px solid var(--border-color, #cedbe3); border-radius: 10px; padding: 12px; }
+.hrms-weekday-field legend { font-size: .85rem; padding: 0 4px; font-weight: 600; }
+.hrms-weekday-options { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.hrms-weekday-options label { display: inline-flex; align-items: center; gap: 6px; }
+.hrms-selection-list { max-height: 310px; overflow: auto; border: 1px solid #cadce8; border-radius: 10px; padding: 8px; margin: 12px 0; }
+.hrms-selection-row { display: flex; align-items: center; gap: 12px; padding: 9px; border-bottom: 1px solid #e0e9ef; cursor: pointer; }
+.hrms-selection-row:last-child { border-bottom: none; }
+.hrms-selection-row span { display: flex; flex-direction: column; gap: 3px; }
+.hrms-selection-row small { color: #526879; }

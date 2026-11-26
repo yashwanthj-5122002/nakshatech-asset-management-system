@@ -1,0 +1,30 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SHARED-102
+TOPIC: Technical clarification questions for BD conversations
+
+QUESTION PRIORITY
+Priority 1 blockers: project objective, location, scope/extent, confirmed deliverables, technical accuracy, required deadlines, source data availability and access restrictions.
+Priority 2 production details: spatial reference system, output formats and versions, classification/modeling standards, required control survey, collection method constraints, review and acceptance criteria.
+Priority 3 administrative clarifications: points of contact, reporting cycle, sample outputs, approval dependencies, permitted site windows.
+
+FOR DRONE / PHOTOGRAMMETRY
+What are the project boundaries and area? What GSD is required? What accuracy and datum must outputs achieve? Are GCPs or check points available? Which products are needed: orthophoto, DSM, DTM, contours, point cloud or CAD? What are site flight restrictions and terrain/vegetation conditions?
+
+FOR LIDAR
+Is the source airborne, mobile or terrestrial, or is collection in scope? What is corridor width/area? Which features/classes are required? What density, accuracy, datum and class specifications apply? Which formats are expected? Does the scope include feature extraction or only classification?
+
+FOR GIS
+What is the decision/use case? Which data layers exist? What geographic extent, CRS, topology constraints and temporal currency apply? What analysis is expected? Which formats or web deliverables are required? Is ground verification needed?
+
+FOR BIM
+What assets are included? Which disciplines must be modeled? What level of information need, geometric tolerances, output schema and Revit/IFC versions are expected? Are scan data and control already available? What areas are inaccessible?
+
+FOR HYDROLOGY
+Which catchment and lakes are in scope? What DEM resolution/quality is available? Are rainfall, drainage structures, culvert invert levels, historical channels and field validation available? What scenario and design objectives are intended?
+
+STYLE GUIDE
+Ask a few highest-impact questions first, grouped by category, and avoid questions already answered by the client. Avoid leading questions that imply facts not provided. When the client asks for a price, list quotation inputs rather than inventing a fixed rate.

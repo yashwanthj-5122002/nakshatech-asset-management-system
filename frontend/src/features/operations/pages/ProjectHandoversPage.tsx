@@ -200,6 +200,11 @@ export function ProjectHandoversPage(){
           ? 'Incoming and outgoing project data linked to your department. A receiving workstream becomes ready only after its required upstream handovers are accepted.'
           : 'Read-only oversight of department-to-department project data movement.'}
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><ArrowRight size={14}/> Sending team transfers · receiving team accepts</span>
+        <span className="nk-meta-chip"><Link2 size={14}/> Direction defined by BD under the same Project ID</span>
+        <span className="nk-meta-chip"><Database size={14}/> Upstream handovers gate downstream readiness</span>
+      </>}
     />
 
     {data&&<div className="handovers-demo-banner"><Database size={16}/><strong>{data.live_technical_routing_enabled?'Phase 7 LIVE:':'Phase 3 UAT:'}</strong> {data.live_technical_routing_enabled?'assigned real PMs own send/receive decisions and configured real handover recipients receive notifications/emails.':'technical notifications and emails use reserved demo department accounts only.'}</div>}

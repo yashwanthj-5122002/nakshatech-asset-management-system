@@ -1,0 +1,17 @@
+name: nakshatech-isolated-qa
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qa
+      POSTGRES_PASSWORD: qa-local-tests-only
+      POSTGRES_DB: qa
+    ports:
+      - "127.0.0.1:38112:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qa -d qa"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

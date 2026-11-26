@@ -1,4 +1,4 @@
-import { RefreshCcw } from 'lucide-react'
+import { FolderOpen, RefreshCcw, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
@@ -69,11 +69,29 @@ export function FinanceProjectRegisterPage() {
     return () => { cancelled = true }
   }, [selectedId])
 
+  useEffect(() => {
+    if (selectedId === null) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedId(null)
+    }
+
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [selectedId])
   return <div className="operations-page">
     <DashboardHeader
-      eyebrow="FINANCE · VIEW ONLY"
+      eyebrow="FINANCE · PROJECT PORTFOLIO INTELLIGENCE"
       title="Project Register"
-      description="Search the complete project register and inspect finance status, operational status and the client feedback, rework and billing lifecycle. This register is view-only; billing actions are handled in Finance Billing."
+      description="Search the complete project portfolio and inspect finance status, operational status plus the client feedback, rework and billing lifecycle. View-only register — billing actions are handled in Finance Billing."
+      meta={<><span className="nk-meta-chip"><FolderOpen size={14} /> {projects.length} projects</span><span className="nk-meta-chip"><Search size={14} /> {rows.length} matching filters</span></>}
       actions={<button className="operations-button secondary" onClick={load}><RefreshCcw size={16} /> Refresh</button>}
     />
     {error && <div className="operations-alert error">{error}</div>}
@@ -82,7 +100,32 @@ export function FinanceProjectRegisterPage() {
       <ProjectRegisterTable readOnly rows={rows} onDetails={row => setSelectedId(row.id)} />
     </section>
 
-    {selected && <ProjectDetailsPanel project={selected} />}
+    {selected && (
+      <div
+        className="finance-project-details-backdrop"
+        role="presentation"
+        onMouseDown={event => {
+          if (event.target === event.currentTarget) setSelectedId(null)
+        }}
+      >
+        <section
+          className="finance-project-details-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Project details for ${selected.project_code}`}
+        >
+          <div className="finance-project-details-modal-header">
+            <strong>Project Details</strong>
+            <button
+              type="button"
+              aria-label="Close project details"
+              onClick={() => setSelectedId(null)}
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="finance-project-details-modal-body">
+            <ProjectDetailsPanel project={selected} />
 
     {selected && <section className="operations-panel">
       <header><div><span className="operations-kicker">V8.1 LIFECYCLE</span><h2>Client Feedback, Rework &amp; Billing Status</h2></div></header>
@@ -103,5 +146,9 @@ export function FinanceProjectRegisterPage() {
         </table></div>}
       </>}
     </section>}
+          </div>
+        </section>
+      </div>
+    )}
   </div>
 }

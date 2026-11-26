@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../lib/date'
 import { CalendarDays, CheckCircle2, KeyRound, Mail, RefreshCcw, ShieldCheck, UserRound, Briefcase, Building2 } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
@@ -154,7 +155,7 @@ export function ProfilePage() {
               <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Contact number" />
             </label>
             <label className="profile-field"><span>Date of Birth</span>
-              <input type="date" value={dob} max={new Date().toISOString().slice(0, 10)} onChange={e => setDob(e.target.value)} />
+              <input type="date" value={dob} max={indiaDateInput()} onChange={e => setDob(e.target.value)} />
             </label>
             <div className="profile-form-actions">
               <button className="primary-button" disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save Changes'}</button>

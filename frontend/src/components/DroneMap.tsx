@@ -1,4 +1,4 @@
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import { useEffect, useRef } from 'react'
 
 interface DroneMapProps {

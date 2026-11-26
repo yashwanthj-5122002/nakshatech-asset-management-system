@@ -1,0 +1,2733 @@
+NAKSHA ERP - BACKEND MAPPING
+
+===== backend\app\api\dependencies.py =====
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.security import decode_access_token
+from app.models.entities import User
+from app.core.roles import VALID_ROLES, role_is_allowed
+from app.modules.employee_portal.models import UserSession
+
+security = HTTPBearer()
+
+
+@dataclass
+class CurrentAuth:
+    user: User
+    claims: dict[str, Any]
+    session: UserSession | None
+
+    @property
+    def effective_role(self) -> str:
+        claimed_role = str(self.claims.get("role") or "").strip().lower()
+        return claimed_role if claimed_role in VALID_ROLES else self.user.role
+
+
+def get_current_auth(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> CurrentAuth:
+    try:
+        payload = decode_access_token(credentials.credentials)
+        email = payload.get("sub")
+        token_type = payload.get("type")
+        if token_type not in (None, "access"):
+            raise jwt.InvalidTokenError("Not an access token")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
+
+    user = db.scalar(select(User).where(func.lower(User.email) == str(email or "").lower()))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or unknown user")
+    if int(payload.get("ver", 0)) != int(user.token_version or 0):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This session is no longer valid")
+
+    session = None
+    session_id = payload.get("sid")
+    if session_id is not None:
+        try:
+            session = db.get(UserSession, int(session_id))
+        except (TypeError, ValueError):
+            session = None
+        if not session or session.user_id != user.id or session.ended_at is not None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This session has ended")
+    return CurrentAuth(user=user, claims=payload, session=session)
+
+
+def get_current_user(auth: CurrentAuth = Depends(get_current_auth)) -> User:
+    return auth.user
+
+
+def require_roles(*roles: str):
+    allowed = set(roles)
+
+    def checker(auth: CurrentAuth = Depends(get_current_auth)) -> User:
+        if not role_is_allowed(auth.effective_role, allowed):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+        return auth.user
+
+    return checker
+
+===== backend\app\models\entities.py =====
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+
+def utc_now() -> datetime:
+    """Return a naive UTC timestamp for database columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    full_name: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(30), index=True)
+    branch: Mapped[str] = mapped_column(String(120), default="Head Office")
+    employee_id: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True, index=True)
+    department: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    designation: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    joining_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    account_status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    mfa_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_logout_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class Asset(Base):
+    __tablename__ = "assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_code: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    source_sheet: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_by: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    workstation_no: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    department: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    cpu_asset_tag: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    monitor_asset_tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mouse_asset_tag: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    keyboard_asset_tag: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    system_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    brand: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    model: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    serial_number: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    connection_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    capacity: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    ownership: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    client_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    current_holder: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    device_type: Mapped[str] = mapped_column(String(80), index=True)
+    processor: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    memory_gb: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ssd: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    hdd: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    mac_address: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    graphics_card: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    operating_system: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    antivirus: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    network_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    original_asset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    location: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    work_mode: Mapped[str] = mapped_column(String(50), default="office", index=True)
+    status: Mapped[str] = mapped_column(String(50), default="available", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    work_records: Mapped[list[WorkRecord]] = relationship(back_populates="asset")
+    outgoing_replacements: Mapped[list[ReplacementRecord]] = relationship(
+        foreign_keys="ReplacementRecord.old_asset_id", back_populates="old_asset"
+    )
+    incoming_replacements: Mapped[list[ReplacementRecord]] = relationship(
+        foreign_keys="ReplacementRecord.new_asset_id", back_populates="new_asset"
+    )
+
+
+class WorkRecord(Base):
+    __tablename__ = "work_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    module: Mapped[str] = mapped_column(String(50), index=True)
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    work_type: Mapped[str] = mapped_column(String(120), default="General")
+    project: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    assigned_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    technician: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    priority: Mapped[str] = mapped_column(String(30), default="medium")
+    issue_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="open", index=True)
+    root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replaced_component: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    replacement_asset_tag: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(50), default="not_required")
+    submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    submitted_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    submitted_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    submitted_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    approved_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    approval_comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expected_completion_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reporting_month: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    asset: Mapped[Asset | None] = relationship(back_populates="work_records")
+
+
+class ComponentReplacement(Base):
+    __tablename__ = "component_replacements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    replacement_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+    work_record_id: Mapped[int | None] = mapped_column(ForeignKey("work_records.id"), nullable=True, index=True)
+    cpu_asset_tag: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    workstation_no: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    component_type: Mapped[str] = mapped_column(String(120), index=True)
+    change_type: Mapped[str] = mapped_column(String(40), default="replacement", index=True)
+    batch_code: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    sequence_no: Mapped[int] = mapped_column(Integer, default=1)
+    field_name: Mapped[str] = mapped_column(String(120))
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    old_condition: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    technician: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    replacement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    performed_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    performed_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reporting_month: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    asset: Mapped[Asset] = relationship()
+    work_record: Mapped[WorkRecord | None] = relationship()
+
+
+class MonthlySnapshotRun(Base):
+    __tablename__ = "monthly_snapshot_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    month_start: Mapped[date] = mapped_column(Date, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="finalized", index=True)
+    source: Mapped[str] = mapped_column(String(50), default="automatic")
+    opening_count: Mapped[int] = mapped_column(Integer, default=0)
+    closing_count: Mapped[int] = mapped_column(Integer, default=0)
+    finalized_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    finalized_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    assets: Mapped[list[MonthlyAssetSnapshot]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class MonthlyAssetSnapshot(Base):
+    __tablename__ = "monthly_asset_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("monthly_snapshot_runs.id"), index=True)
+    asset_code: Mapped[str] = mapped_column(String(100), index=True)
+    payload: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    run: Mapped[MonthlySnapshotRun] = relationship(back_populates="assets")
+
+
+class ReplacementRecord(Base):
+    __tablename__ = "replacement_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    replacement_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    old_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+    new_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    damage_category: Mapped[str] = mapped_column(String(100), default="technical_failure")
+    inspection_finding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(50), default="pending", index=True)
+    final_action: Mapped[str] = mapped_column(String(80), default="replacement_pending")
+    requested_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    requested_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    requested_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    requested_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    reporting_month: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    decision_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    old_asset: Mapped[Asset] = relationship(foreign_keys=[old_asset_id], back_populates="outgoing_replacements")
+    new_asset: Mapped[Asset | None] = relationship(foreign_keys=[new_asset_id], back_populates="incoming_replacements")
+
+
+class ApprovalDecisionHistory(Base):
+    __tablename__ = "approval_decision_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_type: Mapped[str] = mapped_column(String(50), index=True)
+    record_id: Mapped[int] = mapped_column(Integer, index=True)
+    record_code: Mapped[str] = mapped_column(String(80), index=True)
+    action: Mapped[str] = mapped_column(String(40), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(50), index=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    performed_by_name: Mapped[str] = mapped_column(String(255))
+    performed_by_email: Mapped[str] = mapped_column(String(255), index=True)
+    performed_by_role: Mapped[str] = mapped_column(String(30), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class AssetHistory(Base):
+    __tablename__ = "asset_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+    action: Mapped[str] = mapped_column(String(120))
+    change_type: Mapped[str] = mapped_column(String(60), default="asset_activity", index=True)
+    batch_code: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    changed_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    changed_by_role: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    field_count: Mapped[int] = mapped_column(Integer, default=0)
+    reporting_month: Mapped[str | None] = mapped_column(String(7), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class Drone(Base):
+    __tablename__ = "drones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_code: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    model: Mapped[str] = mapped_column(String(255))
+    serial_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pilot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    project: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="available")
+    battery_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    survey_asset_id: Mapped[int | None] = mapped_column(ForeignKey("drone_survey_assets.id"), nullable=True, index=True)
+    locations: Mapped[list[DroneLocation]] = relationship(back_populates="drone", cascade="all, delete-orphan")
+
+
+class DroneLocation(Base):
+    __tablename__ = "drone_locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    drone_id: Mapped[int] = mapped_column(ForeignKey("drones.id", ondelete="CASCADE"), index=True)
+    latitude: Mapped[float] = mapped_column(Float)
+    longitude: Mapped[float] = mapped_column(Float)
+    altitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    heading: Mapped[float | None] = mapped_column(Float, nullable=True)
+    battery_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="manual")
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    drone: Mapped[Drone] = relationship(back_populates="locations")
+
+===== backend\app\modules\finance\standalone_invoice_models.py =====
+"""Isolated Finance-only invoice documents with no project/accounting linkage."""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+from app.models.entities import utc_now
+
+
+class StandaloneInvoice(Base):
+    __tablename__ = "standalone_invoices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_number: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    invoice_date: Mapped[date] = mapped_column(Date, index=True)
+    terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    reference_work_order: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    place_of_supply: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+    seller_snapshot: Mapped[dict] = mapped_column(JSON)
+    bill_to_snapshot: Mapped[dict] = mapped_column(JSON)
+    ship_to_snapshot: Mapped[dict] = mapped_column(JSON)
+    bank_snapshot: Mapped[dict] = mapped_column(JSON)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms_conditions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tax_mode: Mapped[str] = mapped_column(String(20), default="none")
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    taxable_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    cgst_percent: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0.00"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    sgst_percent: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0.00"))
+    sgst_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    igst_percent: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0.00"))
+    igst_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    total: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    balance_due: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    amount_in_words: Mapped[str] = mapped_column(String(500))
+    authorized_signatory_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qr_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    line_items: Mapped[list["StandaloneInvoiceLineItem"]] = relationship(
+        back_populates="invoice", cascade="all, delete-orphan", order_by="StandaloneInvoiceLineItem.sequence"
+    )
+
+
+class StandaloneInvoiceLineItem(Base):
+    __tablename__ = "standalone_invoice_line_items"
+    __table_args__ = (UniqueConstraint("standalone_invoice_id", "sequence", name="uq_standalone_invoice_line_sequence"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    standalone_invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("standalone_invoices.id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(String(500))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hsn_sac: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
+    unit: Mapped[str] = mapped_column(String(30))
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    tax_percent: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0.00"))
+    tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    invoice: Mapped[StandaloneInvoice] = relationship(back_populates="line_items")
+
+===== backend\app\modules\finance\standalone_invoice_router.py =====
+from __future__ import annotations
+
+import re
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import CurrentAuth, get_current_auth
+from app.core.database import get_db
+from app.modules.employee_portal.service import record_audit
+from app.modules.finance.standalone_invoice_schemas import StandaloneInvoiceCreate
+from app.modules.finance.standalone_invoice_service import (
+    create_standalone_invoice,
+    standalone_invoice_edit_payload,
+    update_standalone_invoice,
+    standalone_history,
+    standalone_invoice_document_payload,
+)
+from app.modules.operations.invoice_documents import build_invoice_a4_pdf
+
+router = APIRouter(prefix="/generated-invoices", tags=["Standalone Invoice Documents"])
+
+
+def _finance_only(auth: CurrentAuth) -> None:
+    if (auth.effective_role or "").strip().lower() != "finance":
+        raise HTTPException(status_code=403, detail="Generate Invoice is restricted to Finance")
+
+
+def _error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ValueError) and "not found" in str(exc).lower():
+        return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("")
+def list_generated_invoices(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
+    _finance_only(auth)
+    return {"invoices": standalone_history(db)}
+
+
+@router.post("", status_code=201)
+def generate_invoice(
+    payload: StandaloneInvoiceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    try:
+        row = create_standalone_invoice(db, actor=auth.user, payload=payload)
+        record_audit(
+            db, event_type="STANDALONE_INVOICE_CREATED", request=request, user=auth.user,
+            module="finance", target_type="standalone_invoice", target_id=row.id,
+            details={"invoice_number": row.invoice_number, "total": str(row.total)},
+        )
+        db.commit()
+        return standalone_invoice_document_payload(db, row.id)
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
+@router.get("/{invoice_id}/edit")
+def get_generated_invoice_edit_form(
+    invoice_id: int, db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)
+):
+    _finance_only(auth)
+    try:
+        return standalone_invoice_edit_payload(db, invoice_id)
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.put("/{invoice_id}")
+def edit_generated_invoice(
+    invoice_id: int,
+    payload: StandaloneInvoiceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    try:
+        before = standalone_invoice_document_payload(db, invoice_id)
+        row = update_standalone_invoice(db, invoice_id=invoice_id, payload=payload)
+        record_audit(
+            db, event_type="STANDALONE_INVOICE_EDITED", request=request, user=auth.user,
+            module="finance", target_type="standalone_invoice", target_id=row.id,
+            details={
+                "invoice_number": row.invoice_number,
+                "before_total": str(before["totals"]["invoice_total"]),
+                "after_total": str(row.total),
+                "before_tax": str(before["totals"]["tax_amount"]),
+                "after_tax": str(row.cgst_amount + row.sgst_amount + row.igst_amount),
+                "edited_by": auth.user.id,
+            },
+        )
+        db.commit()
+        return standalone_invoice_document_payload(db, invoice_id)
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
+@router.get("/{invoice_id}")
+def get_generated_invoice(
+    invoice_id: int, db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)
+):
+    _finance_only(auth)
+    try:
+        return standalone_invoice_document_payload(db, invoice_id)
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/{invoice_id}/document")
+def preview_generated_invoice(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    try:
+        payload = standalone_invoice_document_payload(db, invoice_id)
+        record_audit(
+            db, event_type="STANDALONE_INVOICE_GENERATED", request=request, user=auth.user,
+            module="finance", target_type="standalone_invoice", target_id=invoice_id,
+            details={"format": "preview"},
+        )
+        db.commit()
+        return payload
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
+@router.get("/{invoice_id}/document.pdf")
+def generated_invoice_pdf(
+    invoice_id: int,
+    request: Request,
+    download: bool = Query(default=False),
+    template: Literal["green_gold", "modern_teal", "geospatial_blue"] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    try:
+        payload = standalone_invoice_document_payload(db, invoice_id)
+        output = build_invoice_a4_pdf(payload, template=template)
+        record_audit(
+            db, event_type="STANDALONE_INVOICE_DOWNLOADED" if download else "STANDALONE_INVOICE_GENERATED",
+            request=request, user=auth.user, module="finance", target_type="standalone_invoice",
+            target_id=invoice_id, details={"format": "pdf", "download": download, "template": template or "classic"},
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    safe_number = re.sub(r"[^A-Za-z0-9._-]+", "_", payload["invoice"]["invoice_number"]).strip("._") or f"invoice-{invoice_id}"
+    template_name = template or "classic"
+    return StreamingResponse(
+        output, media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{"attachment" if download else "inline"}; filename="{safe_number}_{template_name}_A4_Invoice.pdf"',
+            "Cache-Control": "private, no-store, max-age=0", "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+===== backend\app\modules\finance\sales_revenue_service.py =====
+from __future__ import annotations
+
+import logging
+from collections import defaultdict
+from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.departments import department_label, normalize_department_code, normalize_department_code_or_default
+from app.models.entities import User
+from app.modules.commercial.models import ProjectCommercialEstimateRevision
+from app.modules.finance.models import FinanceProject
+from app.modules.finance.visibility import exclude_hidden_projects
+from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoiceBadDebt, ProjectInvoicePayment
+from app.modules.operations.models import ProjectWorkflow
+
+logger = logging.getLogger(__name__)
+
+INVOICE_CLOSED = "INVOICE_CLOSED"
+PAYMENT_RECEIVED = "PAYMENT_RECEIVED"
+PAYMENT_OVERDUE = "PAYMENT_OVERDUE"
+PARTIALLY_PAID = "PARTIALLY_PAID"
+PAYMENT_PENDING = "PAYMENT_PENDING"
+INVOICE_RAISED = "INVOICE_RAISED"
+INVOICE_DRAFT = "INVOICE_DRAFT"
+
+# Open Sales Pipeline must equal the sum of these mutually exclusive categories (INR).
+OPEN_SALES_CATEGORIES: tuple[str, ...] = (
+    "invoice_not_raised_inr",
+    "payment_pending_inr",
+    "partial_payment_inr",
+    "payment_received_closure_pending_inr",
+    "other_open_inr",
+)
+
+_MONEY_QUANT = Decimal("0.01")
+_RECON_TOLERANCE = Decimal("0.01")
+
+
+def _decimal(value: object | None) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    return Decimal(str(value))
+
+
+def _money(value: object | None) -> float:
+    return float(_decimal(value))
+
+
+def _invoice_total(invoice: ProjectInvoice) -> Decimal:
+    return _decimal(invoice.amount) + _decimal(invoice.tax_amount)
+
+
+def _invoice_total_inr(invoice: ProjectInvoice) -> Decimal:
+    if invoice.total_inr is not None:
+        return _decimal(invoice.total_inr)
+    total = _invoice_total(invoice)
+    rate = _decimal(invoice.fx_rate_to_inr)
+    if rate > 0:
+        return (total * rate).quantize(Decimal("0.01"))
+    if (invoice.currency or "INR").upper() == "INR":
+        return total
+    return Decimal("0")
+
+
+def _payment_inr(payment: ProjectInvoicePayment, invoice: ProjectInvoice) -> Decimal:
+    if payment.inr_equivalent is not None:
+        return _decimal(payment.inr_equivalent)
+    rate = _decimal(payment.fx_rate_to_inr)
+    if rate > 0:
+        return (_decimal(payment.amount) * rate).quantize(Decimal("0.01"))
+    if (payment.payment_currency or invoice.currency or "INR").upper() == "INR":
+        return _decimal(payment.amount)
+    return Decimal("0")
+
+
+def _baseline_revision(rows: list[ProjectCommercialEstimateRevision]) -> ProjectCommercialEstimateRevision | None:
+    if not rows:
+        return None
+    ordered = sorted(rows, key=lambda row: (row.revision_no, row.id))
+    baseline = [row for row in ordered if bool(row.is_baseline)]
+    if baseline:
+        return baseline[-1]
+    revision_one = [row for row in ordered if row.revision_no == 1]
+    if revision_one:
+        return revision_one[-1]
+    approved = [row for row in ordered if (row.status or "").upper() == "APPROVED"]
+    if approved:
+        return approved[-1]
+    return ordered[-1]
+
+
+def _baseline_sales_inr(
+    baseline: ProjectCommercialEstimateRevision | None,
+    workflow: ProjectWorkflow | None,
+) -> Decimal:
+    if baseline is not None:
+        if baseline.gross_inr is not None:
+            return _decimal(baseline.gross_inr)
+        if baseline.estimated_inr is not None:
+            return _decimal(baseline.estimated_inr)
+        if baseline.currency_code.upper() == "INR":
+            return _decimal(baseline.expected_gross or baseline.estimated_amount)
+    if workflow is not None and (workflow.currency or "INR").upper() == "INR":
+        return _decimal(workflow.commercial_value)
+    return Decimal("0")
+
+
+def _baseline_sales_original(
+    baseline: ProjectCommercialEstimateRevision | None,
+    workflow: ProjectWorkflow | None,
+) -> Decimal:
+    if baseline is not None:
+        return _decimal(baseline.expected_gross or baseline.estimated_amount)
+    if workflow is not None:
+        return _decimal(workflow.commercial_value)
+    return Decimal("0")
+
+
+def _sales_status(invoices: list[ProjectInvoice], open_invoices: list[ProjectInvoice]) -> str:
+    if not invoices:
+        return "Not Invoiced"
+    if not open_invoices:
+        return "Moved to Revenue"
+    statuses = {(row.status or "").upper() for row in open_invoices}
+    if PAYMENT_OVERDUE in statuses:
+        return "Overdue"
+    if PARTIALLY_PAID in statuses:
+        return "Partially Paid"
+    if PAYMENT_RECEIVED in statuses:
+        return "Payment Received / Awaiting Closure"
+    if PAYMENT_PENDING in statuses or INVOICE_RAISED in statuses:
+        return "Payment Pending"
+    if INVOICE_DRAFT in statuses:
+        return "Invoice Draft"
+    return "Open"
+
+
+def _date_iso(value: date | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _quantize_money(value: Decimal) -> Decimal:
+    return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
+def _empty_open_sales_categories() -> dict[str, Decimal]:
+    return {key: Decimal("0") for key in OPEN_SALES_CATEGORIES}
+
+
+def classify_open_invoice(
+    *,
+    status: str | None,
+    paid_original: Decimal,
+    balance_original: Decimal,
+    total_original: Decimal,
+) -> str:
+    """Classify an open (non-revenue) invoice into an Open Sales category.
+
+    Classification uses original-currency paid/balance so FX conversion cannot
+    invent or hide a payment state. Category amounts are still booked in INR.
+    """
+    normalized = (status or "").strip().upper()
+    if normalized == INVOICE_DRAFT or total_original <= 0:
+        return "other_open_inr"
+    if paid_original <= 0:
+        return "payment_pending_inr"
+    if balance_original > 0:
+        return "partial_payment_inr"
+    if paid_original >= total_original:
+        return "payment_received_closure_pending_inr"
+    return "other_open_inr"
+
+
+def _categories_payload(categories: dict[str, Decimal]) -> dict[str, float]:
+    return {key: _money(_quantize_money(categories[key])) for key in OPEN_SALES_CATEGORIES}
+
+
+def _categories_sum(categories: dict[str, Decimal]) -> Decimal:
+    return sum((categories[key] for key in OPEN_SALES_CATEGORIES), Decimal("0"))
+
+
+def _invoice_rate_to_inr(invoice: ProjectInvoice) -> Decimal:
+    rate = _decimal(invoice.fx_rate_to_inr)
+    if rate > 0:
+        return rate
+    return Decimal("1") if (invoice.currency or "INR").upper() == "INR" else Decimal("0")
+
+
+def _advance_applied_original(
+    db: Session,
+    invoices_by_id: dict[int, ProjectInvoice],
+    applied_inr_by_invoice: dict[int, Decimal],
+) -> dict[int, Decimal]:
+    """Applied advance converted into each invoice's own currency (original-currency math)."""
+    result: dict[int, Decimal] = {}
+    for invoice_id, invoice in invoices_by_id.items():
+        rate = _invoice_rate_to_inr(invoice) or Decimal("1")
+        result[int(invoice_id)] = _quantize_money(
+            applied_inr_by_invoice.get(int(invoice_id), Decimal("0")) / rate
+        )
+    return result
+
+
+def advance_applied_by_invoice(db: Session, invoice_ids: list[int]) -> dict[int, Decimal]:
+    """INR applied from the client-advance ledger per invoice (no duplicate payment rows).
+
+    Imported lazily here to keep the Finance read model free of a hard module cycle.
+    The import also registers ``client_advance_transactions`` on the shared metadata, so
+    a schema built from that metadata always contains the client-advance ledger.
+    """
+    from app.modules.finance.advance_settlement_service import advance_applied_by_invoice as _lookup
+
+    return _lookup(db, invoice_ids)
+
+
+
+def _reconcile_open_sales(
+    *,
+    open_sales_inr: Decimal,
+    categories: dict[str, Decimal],
+    project: FinanceProject | None = None,
+    department_scope: str | None = None,
+) -> tuple[Decimal, bool]:
+    categories_sum = _categories_sum(categories)
+    difference = _quantize_money(open_sales_inr - categories_sum)
+    matched = abs(difference) <= _RECON_TOLERANCE
+    if not matched:
+        logger.error(
+            "Finance KPI reconciliation failed: Department=%s ProjectId=%s ProjectCode=%s ProjectName=%s Amount=%s Expected=%s Calculated=%s Difference=%s",
+            department_scope or "all",
+            project.id if project is not None else None,
+            project.project_code if project is not None else "N/A",
+            project.project_name if project is not None else "N/A",
+            open_sales_inr,
+            open_sales_inr,
+            categories_sum,
+            difference,
+        )
+    return difference, matched
+
+
+def _empty_kpi_summary() -> dict:
+    return {
+        "open_sales_inr": 0.0,
+        "categories": {key: 0.0 for key in OPEN_SALES_CATEGORIES},
+        "categories_sum_inr": 0.0,
+        "reconciliation_difference_inr": 0.0,
+        "reconciled": True,
+        "realized_revenue_inr": 0.0,
+        "outstanding_inr": 0.0,
+        "bad_debt_inr": 0.0,
+        "received_against_open_sales_inr": 0.0,
+        "open_invoice_total_inr": 0.0,
+        "open_invoice_balance_inr": 0.0,
+        "unbilled_open_sales_inr": 0.0,
+        "counts": {
+            "open_sales_projects": 0,
+            "revenue_events": 0,
+            "partial_projects": 0,
+            "overdue_projects": 0,
+            "payment_pending_invoices": 0,
+            "partial_invoices": 0,
+            "invoice_not_raised_projects": 0,
+        },
+        "collection": {
+            "payment_pending_amount_inr": 0.0,
+            "partial_payment_balance_inr": 0.0,
+            "invoice_not_raised_amount_inr": 0.0,
+        },
+    }
+
+
+def sales_revenue_overview(db: Session, *, department_scope: str | None = None) -> dict:
+    """Return one authoritative read model for Finance Sales and Revenue analytics.
+
+    Sales is the still-open commercial pipeline. A project's commercial value remains in Sales
+    until an invoice has been fully resolved AND Finance closes that invoice. Revenue contains only
+    payments attached to closed invoices. This keeps dashboards read-only and reuses the existing
+    Commercial -> Billing -> Payment -> Invoice Close lifecycle instead of creating a second ledger.
+
+    ``department_scope`` (canonical code) restricts the payload to that performing department so
+    technical PM roles never receive other departments' projects from this API.
+    """
+
+    project_query = exclude_hidden_projects(db, select(FinanceProject).order_by(FinanceProject.id))
+    projects = list(db.scalars(project_query).unique().all())
+    if not projects:
+        return {"projects": [], "revenue_events": [], "kpi_summary": _empty_kpi_summary()}
+
+    project_ids = [row.id for row in projects]
+    workflows = {
+        row.project_id: row
+        for row in db.scalars(select(ProjectWorkflow).where(ProjectWorkflow.project_id.in_(project_ids))).all()
+    }
+
+    if department_scope is not None:
+        scoped = normalize_department_code(department_scope)
+        if scoped is None:
+            return {"projects": [], "revenue_events": [], "kpi_summary": _empty_kpi_summary()}
+        projects = [
+            project
+            for project in projects
+            if normalize_department_code_or_default(
+                workflows[project.id].performing_department_code if project.id in workflows else None
+            )
+            == scoped
+        ]
+        if not projects:
+            return {"projects": [], "revenue_events": [], "kpi_summary": _empty_kpi_summary()}
+        project_ids = [row.id for row in projects]
+        workflows = {pid: row for pid, row in workflows.items() if pid in set(project_ids)}
+
+    revisions_by_project: dict[int, list[ProjectCommercialEstimateRevision]] = defaultdict(list)
+    for row in db.scalars(
+        select(ProjectCommercialEstimateRevision)
+        .where(ProjectCommercialEstimateRevision.project_id.in_(project_ids))
+        .order_by(ProjectCommercialEstimateRevision.project_id, ProjectCommercialEstimateRevision.revision_no)
+    ).all():
+        revisions_by_project[row.project_id].append(row)
+
+    invoices_by_project: dict[int, list[ProjectInvoice]] = defaultdict(list)
+    invoices = list(
+        db.scalars(
+            select(ProjectInvoice)
+            .where(ProjectInvoice.project_id.in_(project_ids))
+            .order_by(ProjectInvoice.project_id, ProjectInvoice.invoice_date, ProjectInvoice.id)
+        ).all()
+    )
+    for invoice in invoices:
+        invoices_by_project[invoice.project_id].append(invoice)
+
+    payments_by_invoice: dict[int, list[ProjectInvoicePayment]] = defaultdict(list)
+    if invoices:
+        # Importing the client-advance ledger here registers client_advance_transactions on
+        # the shared metadata before any schema is created, so an isolated schema that only
+        # builds from the imported models still contains the advance tables.
+        from app.modules.finance import advance as _advance_models  # noqa: F401
+
+        invoice_ids = [row.id for row in invoices]
+        for payment in db.scalars(
+            select(ProjectInvoicePayment)
+            .where(ProjectInvoicePayment.invoice_id.in_(invoice_ids))
+            .order_by(ProjectInvoicePayment.invoice_id, ProjectInvoicePayment.payment_date, ProjectInvoicePayment.id)
+        ).all():
+            payments_by_invoice[payment.invoice_id].append(payment)
+
+    bad_debt_by_invoice: dict[int, ProjectInvoiceBadDebt] = {}
+    if invoices:
+        for row in db.scalars(
+            select(ProjectInvoiceBadDebt).where(ProjectInvoiceBadDebt.invoice_id.in_([invoice.id for invoice in invoices]))
+        ).all():
+            bad_debt_by_invoice[row.invoice_id] = row
+
+    from app.modules.operations.lifecycle_service import approved_bad_debt_remaining
+
+    approved_bad_debt_by_invoice = {
+        invoice_id: approved_bad_debt_remaining(row)
+        for invoice_id, row in bad_debt_by_invoice.items()
+    }
+
+    # A client advance applied against an invoice settles it exactly like a cash payment, but it is
+    # NEVER duplicated into project_invoice_payments. Reading it here from the isolated
+    # client-advance ledger keeps one settlement definition everywhere:
+    #     invoice settled = invoice cash payments + advance applied
+    # The revenue rule itself is untouched - revenue still requires a CLOSED and fully settled
+    # invoice, and an applied advance is counted exactly once (never as both advance and payment).
+    invoices_by_id = {row.id: row for row in invoices}
+    advance_applied_inr_by_invoice = advance_applied_by_invoice(db, list(invoices_by_id))
+    advance_applied_original_by_invoice = _advance_applied_original(
+        db, invoices_by_id, advance_applied_inr_by_invoice
+    )
+
+    user_ids: set[int] = set()
+    for workflow in workflows.values():
+        if workflow.bd_owner_user_id:
+            user_ids.add(workflow.bd_owner_user_id)
+    for project in projects:
+        profile = project.master_profile
+        if profile and profile.project_manager_id:
+            user_ids.add(profile.project_manager_id)
+    users = {
+        row.id: row
+        for row in db.scalars(select(User).where(User.id.in_(user_ids))).all()
+    } if user_ids else {}
+
+    payload_projects: list[dict] = []
+    revenue_events: list[dict] = []
+
+    kpi_open_sales = Decimal("0")
+    kpi_categories = _empty_open_sales_categories()
+    kpi_realized_revenue = Decimal("0")
+    kpi_outstanding = Decimal("0")
+    kpi_bad_debt = Decimal("0")
+    kpi_open_received = Decimal("0")
+    kpi_open_invoice_total = Decimal("0")
+    kpi_open_invoice_balance = Decimal("0")
+    kpi_unbilled = Decimal("0")
+    kpi_partial_balance = Decimal("0")
+    kpi_payment_pending_invoices = 0
+    kpi_partial_invoices = 0
+    kpi_invoice_not_raised_projects = 0
+    kpi_partial_projects = 0
+    kpi_overdue_projects = 0
+
+    for project in projects:
+        workflow = workflows.get(project.id)
+        baseline = _baseline_revision(revisions_by_project.get(project.id, []))
+        project_invoices = invoices_by_project.get(project.id, [])
+        # Revenue is deliberately stricter than a status label: the invoice must be CLOSED and
+        # its balance must be resolved. Approved unrecovered Bad Debt resolves a balance
+        # but contributes no Revenue; only actual payments/applied advances are realized.
+        # Unresolved legacy CLOSED rows remain excluded by this defensive check.
+        revenue_invoice_ids = {
+            row.id
+            for row in project_invoices
+            if (row.status or "").upper() == INVOICE_CLOSED
+            and sum((_decimal(payment.amount) for payment in payments_by_invoice.get(row.id, [])), Decimal("0"))
+            + advance_applied_original_by_invoice.get(row.id, Decimal("0"))
+            + approved_bad_debt_by_invoice.get(row.id, Decimal("0")) >= _invoice_total(row)
+        }
+        closed_invoices = [row for row in project_invoices if row.id in revenue_invoice_ids]
+        open_invoices = [row for row in project_invoices if row.id not in revenue_invoice_ids]
+
+        client = project.client
+        client_profile = client.master_profile if client else None
+        project_profile = project.master_profile
+        pm = users.get(project_profile.project_manager_id) if project_profile and project_profile.project_manager_id else None
+        bd = users.get(workflow.bd_owner_user_id) if workflow and workflow.bd_owner_user_id else None
+
+        department_code = normalize_department_code_or_default(
+            workflow.performing_department_code if workflow else None
+        )
+        sales_currency = (
+            baseline.currency_code
+            if baseline is not None
+            else ((workflow.currency if workflow else None) or "INR")
+        ).upper()
+        sales_value = _baseline_sales_original(baseline, workflow)
+        sales_value_inr = _baseline_sales_inr(baseline, workflow)
+
+        invoice_payloads: list[dict] = []
+        closed_revenue_inr = Decimal("0")
+        cash_received_inr = Decimal("0")
+        closed_sales_value_inr = Decimal("0")
+        open_received_inr = Decimal("0")
+        open_invoice_total_inr = Decimal("0")
+        open_invoice_balance_inr = Decimal("0")
+        open_categories = _empty_open_sales_categories()
+        open_partial_balance_inr = Decimal("0")
+        open_payment_pending_count = 0
+        open_partial_count = 0
+
+        for invoice in project_invoices:
+            payments = payments_by_invoice.get(invoice.id, [])
+            invoice_total = _invoice_total(invoice)
+            cash_original = sum((_decimal(row.amount) for row in payments), Decimal("0"))
+            applied_original = advance_applied_original_by_invoice.get(invoice.id, Decimal("0"))
+            # One settlement definition: cash + applied advance (never the same rupee twice).
+            settled_original = cash_original + applied_original
+            balance_original = max(invoice_total - settled_original, Decimal("0"))
+            total_inr = _invoice_total_inr(invoice)
+            payment_inr_values = [_payment_inr(row, invoice) for row in payments]
+            cash_paid_inr = sum(payment_inr_values, Decimal("0"))
+            cash_received_inr += cash_paid_inr
+            advance_applied_inr = advance_applied_inr_by_invoice.get(invoice.id, Decimal("0"))
+            paid_inr = cash_paid_inr + advance_applied_inr
+            if paid_inr == 0 and settled_original == invoice_total and total_inr > 0:
+                paid_inr = total_inr
+            balance_inr = max(total_inr - paid_inr, Decimal("0")) if total_inr > 0 else Decimal("0")
+            bad_debt_row = bad_debt_by_invoice.get(invoice.id)
+            approved_bad_debt_original = approved_bad_debt_by_invoice.get(invoice.id, Decimal("0"))
+            invoice_rate = _invoice_rate_to_inr(invoice)
+            approved_bad_debt_inr = _quantize_money(approved_bad_debt_original * invoice_rate) if invoice_rate > 0 else Decimal("0")
+            collectible_balance_inr = max(balance_inr - approved_bad_debt_inr, Decimal("0"))
+            qualifies_as_revenue = invoice.id in revenue_invoice_ids
+            open_sales_category: str | None = None
+
+            if qualifies_as_revenue:
+                # Remove the invoice's locked accounting value from the open Sales pipeline,
+                # but recognize Revenue using actual realized payment INR. Keeping those two
+                # measures separate avoids FX movement corrupting open-sales balances.
+                closed_sales_value_inr += total_inr
+                closed_revenue_inr += paid_inr
+            else:
+                open_sales_category = classify_open_invoice(
+                    status=invoice.status,
+                    paid_original=settled_original,
+                    balance_original=balance_original,
+                    total_original=invoice_total,
+                )
+                open_categories[open_sales_category] += total_inr
+                if open_sales_category == "payment_pending_inr":
+                    open_payment_pending_count += 1
+                elif open_sales_category == "partial_payment_inr":
+                    open_partial_count += 1
+                    open_partial_balance_inr += collectible_balance_inr
+                open_received_inr += paid_inr
+                open_invoice_total_inr += total_inr
+                open_invoice_balance_inr += collectible_balance_inr
+
+            payment_rows = []
+            for payment, realized_inr in zip(payments, payment_inr_values, strict=True):
+                payment_rows.append({
+                    "id": payment.id,
+                    "payment_reference": payment.payment_reference,
+                    "payment_date": payment.payment_date.isoformat(),
+                    "amount": _money(payment.amount),
+                    "currency": (payment.payment_currency or invoice.currency or "INR").upper(),
+                    "amount_inr": _money(realized_inr),
+                    "payment_mode": payment.payment_mode,
+                    "comments": payment.comments,
+                })
+
+            invoice_row = {
+                "id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "status": invoice.status,
+                "invoice_date": invoice.invoice_date.isoformat(),
+                "due_date": invoice.due_date.isoformat(),
+                "currency": (invoice.currency or "INR").upper(),
+                "base_amount": _money(invoice.amount),
+                "tax_amount": _money(invoice.tax_amount),
+                "total_amount": _money(invoice_total),
+                "total_inr": _money(total_inr),
+                "paid_amount": _money(settled_original),
+                "cash_paid_amount": _money(cash_original),
+                "advance_applied_amount": _money(applied_original),
+                "advance_applied_inr": _money(advance_applied_inr),
+                "paid_inr": _money(paid_inr),
+                "balance": _money(balance_original),
+                "balance_inr": _money(balance_inr),
+                "collectible_balance_inr": _money(collectible_balance_inr),
+                "bad_debt_amount": _money(approved_bad_debt_original),
+                "bad_debt_inr": _money(approved_bad_debt_inr),
+                "bad_debt_status": bad_debt_row.status if bad_debt_row is not None else None,
+                "raised_at": invoice.raised_at.isoformat() if invoice.raised_at else None,
+                "closed_at": invoice.closed_at.isoformat() if invoice.closed_at else None,
+                "notes": invoice.notes,
+                "open_sales_category": open_sales_category,
+                "payments": payment_rows,
+            }
+            invoice_payloads.append(invoice_row)
+
+            if qualifies_as_revenue:
+                revenue_date = (
+                    max((row.payment_date for row in payments), default=None)
+                    or (invoice.closed_at.date() if invoice.closed_at else None)
+                    or invoice.invoice_date
+                )
+                event_revenue_inr = paid_inr
+                revenue_events.append({
+                    "project_id": project.id,
+                    "project_code": project.project_code,
+                    "project_name": project.project_name,
+                    "client_code": client.client_code if client else None,
+                    "client_name": client.client_name if client else (project.client_name or ""),
+                    "bd_name": (
+                        (client_profile.bd_name if client_profile else None)
+                        or (bd.full_name if bd else None)
+                        or project.project_source_person_name
+                        or "Unassigned"
+                    ),
+                    "department_code": department_code,
+                    "department_label": department_label(department_code),
+                    "project_manager_name": pm.full_name if pm else "Unassigned",
+                    "currency": (invoice.currency or "INR").upper(),
+                    "finance_invoice_number": invoice.invoice_number,
+                    "finance_invoice_date": invoice.invoice_date.isoformat(),
+                    "finance_invoice_amount": _money(invoice_total),
+                    "finance_invoice_amount_inr": _money(total_inr),
+                    "revenue_amount_inr": _money(event_revenue_inr),
+                    "revenue_date": revenue_date.isoformat(),
+                    "final_payment_date": max((row.payment_date for row in payments), default=None).isoformat() if payments else None,
+                    "invoice_closed_at": invoice.closed_at.isoformat() if invoice.closed_at else None,
+                    "payment_references": [row.payment_reference for row in payments],
+                    "remarks": invoice.notes,
+                })
+
+        baseline_open_sales_inr = max(sales_value_inr - closed_sales_value_inr, Decimal("0"))
+        # Open invoices can legitimately exceed Revision 1 after an approved change request, so
+        # never hide a larger current receivable behind the original baseline value.
+        open_sales_inr = max(baseline_open_sales_inr, open_invoice_total_inr)
+        unbilled_open_sales_inr = max(baseline_open_sales_inr - open_invoice_total_inr, Decimal("0"))
+        project_bad_debt_inr = sum(
+            (_decimal(item.get("bad_debt_inr")) for item in invoice_payloads), Decimal("0")
+        )
+        outstanding_inr = unbilled_open_sales_inr + open_invoice_balance_inr
+        if sales_value_inr == 0 and open_invoice_total_inr > 0:
+            open_sales_inr = open_invoice_total_inr
+            outstanding_inr = open_invoice_balance_inr
+
+        # Open Sales Pipeline identity: open_sales = unbilled (invoice not raised) + open invoice categories.
+        open_categories["invoice_not_raised_inr"] = unbilled_open_sales_inr
+        recon_difference, recon_matched = _reconcile_open_sales(
+            open_sales_inr=_quantize_money(open_sales_inr),
+            categories={key: _quantize_money(value) for key, value in open_categories.items()},
+            project=project,
+            department_scope=department_scope,
+        )
+
+        sales_date = (
+            baseline.estimate_date if baseline is not None
+            else project.project_award_date
+            or project.start_date
+            or project.created_at.date()
+        )
+        projected_payment_date = (
+            (baseline.projected_payment_date if baseline is not None else None)
+            or min((row.due_date for row in open_invoices), default=None)
+            or project.end_date
+        )
+        sales_reference = None
+        if baseline is not None:
+            sales_reference = baseline.quotation_reference or f"{project.project_code}-REV{baseline.revision_no}"
+
+        sales_status = _sales_status(project_invoices, open_invoices)
+        invoice_not_raised = bool(not project_invoices and open_sales_inr > 0) or unbilled_open_sales_inr > 0
+        if open_sales_inr > 0:
+            kpi_open_sales += open_sales_inr
+            for key in OPEN_SALES_CATEGORIES:
+                kpi_categories[key] += open_categories[key]
+            kpi_outstanding += outstanding_inr
+            kpi_open_received += open_received_inr
+            kpi_open_invoice_total += open_invoice_total_inr
+            kpi_open_invoice_balance += open_invoice_balance_inr
+            kpi_unbilled += unbilled_open_sales_inr
+            kpi_partial_balance += open_partial_balance_inr
+            kpi_payment_pending_invoices += open_payment_pending_count
+            kpi_partial_invoices += open_partial_count
+            if invoice_not_raised:
+                kpi_invoice_not_raised_projects += 1
+            if sales_status == "Partially Paid":
+                kpi_partial_projects += 1
+            if sales_status == "Overdue":
+                kpi_overdue_projects += 1
+        # A closed invoice's unrecovered write-off remains Bad Debt, even though
+        # its historical invoice value has left the Open Sales pipeline.
+        kpi_bad_debt += project_bad_debt_inr
+        kpi_realized_revenue += closed_revenue_inr
+
+        payload_projects.append({
+            "project_id": project.id,
+            "project_code": project.project_code,
+            "project_name": project.project_name,
+            "client_code": client.client_code if client else None,
+            "client_name": client.client_name if client else (project.client_name or ""),
+            "bd_name": (
+                (client_profile.bd_name if client_profile else None)
+                or (bd.full_name if bd else None)
+                or project.project_source_person_name
+                or "Unassigned"
+            ),
+            "department_code": department_code,
+            "department_label": department_label(department_code),
+            "project_manager_name": pm.full_name if pm else "Unassigned",
+            "currency": sales_currency,
+            "sales_date": sales_date.isoformat(),
+            "projected_payment_date": _date_iso(projected_payment_date),
+            "completion_date": _date_iso(project.end_date),
+            "project_created_at": project.created_at.date().isoformat() if project.created_at else None,
+            "project_status": (
+                project_profile.project_status
+                if project_profile is not None
+                else ("active" if project.is_active else "inactive")
+            ),
+            "sales_value": _money(sales_value),
+            "sales_value_inr": _money(sales_value_inr),
+            "open_sales_inr": _money(open_sales_inr),
+            "open_sales_categories": _categories_payload(open_categories),
+            "open_sales_reconciliation_difference_inr": _money(recon_difference),
+            "open_sales_reconciled": recon_matched,
+            "unbilled_open_sales_inr": _money(unbilled_open_sales_inr),
+            "partial_payment_balance_inr": _money(open_partial_balance_inr),
+            "open_payment_pending_invoice_count": open_payment_pending_count,
+            "open_partial_invoice_count": open_partial_count,
+            "received_against_open_sales_inr": _money(open_received_inr),
+            "cash_received_inr": _money(cash_received_inr),
+            "outstanding_inr": _money(outstanding_inr),
+            "bad_debt_inr": _money(project_bad_debt_inr),
+            "closed_revenue_inr": _money(closed_revenue_inr),
+            "sales_status": sales_status,
+            "invoice_not_raised": invoice_not_raised,
+            "sales_visible": bool(open_sales_inr > 0 or open_invoices or not closed_invoices),
+            "revenue_visible": bool(closed_invoices),
+            "bd_sales_invoice": {
+                "reference": sales_reference,
+                "revision_no": baseline.revision_no if baseline is not None else None,
+                "status": baseline.status if baseline is not None else None,
+                "is_locked": bool(baseline.is_locked) if baseline is not None else False,
+                "date": baseline.estimate_date.isoformat() if baseline is not None else sales_date.isoformat(),
+                "currency": sales_currency,
+                "amount": _money(sales_value),
+                "amount_inr": _money(sales_value_inr),
+                "payment_terms": baseline.payment_terms if baseline is not None else None,
+                "po_wo_reference": baseline.po_wo_reference if baseline is not None else (workflow.po_wo_number if workflow else None),
+                "billing_type": baseline.billing_type if baseline is not None else None,
+                "expected_billing_milestone": baseline.expected_billing_milestone if baseline is not None else None,
+                "projected_payment_date": baseline.projected_payment_date.isoformat() if baseline is not None and baseline.projected_payment_date else None,
+                "notes": baseline.notes if baseline is not None else None,
+            },
+            "invoice_count": len(project_invoices),
+            "open_invoice_count": len(open_invoices),
+            "closed_invoice_count": len(closed_invoices),
+            "invoices": invoice_payloads,
+        })
+
+    kpi_categories_sum = _quantize_money(_categories_sum(kpi_categories))
+    kpi_open_sales_quantized = _quantize_money(kpi_open_sales)
+    kpi_difference = _quantize_money(kpi_open_sales_quantized - kpi_categories_sum)
+    kpi_reconciled = abs(kpi_difference) <= _RECON_TOLERANCE
+    if not kpi_reconciled:
+        logger.error(
+            "Finance KPI summary reconciliation failed: Department=%s ProjectId=%s ProjectCode=%s ProjectName=%s Amount=%s Expected=%s Calculated=%s Difference=%s",
+            department_scope or "all",
+            None,
+            "ALL",
+            "ALL",
+            kpi_open_sales_quantized,
+            kpi_open_sales_quantized,
+            kpi_categories_sum,
+            kpi_difference,
+        )
+
+    kpi_summary = {
+        "open_sales_inr": _money(kpi_open_sales_quantized),
+        "categories": _categories_payload(kpi_categories),
+        "categories_sum_inr": _money(kpi_categories_sum),
+        "reconciliation_difference_inr": _money(kpi_difference),
+        "reconciled": kpi_reconciled,
+        "realized_revenue_inr": _money(_quantize_money(kpi_realized_revenue)),
+        "outstanding_inr": _money(_quantize_money(kpi_outstanding)),
+        "bad_debt_inr": _money(_quantize_money(kpi_bad_debt)),
+        "received_against_open_sales_inr": _money(_quantize_money(kpi_open_received)),
+        "open_invoice_total_inr": _money(_quantize_money(kpi_open_invoice_total)),
+        "open_invoice_balance_inr": _money(_quantize_money(kpi_open_invoice_balance)),
+        "unbilled_open_sales_inr": _money(_quantize_money(kpi_unbilled)),
+        "counts": {
+            "open_sales_projects": sum(1 for row in payload_projects if row["sales_visible"]),
+            "revenue_events": len(revenue_events),
+            "partial_projects": kpi_partial_projects,
+            "overdue_projects": kpi_overdue_projects,
+            "payment_pending_invoices": kpi_payment_pending_invoices,
+            "partial_invoices": kpi_partial_invoices,
+            "invoice_not_raised_projects": kpi_invoice_not_raised_projects,
+        },
+        "collection": {
+            "payment_pending_amount_inr": _money(kpi_categories["payment_pending_inr"]),
+            "partial_payment_balance_inr": _money(_quantize_money(kpi_partial_balance)),
+            "invoice_not_raised_amount_inr": _money(kpi_categories["invoice_not_raised_inr"]),
+        },
+    }
+
+    return {
+        "projects": payload_projects,
+        "revenue_events": sorted(revenue_events, key=lambda row: (row["revenue_date"], row["project_code"]), reverse=True),
+        "kpi_summary": kpi_summary,
+    }
+
+===== backend\app\modules\commercial\models.py =====
+"""Additive project commercial / cost tables.
+
+Everything hangs off the EXISTING ``finance_projects`` row (Project ID / Client ID). All money columns
+are NUMERIC. INR is the accounting base currency: every foreign-currency event stores its own
+immutable FX snapshot and the INR equivalent at that event's date.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+from app.models.entities import utc_now
+
+MONEY = Numeric(18, 2)
+RATE = Numeric(18, 8)
+
+
+class ProjectFxSnapshot(Base):
+    """One historical FX snapshot per financial event (estimate, revision, invoice, payment, vendor invoice)."""
+
+    __tablename__ = "project_fx_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    event_type: Mapped[str] = mapped_column(String(40), index=True)
+    event_ref_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    currency_code: Mapped[str] = mapped_column(String(3), index=True)
+    original_amount: Mapped[Decimal] = mapped_column(MONEY)
+    fx_rate_to_inr: Mapped[Decimal] = mapped_column(RATE)
+    fx_rate_date: Mapped[date] = mapped_column(Date, index=True)
+    fx_rate_timestamp: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fx_rate_source: Mapped[str] = mapped_column(String(120))
+    fx_rate_mode: Mapped[str] = mapped_column(String(30), index=True)
+    reference_rate: Mapped[Decimal | None] = mapped_column(RATE, nullable=True)
+    inr_equivalent: Mapped[Decimal] = mapped_column(MONEY)
+    fx_locked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entered_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    entered_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    verified_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ProjectFxOverride(Base):
+    """Append-only audit history of manual FX overrides (no silent overwrite)."""
+
+    __tablename__ = "project_fx_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("project_fx_snapshots.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    old_rate: Mapped[Decimal | None] = mapped_column(RATE, nullable=True)
+    new_rate: Mapped[Decimal] = mapped_column(RATE)
+    old_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    new_mode: Mapped[str] = mapped_column(String(30))
+    reason: Mapped[str] = mapped_column(Text)
+    rate_date: Mapped[date] = mapped_column(Date)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class ProjectCommercialEstimateRevision(Base):
+    """BD commercial estimate. Revision 1 is frozen as the baseline when Finance approves the project."""
+
+    __tablename__ = "project_commercial_estimate_revisions"
+    __table_args__ = (UniqueConstraint("project_id", "revision_no", name="uq_project_estimate_revision"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    revision_no: Mapped[int] = mapped_column(Integer)
+    is_baseline: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # DRAFT -> (Finance approves the project) APPROVED baseline; later revisions PENDING_APPROVAL -> APPROVED / REJECTED
+    status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    quotation_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    po_wo_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_description: Mapped[str] = mapped_column(Text)
+    billing_type: Mapped[str] = mapped_column(String(30))
+    payment_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expected_billing_milestone: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # BD's expected client collection date. This is a forecast only; Finance invoice due dates and
+    # actual payment dates remain authoritative once billing begins.
+    projected_payment_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    currency_code: Mapped[str] = mapped_column(String(3), index=True)
+    estimated_amount: Mapped[Decimal] = mapped_column(MONEY)          # headline value, original currency
+    taxable_base_amount: Mapped[Decimal] = mapped_column(MONEY)       # revenue-before-tax basis, original currency
+    tax_percent: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0.00"))
+    expected_tax: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"))
+    expected_gross: Mapped[Decimal] = mapped_column(MONEY)
+    estimated_direct_cost_inr: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)  # optional cost budget (INR)
+    # Unit-rate / milestone billing basis (additive). ``unit_rate`` is in the revision's original currency.
+    unit_rate: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    estimated_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    quantity_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    # --- Client advance terms (additive, Finance V8 Phase 1) --------------------------------
+    # Structured counterpart to the free-text ``payment_terms`` narrative above, so Finance can
+    # filter and compute without discarding BD's own wording.
+    #
+    # These columns are INPUT ONLY. They are never projected into any Sales, Revenue, Open Sales,
+    # Outstanding, Payment Pending or Partial Payment calculation, and they never modify invoice
+    # commercial value. Advance amounts are held in this revision's ORIGINAL currency; no INR
+    # commercial column is derived from them.
+    advance_required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    advance_payment_type: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    advance_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    advance_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    advance_base_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)  # base used for the %
+    advance_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # Expected date is Finance's collection forecast (the Dashboard "expected payment date").
+    expected_advance_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    # Final contractually allowed date for the advance; drives the Overdue rule.
+    final_advance_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+
+    fx_snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("project_fx_snapshots.id", ondelete="SET NULL"), nullable=True)
+    fx_rate_to_inr: Mapped[Decimal] = mapped_column(RATE)
+    fx_rate_date: Mapped[date] = mapped_column(Date)
+    fx_rate_source: Mapped[str] = mapped_column(String(120))
+    fx_rate_mode: Mapped[str] = mapped_column(String(30))
+    estimated_inr: Mapped[Decimal] = mapped_column(MONEY)
+    base_inr: Mapped[Decimal] = mapped_column(MONEY)
+    tax_inr: Mapped[Decimal] = mapped_column(MONEY)
+    gross_inr: Mapped[Decimal] = mapped_column(MONEY)
+
+    estimate_date: Mapped[date] = mapped_column(Date, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    previous_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    previous_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    previous_base_inr: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    decision_comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProjectCommercialMilestone(Base):
+    """Approved billing milestone schedule of one estimate revision (used only for milestone billing)."""
+
+    __tablename__ = "project_commercial_milestones"
+    __table_args__ = (UniqueConstraint("revision_id", "sequence", name="uq_project_commercial_milestone_sequence"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey("project_commercial_estimate_revisions.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    milestone_name: Mapped[str] = mapped_column(String(255))
+    percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)      # % of the taxable base
+    amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)               # taxable amount, original currency
+
+
+class ProjectBillingBasis(Base):
+    """Project Manager's confirmation of what is actually billable (operational facts only, never rates)."""
+
+    __tablename__ = "project_billing_basis_entries"
+    __table_args__ = (UniqueConstraint("project_id", "entry_no", name="uq_project_billing_basis_entry"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    entry_no: Mapped[int] = mapped_column(Integer)
+    estimate_revision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_commercial_estimate_revisions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    billing_type: Mapped[str] = mapped_column(String(30))
+    cumulative_billable_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    quantity_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    milestone_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_commercial_milestones.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    milestone_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    completion_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    delivery_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
+    acceptance_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pm_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    billing_readiness_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    confirmed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class ProjectExpense(Base):
+    """Employee project expense. INR ONLY: there is intentionally no currency / FX column."""
+
+    __tablename__ = "project_expenses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    expense_code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="RESTRICT"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    expense_date: Mapped[date] = mapped_column(Date, index=True)
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    purpose: Mapped[str] = mapped_column(Text)
+    amount: Mapped[Decimal] = mapped_column(MONEY)                     # claimed, INR
+    approved_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)   # INR, set by Finance
+    payment_source: Mapped[str] = mapped_column(String(20), default="EMPLOYEE_PAID", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phase_key: Mapped[str] = mapped_column(String(30), default="ORIGINAL", index=True)
+    linked_vendor_invoice_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_vendor_invoices.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    finance_reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    finance_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    finance_comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adjustment_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    reimbursed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    reimbursement_reference: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    __table_args__ = (Index("ix_project_expenses_project_status", "project_id", "status"),)
+
+
+class ProjectExpenseEvent(Base):
+    __tablename__ = "project_expense_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey("project_expenses.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(60), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(30))
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    old_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    new_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class ProjectExpenseDeclaration(Base):
+    __tablename__ = "project_expense_declarations"
+    __table_args__ = (UniqueConstraint("project_id", "employee_id", "phase_key", name="uq_project_expense_declaration"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    phase_key: Mapped[str] = mapped_column(String(30), default="ORIGINAL")
+    declaration_status: Mapped[str] = mapped_column(String(30))     # NO_MORE_EXPENSES | HAS_EXPENSES
+    declared_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ProjectVendorInvoice(Base):
+    """Vendor / subcontractor invoice = COST to Nakshatech (never a client invoice)."""
+
+    __tablename__ = "project_vendor_invoices"
+    __table_args__ = (UniqueConstraint("project_id", "vendor_name", "invoice_number", name="uq_project_vendor_invoice_number"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="RESTRICT"), index=True)
+    vendor_name: Mapped[str] = mapped_column(String(255), index=True)
+    vendor_gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invoice_number: Mapped[str] = mapped_column(String(100), index=True)
+    invoice_date: Mapped[date] = mapped_column(Date, index=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    po_wo_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    description: Mapped[str] = mapped_column(Text)
+    hsn_sac: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    rate: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    currency_code: Mapped[str] = mapped_column(String(3), default="INR")
+    taxable_amount: Mapped[Decimal] = mapped_column(MONEY)
+    cgst: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"))
+    sgst: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"))
+    igst: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"))
+    other_tax: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0.00"))
+    gross_amount: Mapped[Decimal] = mapped_column(MONEY)
+    fx_snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("project_fx_snapshots.id", ondelete="SET NULL"), nullable=True)
+    fx_rate_to_inr: Mapped[Decimal] = mapped_column(RATE, default=Decimal("1"))
+    fx_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fx_rate_source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    fx_rate_mode: Mapped[str] = mapped_column(String(30), default="BASE_CURRENCY")
+    taxable_inr: Mapped[Decimal] = mapped_column(MONEY)
+    tax_inr: Mapped[Decimal] = mapped_column(MONEY)
+    gross_inr: Mapped[Decimal] = mapped_column(MONEY)
+    payment_status: Mapped[str] = mapped_column(String(20), default="UNPAID", index=True)
+    payment_source: Mapped[str] = mapped_column(String(20), default="COMPANY_PAID", index=True)
+    linked_employee_expense_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_expenses.id", ondelete="SET NULL", use_alter=True, name="fk_vendor_invoice_employee_expense"),
+        nullable=True, index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE", index=True)   # ACTIVE | CANCELLED
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class ProjectVendorPayment(Base):
+    __tablename__ = "project_vendor_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vendor_invoice_id: Mapped[int] = mapped_column(ForeignKey("project_vendor_invoices.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[Decimal] = mapped_column(MONEY)                     # invoice currency
+    amount_inr: Mapped[Decimal] = mapped_column(MONEY)
+    payment_date: Mapped[date] = mapped_column(Date, index=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    payment_mode: Mapped[str] = mapped_column(String(40), default="bank_transfer")
+    recorded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ProjectCommercialAttachment(Base):
+    """One secure-attachment table for estimate documents, expense receipts, vendor and client invoices."""
+
+    __tablename__ = "project_commercial_attachments"
+    __table_args__ = (Index("ix_project_commercial_attachments_owner", "owner_type", "owner_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    owner_type: Mapped[str] = mapped_column(String(30))     # ESTIMATE_REVISION | EXPENSE | VENDOR_INVOICE | CLIENT_INVOICE
+    owner_id: Mapped[int] = mapped_column(Integer)
+    doc_type: Mapped[str] = mapped_column(String(30), default="OTHER")   # QUOTATION | PO | WO | APPROVAL | RECEIPT | INVOICE | OTHER
+    original_filename: Mapped[str] = mapped_column(String(255))
+    storage_key: Mapped[str] = mapped_column(String(512), unique=True)
+    mime_type: Mapped[str] = mapped_column(String(100))
+    file_size: Mapped[int] = mapped_column(Integer)
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+===== backend\app\modules\commercial\advance.py =====
+"""Stable commercial-layer import path for isolated client-advance models.
+
+The Phase 1 implementation was started under the Finance module because the ledger is
+Finance-owned. Re-export it here so commercial integrations can use the approved
+``app.modules.commercial.advance`` namespace without duplicating tables or metadata.
+"""
+
+from app.modules.finance.advance import *  # noqa: F403
+from app.modules.finance.advance import __all__
+
+===== backend\app\modules\operations\models.py =====
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+from app.models.entities import utc_now
+
+
+class BDOpportunity(Base):
+    __tablename__ = "ops_v701_bd_opportunities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    opportunity_code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("finance_clients.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    requirement: Mapped[str] = mapped_column(Text)
+    service_type: Mapped[str] = mapped_column(String(80), default="ortho_lidar", index=True)
+    priority: Mapped[str] = mapped_column(String(30), default="medium", index=True)
+    stage: Mapped[str] = mapped_column(String(40), default="opportunity", index=True)
+    technical_sample_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    expected_start_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    expected_delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    linked_project_id: Mapped[int | None] = mapped_column(ForeignKey("finance_projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    finance_handoff_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    events: Mapped[list["BDOpportunityEvent"]] = relationship(
+        back_populates="opportunity", cascade="all, delete-orphan", order_by="BDOpportunityEvent.id"
+    )
+
+
+class BDOpportunityEvent(Base):
+    __tablename__ = "ops_v701_bd_opportunity_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_bd_opportunities.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(80), index=True)
+    from_stage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    to_stage: Mapped[str] = mapped_column(String(40), index=True)
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    opportunity: Mapped[BDOpportunity] = relationship(back_populates="events")
+
+
+class OrthoProjectProfile(Base):
+    __tablename__ = "ops_v701_ortho_project_profiles"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), primary_key=True)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("ops_v701_bd_opportunities.id", ondelete="SET NULL"), nullable=True, index=True)
+    total_area: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    area_unit: Mapped[str] = mapped_column(String(30), default="ha")
+    scope_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    planned_hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    target_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    project_manager_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    final_delivery_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    final_delivery_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    final_delivery_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    members: Mapped[list["OrthoProjectMember"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan", order_by="OrthoProjectMember.id"
+    )
+    work_packages: Mapped[list["OrthoWorkPackage"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan", order_by="OrthoWorkPackage.id"
+    )
+    deliveries: Mapped[list["OrthoDelivery"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan", order_by="OrthoDelivery.id"
+    )
+
+
+class OrthoProjectMember(Base):
+    __tablename__ = "ops_v701_ortho_project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", "member_role", name="uq_ops_v701_project_member_role"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_project_profiles.project_id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    member_role: Mapped[str] = mapped_column(String(40), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    assigned_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    profile: Mapped[OrthoProjectProfile] = relationship(back_populates="members")
+
+
+class OrthoWorkPackage(Base):
+    __tablename__ = "ops_v701_ortho_work_packages"
+    __table_args__ = (
+        # Original work packages: one Code per project (unchanged rule). A rework package is a NEW record that carries its
+        # source package's Code forward, so a Code only has to be unique within its own rework cycle.
+        Index("uq_ops_v701_project_package_code_orig", "project_id", "package_code", unique=True,
+              postgresql_where=text("rework_cycle_id IS NULL"), sqlite_where=text("rework_cycle_id IS NULL")),
+        Index("uq_ops_v701_project_package_code_rework", "project_id", "package_code", "rework_cycle_id", unique=True,
+              postgresql_where=text("rework_cycle_id IS NOT NULL"), sqlite_where=text("rework_cycle_id IS NOT NULL")),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_project_profiles.project_id", ondelete="CASCADE"), index=True)
+    package_code: Mapped[str] = mapped_column(String(120), index=True)
+    package_name: Mapped[str] = mapped_column(String(255))
+    area: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    area_unit: Mapped[str] = mapped_column(String(30), default="ha")
+    target_hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_stage: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    production_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    qc_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    qa_state: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    rework_source: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # Client / change-request rework linkage (V8.1 lifecycle). NULL for original work packages, which a
+    # rework cycle never modifies: rework work is always a distinct package linked back to its cycle and,
+    # optionally, to the original package it relates to.
+    rework_cycle_id: Mapped[int | None] = mapped_column(ForeignKey("project_rework_cycles.id", ondelete="SET NULL"), nullable=True, index=True)
+    rework_of_package_id: Mapped[int | None] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="SET NULL"), nullable=True, index=True)
+    team_leader_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    production_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    qc_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    qa_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    production_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    qc_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    qa_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    delivery_ready_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # --- V8.1 shared production tracking (ADDITIVE, all nullable; historical rows unaffected) ---
+    # General context (LiDAR Daily Activity: MARCHE LOTTO 3, SUPPLY DATE, REMARKS).
+    lot_batch: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    supply_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional additional processing stages; each has a current status + timestamp.
+    # NULL means "stage not tracked/not started" so legacy packages keep loading unchanged.
+    import_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dxf_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    dxf_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dxf_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    inspection_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    inspected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    upload_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # --- V8.2 one-day production buffer (ADDITIVE; original target_date is never modified) ---
+    production_target_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    # NULL means "use the global default (1 day)"; never rewrites target_date.
+    production_buffer_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # --- V8.3 stage targets + delivery readiness (ADDITIVE) ---
+    # Area-level rollup of the Team Lead stage targets; the AUTHORITATIVE per-stage
+    # deadlines live on each WorkPackageItem (selected files inherit them).
+    qc_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qa_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ready_for_delivery_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    ready_for_delivery_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # --- V8.4 declared physical-file count for the area (ADDITIVE, source metadata) ---
+    # The master workbook may declare TOTAL FILES for a Lot/Code/Area; the physical files
+    # (File 1..N) are generated from this. NULL = legacy row-based import (one file per row).
+    total_files: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    profile: Mapped[OrthoProjectProfile] = relationship(back_populates="work_packages")
+    sessions: Mapped[list["OrthoWorkSession"]] = relationship(
+        back_populates="work_package", cascade="all, delete-orphan", order_by="OrthoWorkSession.id"
+    )
+    reviews: Mapped[list["OrthoReview"]] = relationship(
+        back_populates="work_package", cascade="all, delete-orphan", order_by="OrthoReview.id"
+    )
+    daily_updates: Mapped[list["OrthoDailyUpdate"]] = relationship(
+        back_populates="work_package", cascade="all, delete-orphan", order_by="OrthoDailyUpdate.id"
+    )
+    # V8.2 optional file/tile/item tracking (empty collection = legacy area-only package).
+    items: Mapped[list["WorkPackageItem"]] = relationship(
+        back_populates="work_package", cascade="all, delete-orphan", order_by="WorkPackageItem.id"
+    )
+
+
+class OrthoWorkSession(Base):
+    __tablename__ = "ops_v701_ortho_work_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    session_type: Mapped[str] = mapped_column(String(30), default="production", index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    close_reason: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    work_package: Mapped[OrthoWorkPackage] = relationship(back_populates="sessions")
+
+
+class OrthoDailyUpdate(Base):
+    __tablename__ = "ops_v709_ortho_daily_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    update_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    work_type: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    achieved_area: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    progress_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    files_completed: Mapped[int] = mapped_column(Integer, default=0)
+    hours_spent: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="on_track", index=True)
+    blockers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    work_package: Mapped[OrthoWorkPackage] = relationship(back_populates="daily_updates")
+
+
+class OrthoReview(Base):
+    __tablename__ = "ops_v701_ortho_reviews"
+    __table_args__ = (
+        UniqueConstraint("work_package_id", "review_type", "attempt_no", name="uq_ops_v701_review_attempt"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    review_type: Mapped[str] = mapped_column(String(10), index=True)
+    attempt_no: Mapped[int] = mapped_column(Integer)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    decision: Mapped[str] = mapped_column(String(20), index=True)
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    work_package: Mapped[OrthoWorkPackage] = relationship(back_populates="reviews")
+
+
+class OrthoStageEvent(Base):
+    """Append-only audit history for the optional additional production stages
+    (Import / DXF / Inspection / Upload) and general work-package context edits.
+
+    V8.1 additive: production / QC / QA / delivery history remains in
+    ``OrthoDailyUpdate`` / ``OrthoReview`` / ``ProjectWorkflowEvent`` untouched;
+    this table never overwrites or replaces them.
+    """
+
+    __tablename__ = "ops_v81_ortho_stage_events"
+    __table_args__ = (
+        Index("ix_ops_v81_ortho_stage_events_package_stage", "work_package_id", "stage_code"),
+        Index("ix_ops_v81_ortho_stage_events_project", "project_id"),
+        Index("ix_ops_v81_ortho_stage_events_event_at", "event_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    stage_code: Mapped[str] = mapped_column(String(30), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(30), index=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class OrthoDelivery(Base):
+    __tablename__ = "ops_v701_ortho_deliveries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_project_profiles.project_id", ondelete="CASCADE"), index=True)
+    delivered_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    package_count: Mapped[int] = mapped_column(Integer, default=0)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    profile: Mapped[OrthoProjectProfile] = relationship(back_populates="deliveries")
+
+
+class ProjectWorkflow(Base):
+    """Authoritative BD -> Finance -> Ortho -> Finance closure workflow state.
+
+    This table is additive so legacy opportunity/workstream history can remain in
+    the database while the new operational workflow becomes authoritative.
+    """
+
+    __tablename__ = "ops_v800_project_workflows"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), primary_key=True)
+    bd_owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    # Which technical department performs this project (ortho/lidar/mobile_mapping/laser_scanning/civil).
+    # Drives PM role, project-team department matching and dashboard routing across the one shared workflow.
+    performing_department_code: Mapped[str] = mapped_column(String(30), default="ortho", index=True)
+    scope_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    quantity_unit: Mapped[str] = mapped_column(String(30), default="unit")
+    priority: Mapped[str] = mapped_column(String(30), default="medium", index=True)
+    commercial_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(12), default="INR")
+    po_wo_number: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    attachment_references: Mapped[str | None] = mapped_column(Text, nullable=True)
+    finance_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submission_count: Mapped[int] = mapped_column(Integer, default=0)
+    finance_reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    finance_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    pm_assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    team_assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    operational_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    completion_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    final_delivery_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    completion_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    finance_closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    finance_closure_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+
+class ProjectWorkflowEvent(Base):
+    __tablename__ = "ops_v800_project_workflow_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(40), index=True)
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+
+class ProjectWorkstream(Base):
+    """Technical department workstream under one authoritative Finance Project ID."""
+
+    __tablename__ = "ops_v715_project_workstreams"
+    __table_args__ = (
+        UniqueConstraint("project_id", "department_code", name="uq_ops_v715_project_department"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    department_code: Mapped[str] = mapped_column(String(60), index=True)
+    project_manager_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    sequence_order: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="planned", index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+
+class WorkPackageItem(Base):
+    """Optional FILE / TILE / ITEM child of one AREA / work package (V8.2 additive).
+
+    File tracking is OPTIONAL: a work package with zero items keeps working with
+    area-level tracking exactly as before. Items are never hard-deleted — an
+    incorrect file is deactivated (``is_active = False``) so its history survives.
+    """
+
+    __tablename__ = "work_package_items"
+    __table_args__ = (
+        UniqueConstraint("work_package_id", "item_number", name="uq_work_package_items_number"),
+        Index("ix_work_package_items_production_user_id", "production_user_id"),
+        Index("ix_work_package_items_qc_user_id", "qc_user_id"),
+        Index("ix_work_package_items_qa_user_id", "qa_user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    # Denormalized for fast project-visibility queries (same pattern as OrthoStageEvent).
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    item_number: Mapped[str] = mapped_column(String(120), index=True)
+    item_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sequence_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    planned_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    planned_unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    production_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    qc_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    qa_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # V8.3 Team Lead stage targets — the AUTHORITATIVE per-file deadlines. Production
+    # keeps the 1-day buffer; QC / QA have no buffer (not_due / due_today / overdue).
+    production_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qc_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qa_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Traceability for Excel-master imports (additive, nullable).
+    import_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    work_package: Mapped["OrthoWorkPackage"] = relationship(back_populates="items")
+
+
+class WorkPackageItemActivity(Base):
+    """Append-only per-file stage activity / history (V8.2 additive).
+
+    One row per timed session (production / qc / qa) or per delivery event for
+    one work-package item. Nothing here overwrites prior rows: rework and repeat
+    attempts are new rows, so history is always preserved. Durations are derived
+    from the real ``started_at`` / ``ended_at`` values, never typed in.
+    """
+
+    __tablename__ = "work_package_item_activities"
+    __table_args__ = (
+        Index("ix_work_package_item_activities_item_stage", "work_package_item_id", "stage"),
+        Index("ix_work_package_item_activities_employee_stage", "employee_user_id", "stage"),
+        Index("ix_work_package_item_activities_stage_status", "stage", "status"),
+        Index("ix_work_package_item_activities_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("finance_projects.id", ondelete="CASCADE"), index=True)
+    work_package_id: Mapped[int] = mapped_column(ForeignKey("ops_v701_ortho_work_packages.id", ondelete="CASCADE"), index=True)
+    work_package_item_id: Mapped[int] = mapped_column(ForeignKey("work_package_items.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(String(20), index=True)
+    employee_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    performed_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity_completed: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    files_completed: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(40), default="in_progress", index=True)
+    # V8.4 physical-file workflow (additive): every attempt is INITIAL or REWORK.
+    # Historical rows keep NULL and are treated as the first attempt.
+    attempt_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Legitimate delay / difficulty capture (never blamed on the employee).
+    delay_category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    affected_item_id: Mapped[int | None] = mapped_column(ForeignKey("work_package_items.id", ondelete="SET NULL"), nullable=True)
+    delay_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    system_malfunction: Mapped[bool] = mapped_column(Boolean, default=False)
+    delay_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # created_at index is declared once in __table_args__ (ix_work_package_item_activities_created_at).
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+===== frontend\src\lib\api.ts =====
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
+
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+type ApiValidationIssue = {
+  loc?: unknown
+  msg?: unknown
+  message?: unknown
+  detail?: unknown
+}
+
+function fieldLabelFromLocation(location: unknown): string {
+  if (!Array.isArray(location)) return ''
+  const useful = location
+    .filter(item => typeof item === 'string' || typeof item === 'number')
+    .map(String)
+    .filter(item => !['body', 'query', 'path', 'header', 'cookie'].includes(item.toLowerCase()))
+
+  const field = useful.at(-1)
+  if (!field || /^\d+$/.test(field)) return ''
+  return field
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, letter => letter.toUpperCase())
+}
+
+function validationIssueMessage(issue: unknown): string | null {
+  if (typeof issue === 'string' && issue.trim()) return issue.trim()
+  if (!issue || typeof issue !== 'object') return null
+
+  const item = issue as ApiValidationIssue
+  const rawMessage =
+    (typeof item.msg === 'string' && item.msg) ||
+    (typeof item.message === 'string' && item.message) ||
+    (typeof item.detail === 'string' && item.detail) ||
+    ''
+
+  if (!rawMessage) return null
+  const field = fieldLabelFromLocation(item.loc)
+  return field ? `${field}: ${rawMessage}` : rawMessage
+}
+
+export function apiErrorMessage(payload: unknown, fallback = 'Request failed'): string {
+  if (typeof payload === 'string' && payload.trim()) return payload.trim()
+  if (!payload || typeof payload !== 'object') return fallback
+
+  const record = payload as Record<string, unknown>
+  const detail = record.detail
+
+  if (typeof detail === 'string' && detail.trim()) return detail.trim()
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map(validationIssueMessage)
+      .filter((message): message is string => Boolean(message))
+    if (messages.length) return messages.join(' · ')
+  }
+
+  const detailMessage = validationIssueMessage(detail)
+  if (detailMessage) return detailMessage
+
+  for (const key of ['message', 'error', 'reason']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+
+  return fallback
+}
+
+export function getToken(): string | null {
+  return localStorage.getItem('asset_token') ?? sessionStorage.getItem('asset_token')
+}
+
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken()
+  const headers = new Headers(options.headers)
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store', ...options, headers })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Request failed' }))
+    throw new ApiError(response.status, apiErrorMessage(error))
+  }
+  if (response.status === 204) return undefined as T
+  return response.json() as Promise<T>
+}
+
+export async function apiBlob(path: string): Promise<Blob> {
+  const token = getToken()
+  const response = await fetch(`${API_BASE}${path}`, {
+    cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Request failed' }))
+    throw new Error(apiErrorMessage(error))
+  }
+  return response.blob()
+}
+
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const token = getToken()
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Download failed' }))
+    throw new Error(apiErrorMessage(error, 'Download failed'))
+  }
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') || ''
+  const match = disposition.match(/filename="?([^";]+)"?/)
+  const fileName = match?.[1] || fallbackName
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+export async function uploadExcel(path: string, file: File): Promise<Record<string, unknown>> {
+  const token = getToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(apiErrorMessage(data, 'Excel import failed'))
+  return data
+}
+
+===== frontend\src\pages\ProjectTrackingSalesPage.tsx =====
+
+import { useEffect, useMemo, useState } from "react";
+import "./projectTrackingSales.css";
+
+const API = "/api/management/project-tracking-sales";
+
+type Period = "today" | "month" | "year" | "custom";
+
+type Project = {
+  id: string;
+  project_name: string;
+  client_name: string;
+  department: string;
+  manager: string;
+  finance_status: string;
+  operational_status: string;
+  sales_approved: number;
+  payments_received: number;
+  outstanding: number;
+};
+
+type Dashboard = {
+  summary: Record<string, number>;
+  projects: Project[];
+  generated_at?: string;
+};
+
+type Detail = {
+  project: Project;
+  sales_invoices: any[];
+  finance_invoices: any[];
+  payments: any[];
+  expenses: any[];
+  bad_debts: any[];
+};
+
+const formatDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const money = (paise?: number) =>
+  typeof paise === "number"
+    ? new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+      }).format(paise / 100)
+    : "â€”";
+
+function trackingAuthHeaders(): Record<string, string> {
+  const token =
+    localStorage.getItem('asset_token') ||
+    sessionStorage.getItem('asset_token')
+
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+export default function ProjectTrackingSalesPage() {
+  const [period, setPeriod] = useState<Period>("month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [search, setSearch] = useState("");
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [details, setDetails] = useState<Detail | null>(null);
+  const [error, setError] = useState("");
+  const [lastSync, setLastSync] = useState("");
+  const [live, setLive] = useState(false);
+
+  const range = useMemo(() => {
+    const now = new Date();
+    let start = new Date(now);
+
+    if (period === "month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (period === "year") {
+      start = new Date(now.getFullYear(), 0, 1);
+    }
+
+    return {
+      start: period === "custom" ? customFrom : formatDate(start),
+      end: period === "custom" ? customTo : formatDate(now),
+    };
+  }, [period, customFrom, customTo]);
+
+  // Automatic refresh - no changes required to existing
+  // finance or project update handlers.
+  useEffect(() => {
+    if (!range.start || !range.end) return;
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let controller: AbortController | null = null;
+
+    async function refresh() {
+      if (document.hidden) {
+        timer = setTimeout(refresh, 2000);
+        return;
+      }
+
+      controller = new AbortController();
+      let retry = true;
+
+      try {
+        const params = new URLSearchParams(range);
+
+        const response = await fetch(
+          `${API}/dashboard?${params}`,
+          {
+            credentials: "include", headers: trackingAuthHeaders(),
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
+
+        if (response.status === 401 || response.status === 403) {
+          retry = false;
+          throw new Error("Not authorized to view management reports");
+        }
+
+        if (!response.ok) {
+          throw new Error("Could not load reporting data");
+        }
+
+        const result: Dashboard = await response.json();
+
+        if (!stopped) {
+          setDashboard(result);
+          setLive(true);
+          setError("");
+          setLastSync(new Date().toLocaleTimeString());
+        }
+      } catch (err) {
+        if (!stopped) {
+          setLive(false);
+          setError(
+            err instanceof Error ? err.message : "Connection failed"
+          );
+        }
+      } finally {
+        if (!stopped && retry) {
+          timer = setTimeout(refresh, 2000);
+        }
+      }
+    }
+
+    refresh();
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [range.start, range.end]);
+
+  useEffect(() => {
+    if (!selectedId || !range.end) return;
+
+    let cancelled = false;
+    setDetails(null);
+
+    fetch(
+      `${API}/projects/${encodeURIComponent(selectedId)}?end=${range.end}`,
+      { credentials: "include", headers: trackingAuthHeaders(), cache: "no-store" }
+    )
+      .then(response => {
+        if (!response.ok) throw new Error("Unable to load details");
+        return response.json();
+      })
+      .then((result: Detail) => {
+        if (!cancelled) setDetails(result);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Unable to load project details");
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedId, range.end]);
+
+  async function exportFile(type: "pdf" | "xlsx") {
+    if (!range.start || !range.end) return;
+
+    try {
+      const params = new URLSearchParams(range);
+      const response = await fetch(
+        `${API}/export/${type}?${params}`,
+        { credentials: "include", headers: trackingAuthHeaders() }
+      );
+
+      if (!response.ok) throw new Error("Export failed");
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `project-tracking-${range.start}-${range.end}.${type}`;
+      link.click();
+
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Could not export the report");
+    }
+  }
+
+  const projects = (dashboard?.projects || []).filter(project => {
+    const text = [
+      project.project_name,
+      project.client_name,
+      project.department,
+      project.manager,
+    ].join(" ").toLowerCase();
+
+    return text.includes(search.toLowerCase());
+  });
+
+  const metrics = [
+    ["Approved Sales", "sales_approved"],
+    ["Invoices Raised", "invoiced"],
+    ["Payments Received", "payments_received"],
+    ["Partial Payments", "partial_payments"],
+    ["Outstanding Amount", "outstanding"],
+    ["Total Expenses", "expenses"],
+    ["Approved Bad Debts", "bad_debts"],
+  ] as const;
+
+  return (
+    <main className="pts-page">
+      <header className="pts-header">
+        <div>
+          <small>FINANCE â€” MANAGEMENT INTELLIGENCE</small>
+          <h1>Project Tracking and Sales</h1>
+          <p>Company-wide financial and operational reporting</p>
+        </div>
+        <div className={live ? "pts-live" : "pts-offline"}>
+          {live ? "â— Live" : "â— Disconnected"}
+          <small>Last sync: {lastSync || "Not connected"}</small>
+        </div>
+      </header>
+
+      <div className="pts-toolbar">
+        <div className="pts-periods">
+          {(["today", "month", "year", "custom"] as Period[]).map(p => (
+            <button
+              key={p}
+              className={period === p ? "active" : ""}
+              onClick={() => setPeriod(p)}
+            >
+              {p === "today" ? "Today" :
+               p === "month" ? "This Month" :
+               p === "year" ? "This Year" : "Custom Dates"}
+            </button>
+          ))}
+        </div>
+
+        <div>
+          <button onClick={() => exportFile("pdf")}>Export PDF</button>
+          <button onClick={() => exportFile("xlsx")}>Export Excel</button>
+        </div>
+      </div>
+
+      {period === "custom" && (
+        <div className="pts-date-range">
+          <input
+            type="date"
+            value={customFrom}
+            onChange={e => setCustomFrom(e.target.value)}
+          />
+          <input
+            type="date"
+            value={customTo}
+            onChange={e => setCustomTo(e.target.value)}
+          />
+        </div>
+      )}
+
+      {error && <p className="pts-error">{error}</p>}
+
+      <section className="pts-metrics">
+        {metrics.map(([label, key]) => (
+          <article className="pts-metric" key={key}>
+            <small>{label}</small>
+            <strong>{money(dashboard?.summary?.[key])}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="pts-panel">
+        <div className="pts-table-title">
+          <h2>Project Financial Register</h2>
+          <input
+            placeholder="Search Project / Client / Department"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="pts-table-scroll">
+          <table className="pts-table">
+            <thead>
+              <tr>
+                <th>Project / Client</th>
+                <th>Department</th>
+                <th>Finance Status</th>
+                <th>Operational Status</th>
+                <th>Sales</th>
+                <th>Received</th>
+                <th>Outstanding</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {projects.map(project => (
+                <tr key={project.id}>
+                  <td>
+                    <b>{project.project_name}</b>
+                    <small>{project.client_name}</small>
+                  </td>
+                  <td>{project.department}</td>
+                  <td>{project.finance_status}</td>
+                  <td>{project.operational_status}</td>
+                  <td>{money(project.sales_approved)}</td>
+                  <td>{money(project.payments_received)}</td>
+                  <td>{money(project.outstanding)}</td>
+                  <td>
+                    <button onClick={() => setSelectedId(project.id)}>
+                      Details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {dashboard && projects.length === 0 && (
+            <p>No matching project records.</p>
+          )}
+        </div>
+      </section>
+
+      {selectedId && (
+        <div className="pts-overlay" role="presentation">
+          <div className="pts-modal" role="dialog" aria-modal="true">
+            <div className="pts-modal-title">
+              <h2>Project Financial Details</h2>
+              <button onClick={() => setSelectedId(null)}>âœ•</button>
+            </div>
+
+            {!details ? (
+              <p>Loading details...</p>
+            ) : (
+              <>
+                <h3>{details.project.project_name}</h3>
+                <p>{details.project.client_name}</p>
+
+                {([
+                  ["BD Sales Invoices", details.sales_invoices],
+                  ["Finance Invoices", details.finance_invoices],
+                  ["Payment History", details.payments],
+                  ["Expenses", details.expenses],
+                  ["Approved Bad Debts", details.bad_debts],
+                ] as const).map(([title, records]) => (
+                  <section key={title} className="pts-detail-section">
+                    <h3>{title}</h3>
+                    {records.length === 0 ? (
+                      <p>No records available.</p>
+                    ) : (
+                      records.map((record: any, i: number) => (
+                        <div className="pts-detail-row" key={record.id || i}>
+                          <span>{record.date || record.invoice_number || "Record"}</span>
+                          <strong>{money(record.amount_paise)}</strong>
+                        </div>
+                      ))
+                    )}
+                  </section>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}

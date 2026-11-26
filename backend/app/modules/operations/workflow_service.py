@@ -6,10 +6,22 @@ from decimal import Decimal
 import json
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import (
+    DEFAULT_DEPARTMENT,
+    SUPPORTED_DEPARTMENTS,
+    department_for_pm_role,
+    department_label,
+    is_technical_pm_role,
+    normalize_department_code,
+    normalize_department_code_or_default,
+    pm_role_for_department,
+    user_department_matches,
+)
+from app.core.department_access import user_department_code
 from app.models.entities import User, utc_now
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import (
@@ -30,8 +42,11 @@ from app.modules.finance.service import (
     remaining_amount,
     set_project_status,
 )
-from app.modules.notifications.service import create_global_notification, resolve_recipient_users
-from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectReworkCycle
+from app.modules.finance.visibility import exclude_hidden_projects, filter_visible_project_ids
+from app.modules.management_projects.models import ManagementProjectLink
+from app.modules.notifications.service import create_global_notification, resolve_notifications, resolve_recipient_users
+from app.modules.operations.lifecycle_models import ProjectChangeRequest, ProjectFeedbackResponse, ProjectInvoice, ProjectReworkCycle
+from app.modules.operations.lifecycle_schemas import InvoiceClose
 from app.modules.operations.lifecycle_service import (
     CLOSED as LIFECYCLE_CLOSED,
     REWORK_OPEN,
@@ -39,6 +54,7 @@ from app.modules.operations.lifecycle_service import (
     REWORK_RESUBMITTED,
     _transition as lifecycle_transition,
     assert_finance_closable,
+    close_invoice,
     enter_feedback_lifecycle,
     record_project_closed_timeline,
     sync_rework_cycle_with_packages,
@@ -49,10 +65,14 @@ from app.modules.operations.models import (
     OrthoProjectProfile,
     OrthoReview,
     OrthoWorkPackage,
+    WorkPackageItem,
+    WorkPackageItemActivity,
     ProjectWorkflow,
     ProjectWorkflowEvent,
+    ProjectWorkstream,
 )
 from app.modules.operations.schemas import (
+    WorkflowDepartmentChange,
     WorkflowDailyActivity,
     WorkflowDeliveryRequest,
     WorkflowFinanceClosure,
@@ -65,6 +85,24 @@ from app.modules.operations.schemas import (
     WorkflowReworkTeamConfirm,
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
+)
+from app.modules.operations.production_stages import (
+    STAGE_LABELS,
+    STAGE_STATUSES,
+    STAGE_STATUS_ATTR,
+    STAGE_TIMESTAMP_ATTR,
+    TRACKABLE_STAGES,
+    aggregate_project_progress,
+    package_production_progress,
+    item_stage_complete,
+    package_workflow_progress,
+    stage_profile_for_department,
+    stage_status,
+)
+from app.modules.operations.production_items import (
+    delivery_readiness,
+    item_dashboard_context,
+    item_rows_for_viewer,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,12 +273,15 @@ def _full_project_payload(db: Session, project: FinanceProject, workflow: Projec
         "quantity": float(workflow.quantity) if workflow.quantity is not None else None,
         "quantity_unit": workflow.quantity_unit,
         "priority": workflow.priority,
+        "performing_department_code": workflow.performing_department_code,
+        "performing_department_label": department_label(workflow.performing_department_code),
         "commercial_value": float(workflow.commercial_value) if workflow.commercial_value is not None else None,
         "currency": workflow.currency,
         "po_wo_number": workflow.po_wo_number,
         "attachment_references": _attachment_references(workflow),
         "workflow_status": workflow.status,
         "normalized_status": normalized_workflow_status(workflow.status),
+        "finance_review_only": project.project_source_team == "bd_team",
         "finance_feedback": workflow.finance_feedback,
         "submission_count": workflow.submission_count or sum(1 for event in events if event["event_type"] == "submitted_to_finance"),
         "finance_reviewer_id": workflow.finance_reviewer_id,
@@ -286,10 +327,17 @@ def _commercial_summary(db: Session, project_id: int) -> dict:
     return commercial_summary(db, project_id=project_id)
 
 
-def project_manager_options(db: Session) -> list[dict]:
+def project_manager_options(db: Session, *, department_code: str | None = None) -> list[dict]:
+    """Active technical Project Manager accounts.
+
+    ``department_code`` restricts the list to the one technical PM role that performs that
+    department (e.g. LiDAR projects only ever show LiDAR PMs). Omitted, every supported
+    department's PM role is returned (a cross-department directory view).
+    """
+    roles = [pm_role_for_department(department_code)] if department_code else [pm_role_for_department(code) for code in SUPPORTED_DEPARTMENTS]
     users = db.scalars(
         select(User).where(
-            User.role == ORTHO_ROLE,
+            User.role.in_(roles),
             User.is_active.is_(True),
             User.account_status.in_(["active", "pending_mfa"]),
         ).order_by(User.full_name.asc(), User.email.asc())
@@ -302,12 +350,20 @@ def project_manager_options(db: Session) -> list[dict]:
             "employee_id": user.employee_id,
             "department": user.department,
             "designation": user.designation,
+            "performing_department_code": department_for_pm_role(user.role),
         }
         for user in users
     ]
 
 
-def employee_options(db: Session) -> list[dict]:
+def employee_options(db: Session, *, department_code: str | None = None) -> list[dict]:
+    """Active Employee accounts, optionally restricted to the given performing department.
+
+    Employee.role is always the generic ``employee`` role; only ``User.department`` (free
+    text set at seeding/HR time) distinguishes which department an employee belongs to, so a
+    Team Lead can never allocate work to, and a PM can never add, an employee from another
+    department even through a direct API call.
+    """
     users = db.scalars(
         select(User).where(
             User.role == EMPLOYEE_ROLE,
@@ -315,6 +371,8 @@ def employee_options(db: Session) -> list[dict]:
             User.account_status.in_(["active", "pending_mfa"]),
         ).order_by(User.full_name.asc(), User.email.asc())
     ).all()
+    if department_code:
+        users = [user for user in users if user_department_matches(user.department, department_code)]
     return [
         {
             "id": user.id,
@@ -330,11 +388,24 @@ def employee_options(db: Session) -> list[dict]:
 
 def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
+    query = exclude_hidden_projects(db, query)
     if role == BD_ROLE:
-        query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
+        employee_ids = select(User.id).where(User.role == "bd_employee")
+        query = query.where(or_(
+            and_(ProjectWorkflow.bd_owner_user_id == actor.id,
+                 FinanceProject.project_source_team != "management"),
+            and_(FinanceProject.project_source_team == "bd_team",
+                 FinanceProject.created_by_id.in_(employee_ids),
+                 ProjectWorkflow.bd_owner_user_id == FinanceProject.created_by_id),
+        ))
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow).where(ProjectWorkflow.project_id.in_([p.id for p in projects]))).all()} if projects else {}
-    payloads = [_full_project_payload(db, project, workflows[project.id]) for project in projects]
+    payloads = []
+    for project in projects:
+        item = _full_project_payload(db, project, workflows[project.id])
+        if role == BD_ROLE:
+            item["can_bd_manage"] = workflows[project.id].bd_owner_user_id == actor.id
+        payloads.append(item)
     return {
         "summary": {
             "total": len(payloads),
@@ -345,8 +416,11 @@ def bd_dashboard(db: Session, *, actor: User, role: str) -> dict:
             "completion_pending": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_FINANCE_CLOSURE_PENDING),
             "closed": sum(1 for p in payloads if p["normalized_status"] == WORKFLOW_CLOSED),
         },
-        "clients": [client_payload(client) for client in list_finance_clients(db)],
+        "clients": [client_payload(client) for client in list_finance_clients(db)
+                    if role != BD_ROLE or client.source_team != "management"],
         "project_managers": project_manager_options(db),
+        "project_managers_by_department": {code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS},
+        "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
         "projects": payloads,
     }
 
@@ -364,8 +438,8 @@ def create_bd_client(db: Session, *, actor: User, payload: FinanceClientCreateRe
 
 def create_bd_project(db: Session, *, actor: User, payload: WorkflowProjectCreate) -> tuple[FinanceProject, ProjectWorkflow]:
     client = db.get(FinanceClient, payload.client_id)
-    if client is None or not client.is_active:
-        raise ValueError("Select an active existing Client ID before creating the project")
+    if client is None or not client.is_active or client.source_team == "management":
+        raise ValueError("Select an active BD client ID before creating the project")
     finance_payload = FinanceClientProjectCreateRequest(
         project_code=payload.project_code,
         project_name=payload.project_name,
@@ -388,6 +462,7 @@ def create_bd_project(db: Session, *, actor: User, payload: WorkflowProjectCreat
         project_id=project.id,
         bd_owner_user_id=actor.id,
         status=WORKFLOW_DRAFT,
+        performing_department_code=normalize_department_code_or_default(payload.performing_department_code),
         scope_text=payload.scope_text,
         quantity=payload.quantity,
         quantity_unit=payload.quantity_unit,
@@ -467,6 +542,7 @@ def update_bd_project(
     workflow.quantity = payload.quantity
     workflow.quantity_unit = payload.quantity_unit
     workflow.priority = payload.priority
+    workflow.performing_department_code = normalize_department_code_or_default(payload.performing_department_code)
     workflow.commercial_value = payload.commercial_value
     workflow.currency = payload.currency.upper()
     workflow.po_wo_number = payload.po_wo_number
@@ -501,19 +577,42 @@ def submit_project_to_finance(db: Session, *, actor: User, project_id: int) -> P
     from app.modules.commercial.service import prepare_revision1_for_finance_submission
 
     prepare_revision1_for_finance_submission(db, actor=actor, project_id=project_id)
+    from app.modules.commercial.service import finalize_bd_baseline_without_finance_approval
+
+    finalize_bd_baseline_without_finance_approval(db, actor=actor, project_id=project_id)
     workflow.finance_feedback = None
     workflow.submitted_at = utc_now()
     workflow.submission_count = int(workflow.submission_count or 0) + 1
-    _event(db, workflow=workflow, actor=actor, event_type="submitted_to_finance", to_status=WORKFLOW_PENDING_FINANCE)
+    # BD submissions are shared with Finance for visibility only. Preserve the
+    # legacy PM-ready internal status for existing downstream workflow consumers;
+    # this transition is NOT a Finance approval and has no approver/timestamp.
     project = _project(db, project_id)
+    if project.project_source_team != "bd_team":
+        raise PermissionError("Only BD-origin projects use Finance review-only handoff")
+    set_project_status(db, project=project, actor=actor, project_status="active")
+    _event(db, workflow=workflow, actor=actor, event_type="bd_submitted_for_finance_visibility", to_status=WORKFLOW_FINANCE_APPROVED,
+           comments="Finance visibility only; no Finance approval or rejection required")
     create_global_notification(
         db,
-        event_type="workflow.project.submitted_finance",
-        title=f"Finance review required: {project.project_code}",
-        message=f"BD submitted Project ID {project.project_code} for Finance approval. Client ID: {_client_code(project) or 'Not recorded'}.",
-        category="approval",
-        target_url="/finance",
+        event_type="workflow.project.bd_finance_review_only",
+        title=f"BD project for Finance viewing: {project.project_code}",
+        message=f"BD submitted Project ID {project.project_code} for Finance review only. No approval required. Client ID: {_client_code(project) or 'Not recorded'}.",
+        category="system",
+        target_url=f"/finance?project={project.id}",
         recipient_roles=[FINANCE_ROLE],
+        # Informational only: Finance cannot approve or reject BD projects.
+        severity="info",
+        requires_action=False,
+        metadata={
+            "project_id": project.id,
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "submitted_by": actor.full_name or actor.email,
+            "submitted_at": workflow.submitted_at.isoformat() if workflow.submitted_at else None,
+            "current_stage": "Finance Review Only / Ready for PM",
+            "amount": workflow.commercial_value,
+            "currency": workflow.currency,
+        },
     )
     db.flush()
     return workflow
@@ -532,10 +631,10 @@ def email_finance_submission(db: Session, *, project_id: int) -> None:
     for user in resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE]):
         _safe_send_email(
             recipient=user.email,
-            subject=f"[{project.project_code}] Project approval required",
+            subject=f"[{project.project_code}] BD project for Finance review",
             body=(
                 f"Hello {user.full_name},\n\n"
-                f"Business Development submitted a project for Finance approval.\n\n"
+                f"Business Development shared a project for Finance review only. No approval or rejection is required.\n\n"
                 f"Project ID: {project.project_code}\n"
                 f"Client ID: {_client_code(project) or 'Not recorded'}\n"
                 f"Project Name: {project.project_name}\n"
@@ -589,10 +688,12 @@ def _finance_closure_readiness(db: Session, workflow: ProjectWorkflow, normalize
 
 
 def finance_dashboard(db: Session) -> dict:
+    query = exclude_hidden_projects(
+        db,
+        _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id),
+    )
     projects = list(db.scalars(
-        _project_query()
-        .join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
-        .order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())
+        query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())
     ).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow)).all()}
     payloads = []
@@ -619,9 +720,11 @@ def finance_dashboard(db: Session) -> dict:
 
 def finance_review_project(db: Session, *, actor: User, project_id: int, payload: WorkflowFinanceReview) -> ProjectWorkflow:
     workflow = _workflow(db, project_id)
+    project = _project(db, project_id)
+    if project.project_source_team == "bd_team":
+        raise PermissionError("Finance approval/return is disabled for BD-origin projects; Finance has review-only access")
     if workflow.status != WORKFLOW_PENDING_FINANCE:
         raise ValueError("This project is not waiting for Finance approval")
-    project = _project(db, project_id)
     workflow.finance_reviewer_id = actor.id
     workflow.finance_reviewed_at = utc_now()
     if payload.decision == "return":
@@ -655,8 +758,37 @@ def finance_review_project(db: Session, *, actor: User, project_id: int, payload
         title=title,
         message=message,
         category="approval",
-        target_url="/bd",
+        target_url=f"/bd/projects?project={project.id}",
         recipient_user_ids=[workflow.bd_owner_user_id],
+        severity="danger" if payload.decision == "return" else "success",
+        requires_action=payload.decision == "return",
+        metadata={
+            "project_id": project.id,
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "returned_by": "Finance" if payload.decision == "return" else None,
+            "status": "Correction Required" if payload.decision == "return" else "Approved",
+            "reason": (payload.feedback or None) if payload.decision == "return" else None,
+            "required_action": (
+                "Upload the missing Work Order and resubmit."
+                if payload.decision == "return"
+                else None
+            ),
+            "decided_by": actor.full_name or actor.email,
+        },
+    )
+    # The Finance approval/return action really completed, so the Finance pending
+    # notification is now resolved. This runs inside the same transaction as the
+    # workflow transition - the popup itself never performs this.
+    from app.modules.notifications.service import resolve_notifications
+
+    resolve_notifications(
+        db,
+        recipient_user_ids=[user.id for user in resolve_recipient_users(db, recipient_roles=[FINANCE_ROLE])],
+        event_type="workflow.project.submitted_finance",
+        target_url=f"/finance?project={project.id}",
+        resolved_by_id=actor.id,
+        resolution_note=f"Finance {payload.decision}",
     )
     db.flush()
     return workflow
@@ -732,16 +864,32 @@ def _ensure_profile_and_pm_member(db: Session, *, project: FinanceProject, workf
     return profile
 
 
-def assign_project_manager(db: Session, *, actor: User, project_id: int, payload: WorkflowPMAssignment) -> tuple[ProjectWorkflow, User]:
+def assign_project_manager(
+    db: Session, *, actor: User, project_id: int, payload: WorkflowPMAssignment,
+    allow_management_finance: bool = False,
+) -> tuple[ProjectWorkflow, User]:
     workflow = _workflow(db, project_id)
-    if workflow.bd_owner_user_id != actor.id:
-        raise PermissionError("Only the BD owner can assign the Ortho Project Manager")
-    if workflow.status not in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}:
-        raise ValueError("Project Manager can be assigned only after Finance approval and before the project team starts work")
-    pm = db.get(User, payload.project_manager_id)
-    if pm is None or not pm.is_active or pm.role != ORTHO_ROLE:
-        raise ValueError("Select an active Ortho Project Manager account")
     project = _project(db, project_id)
+    finance_management = allow_management_finance and (actor.role or "").lower() == "finance" and project.project_source_team == "management"
+    if not finance_management and workflow.bd_owner_user_id != actor.id:
+        raise PermissionError("Only the BD owner can assign the Project Manager")
+    if allow_management_finance and not finance_management:
+        raise PermissionError("Only Finance can assign a Management Project Manager")
+    pm_ready = workflow.status in {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}
+    # Historic BD records awaiting the old Finance decision must not be stranded.
+    bd_review_only = project.project_source_team == "bd_team" and workflow.status == WORKFLOW_PENDING_FINANCE
+    if not (pm_ready or bd_review_only):
+        raise ValueError("Project Manager can be assigned only after project submission and before the project team starts work")
+    if bd_review_only:
+        # Upgrade a historic pending BD project without any Finance decision.
+        from app.modules.commercial.service import finalize_bd_baseline_without_finance_approval
+
+        finalize_bd_baseline_without_finance_approval(db, actor=actor, project_id=project_id)
+        set_project_status(db, project=project, actor=actor, project_status="active")
+    expected_role = pm_role_for_department(workflow.performing_department_code)
+    pm = db.get(User, payload.project_manager_id)
+    if pm is None or not pm.is_active or pm.role != expected_role:
+        raise ValueError(f"Select an active {department_label(workflow.performing_department_code)} Project Manager account")
     if project.master_profile is None:
         project.master_profile = FinanceProjectMasterProfile(
             project_id=project.id,
@@ -757,18 +905,186 @@ def assign_project_manager(db: Session, *, actor: User, project_id: int, payload
         project.master_profile.updated_at = utc_now()
     _ensure_profile_and_pm_member(db, project=project, workflow=workflow, actor=actor, pm=pm)
     workflow.pm_assigned_at = utc_now()
-    _event(db, workflow=workflow, actor=actor, event_type="bd_assigned_pm", to_status=WORKFLOW_PM_ASSIGNED, comments=f"PM user {pm.id}")
+    _event(db, workflow=workflow, actor=actor, event_type="finance_management_assigned_pm" if finance_management else "bd_assigned_pm", to_status=WORKFLOW_PM_ASSIGNED, comments=f"PM user {pm.id}")
     create_global_notification(
         db,
         event_type="workflow.project.pm_assigned",
         title=f"New project assigned: {project.project_code}",
-        message=f"You are the Ortho Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
+        message=f"You are the {department_label(workflow.performing_department_code)} Project Manager for Project ID {project.project_code}. Client ID: {_client_code(project) or 'Not recorded'}.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho/project-360/{project.id}",
         recipient_user_ids=[pm.id],
+        # Actionable and ASSIGNMENT-scoped: only the assigned PM is a recipient.
+        # A different PM must never receive this.
+        severity="warning",
+        requires_action=True,
+        metadata={
+            "project_name": project.project_code,
+            "client_name": _client_code(project) or None,
+            "assigned_role": department_label(workflow.performing_department_code),
+            "amount": workflow.commercial_value,
+            "currency": workflow.currency,
+        },
     )
     db.flush()
     return workflow, pm
+
+
+def department_change_allowed(db: Session, workflow: ProjectWorkflow) -> bool:
+    """Fail closed for a previously allocated, operational, or invoiced project.
+
+    This is a first-phase *pre-start* correction, never a team/work handover.
+    """
+    project = _project(db, workflow.project_id)
+    allowed = {WORKFLOW_FINANCE_APPROVED, WORKFLOW_PM_ASSIGNED}
+    if project.project_source_team == "bd_team":
+        allowed.add(WORKFLOW_PENDING_FINANCE)  # Legacy BD submission, no Finance decision needed
+    if normalized_workflow_status(workflow.status) not in allowed:
+        return False
+    if workflow.team_assigned_at or workflow.operational_completed_at or workflow.finance_closed_at:
+        return False
+    project_id = workflow.project_id
+    profile = db.get(OrthoProjectProfile, project_id)
+    if profile is not None and (profile.final_delivery_at is not None or profile.status in {"closed", "delivered"}):
+        return False
+    checks = (
+        select(OrthoWorkPackage.id).where(OrthoWorkPackage.project_id == project_id),
+        select(WorkPackageItem.id).where(WorkPackageItem.project_id == project_id),
+        select(WorkPackageItemActivity.id).where(WorkPackageItemActivity.project_id == project_id),
+        select(OrthoProjectMember.id).where(
+            OrthoProjectMember.project_id == project_id,
+            OrthoProjectMember.member_role != "project_manager",
+        ),
+        select(ProjectWorkstream.id).where(ProjectWorkstream.project_id == project_id),
+        select(FinanceProjectAssignment.id).where(FinanceProjectAssignment.project_id == project_id),
+        select(ProjectInvoice.id).where(ProjectInvoice.project_id == project_id),
+        select(ProjectReworkCycle.id).where(ProjectReworkCycle.project_id == project_id),
+        select(ProjectChangeRequest.id).where(ProjectChangeRequest.project_id == project_id),
+        select(ExpenseClaim.id).where(ExpenseClaim.project_id == project_id),
+    )
+    return all(db.scalar(query.limit(1)) is None for query in checks)
+
+
+def change_project_department_before_work(
+    db: Session, *, actor: User, project_id: int,
+    payload: WorkflowDepartmentChange, source: str,
+) -> dict:
+    """One-project atomic correction, including both PM ownership records and history."""
+    workflow = db.scalar(select(ProjectWorkflow).where(
+        ProjectWorkflow.project_id == project_id,
+    ).with_for_update())
+    if workflow is None:
+        raise ValueError("Project workflow not found")
+    project = _project(db, project_id)
+    management_link = db.get(ManagementProjectLink, project_id)
+    if source == "management":
+        if management_link is None or project.project_source_team != "management":
+            raise PermissionError("Department correction is limited to Management projects")
+    elif source == "bd":
+        if management_link is not None or project.project_source_team == "management":
+            raise PermissionError("BD cannot modify a Management project")
+        if workflow.bd_owner_user_id != actor.id:
+            raise PermissionError("Only the original BD project owner can change the department")
+    else:
+        raise PermissionError("Invalid department correction source")
+    if not department_change_allowed(db, workflow):
+        raise ValueError("Department can change only before team allocation, work, expenses or billing begins")
+    if source == "bd" and workflow.status == WORKFLOW_PENDING_FINANCE:
+        from app.modules.commercial.service import finalize_bd_baseline_without_finance_approval
+
+        finalize_bd_baseline_without_finance_approval(db, actor=actor, project_id=project_id)
+        set_project_status(db, project=project, actor=actor, project_status="active")
+    new_department = normalize_department_code(payload.performing_department_code)
+    if new_department is None or new_department not in SUPPORTED_DEPARTMENTS:
+        raise ValueError("Select a supported performing department")
+    old_department = workflow.performing_department_code
+    if new_department == old_department:
+        raise ValueError("Select a different department")
+    new_pm = db.get(User, payload.project_manager_id)
+    if (new_pm is None or not new_pm.is_active or
+            new_pm.account_status not in {"active", "pending_mfa"} or
+            new_pm.role != pm_role_for_department(new_department)):
+        raise ValueError(f"Select an active {department_label(new_department)} Project Manager")
+    old_pm = project.master_profile.project_manager if project.master_profile else None
+    old_status = workflow.status
+    old_pm_assigners = {
+        row.id: row.assigned_by_id for row in db.scalars(select(OrthoProjectMember).where(
+            OrthoProjectMember.project_id == project_id,
+            OrthoProjectMember.member_role == "project_manager",
+        )).all()
+    }
+
+    workflow.performing_department_code = new_department
+    workflow.status = WORKFLOW_PM_ASSIGNED
+    workflow.pm_assigned_at = utc_now()
+    workflow.updated_by_id = actor.id
+    workflow.updated_at = utc_now()
+    if project.master_profile is None:
+        project.master_profile = FinanceProjectMasterProfile(
+            project_id=project_id, project_status="active",
+            project_manager_id=new_pm.id, created_by_id=actor.id, updated_by_id=actor.id,
+        )
+        db.add(project.master_profile)
+    else:
+        project.master_profile.project_manager_id = new_pm.id
+        project.master_profile.updated_by_id = actor.id
+        project.master_profile.updated_at = utc_now()
+    _ensure_profile_and_pm_member(db, project=project, workflow=workflow, actor=actor, pm=new_pm)
+    # Existing assignment authors remain historical; deactivation is a new event, not a rewrite.
+    for row in db.scalars(select(OrthoProjectMember).where(
+        OrthoProjectMember.project_id == project_id,
+        OrthoProjectMember.member_role == "project_manager",
+    )).all():
+        if row.id in old_pm_assigners and row.user_id != new_pm.id:
+            row.assigned_by_id = old_pm_assigners[row.id]
+    comments = (
+        f"{department_label(old_department)} -> {department_label(new_department)}; "
+        f"PM: {old_pm.full_name if old_pm else 'Unassigned'} -> {new_pm.full_name}; "
+        f"Reason: {payload.reason.strip()}"
+    )
+    db.add(ProjectWorkflowEvent(
+        project_id=project_id, event_type="project_department_changed_before_work",
+        from_status=old_status, to_status=workflow.status,
+        comments=comments, actor_user_id=actor.id,
+    ))
+    from app.modules.operations.lifecycle_service import add_timeline_event
+    add_timeline_event(
+        db, project_id=project_id, event_type="project_department_changed_before_work",
+        title=f"Department changed: {department_label(old_department)} to {department_label(new_department)}",
+        status=workflow.status, actor_user_id=actor.id, details=comments,
+    )
+    if old_pm is not None and old_pm.id != new_pm.id:
+        resolve_notifications(
+            db, recipient_user_ids=[old_pm.id],
+            event_type="workflow.project.pm_assigned",
+            target_url=f"/ortho/project-360/{project_id}",
+            resolved_by_id=actor.id,
+            resolution_note="Project department and PM were reassigned",
+        )
+        create_global_notification(
+            db, event_type="workflow.project.department_reassigned_from",
+            title=f"Project reassigned: {project.project_code}",
+            message=f"{project.project_code} moved from {department_label(old_department)} to {department_label(new_department)}. You are no longer assigned as Project Manager. Reason: {payload.reason.strip()}",
+            category="system", target_url=f"/ortho/project-360/{project_id}",
+            recipient_user_ids=[old_pm.id], severity="info", requires_action=False,
+        )
+    create_global_notification(
+        db, event_type="workflow.project.department_reassigned_to",
+        title=f"New project assigned: {project.project_code}",
+        message=f"You are now the {department_label(new_department)} Project Manager for {project.project_code}. Reason: {payload.reason.strip()}",
+        category="system", target_url=f"/ortho/project-360/{project_id}",
+        recipient_user_ids=[new_pm.id], severity="warning", requires_action=True,
+        metadata={"project_id": project_id, "project_name": project.project_code,
+                  "department": new_department, "assigned_role": department_label(new_department)},
+    )
+    db.flush()
+    return {
+        "project_id": project_id, "project_code": project.project_code,
+        "old_department": old_department, "new_department": new_department,
+        "old_manager_id": old_pm.id if old_pm else None,
+        "new_manager_id": new_pm.id, "workflow_status": workflow.status,
+        "reason": payload.reason.strip(),
+    }
 
 
 def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int) -> None:
@@ -777,12 +1093,13 @@ def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int
     pm = db.get(User, pm_id)
     if pm is None:
         return
+    assigning_team = "Finance" if project.project_source_team == "management" else "Business Development"
     _safe_send_email(
         recipient=pm.email,
-        subject=f"[{project.project_code}] Ortho Project Manager assignment",
+        subject=f"[{project.project_code}] {department_label(workflow.performing_department_code)} Project Manager assignment",
         body=(
             f"Hello {pm.full_name},\n\n"
-            "Business Development assigned you as the Ortho Project Manager.\n\n"
+            f"{assigning_team} assigned you as the {department_label(workflow.performing_department_code)} Project Manager.\n\n"
             f"Project ID: {project.project_code}\n"
             f"Client ID: {_client_code(project) or 'Not recorded'}\n"
             f"Start Date: {project.start_date.isoformat() if project.start_date else 'Not recorded'}\n"
@@ -792,7 +1109,7 @@ def email_project_manager_assignment(db: Session, *, project_id: int, pm_id: int
             f"ERP Ortho Dashboard: {settings.app_public_url.rstrip('/')}/ortho\n\n"
             "Nakshatech ERP"
         ),
-        from_name="Nakshatech BD -> Ortho",
+        from_name="Nakshatech Finance -> Project Manager" if project.project_source_team == "management" else "Nakshatech BD -> Ortho",
     )
 
 
@@ -808,10 +1125,12 @@ def _active_member_ids(db: Session, *, project_id: int, role: str) -> set[int]:
     )).all()}
 
 
-def _validate_employee(db: Session, user_id: int, label: str) -> User:
+def _validate_employee(db: Session, user_id: int, label: str, *, department_code: str | None = None) -> User:
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.role != EMPLOYEE_ROLE:
         raise ValueError(f"Selected {label} must be an active Employee account")
+    if department_code and not user_department_matches(user.department, department_code):
+        raise ValueError(f"Selected {label} must belong to the {department_label(department_code)} department")
     return user
 
 
@@ -888,11 +1207,12 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
         "qc": set(payload.qc_user_ids),
         "qa": set(payload.qa_user_ids),
     }
+    department_code = workflow.performing_department_code
     for role, ids in selected.items():
         if not ids:
             raise ValueError(f"Select at least one {role.replace('_', ' ')} employee")
         for user_id in ids:
-            _validate_employee(db, user_id, role.replace("_", " "))
+            _validate_employee(db, user_id, role.replace("_", " "), department_code=department_code)
     if len(selected["team_leader"]) != 1:
         raise ValueError("Exactly one Team Lead is required")
 
@@ -914,9 +1234,9 @@ def configure_team(db: Session, *, actor: User, project_id: int, payload: Workfl
             db,
             event_type="workflow.project.team_assignment",
             title=f"Project team assignment: {project.project_code}",
-            message=f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}.",
+            message=f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}.",
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -996,7 +1316,7 @@ def confirm_rework_team(
                 if payload.mode == "reuse" else f"Select at least one {label} employee"
             )
         for user_id in ids:
-            _validate_employee(db, user_id, label)
+            _validate_employee(db, user_id, label, department_code=workflow.performing_department_code)
     if len(selected["team_leader"]) != 1:
         raise ValueError("Exactly one Team Lead is required")
 
@@ -1013,12 +1333,12 @@ def confirm_rework_team(
     cycle.status = REWORK_PRODUCTION
     cycle.updated_at = utc_now()
     summary = (
-        f"{REWORK_NOTE_REUSE if payload.mode == 'reuse' else REWORK_NOTE_ADJUST} · "
-        f"Team Lead {team_lead.employee_id or team_lead.full_name} · Production {len(selected['production'])} · "
-        f"QC {len(selected['qc'])} · QA {len(selected['qa'])}"
+        f"{REWORK_NOTE_REUSE if payload.mode == 'reuse' else REWORK_NOTE_ADJUST} Ã‚Â· "
+        f"Team Lead {team_lead.employee_id or team_lead.full_name} Ã‚Â· Production {len(selected['production'])} Ã‚Â· "
+        f"QC {len(selected['qc'])} Ã‚Â· QA {len(selected['qa'])}"
     )
     if (payload.remarks or "").strip():
-        summary += f" · {payload.remarks.strip()}"
+        summary += f" Ã‚Â· {payload.remarks.strip()}"
     lifecycle_transition(
         db,
         workflow=workflow,
@@ -1040,11 +1360,11 @@ def confirm_rework_team(
             event_type="workflow.rework.team_confirmed",
             title=f"Rework team confirmed: {project.project_code}",
             message=(
-                f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · "
-                f"Rework Cycle {cycle.cycle_number} · Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
+                f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· "
+                f"Rework Cycle {cycle.cycle_number} Ã‚Â· Role(s): {', '.join(role.replace('_', ' ').title() for role in roles)}. {next_step}"
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1146,13 +1466,13 @@ def allocate_rework_work(
     )
     db.add(package)
     db.flush()
-    note = f"{area} · {payload.quantity} {unit} · Target {payload.target_date.isoformat()}"
+    note = f"{area} Ã‚Â· {payload.quantity} {unit} Ã‚Â· Target {payload.target_date.isoformat()}"
     if source is not None:
-        note += f" · linked to original package {source.package_code}"
+        note += f" Ã‚Â· linked to original package {source.package_code}"
         if payload.correction_reason:
-            note += f" · Code/Area correction: {payload.correction_reason}"
+            note += f" Ã‚Â· Code/Area correction: {payload.correction_reason}"
         elif code.strip().lower() == source.package_code.strip().lower():
-            note += " · Code/Area carried forward"
+            note += " Ã‚Â· Code/Area carried forward"
     lifecycle_transition(
         db,
         workflow=workflow,
@@ -1168,11 +1488,11 @@ def allocate_rework_work(
             event_type="workflow.rework.work_assigned",
             title=f"New REWORK {role.upper()} work: {code}",
             message=(
-                f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · Rework Cycle {cycle.cycle_number} · "
-                f"Area {area} · Code {code} · {payload.quantity} {unit} · Target {payload.target_date.isoformat()}."
+                f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· Rework Cycle {cycle.cycle_number} Ã‚Â· "
+                f"Area {area} Ã‚Â· Code {code} Ã‚Â· {payload.quantity} {unit} Ã‚Â· Target {payload.target_date.isoformat()}."
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
         )
     db.flush()
@@ -1341,12 +1661,23 @@ def allocate_work(db: Session, *, actor: User, project_id: int, payload: Workflo
             event_type="workflow.work.assigned",
             title=f"New {role.upper()} work: {payload.package_code}",
             message=(
-                f"Project ID {project.project_code} · Client ID {_client_code(project) or 'Not recorded'} · "
-                f"Area {payload.area_name} · Code {payload.package_code} · {payload.quantity} {payload.quantity_unit} · Target {payload.target_date.isoformat()}."
+                f"Project ID {project.project_code} Ã‚Â· Client ID {_client_code(project) or 'Not recorded'} Ã‚Â· "
+                f"Area {payload.area_name} Ã‚Â· Code {payload.package_code} Ã‚Â· {payload.quantity} {payload.quantity_unit} Ã‚Â· Target {payload.target_date.isoformat()}."
             ),
             category="system",
-            target_url="/ortho",
+            target_url=f"/ortho?project={project.id}",
             recipient_user_ids=[user_id],
+            # Actionable, and ASSIGNMENT-scoped: only the assigned user is a recipient.
+            # A different Production/QC/QA user must never receive it.
+            severity="warning",
+            requires_action=True,
+            metadata={
+                "project_name": project.project_code,
+                "package_code": payload.package_code,
+                "assigned_role": role.upper(),
+                "area": payload.area_name,
+                "target_date": payload.target_date.isoformat() if payload.target_date else None,
+            },
         )
     db.flush()
     return package
@@ -1438,6 +1769,9 @@ def record_daily_activity(db: Session, *, actor: User, work_package_id: int, pay
     )
     db.add(row)
     db.flush()
+    if package.rework_cycle_id is None:
+        from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+        safe_notify_project_milestone(db, project_id=package.project_id, milestone="production_started")
     return row
 
 
@@ -1471,13 +1805,16 @@ def complete_production(db: Session, *, actor: User, work_package_id: int) -> Or
         db,
         event_type="workflow.production.completed",
         title=f"Production completed: {package.package_code}",
-        message=f"Project ID {project.project_code} · Code {package.package_code} is ready for QC.",
+        message=f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} is ready for QC.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=recipients,
     )
     db.flush()
     _sync_rework_cycle(db, actor=actor, package=package, note=f"Production completed: {package.package_code}")
+    if package.rework_cycle_id is None:
+        from app.modules.bd_employee.notification_service import safe_notify_completed_stage
+        safe_notify_completed_stage(db, project_id=project.id, stage="production")
     return package
 
 
@@ -1616,7 +1953,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.qa_user_id]
         event_type = "workflow.qc.approved"
         title = f"QC approved: {package.package_code}"
-        message = f"Project ID {project.project_code} · Code {package.package_code} is ready for QA."
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} is ready for QA."
     elif kind == "qc":
         package.qc_state = "rejected"
         package.current_stage = "production_rework"
@@ -1625,7 +1962,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.production_user_id, package.team_leader_user_id, pm.id if pm else None]
         event_type = "workflow.qc.rejected"
         title = f"QC rework required: {package.package_code}"
-        message = f"Project ID {project.project_code} · Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
     elif payload.decision == "approve":
         package.qa_state = "approved"
         package.current_stage = "delivery_ready"
@@ -1634,7 +1971,7 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.team_leader_user_id, pm.id if pm else None]
         event_type = "workflow.qa.approved"
         title = f"Ready for delivery: {package.package_code}"
-        message = f"Project ID {project.project_code} · Code {package.package_code} passed QA and is Ready for Delivery."
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} passed QA and is Ready for Delivery."
     else:
         package.qa_state = "rejected"
         package.current_stage = "production_rework"
@@ -1643,19 +1980,22 @@ def review_work(db: Session, *, actor: User, work_package_id: int, kind: str, pa
         recipients = [package.production_user_id, package.team_leader_user_id, pm.id if pm else None]
         event_type = "workflow.qa.rejected"
         title = f"QA rework required: {package.package_code}"
-        message = f"Project ID {project.project_code} · Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
+        message = f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} returned to Production. {payload.comments or ''}".strip()
     create_global_notification(
         db,
         event_type=event_type,
         title=title,
         message=message,
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in recipients if uid],
     )
     db.flush()
     verdict = "approved" if payload.decision == "approve" else f"rejected - {(payload.comments or '').strip()}"
     _sync_rework_cycle(db, actor=actor, package=package, note=f"{kind.upper()} {verdict}: {package.package_code}")
+    if payload.decision == "approve" and package.rework_cycle_id is None:
+        from app.modules.bd_employee.notification_service import safe_notify_completed_stage
+        safe_notify_completed_stage(db, project_id=project.id, stage=kind)
     return package
 
 
@@ -1664,8 +2004,40 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
     project = _project(db, package.project_id)
     if not (_is_pm(project, actor.id) or package.team_leader_user_id == actor.id):
         raise PermissionError("Only the Team Lead or Project Manager can record Delivery")
-    if package.current_stage != "delivery_ready" or package.qa_state != "approved":
+    # File-tracked areas: readiness comes from the authoritative physical files (all files
+    # must have passed QA) AND the explicit Ready-for-Delivery confirmation. Legacy areas
+    # keep the original stage/qa_state gate unchanged.
+    readiness = delivery_readiness(db, package)
+    if readiness["applicable"]:
+        if not readiness["ready"]:
+            raise ValueError(
+                "Not all files passed QA yet Ã¢â‚¬â€ QA must approve every required file before Delivery"
+            )
+        if package.ready_for_delivery_at is None:
+            raise ValueError("Confirm Ready for Delivery before recording Delivery")
+    elif package.current_stage != "delivery_ready" or package.qa_state != "approved":
         raise ValueError("QA must approve the task before Delivery")
+    if package.current_stage == "delivered":
+        raise ValueError("This area is already delivered")
+    if readiness["applicable"]:
+        # Keep ONE source of truth: record the delivery on each physical file so the
+        # file-tracked counters/readiness/stage bucket all agree with the area state.
+        from app.modules.operations import production_items as _items
+        item_rows = _items.items_for_packages(db, [package.id])
+        latest = _items.latest_activities_by_item(db, [package.id])
+        for item in item_rows:
+            if not item.is_active:
+                continue
+            delivery = latest.get(item.id, {}).get("delivery")
+            if delivery is not None and delivery.status == "delivered":
+                continue
+            _items.deliver_item(
+                db, actor=actor,
+                role=("project_manager" if _is_pm(project, actor.id) else "employee"),
+                work_package_item_id=item.id,
+                remarks=(payload.remarks or "").strip() or None,
+                reference=None,
+            )
     package.current_stage = "delivered"
     package.delivered_at = utc_now()
     pm = _pm(project)
@@ -1673,9 +2045,9 @@ def mark_delivered(db: Session, *, actor: User, work_package_id: int, payload: W
         db,
         event_type="workflow.delivery.completed",
         title=f"Delivered: {package.package_code}",
-        message=f"Project ID {project.project_code} · Code {package.package_code} has been delivered.",
+        message=f"Project ID {project.project_code} Ã‚Â· Code {package.package_code} has been delivered.",
         category="system",
-        target_url="/ortho",
+        target_url=f"/ortho?project={project.id}",
         recipient_user_ids=[uid for uid in {package.team_leader_user_id, pm.id if pm else None} if uid],
     )
     db.flush()
@@ -1689,13 +2061,23 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     if not _is_pm(project, actor.id):
         raise PermissionError("Only the BD-assigned Project Manager can confirm Operational Completion")
     if normalized_workflow_status(workflow.status) not in {WORKFLOW_TEAM_ASSIGNED, WORKFLOW_IN_PROGRESS}:
-        # enter_feedback_lifecycle() unconditionally resets the lifecycle to FEEDBACK_NOT_SENT; running it over an
-        # open rework / feedback / billing state would discard that state.
+        # Completion opens the BD feedback or Management approval lifecycle. Repeating it
+        # over approval, rework, feedback or billing would discard the existing state.
         raise ValueError("Operational Completion is only available while the project is In Progress")
     packages = list(db.scalars(select(OrthoWorkPackage).where(OrthoWorkPackage.project_id == project_id)).all())
     if not packages:
         raise ValueError("Create and complete at least one work allocation before Project Completion")
-    blocking = [pkg.package_code for pkg in packages if pkg.current_stage != "delivered"]
+    # File-tracked areas derive their effective stage from the item rollups (one source of
+    # truth); legacy areas keep the package-level stage column.
+    item_contexts = item_dashboard_context(db, packages)
+
+    def _effective_stage(pkg: OrthoWorkPackage) -> str | None:
+        ctx = item_contexts.get(pkg.id) or {}
+        if ctx.get("has_items"):
+            return ctx.get("stage_bucket") or pkg.current_stage
+        return pkg.current_stage
+
+    blocking = [pkg.package_code for pkg in packages if _effective_stage(pkg) != "delivered"]
     if blocking:
         raise ValueError("All assigned work must be delivered before Project Completion: " + ", ".join(blocking[:10]))
     workflow.operational_completed_at = utc_now()
@@ -1712,11 +2094,17 @@ def operational_complete(db: Session, *, actor: User, project_id: int, payload: 
     project.is_active = True
     profile = db.get(OrthoProjectProfile, project_id)
     if profile:
-        profile.status = "awaiting_client_feedback"
+        profile.status = (
+            "awaiting_management_approval"
+            if db.get(ManagementProjectLink, project_id) is not None
+            else "awaiting_client_feedback"
+        )
         profile.final_delivery_at = workflow.operational_completed_at
         profile.final_delivery_by_id = actor.id
         profile.final_delivery_remarks = workflow.completion_remarks
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=project_id, milestone="project_delivered")
     return workflow
 
 
@@ -1727,6 +2115,15 @@ def email_operational_completion(db: Session, *, project_id: int) -> None:
     owner = db.get(User, workflow.bd_owner_user_id)
     if owner:
         recipients = [*recipients, owner]
+    is_management = db.get(ManagementProjectLink, project_id) is not None
+    next_step = (
+        "The original Management source must approve this delivery before Finance can invoice.\n"
+        f"ERP: {settings.app_public_url.rstrip('/')}/management/client-register\n"
+        if is_management else
+        "The project is now waiting for a secure Client Feedback Request. "
+        "Finance Closure is unavailable until acceptance, invoicing and payment are complete.\n"
+        f"ERP: {settings.app_public_url.rstrip('/')}/bd/feedback\n"
+    )
     seen: set[int] = set()
     for user in recipients:
         if user.id in seen:
@@ -1741,9 +2138,7 @@ def email_operational_completion(db: Session, *, project_id: int) -> None:
                 f"Client ID: {_client_code(project) or 'Not recorded'}\n"
                 f"Completion Date: {workflow.completion_date.isoformat() if workflow.completion_date else 'Not recorded'}\n"
                 f"Delivery Reference: {workflow.final_delivery_reference or 'Not recorded'}\n\n"
-                "The project is now waiting for a secure Client Feedback Request. "
-                "Finance Closure is unavailable until acceptance, invoicing and payment are complete.\n"
-                f"ERP: {settings.app_public_url.rstrip('/')}/bd/feedback\n\n"
+                f"{next_step}\n"
                 "Nakshatech ERP"
             ),
             from_name="Nakshatech Operations",
@@ -1755,6 +2150,11 @@ def finance_close_project(db: Session, *, actor: User, project_id: int, payload:
     legacy_closure = workflow.status == WORKFLOW_FINANCE_CLOSURE_PENDING
     assert_finance_closable(db, workflow=workflow)
     project = _project(db, project_id)
+    # Finance's authorized project closure also finalizes invoices whose balance
+    # is resolved by approved Bad Debt. Approval by itself never closes them.
+    for invoice in db.scalars(select(ProjectInvoice).where(ProjectInvoice.project_id == project_id)).all():
+        if invoice.status != "INVOICE_CLOSED":
+            close_invoice(db, actor=actor, invoice_id=invoice.id, payload=InvoiceClose(comments=payload.remarks))
     workflow.finance_closed_at = utc_now()
     workflow.finance_closure_remarks = payload.remarks.strip()
     _event(
@@ -1785,10 +2185,12 @@ def finance_close_project(db: Session, *, actor: User, project_id: int, payload:
         title=f"Project closed: {project.project_code}",
         message=f"Finance Closure is complete for Project ID {project.project_code}.",
         category="system",
-        target_url="/bd",
+        target_url=f"/bd/projects?project={project.id}",
         recipient_user_ids=recipients,
     )
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=project_id, milestone="project_closed")
     return workflow
 
 
@@ -1838,11 +2240,56 @@ def _member_map(db: Session, project_id: int) -> list[dict]:
     ]
 
 
-def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, viewer_is_pm: bool, viewer_is_tl: bool) -> dict:
+def _package_payload(
+    db: Session,
+    package: OrthoWorkPackage,
+    *,
+    viewer: User,
+    viewer_is_pm: bool,
+    viewer_is_tl: bool,
+    item_ctx: dict | None = None,
+) -> dict:
     total, files = _daily_totals(package)
+    item_ctx = item_ctx or {"has_items": False}
+    has_items = bool(item_ctx.get("has_items"))
+    _item_expected = int(item_ctx.get("active_count") or 0)
     target = package.area or Decimal("0")
+    if has_items:
+        # File-based area: the authoritative figures are the item rollups (same source
+        # as Production Tracking) Ã¢â‚¬â€ never the legacy area-level daily updates.
+        total = Decimal(str(item_ctx.get("production_actual", 0.0)))
+        files = int(item_ctx.get("active_count", 0))
     remaining = max(Decimal("0"), target - total)
     progress = 0.0 if target <= 0 else min(100.0, float((total / target) * Decimal("100")))
+
+    # Use authoritative production completion, not rounded quantities.
+    if has_items:
+        production_done = item_stage_complete(item_ctx, "production")
+    else:
+        production_done = package.production_state == "completed"
+
+    if production_done and target > 0:
+        progress = 100.0
+        remaining = Decimal("0")
+    # V8.1 production tracking (additive): over-target variance + workflow % derived
+    # from the applicable department stage profile (never user-typed).
+    production_math = package_production_progress(total, package.area)
+    department_code = db.scalar(select(ProjectWorkflow.performing_department_code).where(ProjectWorkflow.project_id == package.project_id)) or "ortho"
+    applicable_stages = stage_profile_for_department(department_code)
+    can_edit_general = viewer_is_pm or viewer_is_tl
+    stage_updates: dict[str, dict] = {}
+    actor_is_production = package.production_user_id == viewer.id
+    actor_is_dxf = package.dxf_user_id is not None and package.dxf_user_id == viewer.id
+    for stage in TRACKABLE_STAGES:
+        if stage not in applicable_stages:
+            continue
+        allowed = can_edit_general or actor_is_production or (stage == "dxf" and actor_is_dxf)
+        stage_updates[stage] = {
+            "label": STAGE_LABELS.get(stage, stage),
+            "status": getattr(package, STAGE_STATUS_ATTR[stage], None),
+            "statuses": list(STAGE_STATUSES[stage]),
+            "can_update": allowed,
+        }
     my_roles = []
     if package.team_leader_user_id == viewer.id:
         my_roles.append("team_leader")
@@ -1852,6 +2299,16 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
         my_roles.append("qc")
     if package.qa_user_id == viewer.id:
         my_roles.append("qa")
+    if has_items:
+        # File-level assignment is authoritative when the area tracks files.
+        active_item_rows = [row for row in item_ctx["rows"] if row["is_active"]]
+        for stage_name, id_key in (
+            ("production", "production_user_id"),
+            ("qc", "qc_user_id"),
+            ("qa", "qa_user_id"),
+        ):
+            if stage_name not in my_roles and any(row.get(id_key) == viewer.id for row in active_item_rows):
+                my_roles.append(stage_name)
 
     updates = package.daily_updates
     if not (viewer_is_pm or viewer_is_tl):
@@ -1865,6 +2322,14 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
         "target_date": package.target_date.isoformat() if package.target_date else None,
         "instructions": package.instructions,
         "current_stage": package.current_stage,
+        # Displayed stage for the UI: file-tracked areas show the derived physical-file
+        # stage (never the stale legacy column), legacy areas keep current_stage.
+        "display_stage": package.current_stage,
+        # Delivery lifecycle flags (legacy semantics; overridden for file-tracked areas below).
+        "ready_eligible": package.current_stage == "delivery_ready",
+        "ready_for_delivery": package.current_stage == "delivery_ready",
+        "delivered": package.current_stage == "delivered",
+        "delivered_at": package.delivered_at.isoformat() if package.delivered_at else None,
         "production_state": package.production_state,
         "qc_state": package.qc_state,
         "qa_state": package.qa_state,
@@ -1872,6 +2337,26 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
         "cumulative_completed": float(total),
         "remaining_quantity": float(remaining),
         "progress_percent": round(progress, 2),
+        "over_target_quantity": float(production_math["over_target_quantity"]),
+        "workflow_progress_percent": package_workflow_progress(package, department_code, item_ctx),
+        "applicable_stages": [
+            {"code": stage, "label": STAGE_LABELS.get(stage, stage), "status": stage_status(package, stage)}
+            for stage in applicable_stages
+        ],
+        "stage_updates": stage_updates,
+        "lot_batch": package.lot_batch,
+        "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+        "remarks": package.remarks,
+        "import_status": package.import_status,
+        "imported_at": package.imported_at.isoformat() if package.imported_at else None,
+        "dxf_status": package.dxf_status,
+        "dxf_at": package.dxf_at.isoformat() if package.dxf_at else None,
+        "dxf_user_id": package.dxf_user_id,
+        "inspection_status": package.inspection_status,
+        "inspected_at": package.inspected_at.isoformat() if package.inspected_at else None,
+        "upload_status": package.upload_status,
+        "uploaded_at": package.uploaded_at.isoformat() if package.uploaded_at else None,
+        "can_edit_general": can_edit_general,
         "files_completed": files,
         "my_roles": my_roles,
         "can_daily_activity": package.production_user_id == viewer.id and package.current_stage in {"not_started", "production", "production_rework"},
@@ -1907,6 +2392,52 @@ def _package_payload(db: Session, package: OrthoWorkPackage, *, viewer: User, vi
             for row in package.reviews
         ],
     }
+    if has_items:
+        counts = item_ctx.get("aggregate", {})
+        payload.update({
+            "has_items": True,
+            "files_expected": int(item_ctx.get("active_count", 0)),
+            "files_production_done": counts.get("files_production_done", 0),
+            "files_qc_passed": counts.get("files_qc_passed", 0),
+            "files_qa_passed": counts.get("files_qa_passed", 0),
+            "files_delivered": counts.get("files_delivered", 0),
+            # V8.4 distinct physical-file counters (never inflated by rework attempts).
+            "files_assigned": counts.get("files_assigned", 0),
+            "files_available": counts.get("files_available", 0),
+            "files_production_in_progress": counts.get("production_in_progress", 0),
+            "files_production_rework": counts.get("production_rework", 0),
+            "files_qc_in_progress": counts.get("qc_in_progress", 0),
+            "files_qc_rework": counts.get("qc_rework", 0),
+            "files_qa_in_progress": counts.get("qa_in_progress", 0),
+            "files_qa_rework": counts.get("qa_rework", 0),
+            "files_ready": counts.get("ready", 0),
+            "declared_total_files": item_ctx.get("declared_total_files"),
+            "stage_bucket": item_ctx.get("stage_bucket"),
+            # File-tracked area: derive the DISPLAYED stage + delivery lifecycle from the
+            # authoritative physical-file state (never the stale legacy columns).
+            "display_stage": item_ctx.get("stage_bucket") or package.current_stage,
+            "ready_eligible": bool(_item_expected) and int(counts.get("files_qa_passed", 0)) >= _item_expected,
+            "ready_for_delivery": bool(item_ctx.get("ready_confirmed")),
+            "delivered": bool(_item_expected) and int(counts.get("files_delivered", 0)) >= _item_expected,
+            "item_assignees": {
+                **item_ctx.get("item_assignees", {}),
+                "team_leader": [item_ctx["team_leader"]] if item_ctx.get("team_leader") else [],
+            },
+            # Employees receive ONLY their assigned files; PM/TL receive all files.
+            "items": item_rows_for_viewer(
+                item_ctx["rows"], viewer_id=viewer.id, privileged=(viewer_is_pm or viewer_is_tl),
+            ),
+        })
+        # Delivery is the EXPLICIT step after Ready has been confirmed (never merged with
+        # Mark Ready, never automatic) Ã¢â‚¬â€ derived from the physical-file state.
+        payload["can_deliver"] = (
+            (viewer_is_pm or package.team_leader_user_id == viewer.id)
+            and bool(item_ctx.get("ready_confirmed"))
+            and not payload["delivered"]
+            and payload["ready_eligible"]
+        )
+    else:
+        payload["has_items"] = False
     if viewer_is_pm or viewer_is_tl:
         user_ids = {uid for uid in [package.team_leader_user_id, package.production_user_id, package.qc_user_id, package.qa_user_id] if uid}
         users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
@@ -1927,7 +2458,9 @@ def _user_min(user: User | None) -> dict | None:
 
 def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
     project_ids: set[int] = set()
-    if role == ORTHO_ROLE:
+    if is_technical_pm_role(role):
+        # Being e.g. a LiDAR PM never grants every LiDAR project - only the ones this account
+        # is actually assigned to (FinanceProjectMasterProfile.project_manager_id == actor.id).
         project_ids.update(int(v) for v in db.scalars(select(FinanceProjectMasterProfile.project_id).where(
             FinanceProjectMasterProfile.project_manager_id == actor.id,
         )).all())
@@ -1937,9 +2470,26 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             OrthoProjectMember.member_role.in_(TEAM_ROLES),
             OrthoProjectMember.is_active.is_(True),
         )).all())
+        # Department isolation: a normal employee only ever sees projects performed by
+        # their own department (Employee Master scope), never cross-department work.
+        # Employees without a resolvable department keep membership-based visibility.
+        employee_department = user_department_code(db, actor)
+        if employee_department is not None:
+            department_projects = set(
+                db.scalars(
+                    select(ProjectWorkflow.project_id).where(
+                        ProjectWorkflow.performing_department_code == normalize_department_code(employee_department)
+                    )
+                ).all()
+            )
+            project_ids &= department_projects
     if role in {ADMIN_ROLE, MANAGEMENT_ROLE}:
         project_ids.update(int(v) for v in db.scalars(select(ProjectWorkflow.project_id)).all())
 
+    if not project_ids:
+        return {"viewer_mode": "participant" if role == EMPLOYEE_ROLE else "project_manager", "projects": [], "employees": []}
+
+    project_ids = set(filter_visible_project_ids(db, project_ids))
     if not project_ids:
         return {"viewer_mode": "participant" if role == EMPLOYEE_ROLE else "project_manager", "projects": [], "employees": []}
 
@@ -1956,18 +2506,57 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
         status_key = normalized_workflow_status(workflow.status)
         packages = list(db.scalars(_package_query().where(OrthoWorkPackage.project_id == project.id).order_by(OrthoWorkPackage.id.asc())).unique().all())
         all_packages = packages
-        if not (viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE}):
-            packages = [pkg for pkg in packages if actor.id in {pkg.team_leader_user_id, pkg.production_user_id, pkg.qc_user_id, pkg.qa_user_id}]
-        package_payloads = [_package_payload(db, pkg, viewer=actor, viewer_is_pm=viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE}, viewer_is_tl=viewer_is_tl) for pkg in packages]
+        # Item-level context (single source of truth for file-based areas). PM / Team Lead /
+        # Management keep FULL project visibility; a normal employee sees a package when the
+        # legacy package-level columns OR at least one ACTIVE child item assignment matches.
+        item_contexts = item_dashboard_context(db, packages)
+        if not (viewer_is_pm or viewer_is_tl or role in {ADMIN_ROLE, MANAGEMENT_ROLE}):
+            def _employee_can_see(pkg: OrthoWorkPackage) -> bool:
+                if actor.id in {pkg.team_leader_user_id, pkg.production_user_id, pkg.qc_user_id, pkg.qa_user_id}:
+                    return True
+                ctx = item_contexts.get(pkg.id) or {}
+                if not ctx.get("has_items"):
+                    return False
+                return any(
+                    row["is_active"]
+                    and actor.id in {row.get("production_user_id"), row.get("qc_user_id"), row.get("qa_user_id")}
+                    for row in ctx["rows"]
+                )
+            packages = [pkg for pkg in packages if _employee_can_see(pkg)]
+        package_payloads = [
+            _package_payload(
+                db, pkg,
+                viewer=actor,
+                viewer_is_pm=viewer_is_pm or role in {ADMIN_ROLE, MANAGEMENT_ROLE},
+                viewer_is_tl=viewer_is_tl,
+                item_ctx=item_contexts.get(pkg.id),
+            )
+            for pkg in packages
+        ]
         _annotate_rework_packages(db, project.id, package_payloads, packages, all_packages)
+
+        def _stage_for_counts(payload: dict) -> str:
+            # File-based areas report the live item stage; legacy areas keep current_stage.
+            return payload.get("stage_bucket") or payload["current_stage"]
+
         summary = {
             "packages": len(package_payloads),
-            "production": sum(1 for p in package_payloads if p["current_stage"] in {"not_started", "production", "production_rework"}),
-            "qc": sum(1 for p in package_payloads if p["current_stage"] == "qc"),
-            "qa": sum(1 for p in package_payloads if p["current_stage"] == "qa"),
-            "delivery_ready": sum(1 for p in package_payloads if p["current_stage"] == "delivery_ready"),
-            "delivered": sum(1 for p in package_payloads if p["current_stage"] == "delivered"),
+            "production": sum(1 for p in package_payloads if _stage_for_counts(p) in {"not_started", "production", "production_rework"}),
+            "qc": sum(1 for p in package_payloads if _stage_for_counts(p) == "qc"),
+            "qa": sum(1 for p in package_payloads if _stage_for_counts(p) == "qa"),
+            "delivery_ready": sum(1 for p in package_payloads if _stage_for_counts(p) == "delivery_ready"),
+            "delivered": sum(1 for p in package_payloads if _stage_for_counts(p) == "delivered"),
         }
+        # V8.1 production tracking (additive): server-side progress for this project's
+        # visible packages. Production % can legitimately be 100 while QC/QA/Delivery
+        # are still pending Ã¢â‚¬â€ both figures are always exposed separately.
+        tracking = aggregate_project_progress(packages, workflow.performing_department_code, item_contexts)
+        summary["production_progress_percent"] = tracking["production_progress_percent"]
+        summary["workflow_progress_percent"] = tracking["workflow_progress_percent"]
+        summary["measurement_groups"] = [
+            {k: (float(v) if hasattr(v, "as_tuple") else v) for k, v in group.items()}
+            for group in tracking["measurement_groups"]
+        ]
         base = {
             "project_id": project.id,
             "project_code": project.project_code,
@@ -1980,7 +2569,7 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             # rework (or any later lifecycle stage) they would be rejected, so they are not offered.
             "can_manage_team": viewer_is_pm and status_key in TEAM_SELECTION_STATUSES,
             "can_allocate_work": viewer_is_tl and status_key in WORK_ALLOCATION_STATUSES,
-            "can_complete_project": viewer_is_pm and status_key in WORK_ALLOCATION_STATUSES and bool(package_payloads) and all(p["current_stage"] == "delivered" for p in package_payloads),
+            "can_complete_project": viewer_is_pm and status_key in WORK_ALLOCATION_STATUSES and bool(package_payloads) and all(_stage_for_counts(p) == "delivered" for p in package_payloads),
             "rework": None,
         }
         if viewer_is_pm or viewer_is_tl or role in {ADMIN_ROLE, MANAGEMENT_ROLE}:
@@ -1996,7 +2585,11 @@ def ortho_dashboard(db: Session, *, actor: User, role: str) -> dict:
             })
         result.append(base)
     return {
-        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if role == ORTHO_ROLE else "participant"),
+        "viewer_mode": "read_only" if role in {ADMIN_ROLE, MANAGEMENT_ROLE} else ("project_manager" if is_technical_pm_role(role) else "participant"),
         "projects": result,
-        "employees": employee_options(db) if role == ORTHO_ROLE and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result) else [],
+        "employees": (
+            employee_options(db, department_code=department_for_pm_role(role))
+            if is_technical_pm_role(role) and any(p["can_manage_team"] or (p["rework"] or {}).get("can_confirm_team") for p in result)
+            else []
+        ),
     }

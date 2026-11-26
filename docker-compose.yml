@@ -52,6 +52,9 @@ services:
       DOCS_ENABLED: "true"
       ENABLE_BACKGROUND_WATCHER: "true"
       SEED_DEFAULT_USERS: "true"
+      # Local integration testing can use the configured shared test password.
+      # Production rejects this setting in backend configuration.
+      LOCAL_TEST_AUTH_BYPASS: ${LOCAL_TEST_AUTH_BYPASS:-false}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALGORITHM: HS256
@@ -84,10 +87,20 @@ services:
       SEED_BD_MANAGER_PASSWORD: ${SEED_BD_MANAGER_PASSWORD:-}
       SEED_ORTHO_PM_EMAIL: ${SEED_ORTHO_PM_EMAIL:-}
       SEED_ORTHO_PM_PASSWORD: ${SEED_ORTHO_PM_PASSWORD:-}
+      SEED_LIDAR_PM_EMAIL: ${SEED_LIDAR_PM_EMAIL:-}
+      SEED_LIDAR_PM_PASSWORD: ${SEED_LIDAR_PM_PASSWORD:-}
+      SEED_MOBILE_MAPPING_PM_EMAIL: ${SEED_MOBILE_MAPPING_PM_EMAIL:-}
+      SEED_MOBILE_MAPPING_PM_PASSWORD: ${SEED_MOBILE_MAPPING_PM_PASSWORD:-}
+      SEED_LASER_SCANNING_PM_EMAIL: ${SEED_LASER_SCANNING_PM_EMAIL:-}
+      SEED_LASER_SCANNING_PM_PASSWORD: ${SEED_LASER_SCANNING_PM_PASSWORD:-}
+      SEED_CIVIL_PM_EMAIL: ${SEED_CIVIL_PM_EMAIL:-}
+      SEED_CIVIL_PM_PASSWORD: ${SEED_CIVIL_PM_PASSWORD:-}
       SEED_EMPLOYEE_TEST_EMAIL: ${SEED_EMPLOYEE_TEST_EMAIL:-}
       SEED_EMPLOYEE_TEST_PASSWORD: ${SEED_EMPLOYEE_TEST_PASSWORD:-}
       ENABLE_TEST_EMPLOYEE_SEED: ${ENABLE_TEST_EMPLOYEE_SEED:-false}
       TEST_EMPLOYEE_SEED_PASSWORD: ${TEST_EMPLOYEE_SEED_PASSWORD:-}
+      MULTI_DEPARTMENT_TEST_EMPLOYEE_SEED_PASSWORD: ${MULTI_DEPARTMENT_TEST_EMPLOYEE_SEED_PASSWORD:-}
+      ENABLE_UAT_2026_CONTROLS: ${ENABLE_UAT_2026_CONTROLS:-true}
       MINIO_ENDPOINT: minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -122,10 +135,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8100:8000"
+      - "8101:8000"
     volumes:
       - ./backend:/app
       - ./local-backups:/backups
+      # ReportLab cannot resolve a browser URL. Mount the same official frontend
+      # brand asset read-only so generated A4 PDFs embed the real NakshaTech logo.
+      - ./frontend/public/nakshatech-logo.png:/app/app/nakshatech-logo.png:ro
     depends_on:
       db:
         condition: service_healthy
@@ -160,7 +176,7 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     ports:
-      - "8088:80"
+      - "8090:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

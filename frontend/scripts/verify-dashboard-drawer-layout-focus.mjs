@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const root = process.cwd()
-const read = relative => fs.readFileSync(path.join(root, relative), 'utf8')
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8').replaceAll('\r\n', '\n')
 const styles = read('src/styles.css')
 const drawer = read('src/components/AssetDrilldownDrawer.tsx')
 
@@ -14,7 +14,7 @@ function forbidText(source, text, label) {
   if (source.includes(text)) throw new Error(`${label} is still present: ${text}`)
 }
 
-requireText(drawer, 'className="drilldown-header"', 'Drawer header')
+requireText(drawer, "className={`drilldown-header", 'Drawer header')
 requireText(drawer, "className={`drilldown-visual-toggle", 'Show/Hide Visuals button')
 requireText(drawer, "aria-controls=\"asset-drilldown-visuals\"", 'Visual toggle accessibility target')
 requireText(drawer, 'className="drilldown-search"', 'Drawer search shell')

@@ -2,6 +2,7 @@ import { Eye, EyeOff, LockKeyhole, QrCode, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../context/AuthContext'
+import { ApiError } from '../../../lib/api'
 import { roleDisplayName, roleHomePath } from '../../../lib/roles'
 import { AuthFlowShell } from '../components/AuthFlowShell'
 import '../../../management-auth.css'
@@ -12,6 +13,7 @@ export function AuthenticatorPage() {
     pendingAuthenticatorSetup,
     user,
     needsBranchSelection,
+    clearPendingAuthenticatorSetup,
     confirmRegistrationAuthenticator,
     completePrivilegedPasswordSetup,
   } = useAuth()
@@ -20,6 +22,7 @@ export function AuthenticatorPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [setupSessionExpired, setSetupSessionExpired] = useState(false)
   const [loading, setLoading] = useState(false)
 
   if (user) return <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace />
@@ -28,12 +31,13 @@ export function AuthenticatorPage() {
   const passwordStep = Boolean(pendingAuthenticatorSetup.passwordChangeRequired)
   const setupRole = pendingAuthenticatorSetup.user?.role
   const setupRoleName = setupRole ? roleDisplayName(setupRole) : 'Account'
-  const privilegedActivation = setupRole === 'management' || setupRole === 'software_team' || setupRole === 'it'
+  const privilegedActivation = ['management', 'software_team', 'it', 'finance', 'hr'].includes(setupRole ?? '')
 
   async function submitAuthenticator(event: FormEvent) {
     event.preventDefault()
     setLoading(true)
     setError('')
+    setSetupSessionExpired(false)
     try {
       const result = await confirmRegistrationAuthenticator(code)
       if (result.password_change_required) {
@@ -43,7 +47,12 @@ export function AuthenticatorPage() {
       if (!result.user) throw new Error('Authentication response is incomplete')
       navigate(result.branch_selection_required ? '/select-branch' : roleHomePath(result.user.role), { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authenticator verification failed')
+      if (err instanceof ApiError && err.status === 401) {
+        setSetupSessionExpired(true)
+        setError('This verification session expired or is no longer valid. Sign in again to resume setup. Your account and authenticator enrollment are preserved.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Authenticator verification failed')
+      }
     } finally {
       setLoading(false)
     }
@@ -53,15 +62,29 @@ export function AuthenticatorPage() {
     event.preventDefault()
     setLoading(true)
     setError('')
+    setSetupSessionExpired(false)
     try {
       const result = await completePrivilegedPasswordSetup(newPassword, confirmPassword)
       if (!result.user) throw new Error('Authentication response is incomplete')
       navigate(roleHomePath(result.user.role), { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Password setup failed')
+      if (err instanceof ApiError && err.status === 401) {
+        setSetupSessionExpired(true)
+        setError('This password setup session expired or is no longer valid. Sign in again to resume setup. Your verified authenticator and account are preserved.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Password setup failed')
+      }
     } finally {
       setLoading(false)
     }
+  }
+
+  function restartSetup() {
+    clearPendingAuthenticatorSetup()
+    navigate('/login', {
+      replace: true,
+      state: { notice: `Your ${setupRoleName} setup session expired. Sign in with the same organization email and temporary password to continue; your account setup is preserved.` },
+    })
   }
 
   return (
@@ -129,6 +152,10 @@ export function AuthenticatorPage() {
             Use at least 10 characters with uppercase, lowercase, number, and special character.
           </div>
           {error && <div className="error-message" role="alert">{error}</div>}
+          {setupSessionExpired && <button className="final-login-submit" type="button" onClick={restartSetup}>
+            <span>Sign in again to resume setup</span>
+            <i>→</i>
+          </button>}
           <button
             className="final-login-submit"
             disabled={loading || newPassword.length < 10 || confirmPassword.length < 10}
@@ -144,7 +171,9 @@ export function AuthenticatorPage() {
             <div>
               <QrCode size={21} />
               <strong>Scan this QR code</strong>
-              <span>Use Google Authenticator, then enter the current six-digit code below.</span>
+              <span>
+                Account: {pendingAuthenticatorSetup.user?.email}. Use Google Authenticator, then enter the current six-digit code below.
+              </span>
             </div>
           </div>}
           <label className="final-login-field">
@@ -171,6 +200,10 @@ export function AuthenticatorPage() {
             </span>
           </div>
           {error && <div className="error-message" role="alert">{error}</div>}
+          {setupSessionExpired && <button className="final-login-submit" type="button" onClick={restartSetup}>
+            <span>Sign in again to resume setup</span>
+            <i>→</i>
+          </button>}
           <button className="final-login-submit" disabled={loading || code.length !== 6}>
             <span>{loading ? 'Verifying...' : 'Verify & Continue'}</span>
             <i>→</i>

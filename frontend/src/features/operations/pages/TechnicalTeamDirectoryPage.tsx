@@ -247,6 +247,11 @@ export function TechnicalTeamDirectoryPage() {
       title={title}
       description={data?.live_technical_routing_enabled ? 'Production routing is active. Real directory PMs and configured recipients now own technical assignments, samples, handovers, progress, completion and email notifications.' : 'Prepare all six real technical teams, finish open UAT work, then Admin can perform one controlled production cutover from demo routing to real NakshaTech accounts.'}
       actions={<button className="operations-button secondary" type="button" onClick={load}><RefreshCcw size={16}/> Refresh</button>}
+      meta={<>
+        <span className="nk-meta-chip"><ShieldCheck size={14}/> {data?.live_technical_routing_enabled ? 'Production technical routing active' : 'UAT demo routing active'}</span>
+        <span className="nk-meta-chip"><LockKeyhole size={14}/> Controlled Admin cutover only</span>
+        <span className="nk-meta-chip"><Users size={14}/> Six real technical departments</span>
+      </>}
     />
 
     <div className={`technical-directory-lock ${data?.live_technical_routing_enabled ? 'technical-routing-live' : ''}`}>{data?.live_technical_routing_enabled ? <ShieldCheck size={17}/> : <LockKeyhole size={17}/>}<div><strong>{data?.live_technical_routing_enabled ? 'PRODUCTION TECHNICAL ROUTING ACTIVE' : 'UAT DEMO ROUTING ACTIVE'}</strong><span>{data?.cutover.message || data?.go_live_message || 'Checking Phase 7 production prerequisites…'}</span></div></div>

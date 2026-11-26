@@ -1,0 +1,25 @@
+﻿services:
+  frontend:
+    ports: !override
+      - "3200:3100"
+
+  backend:
+    ports: !override
+      - "8200:8000"
+
+  db:
+    ports: !override
+      - "5435:5432"
+
+  redis:
+    ports: !override
+      - "6381:6379"
+
+  minio:
+    ports: !override
+      - "9014:9000"
+      - "9015:9001"
+
+  nginx:
+    ports: !override
+      - "8188:80"

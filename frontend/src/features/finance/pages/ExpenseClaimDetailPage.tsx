@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { ArrowLeft, CheckCircle2, Download, ExternalLink, FileArchive, FileText, IndianRupee, RefreshCw, Send, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
@@ -23,7 +24,7 @@ export function ExpenseClaimDetailPage() {
   const [approvedAmount, setApprovedAmount] = useState('')
   const [paidAmount, setPaidAmount] = useState('')
   const [paymentMode, setPaymentMode] = useState<FinancePaymentMode>('bank_transfer')
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [paymentDate, setPaymentDate] = useState(() => indiaDateInput())
   const [approvedWorkStart, setApprovedWorkStart] = useState('')
   const [approvedWorkEnd, setApprovedWorkEnd] = useState('')
   const [settlementDue, setSettlementDue] = useState('')

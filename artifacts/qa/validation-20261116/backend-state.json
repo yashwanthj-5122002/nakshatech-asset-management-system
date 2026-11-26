@@ -1,0 +1,22 @@
+[
+  {
+    "shard": 0,
+    "pid": 14372,
+    "exit_code": 1
+  },
+  {
+    "shard": 1,
+    "pid": 8088,
+    "exit_code": 1
+  },
+  {
+    "shard": 2,
+    "pid": 3128,
+    "exit_code": 1
+  },
+  {
+    "shard": 3,
+    "pid": 28376,
+    "exit_code": 1
+  }
+]

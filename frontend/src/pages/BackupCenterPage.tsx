@@ -160,6 +160,10 @@ export function BackupCenterPage() {
         eyebrow="DISASTER-SAFE BACKUP CENTRE"
         title="Backups & Historical Excel"
         description="Download day, month, current-month, calendar-year and financial-year records. Scheduled server backups remain outside the public website folder."
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Day · month · year · financial-year exports</span>
+          <span className="nk-meta-chip"><CheckCircle2 size={14} /> Scheduled server backups kept off the public site</span>
+        </>}
       />
 
       {message && <div className="success-message">{message}</div>}

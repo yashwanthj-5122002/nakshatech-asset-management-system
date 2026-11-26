@@ -2,9 +2,11 @@ import {
   Archive,
   ArrowRightLeft,
   CalendarDays,
+  CheckCircle2,
   ChevronRight,
   FileDown,
   Filter,
+  HardDrive,
   Pencil,
   Plus,
   Repeat2,
@@ -12,15 +14,17 @@ import {
   Save,
   Search,
   Trash2,
+  Wrench,
   X,
 } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
+import { StatCard } from '../components/StatCard'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, downloadFile } from '../lib/api'
-import { formatIndiaDateTime, isCurrentIndiaMonth } from '../lib/date'
+import { formatIndiaDateTime, indiaDateInput, isCurrentIndiaMonth } from '../lib/date'
 import { isFullAccessRole } from '../lib/roles'
 import { withITMonth } from '../lib/itMonth'
 import type { Asset, ReportMonth } from '../types'
@@ -149,8 +153,8 @@ export function AssetsPage() {
   const [device, setDevice] = useState('')
   const [assignmentOpen, setAssignmentOpen] = useState(false)
   const [returnOpen, setReturnOpen] = useState(false)
-  const [assignment, setAssignment] = useState({ used_by: '', department: '', workstation_no: '', location: 'Head Office', work_mode: 'office', assigned_date: new Date().toISOString().slice(0, 10), remarks: '' })
-  const [returnForm, setReturnForm] = useState({ return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+  const [assignment, setAssignment] = useState({ used_by: '', department: '', workstation_no: '', location: 'Head Office', work_mode: 'office', assigned_date: indiaDateInput(), remarks: '' })
+  const [returnForm, setReturnForm] = useState({ return_mode: 'complete_return' as 'complete_return' | 'return_without_monitor', return_date: indiaDateInput(), remarks: '' })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -234,7 +238,7 @@ export function AssetsPage() {
       })
       setReturnOpen(false)
       setSelected(null)
-      setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+      setReturnForm({ return_mode: 'complete_return', return_date: indiaDateInput(), remarks: '' })
       const retained = result.retained_monitor_tags ? ` Monitor retained: ${result.retained_monitor_tags}.` : ''
       if (selectedDeviceType === 'External HDD') {
         setMessage(`${result.cpu_asset_tag || result.asset_code} returned / removed from the active External HDD register. External HDD count decreases by 1. Total IT Assets is unchanged.${retained}`)
@@ -284,14 +288,14 @@ export function AssetsPage() {
     setAssignment({
       used_by: '', department: selected.department || '', workstation_no: selected.workstation_no || '',
       location: selected.location || 'Head Office', work_mode: selected.work_mode || 'office',
-      assigned_date: new Date().toISOString().slice(0, 10), remarks: '',
+      assigned_date: indiaDateInput(), remarks: '',
     })
     setAssignmentOpen(true)
   }
 
   function openReturnRemove() {
     if (!selected) return
-    setReturnForm({ return_mode: 'complete_return', return_date: new Date().toISOString().slice(0, 10), remarks: '' })
+    setReturnForm({ return_mode: 'complete_return', return_date: indiaDateInput(), remarks: '' })
     setReturnOpen(true)
   }
 
@@ -305,6 +309,17 @@ export function AssetsPage() {
           {historicalReporting && <button className="secondary-button" onClick={returnToPresent}><RotateCcw size={17} /> Return to Present</button>}
           <button className="secondary-button" onClick={() => void exportReturnedAssets()}><FileDown size={17} /> Returned Assets Excel</button>
           {canEdit && <button className="primary-button" onClick={() => navigate(withITMonth('/assets/new', selectedMonth))}><Plus size={17} /> Add IT Asset</button>}
+        </>}
+        summary={<>
+          <StatCard icon={Filter} label="Records in view" value={assets.length} note={`${departments.length} departments represented`} />
+          <StatCard icon={CheckCircle2} label="Assigned" value={assets.filter(asset => asset.used_by).length} tone="green" note="Custodian recorded" />
+          <StatCard icon={Archive} label="Available" value={assets.filter(asset => asset.status === 'available').length} tone="navy" note="Unassigned inventory" />
+          <StatCard icon={Wrench} label="Repair / Replacement" value={assets.filter(asset => asset.status === 'repair' || asset.status === 'replacement_pending').length} tone="orange" note="Needs IT attention" />
+        </>}
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Reporting month {monthInfo?.label || selectedMonth}</span>
+          <span className="nk-meta-chip"><Search size={14} /> {status ? status.replaceAll('_', ' ') : device || 'All statuses & devices'}</span>
+          {qualityFilterLabel && <span className="nk-meta-chip"><Filter size={14} /> Alert filter: {qualityFilterLabel}</span>}
         </>}
       />
       {monthInfo && <div className={`register-month-banner ${historicalReporting ? 'historical' : 'live'}`}><CalendarDays size={18} /><strong>Reporting activity to {monthInfo.label}</strong><span>Live asset values remain current; remarks stay only on the saved activity unless the Asset Master Remarks field itself is edited.</span></div>}
@@ -324,12 +339,21 @@ export function AssetsPage() {
 
       <section className={`asset-register-layout ${selected ? 'with-detail' : ''}`}>
         <article className="panel asset-table-panel">
+          {!error && assets.length === 0 ? (
+            <div className="nk-empty">
+              <span className="nk-empty-icon"><HardDrive size={22} /></span>
+              <h3>No assets match this view</h3>
+              <p>Nothing in the register matches the current search, device type, status or alert filter. Reset them to see the full asset register again.</p>
+              <div className="nk-empty-action"><button className="secondary-button" onClick={() => { setSearch(''); setStatus(''); setDevice(''); clearQualityFilter() }}>Reset filters</button></div>
+            </div>
+          ) : (
           <div className="table-wrap">
             <table className="asset-table">
               <thead><tr><th>CPU / Asset Tag</th><th>Workstation</th><th>Used By</th><th>Department</th><th>Device</th><th>System / Model</th><th>Location</th><th>Status</th><th>Last Change</th><th /></tr></thead>
               <tbody>{assets.map(asset => <tr key={`${asset.id}-${asset.asset_code}`} onClick={() => void openAsset(asset.id)}><td><strong>{asset.cpu_asset_tag || 'Not recorded'}</strong><small>Internal: {asset.asset_code}</small></td><td><strong>{asset.workstation_no || '—'}</strong></td><td>{asset.used_by || <span className="muted">Unassigned</span>}</td><td>{asset.department || '—'}</td><td>{asset.device_type}</td><td>{asset.device_type === 'Printer' ? (asset.model || asset.system_name || '—') : (asset.system_name || '—')}</td><td>{asset.location || '—'}</td><td><span className={`status ${asset.status}`}>{asset.status.replaceAll('_', ' ')}</span></td><td className="asset-last-change">{asset.last_change_at ? <><strong>{formatAuditDate(asset.last_change_at)}</strong><small>{asset.last_changed_by || 'System'}{changedThisMonth(asset.last_change_at) ? ' · Updated this month' : ''}</small></> : <span className="muted">No system edit</span>}</td><td><ChevronRight size={17} /></td></tr>)}</tbody>
             </table>
           </div>
+          )}
         </article>
 
         {selected && <aside className="asset-detail panel">

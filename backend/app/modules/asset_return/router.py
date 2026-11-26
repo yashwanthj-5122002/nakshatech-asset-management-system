@@ -321,8 +321,11 @@ def active_monthly_assets_excel(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "management", "it")),
 ) -> StreamingResponse:
-    start = parse_month_key(month)
-    stream = build_active_monthly_asset_report(db, month)
+    try:
+        start = parse_month_key(month)
+        stream = build_active_monthly_asset_report(db, month)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     filename = f"NakshaTech Asset Register - {start.strftime('%B %Y')}.xlsx"
     return StreamingResponse(stream, media_type=EXCEL_MIME, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
@@ -333,8 +336,11 @@ def active_monthly_summary_excel(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "management", "it")),
 ) -> StreamingResponse:
-    start = parse_month_key(month)
-    stream = build_active_monthly_summary_report(db, month)
+    try:
+        start = parse_month_key(month)
+        stream = build_active_monthly_summary_report(db, month)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     filename = f"NakshaTech Monthly Asset Summary - {start.strftime('%B %Y')}.xlsx"
     return StreamingResponse(stream, media_type=EXCEL_MIME, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
@@ -371,8 +377,11 @@ def active_complete_monthly_excel(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "management", "it")),
 ) -> StreamingResponse:
-    period = monthly_period(month)
-    stream = build_active_complete_period_report(db, period)
+    try:
+        period = monthly_period(month)
+        stream = build_active_complete_period_report(db, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     filename = f"NakshaTech Complete IT Report - {period.label}.xlsx"
     return StreamingResponse(stream, media_type=EXCEL_MIME, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
@@ -384,8 +393,11 @@ def active_complete_yearly_excel(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "management", "it")),
 ) -> StreamingResponse:
-    period = yearly_period(year, period_type)
-    stream = build_active_complete_period_report(db, period)
+    try:
+        period = yearly_period(year, period_type)
+        stream = build_active_complete_period_report(db, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     filename = f"NakshaTech Complete IT Report - {period.label}.xlsx"
     return StreamingResponse(stream, media_type=EXCEL_MIME, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 

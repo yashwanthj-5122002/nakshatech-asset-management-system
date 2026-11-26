@@ -3,31 +3,50 @@ from __future__ import annotations
 from datetime import date
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException,Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
+from typing import Literal
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import TECHNICAL_PM_ROLES
+from app.core.department_access import ensure_project_department_access
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.commercial.service import commercial_summary
 from app.modules.employee_portal.service import record_audit
 from app.modules.finance.schemas import FinanceClientCreateRequest
 from app.modules.finance.service import client_payload
+from app.modules.operations.lifecycle_models import ProjectReworkCycle
+from app.modules.operations.models import OrthoWorkPackage
 from app.modules.operations.schemas import (
     WorkflowDailyActivity,
     WorkflowDeliveryRequest,
+    WorkflowFileAllocation,
     WorkflowFinanceClosure,
     WorkflowFinanceReview,
+    WorkflowItemActivityStart,
+    WorkflowItemActivityStop,
+    WorkflowItemDelivery,
+    WorkflowItemsAssign,
+    WorkflowItemsCreate,
+    WorkflowItemsGenerate,
+    WorkflowItemUpdate,
     WorkflowOperationalCompletion,
     WorkflowPMAssignment,
+    WorkflowPackageGeneralUpdate,
+    WorkflowPackageTimelineUpdate,
     WorkflowProjectCreate,
     WorkflowReviewRequest,
     WorkflowReworkAllocation,
     WorkflowReworkTeamConfirm,
+    WorkflowStageUpdate,
     WorkflowTeamSetup,
     WorkflowWorkAllocation,
 )
+from app.modules.operations import production_allocation, production_items, assignment_review, cld_bulk_delivery
+from app.modules.operations.models import WorkPackageItem
 from app.modules.operations.workflow_service import (
     ADMIN_ROLE,
     BD_ROLE,
@@ -66,6 +85,15 @@ from app.modules.operations.workflow_service import (
     submit_project_to_finance,
 )
 from app.modules.operations.workflow_reporting import build_project_operations_workbook
+from app.modules.bd_employee.handoff_router import link_new_bd_project_if_requested, synchronize_bd_project_link
+from app.modules.operations.production_service import (
+    package_stage_history,
+    tracking_summary,
+    update_package_general,
+    update_trackable_stage,
+)
+from app.modules.operations.production_reporting import build_production_workbook
+from fastapi.responses import Response
 
 router = APIRouter(prefix="/workflow", tags=["Authoritative Project Workflow"])
 
@@ -104,6 +132,27 @@ def _audit(request: Request, db: Session, auth: CurrentAuth, event: str, target:
     )
 
 
+def _ensure_project_department(db: Session, auth: CurrentAuth, project_id: int) -> None:
+    """Department isolation for normal employees on project-scoped workflow actions."""
+    ensure_project_department_access(db, auth.user, _role(auth), project_id)
+
+
+def _ensure_package_project(db: Session, auth: CurrentAuth, work_package_id: int) -> int:
+    package = db.get(OrthoWorkPackage, work_package_id)
+    if package is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work package not found")
+    _ensure_project_department(db, auth, package.project_id)
+    return package.project_id
+
+
+def _ensure_cycle_project(db: Session, auth: CurrentAuth, cycle_id: int) -> int:
+    cycle = db.get(ProjectReworkCycle, cycle_id)
+    if cycle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rework cycle not found")
+    _ensure_project_department(db, auth, cycle.project_id)
+    return cycle.project_id
+
+
 @router.get("/bd/dashboard")
 def workflow_bd_dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
     _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
@@ -116,6 +165,30 @@ def workflow_bd_project_register(
 ):
     _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return bd_dashboard(db, actor=auth.user, role=_role(auth))
+
+
+@router.get("/bd/project-tracking")
+def workflow_bd_project_tracking(
+    project_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Read-only tracking for BD projects, scoped to the existing BD register.
+
+    Does not grant BD access to employee/PM mutation or file activity routes.
+    A user-controlled project_id may narrow but never widen the authorized set.
+    """
+    _roles(auth, BD_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    register = bd_dashboard(db, actor=auth.user, role=_role(auth))
+    allowed_ids = {int(p["id"]) for p in register.get("projects", []) if p.get("id") is not None}
+    # The existing BD register decides project visibility, including department boundaries.
+    if project_id is not None:
+        allowed_ids.intersection_update({project_id})
+    return tracking_summary(
+        db, actor=auth.user, role=_role(auth),
+        authorized_bd_project_ids=allowed_ids if _role(auth) == BD_ROLE else None,
+        project_id=project_id,
+    )
 
 
 @router.get("/bd/client-register")
@@ -156,7 +229,8 @@ def workflow_create_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = create_bd_project(db, actor=auth.user, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
+        link_new_bd_project_if_requested(db, project=project, manager=auth.user)
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CREATED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
@@ -175,7 +249,8 @@ def workflow_update_project(
     _roles(auth, BD_ROLE)
     try:
         project, workflow = update_bd_project(db, actor=auth.user, project_id=project_id, payload=payload)
-        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "commercial_revision1": payload.commercial is not None})
+        synchronize_bd_project_link(db, project=project, manager=auth.user)
+        _audit(request, db, auth, "WORKFLOW_BD_PROJECT_CORRECTED", "finance_project", project.id, {"project_code": project.project_code, "workflow_status": workflow.status, "performing_department_code": workflow.performing_department_code, "commercial_revision1": payload.commercial is not None})
         db.commit()
         return {"project_id": project.id, "project_code": project.project_code, "workflow_status": workflow.status, "commercial": commercial_summary(db, project_id=project.id)}
     except Exception as exc:
@@ -301,7 +376,7 @@ def workflow_finance_close(
 
 @router.get("/ortho/dashboard")
 def workflow_ortho_dashboard(db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth)):
-    _roles(auth, ORTHO_ROLE, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
     return ortho_dashboard(db, actor=auth.user, role=_role(auth))
 
 
@@ -313,7 +388,7 @@ def workflow_team_setup(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         workflow, roles_by_user = configure_team(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_PM_TEAM_ASSIGNED", "finance_project", project_id, {"team_leader_user_id": payload.team_leader_user_id, "production_user_ids": payload.production_user_ids, "qc_user_ids": payload.qc_user_ids, "qa_user_ids": payload.qa_user_ids, "workflow_status": workflow.status})
@@ -333,7 +408,7 @@ def workflow_rework_team(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         cycle, roles_by_user = confirm_rework_team(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_PM_REWORK_TEAM_CONFIRMED", "finance_project", cycle.project_id, {"rework_cycle_id": cycle.id, "cycle_number": cycle.cycle_number, "mode": payload.mode, "team_leader_user_id": cycle.team_leader_user_id, "workflow_status": cycle.status})
@@ -353,6 +428,7 @@ def workflow_allocate_rework(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_cycle_project(db, auth, cycle_id)
     try:
         package = allocate_rework_work(db, actor=auth.user, cycle_id=cycle_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_TL_REWORK_WORK_ALLOCATED", "finance_project", package.project_id, {"rework_cycle_id": cycle_id, "package_code": package.package_code, "rework_of_package_id": package.rework_of_package_id})
@@ -372,6 +448,7 @@ def workflow_allocate_work(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
     try:
         package = allocate_work(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_TEAM_LEAD_ALLOCATED_WORK", "ortho_work_package", package.id, {"project_id": project_id, "package_code": package.package_code})
@@ -392,6 +469,7 @@ def workflow_daily_activity(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         row = record_daily_activity(db, actor=auth.user, work_package_id=work_package_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_DAILY_ACTIVITY", "ortho_work_package", work_package_id, {"daily_activity_id": row.id, "quantity_completed": str(row.achieved_area or 0), "files_completed": row.files_completed})
@@ -410,6 +488,7 @@ def workflow_production_complete(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = complete_production(db, actor=auth.user, work_package_id=work_package_id)
         _audit(request, db, auth, "WORKFLOW_PRODUCTION_COMPLETED", "ortho_work_package", work_package_id, {"current_stage": package.current_stage})
@@ -430,6 +509,7 @@ def workflow_qc_review(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = review_work(db, actor=auth.user, work_package_id=work_package_id, kind="qc", payload=payload)
         _audit(request, db, auth, f"WORKFLOW_QC_{payload.decision.upper()}", "ortho_work_package", work_package_id, {"comments": payload.comments})
@@ -450,6 +530,7 @@ def workflow_qa_review(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     _roles(auth, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = review_work(db, actor=auth.user, work_package_id=work_package_id, kind="qa", payload=payload)
         _audit(request, db, auth, f"WORKFLOW_QA_{payload.decision.upper()}", "ortho_work_package", work_package_id, {"comments": payload.comments})
@@ -469,7 +550,8 @@ def workflow_deliver(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE, EMPLOYEE_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
     try:
         package = mark_delivered(db, actor=auth.user, work_package_id=work_package_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_DELIVERED", "ortho_work_package", work_package_id, {"remarks": payload.remarks})
@@ -489,7 +571,7 @@ def workflow_operational_complete(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, ORTHO_ROLE)
+    _roles(auth, *TECHNICAL_PM_ROLES)
     try:
         workflow = operational_complete(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "WORKFLOW_OPERATIONAL_COMPLETION", "finance_project", project_id, {"completion_date": payload.completion_date.isoformat(), "delivery_reference": payload.final_delivery_reference, "workflow_status": workflow.status})
@@ -499,3 +581,891 @@ def workflow_operational_complete(
         raise _error(exc) from exc
     email_operational_completion(db, project_id=project_id)
     return {"project_id": project_id, "workflow_status": workflow.status, "completion_date": workflow.completion_date.isoformat() if workflow.completion_date else None}
+
+
+# ===========================================================================================
+# V8.1 shared production tracking (ADDITIVE). None of the endpoints above are modified;
+# these expose the optional additional stages (Import / DXF / Inspection / Upload), the
+# general package context, the merged audit history, and server-side tracking summaries
+# / exports for Team Lead, PM and read-only Management dashboards.
+# ===========================================================================================
+
+@router.post("/ortho/work-packages/{work_package_id}/stage")
+def workflow_stage_update(
+    work_package_id: int,
+    payload: WorkflowStageUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        package = update_trackable_stage(
+            db,
+            actor=auth.user,
+            work_package_id=work_package_id,
+            stage=payload.stage,
+            status_value=payload.status,
+            remarks=payload.remarks,
+            dxf_user_id=payload.dxf_user_id,
+        )
+        _audit(request, db, auth, f"WORKFLOW_STAGE_{payload.stage.upper()}_UPDATED", "ortho_work_package", work_package_id, {"stage": payload.stage, "status": payload.status, "remarks": payload.remarks})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    from app.modules.operations.production_stages import STAGE_STATUS_ATTR as _STATUS_ATTR
+    return {
+        "id": package.id,
+        "stage": payload.stage,
+        "status": getattr(package, _STATUS_ATTR[payload.stage], None),
+        "current_stage": package.current_stage,
+    }
+
+
+@router.patch("/ortho/work-packages/{work_package_id}/general")
+def workflow_package_general_update(
+    work_package_id: int,
+    payload: WorkflowPackageGeneralUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        package = update_package_general(
+            db,
+            actor=auth.user,
+            work_package_id=work_package_id,
+            lot_batch=payload.lot_batch,
+            supply_date=payload.supply_date,
+            remarks=payload.remarks,
+        )
+        _audit(request, db, auth, "WORKFLOW_PACKAGE_GENERAL_UPDATED", "ortho_work_package", work_package_id, {
+            "lot_batch": package.lot_batch, "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+        })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {
+        "id": package.id,
+        "lot_batch": package.lot_batch,
+        "supply_date": package.supply_date.isoformat() if package.supply_date else None,
+        "remarks": package.remarks,
+    }
+
+
+@router.get("/ortho/work-packages/{work_package_id}/history")
+def workflow_package_history(
+    work_package_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        rows = package_stage_history(db, actor=auth.user, role=_role(auth), work_package_id=work_package_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"work_package_id": work_package_id, "events": rows}
+
+
+@router.get("/production-tracking")
+def workflow_production_tracking(
+    project_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    return tracking_summary(db, actor=auth.user, role=_role(auth), project_id=project_id)
+
+
+@router.get("/production-tracking/export.xlsx")
+def workflow_production_tracking_export(
+    report: str = Query(default="production_detail"),
+    project_id: int | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE, ADMIN_ROLE, MANAGEMENT_ROLE)
+    try:
+        content, filename = build_production_workbook(
+            db, report_type=report, actor=auth.user, role=_role(auth), project_id=project_id, search=search,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ===========================================================================================
+# V8.2 optional FILE / TILE / ITEM tracking (ADDITIVE). Area/work-package lifecycle above is
+# untouched; these endpoints add per-file management, real Start/Stop timings, delay capture
+# and delivery timestamps on top of the shared work-package record.
+# ===========================================================================================
+
+_WORKFLOW_ROLES = (ADMIN_ROLE, EMPLOYEE_ROLE, MANAGEMENT_ROLE)
+
+
+def _ensure_item_scope(db: Session, auth: CurrentAuth, work_package_item_id: int) -> WorkPackageItem:
+    item = db.get(WorkPackageItem, work_package_item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    _ensure_package_project(db, auth, item.work_package_id)
+    return item
+
+
+@router.get("/ortho/work-packages/{work_package_id}/items")
+def workflow_list_items(
+    work_package_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, *_WORKFLOW_ROLES)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        return production_items.item_list(db, actor=auth.user, role=_role(auth), work_package_id=work_package_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.post("/ortho/work-packages/{work_package_id}/items", status_code=status.HTTP_201_CREATED)
+def workflow_create_items(
+    work_package_id: int,
+    payload: WorkflowItemsCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        created = production_items.add_items(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id,
+            entries=[entry.model_dump() for entry in payload.items],
+        )
+        _audit(request, db, auth, "WORKFLOW_ITEMS_CREATED", "ortho_work_package", work_package_id, {"count": len(created)})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"created": len(created), "item_ids": [item.id for item in created]}
+
+
+@router.post("/ortho/work-packages/{work_package_id}/items/generate", status_code=status.HTTP_201_CREATED)
+def workflow_generate_items(
+    work_package_id: int,
+    payload: WorkflowItemsGenerate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        created = production_items.generate_sequence(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id,
+            prefix=payload.prefix, start=payload.start, count=payload.count,
+            padding=payload.padding, extension=payload.extension,
+        )
+        _audit(request, db, auth, "WORKFLOW_ITEMS_GENERATED", "ortho_work_package", work_package_id,
+               {"count": len(created), "prefix": payload.prefix, "start": payload.start})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"created": len(created), "first": created[0].item_number, "last": created[-1].item_number}
+
+
+@router.post("/ortho/work-packages/{work_package_id}/items/import", status_code=status.HTTP_201_CREATED)
+async def workflow_import_items(
+    work_package_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        content = await file.read()
+        created = production_items.import_items(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id,
+            filename=file.filename or "files.csv", content=content,
+        )
+        _audit(request, db, auth, "WORKFLOW_ITEMS_IMPORTED", "ortho_work_package", work_package_id,
+               {"count": len(created), "filename": file.filename})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"created": len(created)}
+
+
+@router.post("/ortho/work-packages/{work_package_id}/items/assign")
+def workflow_assign_items(
+    work_package_id: int,
+    payload: WorkflowItemsAssign,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        items = production_items.assign_items(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id,
+            item_ids=payload.item_ids,
+            production_user_id=payload.production_user_id,
+            qc_user_id=payload.qc_user_id,
+            qa_user_id=payload.qa_user_id,
+        )
+        _audit(request, db, auth, "WORKFLOW_ITEMS_ASSIGNED", "ortho_work_package", work_package_id,
+               {"count": len(items)})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"updated": len(items)}
+
+
+@router.patch("/ortho/items/{work_package_item_id}")
+def workflow_update_item(
+    work_package_item_id: int,
+    payload: WorkflowItemUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    item = _ensure_item_scope(db, auth, work_package_item_id)
+    try:
+        updated = production_items.update_item(
+            db, actor=auth.user, role=_role(auth), work_package_item_id=work_package_item_id,
+            changes=payload.model_dump(), provided=set(payload.model_fields_set),
+        )
+        _audit(request, db, auth, "WORKFLOW_ITEM_UPDATED", "ortho_work_package", item.work_package_id,
+               {"item_id": updated.id, "item_number": updated.item_number, "is_active": updated.is_active})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"id": updated.id, "item_number": updated.item_number, "is_active": updated.is_active,
+            "production_user_id": updated.production_user_id, "qc_user_id": updated.qc_user_id,
+            "qa_user_id": updated.qa_user_id}
+
+
+class AssignmentReviewRework(BaseModel):
+    item_id: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class AssignmentReviewBulkRework(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/start")
+def workflow_assignment_review_start(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.start_review(
+            db, actor=auth.user, role=_role(auth), package_id=work_package_id, stage=stage
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_STARTED", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_ids": [i["item_id"] for i in result["started"]]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/complete")
+def workflow_assignment_review_complete(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.complete_review(
+            db, actor=auth.user, package_id=work_package_id, stage=stage
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_COMPLETED", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_ids": [i["item_id"] for i in result["completed"]]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/rework")
+def workflow_assignment_review_rework(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    payload: AssignmentReviewRework,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.send_file_to_rework(
+            db, actor=auth.user, package_id=work_package_id, stage=stage,
+            item_id=payload.item_id, reason=payload.reason
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_REWORK", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_id": payload.item_id, "activity_id": result["activity_id"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/work-packages/{work_package_id}/review/{stage}/rework/bulk")
+def workflow_assignment_review_rework_bulk(
+    work_package_id: int,
+    stage: Literal["qc", "qa"],
+    payload: AssignmentReviewBulkRework,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        result = assignment_review.send_files_to_rework(
+            db, actor=auth.user, package_id=work_package_id, stage=stage,
+            item_ids=payload.item_ids, reason=payload.reason,
+        )
+        _audit(request, db, auth, "WORKFLOW_ASSIGNMENT_REVIEW_BULK_REWORK", "ortho_work_package",
+               work_package_id, {"stage": stage, "item_ids": result["item_ids"],
+                                 "activity_ids": result["activity_ids"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.post("/ortho/items/{work_package_item_id}/activity/start", status_code=status.HTTP_201_CREATED)
+def workflow_start_item_activity(
+    work_package_item_id: int,
+    payload: WorkflowItemActivityStart,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    item = _ensure_item_scope(db, auth, work_package_item_id)
+    try:
+        activity = production_items.start_activity(
+            db, actor=auth.user, role=_role(auth),
+            work_package_item_id=work_package_item_id, stage=payload.stage,
+        )
+        _audit(request, db, auth, f"WORKFLOW_ITEM_{payload.stage.upper()}_STARTED", "ortho_work_package",
+               item.work_package_id, {"item_id": item.id, "activity_id": activity.id})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"activity_id": activity.id, "stage": activity.stage,
+            "started_at": activity.started_at.isoformat() if activity.started_at else None}
+
+
+@router.post("/ortho/activities/{activity_id}/stop")
+def workflow_stop_item_activity(
+    activity_id: int,
+    payload: WorkflowItemActivityStop,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    activity = db.get(production_items.WorkPackageItemActivity, activity_id)
+    if activity is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activity not found")
+    _ensure_package_project(db, auth, activity.work_package_id)
+    try:
+        done = production_items.stop_activity(
+            db, actor=auth.user, activity_id=activity_id,
+            status=payload.status,
+            quantity_completed=payload.quantity_completed,
+            unit=payload.unit,
+            files_completed=payload.files_completed,
+            remarks=payload.remarks,
+            delay_category=payload.delay_category,
+            affected_item_id=payload.affected_item_id,
+            delay_reason=payload.delay_reason,
+            system_malfunction=payload.system_malfunction,
+            delay_remarks=payload.delay_remarks,
+            finalize=payload.finalize,
+        )
+        _audit(request, db, auth, f"WORKFLOW_ITEM_{done.stage.upper()}_{'FINALIZED' if payload.finalize else 'PROGRESS_SAVED'}", "ortho_work_package",
+               done.work_package_id, {
+                   "item_id": done.work_package_item_id, "activity_id": done.id,
+                   "status": done.status, "files_completed": done.files_completed,
+                   "finalized": payload.finalize,
+                   "duration_seconds": done.duration_seconds, "delay_category": done.delay_category,
+                   "system_malfunction": done.system_malfunction,
+               })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"activity_id": done.id, "stage": done.stage, "status": done.status,
+            "started_at": done.started_at.isoformat() if done.started_at else None,
+            "ended_at": done.ended_at.isoformat() if done.ended_at else None,
+            "duration_seconds": done.duration_seconds}
+
+
+@router.post("/ortho/items/{work_package_item_id}/delivery")
+def workflow_deliver_item(
+    work_package_item_id: int,
+    payload: WorkflowItemDelivery,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    item = _ensure_item_scope(db, auth, work_package_item_id)
+    try:
+        activity = production_items.deliver_item(
+            db, actor=auth.user, role=_role(auth), work_package_item_id=work_package_item_id,
+            remarks=payload.remarks, reference=payload.reference,
+        )
+        _audit(request, db, auth, "WORKFLOW_ITEM_DELIVERED", "ortho_work_package", item.work_package_id,
+               {"item_id": item.id, "activity_id": activity.id, "reference": payload.reference})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return {"activity_id": activity.id, "status": activity.status,
+            "delivered_at": activity.ended_at.isoformat() if activity.ended_at else None}
+
+
+@router.get("/ortho/items/{work_package_item_id}/activities")
+def workflow_item_history(
+    work_package_item_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, *_WORKFLOW_ROLES)
+    _ensure_item_scope(db, auth, work_package_item_id)
+    try:
+        events = production_items.item_history(
+            db, actor=auth.user, role=_role(auth), work_package_item_id=work_package_item_id
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"work_package_item_id": work_package_item_id, "events": events}
+
+
+@router.patch("/ortho/work-packages/{work_package_id}/timeline")
+def workflow_package_timeline(
+    work_package_id: int,
+    payload: WorkflowPackageTimelineUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Set production target / buffer for one area. NEVER rewrites target_date."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        package = production_items.load_package(db, work_package_id)
+        ctx = production_items.actor_context(db, package, auth.user, _role(auth))
+        production_items._ensure_mutable(ctx)
+        if "production_target_date" in payload.model_fields_set:
+            package.production_target_date = payload.production_target_date
+        if "buffer_days" in payload.model_fields_set:
+            package.production_buffer_days = payload.buffer_days
+        _audit(request, db, auth, "WORKFLOW_PACKAGE_TIMELINE_UPDATED", "ortho_work_package", work_package_id,
+               {"production_target_date": package.production_target_date.isoformat() if package.production_target_date else None,
+                "buffer_days": package.production_buffer_days, "target_date_unchanged": str(package.target_date)})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    deadline = production_items.deadline_status(
+        package, completed_at=production_items.package_completion_for_deadline(db, package)
+    )
+    return {"id": package.id, "target_date": str(package.target_date) if package.target_date else None,
+            "production_target_date": package.production_target_date.isoformat() if package.production_target_date else None,
+            "buffer_days": package.production_buffer_days, "deadline": deadline}
+
+
+# ===========================================================================================
+# V8.3 Team Lead Excel-driven daily activity allocation (ADDITIVE). The Team Lead uploads the
+# company work-file master, previews it, then confirms a transactional import that creates/reuses
+# the shared work packages (areas) and their files. Allocation then uses cascading Lot/Code/Area
+# selection with the three stage targets. Nothing here resets existing work history.
+# ===========================================================================================
+
+@router.post("/ortho/projects/{project_id}/master-import/preview")
+async def workflow_master_import_preview(
+    project_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Parse + validate the uploaded master workbook and return a preview. Writes nothing."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        content = await file.read()
+        return production_allocation.preview_master_import(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            filename=file.filename or "work-file-master", content=content,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.post("/ortho/projects/{project_id}/master-import/commit", status_code=status.HTTP_201_CREATED)
+async def workflow_master_import_commit(
+    project_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Transactional import of the confirmed master workbook (idempotent, history-safe)."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        content = await file.read()
+        summary = production_allocation.commit_master_import(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            filename=file.filename or "work-file-master", content=content,
+        )
+        _audit(request, db, auth, "WORKFLOW_MASTER_IMPORT_COMMITTED", "finance_project", project_id, {
+            "filename": file.filename, "created_packages": summary["created_packages"],
+            "created_items": summary["created_items"], "skipped_existing": summary["skipped_existing"],
+            "conflicts": len(summary["conflicts"]),
+        })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return summary
+
+
+class WorkflowUndoMasterAreas(BaseModel):
+    package_ids: list[int] = Field(min_length=1, max_length=5000)
+
+
+@router.get("/ortho/projects/{project_id}/master-import/undo-options")
+def workflow_master_import_undo_options(
+    project_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        return production_allocation.master_import_removal_options(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/ortho/projects/{project_id}/master-import/undo")
+def workflow_master_import_undo(
+    project_id: int,
+    payload: WorkflowUndoMasterAreas,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = production_allocation.undo_master_import_areas(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            package_ids=payload.package_ids,
+        )
+        _audit(request, db, auth, "WORKFLOW_MASTER_IMPORT_UNDONE", "finance_project", project_id, {
+            **result, "work_package_ids": payload.package_ids,
+        })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+@router.get("/ortho/projects/{project_id}/allocation-options")
+def workflow_allocation_options(
+    project_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Cascading Lot / Code / Area data + the PM-approved team lists for allocation."""
+    _roles(auth, *TECHNICAL_PM_ROLES, *_WORKFLOW_ROLES)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        return production_allocation.allocation_options(
+            db, actor=auth.user, role=_role(auth), project_id=project_id
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.get("/ortho/work-packages/{work_package_id}/area-files")
+def workflow_area_files(
+    work_package_id: int,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Active files of one area with planned quantities grouped by compatible UOM."""
+    _roles(auth, *TECHNICAL_PM_ROLES, *_WORKFLOW_ROLES)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        return production_allocation.area_files(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.post("/ortho/projects/{project_id}/assign-files")
+def workflow_assign_project_files(
+    project_id: int,
+    payload: WorkflowFileAllocation,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """ATOMIC project-scope allocation: selected physical files may span several
+    Lots / Codes / Areas and are assigned to one Production employee in ONE action."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    try:
+        summary = production_allocation.assign_project_files(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            item_ids=payload.item_ids,
+            production_user_id=payload.production_user_id,
+            production_target_date=payload.production_target_date,
+            qc_user_id=payload.qc_user_id,
+            qc_target_date=payload.qc_target_date,
+            qa_user_id=payload.qa_user_id,
+            qa_target_date=payload.qa_target_date,
+            supply_date=payload.supply_date,
+            note=payload.note,
+            reassign=payload.reassign,
+        )
+        _audit(request, db, auth, "WORKFLOW_PROJECT_FILES_ALLOCATED", "project", project_id, {
+            "item_ids": payload.item_ids, "assigned_files": summary["assigned_files"],
+            "work_packages": summary["work_packages"],
+            "production_target_date": str(payload.production_target_date),
+            "qc_target_date": str(payload.qc_target_date),
+            "qa_target_date": str(payload.qa_target_date),
+        })
+        db.commit()
+        return summary
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.post("/ortho/work-packages/{work_package_id}/assign-files")
+def workflow_assign_files(
+    work_package_id: int,
+    payload: WorkflowFileAllocation,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Team Lead allocation: selected files + Production/QC/QA targets + Supply Date."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        summary = production_allocation.assign_files(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id,
+            item_ids=payload.item_ids,
+            production_user_id=payload.production_user_id,
+            production_target_date=payload.production_target_date,
+            qc_user_id=payload.qc_user_id,
+            qc_target_date=payload.qc_target_date,
+            qa_user_id=payload.qa_user_id,
+            qa_target_date=payload.qa_target_date,
+            supply_date=payload.supply_date,
+            note=payload.note,
+            reassign=payload.reassign,
+        )
+        _audit(request, db, auth, "WORKFLOW_FILES_ALLOCATED", "ortho_work_package", work_package_id, {
+            "item_ids": payload.item_ids, "production_target_date": str(payload.production_target_date),
+            "qc_target_date": str(payload.qc_target_date), "qa_target_date": str(payload.qa_target_date),
+            "supply_date": str(payload.supply_date) if payload.supply_date else None,
+        })
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return summary
+
+
+@router.post("/ortho/work-packages/{work_package_id}/ready-for-delivery")
+def workflow_ready_for_delivery(
+    work_package_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Team Lead / PM confirms Ready for Delivery once every active file passed QA."""
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_package_project(db, auth, work_package_id)
+    try:
+        readiness = production_items.mark_ready_for_delivery(
+            db, actor=auth.user, role=_role(auth), work_package_id=work_package_id
+        )
+        _audit(request, db, auth, "WORKFLOW_READY_FOR_DELIVERY", "ortho_work_package", work_package_id,
+               {"total_files": readiness["total_files"], "qa_passed": readiness["qa_passed"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return readiness
+
+
+# CLD import rows are separate work packages; these group actions are explicitly
+# project-scoped to the authenticated reviewer and one import source. Existing
+# per-package and per-file QC/QA endpoints above are unchanged.
+class CLDSourceReviewRequest(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=512)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/ortho/projects/{project_id}/cld-review/{stage}/{action}")
+def workflow_cld_source_review(
+    project_id: int,
+    stage: Literal["qc", "qa"],
+    action: Literal["start", "complete", "rework"],
+    payload: CLDSourceReviewRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = assignment_review.cld_source_review(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            stage=stage, action=action, item_ids=payload.item_ids,
+            reason=payload.reason,
+        )
+        _audit(
+            request, db, auth,
+            f"WORKFLOW_CLD_{stage.upper()}_BLOCK_{action.upper()}",
+            "finance_project", project_id,
+            {"stage": stage, "action": action, "item_ids": result["item_ids"]},
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+# Add-only TL / PM CLD-import group readiness operation. The existing per-file
+# and per-package Ready for Delivery endpoints above are unchanged.
+class CLDGroupDeliveryRequest(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=512)
+
+
+@router.post("/ortho/projects/{project_id}/cld-ready-for-delivery")
+def workflow_cld_ready_for_delivery(
+    project_id: int,
+    payload: CLDGroupDeliveryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = cld_bulk_delivery.mark_cld_group_ready(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            item_ids=payload.item_ids,
+        )
+        _audit(request, db, auth, "WORKFLOW_CLD_GROUP_READY_FOR_DELIVERY", "finance_project", project_id,
+               {"item_ids": result["item_ids"], "work_package_ids": result["package_ids"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    return result
+
+
+# Add-only final delivery action beside the existing TL/PM CLD group readiness
+# action. Original per-package and per-file delivery routes are unchanged.
+class CLDGroupFinalDeliveryRequest(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=512)
+    remarks: str | None = Field(default=None, max_length=5000)
+
+
+@router.post("/ortho/projects/{project_id}/cld-deliver")
+def workflow_cld_group_deliver(
+    project_id: int,
+    payload: CLDGroupFinalDeliveryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _roles(auth, *TECHNICAL_PM_ROLES, EMPLOYEE_ROLE)
+    _ensure_project_department(db, auth, project_id)
+    try:
+        result = cld_bulk_delivery.mark_cld_group_delivered(
+            db, actor=auth.user, role=_role(auth), project_id=project_id,
+            item_ids=payload.item_ids, remarks=payload.remarks,
+        )
+        for package_id in result["package_ids"]:
+            _audit(request, db, auth, "WORKFLOW_DELIVERED", "ortho_work_package", package_id,
+                   {"remarks": payload.remarks, "cld_source": result["source"]})
+        _audit(request, db, auth, "WORKFLOW_CLD_GROUP_DELIVERED", "finance_project", project_id,
+               {"item_ids": result["item_ids"], "work_package_ids": result["package_ids"]})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+    for package_id in result["package_ids"]:
+        email_delivery_completion(db, work_package_id=package_id)
+    return result

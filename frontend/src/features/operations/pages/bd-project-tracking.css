@@ -1,0 +1,71 @@
+.bdpt-readonly{display:flex;align-items:center;gap:9px;padding:13px 18px;background:#ecf8f5;border:1px solid #bfe2d5;border-radius:12px;font-size:13px;color:#21604d;margin-bottom:14px}
+.bdpt-readonly strong{letter-spacing:.045em}
+.bdpt-filters{display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(160px,1fr));gap:15px;padding:16px}
+.bdpt-filters .operations-field{margin:0}
+.bdpt-search{display:flex;align-items:center;gap:8px;border:1px solid #bfd1e6;border-radius:9px;padding-left:10px;background:white}
+.bdpt-search input{width:100%;border:0;outline:0;min-width:0;padding:10px}
+.bdpt-project-head{display:flex;justify-content:space-between;gap:24px;align-items:center}
+.bdpt-project-progress{display:grid;grid-template-columns:auto minmax(145px,180px);gap:9px 12px;align-items:center;flex-shrink:0;font-size:12px}
+.bdpt-table-scroll{overflow-x:auto;width:100%}
+.bdpt-table{width:100%;min-width:1150px}
+.bdpt-table th,.bdpt-table td{vertical-align:middle}
+.bdpt-table td .operations-button{white-space:nowrap}
+.bdpt-code{display:block;white-space:nowrap}
+.bdpt-progress{min-width:90px;display:flex;gap:9px;align-items:center}
+.bdpt-progress-track{height:14px;flex:1;min-width:70px;border-radius:30px;overflow:hidden;background:var(--bdpt-progress-track,#e2eaf2);position:relative}
+.bdpt-progress-track span{height:100%;display:block;border-radius:inherit;background:var(--bdpt-progress-fill,#1975f5);transition:width .35s ease}
+.bdpt-progress strong{font-size:12px;white-space:nowrap}
+.bdpt-details{padding:14px 16px;background:#f5f9ff;border:1px solid #d8e5f3;border-radius:9px}
+.bdpt-stage-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:14px 0}
+.bdpt-stage-list>div{padding:10px;border:1px solid #dae6f5;border-radius:8px;background:white;display:flex;flex-direction:column;gap:6px}
+.bdpt-stage-list>div span{font-size:11px;color:#60758a}
+.bdpt-stage-list>div strong{font-size:12px}
+.bdpt-file-counts{display:flex;flex-wrap:wrap;gap:12px;font-size:12px}
+.bdpt-muted{font-size:12px;color:#667d92}
+@media(max-width:780px){.bdpt-filters{grid-template-columns:1fr}.bdpt-project-head{display:block}.bdpt-project-progress{margin-top:14px}}
+
+/* BD dashboard visual enhancement only: no workflow actions or data writes. */
+.bdpt-guide{display:flex;align-items:stretch;gap:16px;padding:12px 14px;margin:0 0 14px;background:linear-gradient(110deg,#fff,#f4f9ff);border:1px solid #d7e7f8;border-radius:16px;box-shadow:0 6px 22px rgba(29,65,103,.05)}
+.bdpt-guide-heading{min-width:195px;padding:6px 10px;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.bdpt-guide-heading strong{font-size:15px;color:#0d3163}
+.bdpt-guide-heading span{font-size:11px;color:#667f9b}
+.bdpt-guide-items{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:9px;flex:1}
+.bdpt-guide-item{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:13px;background:var(--bdpt-guide-bg,#f1f6ff);border:1px solid rgba(255,255,255,.8)}
+.bdpt-guide-swatch{width:27px;height:27px;min-width:27px;border-radius:50%;background:var(--bdpt-guide-color,#1e7bf2);box-shadow:inset 0 1px 2px #ffffff55,0 2px 5px #00000018}
+.bdpt-guide-item span:last-child{display:flex;flex-direction:column;gap:1px}
+.bdpt-guide-item strong{font-size:13px;color:#153466}
+.bdpt-guide-item small{font-size:11px;color:#526a85}
+.bdpt-guide-item--red{--bdpt-guide-bg:#fff0f2;--bdpt-guide-color:#fb354c}
+.bdpt-guide-item--orange{--bdpt-guide-bg:#fff3ea;--bdpt-guide-color:#fa7924}
+.bdpt-guide-item--yellow{--bdpt-guide-bg:#fff9e5;--bdpt-guide-color:#f5bd13}
+.bdpt-guide-item--green{--bdpt-guide-bg:#e8f8ee;--bdpt-guide-color:#16a34a}
+.bdpt-progress{--bdpt-progress-track:#e8eef6;--bdpt-progress-fill:#167bf4}
+.bdpt-progress--red{--bdpt-progress-track:#f9e5e9;--bdpt-progress-fill:#fb354c}
+.bdpt-progress--orange{--bdpt-progress-track:#fff0e5;--bdpt-progress-fill:#f57a25}
+.bdpt-progress--yellow{--bdpt-progress-track:#fff5dc;--bdpt-progress-fill:#f0b915}
+.bdpt-progress--green{--bdpt-progress-track:#dcfce7;--bdpt-progress-fill:linear-gradient(90deg,#22c55e,#15803d)}
+.bdpt-progress-track[data-zero="true"]::after{content:"";position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;background:var(--bdpt-progress-fill,#fb354c)}
+.bdpt-progress strong{min-width:46px;text-align:right;font-variant-numeric:tabular-nums;color:#13315f}
+.bdpt-project-identity{display:flex;align-items:center;gap:13px;min-width:0}
+.bdpt-project-identity>div:last-child{min-width:0}
+.bdpt-dept-icon{width:52px;height:52px;flex:0 0 52px;display:flex;align-items:center;justify-content:center;border-radius:13px;background:#eef3ff;color:#3f65c5}
+.bdpt-dept-icon--mobile-mapping{background:#fff0e4;color:#c77821}
+.bdpt-dept-icon--lidar{background:#f0eaff;color:#8056d6}
+.bdpt-dept-icon--ortho{background:#e5f5ff;color:#1785bd}
+.bdpt-dept-icon--laser-scanning{background:#f7eaff;color:#9c51be}
+.bdpt-dept-icon--civil{background:#fff2db;color:#ad7b25}
+.bdpt-dept-icon--bim{background:#e9eeff;color:#586aca}
+.bdpt-dept-icon--gis{background:#e6f6e9;color:#2a8a62}
+.bdpt-dept-icon--drone{background:#e2f7f2;color:#15876e}
+.bdpt-project-head-actions{display:flex;align-items:center;gap:14px;flex-shrink:0}
+.bdpt-collapse{display:inline-grid;place-items:center;width:36px;height:36px;flex-shrink:0;cursor:pointer;border:1px solid #cddff3;border-radius:11px;background:#fff;color:#31517b;transition:background .2s,border-color .2s}
+.bdpt-collapse:hover{background:#edf6ff;border-color:#94bde8}
+.bdpt-collapse:focus-visible{outline:3px solid #6dacec;outline-offset:2px}
+.bdpt-collapse svg{transition:transform .2s;transform:rotate(0deg)}
+.bdpt-collapse svg.bdpt-chevron-open{transform:rotate(180deg)}
+.bdpt-project [hidden]{display:none!important}
+.bdpt-table .bdpt-progress{min-width:105px}
+.bdpt-table .bdpt-progress-track{min-width:65px}
+@media(max-width:1180px){.bdpt-guide{flex-direction:column}.bdpt-guide-heading{min-width:0}.bdpt-guide-items{grid-template-columns:repeat(2,minmax(140px,1fr))}}
+@media(max-width:780px){.bdpt-guide-items{grid-template-columns:1fr}.bdpt-project-head{align-items:stretch}.bdpt-project-head-actions{justify-content:space-between}.bdpt-project-progress{flex:1;grid-template-columns:auto minmax(120px,1fr)}.bdpt-dept-icon{width:44px;height:44px;flex-basis:44px}}
+@media(prefers-reduced-motion:reduce){.bdpt-progress-track span,.bdpt-collapse,.bdpt-collapse svg{transition:none}}

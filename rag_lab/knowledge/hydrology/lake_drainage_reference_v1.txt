@@ -1,0 +1,25 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-HYDRO-206
+TOPIC: Lake connectivity and drainage GIS study intake
+
+OBJECTIVE
+Analyze catchment boundaries, terrain-driven flow paths, stormwater links, barriers and possible historical interconnections. A modeled drainage path is a hypothesis until validated against actual infrastructure, rainfall and site conditions.
+
+INPUTS
+Study area and lake inventory; DTM/DEM/DSM resolution and vertical datum; observed drainage and culvert/bridge invert levels; rainfall time series and intensities; stream/road/land-use layers; historical channels; encroachment information; field survey; relevant authority constraints.
+
+POSSIBLE METHODS
+DEM conditioning (with documented reasons), sink treatment, flow direction and accumulation, watershed delineation, stream network extraction, connection graph analysis, overland flow investigation, scenario comparison and targeted field checks.
+
+RISKS
+Road embankments, buried drains, retaining walls, gates and culverts can invalidate an unconditioned DEM-derived path. Urban stormwater flow is affected by infrastructure. Do not equate modeled natural routes with confirmed engineering feasibility or legal right-of-way.
+
+OUTPUTS
+Maps, GIS data layers, flow connectivity diagrams, candidate reconnection reaches, uncertainty inventory, field-validation priorities and an engineering assessment report. Detailed drainage design requires additional hydrologic/hydraulic criteria and approvals.
+
+CASE
+'Assess 120 urban lakes with DTM and lake polygons' - ask about rainfall, culverts/invert elevations, historical drainage, field checks, vertical accuracy, selection of design storms and acceptance criteria.

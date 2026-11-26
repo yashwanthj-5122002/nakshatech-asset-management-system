@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { BarChart3, RefreshCcw, TrendingUp } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -12,7 +13,7 @@ const fyStart = () => {
   const year = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear()
   return `${year}-04-01`
 }
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 
 export function ManagementCommercialPage() {
   const [projects, setProjects] = useState<FinanceProject[]>([])
@@ -52,7 +53,7 @@ export function ManagementCommercialPage() {
   const maxMonthly = useMemo(() => Math.max(1, ...(data?.monthly ?? []).map(row => Math.max(row.billing_inr, row.total_cost_inr))), [data])
 
   return <div className="commercial-page">
-    <DashboardHeader eyebrow="MANAGEMENT · COMMERCIAL INTELLIGENCE" title="Project Commercial Analytics" description="INR is the accounting truth. Display-currency conversion is optional and presentation-only; historic transaction FX snapshots remain unchanged." actions={<button className="commercial-button secondary" onClick={() => { void loadReferences(); void loadAnalytics() }}><RefreshCcw size={15}/> Refresh</button>}/>
+    <DashboardHeader eyebrow="MANAGEMENT · COMMERCIAL INTELLIGENCE" title="Project Commercial Analytics" description="INR is the accounting truth. Display-currency conversion is optional and presentation-only; historic transaction FX snapshots remain unchanged." actions={<button className="commercial-button secondary" onClick={() => { void loadReferences(); void loadAnalytics() }}><RefreshCcw size={15}/> Refresh</button>} meta={<><span className="nk-meta-chip"><TrendingUp size={14}/> Project-level commercial analytics</span><span className="nk-meta-chip"><BarChart3 size={14}/> INR accounting · display currency is optional</span><span className="nk-meta-chip"><RefreshCcw size={14}/> Historic FX snapshots preserved</span></>}/>
     {error && <div className="commercial-alert error">{error}</div>}
     <section className="commercial-panel">
       <form className="commercial-toolbar" onSubmit={loadAnalytics}>

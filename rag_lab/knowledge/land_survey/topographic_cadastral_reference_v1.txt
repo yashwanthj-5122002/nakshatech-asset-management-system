@@ -1,0 +1,22 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-SURVEY-208
+TOPIC: Topographic and cadastral survey requirement intake
+
+DISTINGUISH SERVICES
+Topographic mapping describes measured terrain/features; cadastral survey addresses parcel boundaries and must follow the relevant land-record authority's legal procedures. A GIS plot overlay is not proof of legal title or an authorized boundary determination.
+
+REQUIRED INFORMATION
+District/taluk/village or relevant locality, authoritative survey/parcel identifiers, land parcel extent, boundary purpose, available records, scale, target precision, control reference, access and permission status, dispute status, expected outputs and approving agency.
+
+WORKFLOW EXAMPLE
+For multi-scale cadastral mapping, feature matching may proceed from plot survey to village map, administrative subdivisions and district/state layers. This is a proposed data conflation process and requires authoritative source lineage, coordinate transformation checks, topology testing and field/record validation.
+
+OUTPUT OPTIONS
+Survey drawings, georeferenced parcel polygon layers, cadastral map PDF/image, coordinate schedules, metadata and discrepancy reports. Data extraction and redisplay from government portals require permitted APIs, licensing and suitable disclaimers.
+
+DO NOT CLAIM
+No legal ownership conclusions, official certification, exact boundary validity or map reproduction rights without authoritative evidence and permission.

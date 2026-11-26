@@ -160,7 +160,7 @@ def create_claim(db: Session, *, requester: User, payload: TravelKmClaimCreateRe
     claim.claim_code = f"NT-KM-{payload.travel_date.year}-{claim.id:05d}"
     if payload.email_routing is not None:
         set_email_routing(db, claim=claim, requester=requester, payload=payload.email_routing)
-    add_event(db, claim=claim, action="claim_created", actor=requester, from_status=None, to_status="draft", comments="Travel claim started and live start GPS captured.")
+    add_event(db, claim=claim, action="claim_created", actor=requester, from_status=None, to_status="draft", comments="Travel claim started and Geo-Tagged Images captured.")
     if payload.email_routing is not None:
         add_event(db, claim=claim, action="email_routing_configured", actor=requester, from_status="draft", to_status="draft", comments="Reporting Manager, TO and CC email recipients were configured for submission notification.")
     db.commit(); db.refresh(claim)

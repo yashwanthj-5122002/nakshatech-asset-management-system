@@ -1,10 +1,11 @@
+import { indiaDateInput } from '../../../lib/date'
 import { CheckCircle2, ClipboardList, PlusCircle } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
 import { apiFetch } from '../../../lib/api'
 import type { DroneAssetListResponse, DroneKit, DroneProject, DroneWorkRecord } from '../../../types'
 
-const today = new Date().toISOString().slice(0, 10)
+const today = indiaDateInput()
 
 export function DroneWorkRecordsPage() {
   const [records, setRecords] = useState<DroneWorkRecord[]>([])
@@ -58,7 +59,7 @@ export function DroneWorkRecordsPage() {
   }
 
   return <>
-    <DashboardHeader eyebrow="DRONE DEPARTMENT WORKFLOW" title="Drone Work Records" description="Record inspections, flight planning, equipment checks, field preparation and operational tasks. Dispatch and return transactions automatically create linked work records here." />
+    <DashboardHeader eyebrow="DRONE DEPARTMENT WORKFLOW" title="Drone Work Records" description="Record inspections, flight planning, equipment checks, field preparation and operational tasks. Dispatch and return transactions automatically create linked work records here." meta={<><span className="nk-meta-chip"><ClipboardList size={14} /> Inspections, flight planning, checks and field prep</span><span className="nk-meta-chip"><CheckCircle2 size={14} /> Dispatch and return auto-create linked work records</span></>} />
     {error && <div className="error-message">{error}</div>}
     {success && <div className="success-message">{success}</div>}
     <section className="work-record-layout">

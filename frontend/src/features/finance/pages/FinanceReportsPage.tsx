@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, Download, FileSpreadsheet, Search, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, Download, FileSpreadsheet, Inbox, Search, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -28,7 +28,11 @@ function MiniBreakdown({ title, items }: { title: string; items: FinanceReport['
   return (
     <article className="finance-panel finance-report-breakdown">
       <div className="finance-panel-header"><div><span className="finance-panel-kicker">HISTORICAL ANALYTICS</span><h2>{title}</h2></div></div>
-      {items.length === 0 ? <div className="finance-empty-state">No data in this period.</div> : (
+      {items.length === 0 ? <div className="nk-empty">
+        <span className="nk-empty-icon"><Inbox size={22} /></span>
+        <h3>No data in this period</h3>
+        <p>Nothing was requested under the current period and filter combination. Widen the period or clear a filter to bring records back into this breakdown.</p>
+      </div> : (
         <div className="finance-breakdown-list">
           {items.slice(0, 7).map(item => (
             <div className="finance-breakdown-row" key={item.key}>
@@ -126,6 +130,11 @@ export function FinanceReportsPage() {
         title="Finance Reports & Excel"
         description="Search years of project-expense history, reconcile approvals and payments, and download database-backed monthly, quarterly, yearly, or all-time Excel workbooks."
         actions={<button className="finance-primary-button" type="button" onClick={() => exportReport('selected')} disabled={Boolean(downloading)}><Download size={16} /> {downloading === 'selected' ? 'Preparing Excel...' : 'Download Current View'}</button>}
+        meta={<>
+          <span className="nk-meta-chip"><CalendarRange size={14} /> Monthly · quarterly · yearly · all-time</span>
+          <span className="nk-meta-chip"><FileSpreadsheet size={14} /> Database-backed Excel workbooks</span>
+          <span className="nk-meta-chip"><ShieldCheck size={14} /> Read-only historical ledger</span>
+        </>}
       />
 
       <section className="finance-report-control-panel">
@@ -157,7 +166,13 @@ export function FinanceReportsPage() {
         </div>
       </section>
 
-      {error && <div className="finance-error">{error}</div>}
+      {error && (data ? <div className="finance-error">{error}</div> : (
+        <div className="nk-empty">
+          <span className="nk-empty-icon"><AlertTriangle size={22} /></span>
+          <h3>Report unavailable</h3>
+          <p>{error} Your period and filter selections above are retained — change any filter to request the ledger again, or use Refresh in your browser.</p>
+        </div>
+      ))}
       {loading && <div className="finance-panel finance-empty-state">Loading Finance ledger...</div>}
 
       {data && !loading && (
@@ -193,7 +208,12 @@ export function FinanceReportsPage() {
               <div><span className="finance-panel-kicker">AUDITABLE FINANCE LEDGER</span><h2>Historical Claims</h2><p>Requested, approved, paid, and outstanding values remain separate so reports can be reconciled years later.</p></div>
               <span className="finance-history-count">Page {data.page} of {data.total_pages}</span>
             </div>
-            {data.claims.length === 0 ? <div className="finance-empty-state">No Finance records match this period and filter combination.</div> : (
+            {data.claims.length === 0 ? <div className="nk-empty">
+              <span className="nk-empty-icon"><Inbox size={22} /></span>
+              <h3>No Finance records match this period and filter combination</h3>
+              <p>No claims fall inside the selected period, project, type and status filters. Widen the period, clear a filter, or switch to All Time to search the complete Finance ledger.</p>
+              {period !== 'all' && <div className="nk-empty-action"><button type="button" className="finance-primary-button" onClick={() => { setPeriod('all'); resetPage() }}><CalendarRange size={16} /> Search all time</button></div>}
+            </div> : (
               <div className="finance-table-wrap"><table className="finance-table finance-report-table">
                 <thead><tr><th>Claim</th><th>Date</th><th>Employee</th><th>Project</th><th>Type</th><th>Requested</th><th>Approved</th><th>Paid</th><th>Outstanding</th><th>Status</th><th>Evidence</th></tr></thead>
                 <tbody>{data.claims.map(claim => (

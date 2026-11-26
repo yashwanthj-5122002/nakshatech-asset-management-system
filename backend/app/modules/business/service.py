@@ -30,6 +30,7 @@ from app.modules.business.schemas import (
     BusinessTotals,
 )
 from app.modules.finance.models import FinanceProject, FinanceProjectMasterProfile
+from app.modules.finance.visibility import exclude_hidden_projects
 from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
 from app.modules.operations.models import ProjectWorkstream
 from app.modules.operations.service import TECHNICAL_DEPARTMENT_LABELS, TECHNICAL_ROLE_DEPARTMENT_MAP
@@ -77,8 +78,11 @@ def _is_project_manager(db: Session, user_id: int) -> bool:
     return profile is not None
 
 
-def _available_months(db: Session) -> list[str]:
-    return list(db.scalars(select(BusinessRecord.reporting_month).distinct().order_by(BusinessRecord.reporting_month.desc())))
+def _available_months(db: Session, project_ids: set[int] | None = None) -> list[str]:
+    statement = select(BusinessRecord.reporting_month).distinct()
+    if project_ids is not None:
+        statement = statement.where(BusinessRecord.project_id.in_(project_ids))
+    return list(db.scalars(statement.order_by(BusinessRecord.reporting_month.desc())))
 
 
 def _billing_suggestions(db: Session, *, project_ids: list[int], month: str) -> dict[int, BusinessBillingSuggestion]:
@@ -196,11 +200,12 @@ def _project_rows(
     *,
     month: str,
     only_pm_user_id: int | None = None,
+    allowed_project_ids: set[int] | None = None,
 ) -> list[BusinessRecordRow]:
-    records = {
-        record.project_id: record
-        for record in db.scalars(select(BusinessRecord).where(BusinessRecord.reporting_month == month)).all()
-    }
+    record_statement = select(BusinessRecord).where(BusinessRecord.reporting_month == month)
+    if allowed_project_ids is not None:
+        record_statement = record_statement.where(BusinessRecord.project_id.in_(allowed_project_ids))
+    records = {record.project_id: record for record in db.scalars(record_statement).all()}
 
     # Always include active projects for entry, plus any project that already has a
     # recorded month so historic business never disappears when a project is closed.
@@ -215,6 +220,9 @@ def _project_rows(
         )
     else:
         statement = statement.where(FinanceProject.is_active.is_(True))
+    if allowed_project_ids is not None:
+        statement = statement.where(FinanceProject.id.in_(allowed_project_ids))
+    statement = exclude_hidden_projects(db, statement)
     projects = list(db.scalars(statement).all())
 
     attribution = _project_attribution(db, projects)
@@ -357,6 +365,31 @@ def business_overview(db: Session, *, actor: User, role: str, month: str | None)
         )
 
     return BusinessOverview(month=normalized_month, viewer="unavailable", can_enter=False)
+
+
+def business_employee_overview(db: Session, *, month: str | None, project_ids: set[int]) -> BusinessOverview:
+    """Read-only manager-equivalent report, restricted to server-resolved BD employee project IDs."""
+    normalized_month = normalize_reporting_month(month)
+    rows = _project_rows(db, month=normalized_month, allowed_project_ids=project_ids)
+    return BusinessOverview(
+        month=normalized_month,
+        viewer="bd",
+        can_enter=False,
+        totals=_totals(rows),
+        by_department=_breakdown(rows, "department"),
+        by_project_manager=_breakdown(rows, "project_manager"),
+        by_client=_breakdown(rows, "client"),
+        rows=rows,
+        months=_available_months(db, project_ids=project_ids),
+    )
+
+
+def business_employee_history(db: Session, *, record_id: int, actor: User, project_ids: set[int]) -> list[BusinessHistoryEntry]:
+    """Reuse the existing history renderer only after enforcing employee ownership."""
+    record = db.get(BusinessRecord, record_id)
+    if record is None or record.project_id not in project_ids:
+        raise HTTPException(status_code=404, detail="Business record not found")
+    return record_history(db, record_id=record_id, actor=actor, role=BD_ROLE)
 
 
 def _write_history(
@@ -519,10 +552,22 @@ def record_row(db: Session, record: BusinessRecord) -> BusinessRecordRow:
     return _row_payload(project, attribution, record, billing)
 
 
-def record_history(db: Session, *, record_id: int) -> list[BusinessHistoryEntry]:
+def record_history(db: Session, *, record_id: int, actor: User, role: str) -> list[BusinessHistoryEntry]:
     record = db.get(BusinessRecord, record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Business record not found")
+    project = db.scalar(exclude_hidden_projects(
+        db, select(FinanceProject).where(FinanceProject.id == record.project_id),
+    ))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Business record not found")
+    if not role_is_allowed((role or "").strip().lower(), TOTALS_ROLES):
+        attribution = _project_attribution(db, [project]).get(project.id, {})
+        own_record = actor.id in {
+            record.project_manager_user_id, attribution.get("project_manager_user_id"),
+        }
+        if not _is_project_manager(db, actor.id) or not own_record:
+            raise HTTPException(status_code=403, detail="Business history is restricted to authorized viewers and the assigned Project Manager")
     entries = list(db.scalars(
         select(BusinessRecordHistory)
         .where(BusinessRecordHistory.record_id == record_id)

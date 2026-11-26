@@ -1,0 +1,37 @@
+/* BD Manager / My Team. Scoped to avoid changing other ERP modules. */
+.bdmt-page { display:grid; gap:16px; }
+.bdmt-filters { padding:18px 20px; }
+.bdmt-filter-grid { display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:14px; }
+.bdmt-filter-grid label { display:grid; gap:6px; color:#4a637c; font-size:12px; font-weight:700; }
+.bdmt-filter-grid input,.bdmt-filter-grid select { width:100%; height:39px; padding:7px 11px; border:1px solid #d5e0eb; border-radius:9px; background:#fff; color:#193854; font-size:13px; }
+.bdmt-filter-grid :is(input,select):focus-visible,.bdmt-search input:focus-visible { outline:2px solid #0b83b7; outline-offset:2px; }
+.bdmt-hint,.bdmt-footnote { margin:10px 0 0; color:#62788d; font-size:12px; line-height:1.55; }
+.bdmt-footnote { padding:4px 2px 16px; }
+.bdmt-register { display:grid; gap:14px; }
+.bdmt-search { display:flex; align-items:center; gap:9px; max-width:340px; color:#607892; background:#fff; border:1px solid #dae5ef; border-radius:10px; padding:0 11px; }
+.bdmt-search input { border:0; min-width:0; flex:1; padding:11px 0; background:transparent; color:#193854; font-size:13px; outline:none; }
+.bdmt-table-scroll { max-width:100%; overflow-x:auto; }
+.bdmt-table { width:100%; border-collapse:collapse; min-width:760px; text-align:left; }
+.bdmt-table th { background:#f2f6fa; color:#61788b; font-size:11px; letter-spacing:.03em; text-transform:uppercase; white-space:nowrap; padding:12px; }
+.bdmt-table td { padding:13px 12px; border-top:1px solid #e6edf4; font-size:13px; font-weight:600; color:#23435b; vertical-align:middle; }
+.bdmt-table td:first-child strong,.bdmt-table td:first-child small { display:block; }
+.bdmt-table td:first-child strong { color:#0d3665; }
+.bdmt-table td:first-child small { margin-top:3px; font-size:11px; font-weight:500; color:#61788b; }
+.bdmt-table .bdmt-inactive { color:#b04648!important; }
+.bdmt-table td.bdmt-unlinked { color:#8a6f56; font-size:11px; font-weight:700; white-space:nowrap; }
+.bdmt-table .operations-button,.bdmt-pager .operations-button { min-height:32px; padding:6px 11px; font-size:12px; }
+.bdmt-no-data { padding:24px!important; text-align:center; color:#60788e!important; }
+.bdmt-detail-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.bdmt-sub-panel { border:1px solid #e2eaf1; background:#f9fbfe; border-radius:12px; padding:14px; min-width:0; }
+.bdmt-sub-panel h3 { font-size:15px; color:#183c5f; margin:0 0 12px; }
+.bdmt-list { display:grid; gap:9px; max-height:470px; overflow-y:auto; }
+.bdmt-list article { border:1px solid #e2ebf3; border-radius:10px; padding:12px; background:white; display:grid; gap:6px; overflow-wrap:anywhere; }
+.bdmt-list article>div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center; color:#173c60; font-size:13px; }
+.bdmt-list small { color:#698095; font-size:11px; line-height:1.4; }
+.bdmt-list article p { margin:2px 0 0; color:#415a70; font-size:12px; white-space:pre-wrap; }
+.bdmt-status { border-radius:999px; padding:4px 8px; background:#eaf4fb; color:#195a83; font-size:10px; font-weight:700; white-space:nowrap; }
+.bdmt-pager { margin-top:14px; display:flex; justify-content:space-between; align-items:center; gap:8px; color:#708090; }
+.bdmt-pager small { font-size:11px; white-space:nowrap; }
+.bdmt-pager button:disabled { opacity:.4; cursor:not-allowed; }
+@media (max-width:900px) { .bdmt-detail-columns { grid-template-columns:1fr; } }
+@media (max-width:630px) { .bdmt-filter-grid { grid-template-columns:1fr; } .bdmt-filters { padding:14px; } }

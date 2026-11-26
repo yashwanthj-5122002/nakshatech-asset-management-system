@@ -13,6 +13,7 @@ import {
 import { apiFetch } from '../../lib/api'
 import { useITMonthUrl } from '../../context/ITMonthContext'
 import { monthLabel } from '../../lib/itMonth'
+import { DashboardHeader } from '../../components/DashboardHeader'
 import './data-quality-centre.css'
 
 type Severity = 'high' | 'medium' | 'low' | 'info'
@@ -118,15 +119,16 @@ export function DataQualityCentrePage() {
 
   return (
     <section className="data-quality-page">
-      <header className="data-quality-hero">
-        <div className="data-quality-hero-icon"><SearchCheck size={25} /></div>
-        <div>
-          <span className="data-quality-eyebrow">Read-only IT validation</span>
-          <h1>Data Quality Centre</h1>
-          <p>Review asset, reporting-month and reconciliation findings without changing any source record.</p>
-        </div>
-        <div className="data-quality-readonly"><ShieldCheck size={16} /> Read-only</div>
-      </header>
+      <DashboardHeader
+        eyebrow="READ-ONLY IT VALIDATION"
+        title="Data Quality Centre"
+        description="Review asset, reporting-month and reconciliation findings without changing any source record."
+        meta={<>
+          <span className="nk-meta-chip"><ShieldCheck size={14} /> Read-only</span>
+          <span className="nk-meta-chip"><SearchCheck size={14} /> {sourceLabel}</span>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Reporting month {monthLabel(selectedMonth)}</span>
+        </>}
+      />
 
       <div className="data-quality-safety-banner">
         <BadgeCheck size={21} />

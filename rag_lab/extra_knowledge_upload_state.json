@@ -1,0 +1,19 @@
+{
+  "knowledge/bim/scan_to_bim_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:3eb30687f599c057a5a9f2ef429f33a6ff118f776cde7a8be7ad40362550d4cd",
+  "knowledge/commercial/quotation_input_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:f9967b6fade9046b2594a4cbf9706d4a049791e8ee253737cfb700589285c6de",
+  "knowledge/drone/drone_scope_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:a99171117b8f419a78a8633e7d5d92381e189bf04c6c15292f38c38a425a7ea3",
+  "knowledge/drone_demo.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:82ff1a4be4c4034d43360351ad01fda572b68af65c7c8b16215bcc461e662d7e",
+  "knowledge/field/ground_control_and_qa_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:71a88f5c00a02fb727efe957acfe9a022e03c5f18584c51ed0219f4aef41959b",
+  "knowledge/gis/gis_analysis_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:4d634cd0b4dcb65bf475d6bf0b0835adabcaa7c868022a72b3721c0c782afd04",
+  "knowledge/hydrology/lake_drainage_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:bd7a71151f777288cd8ebb2d17c49bb9423f28d7aac021afa72d3894a86cbc26",
+  "knowledge/land_survey/topographic_cadastral_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:594dbb0280f855700af2c2ad43672bea21f97d97bdc02e27701272a742caf35e",
+  "knowledge/lidar/lidar_survey_classification_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:5b37ba77be71f8022f33b75ab03cc36c2c7dabe05a566d0230e49de9e09998dd",
+  "knowledge/photogrammetry/photogrammetry_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:4aa9941458300a47256dd1c9f8be58c9437b3945aee6b864811074eace0c2bab",
+  "knowledge/shared/bd_intake_and_scope_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:68c70c0a2a1113fe742ebb2d479ed887026b309a86d15c67e487cb7ab329c3ff",
+  "knowledge/shared/clarification_question_bank_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:90b952de949ce430500709f5141d07f2128beec802570de2fa102e805933c6b8",
+  "knowledge/shared/geospatial_deliverables_glossary_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:6959f7221d0729f2b6099e33b5ff5500bc6388e3fbe116db2459947beba2178d",
+  "knowledge/shared/privacy_and_permission_demo_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:cd45a0ef1e62a833ea5f56ef013437d6d07cbf823a7594e4e4ca9ede2c304726",
+  "knowledge/shared/quality_and_hallucination_controls_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:b513bcba5382e811d65c98d31be4c9295df1c6f78fc9652eb921fe90c7150d0b",
+  "knowledge/shared/structured_output_policy_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:272cd526703b5c299350bd4020646d0387dce06f62a52623d1b2fc488f136427",
+  "knowledge/utilities/powerline_corridor_reference_v1.txt": "fileSearchStores/nakshatech-rag-training-28cm2m52vufj:1f35eeccfd4fe6a39c2c8ee08c484e7cce9a81733e7b5045c064815e044e2b67"
+}

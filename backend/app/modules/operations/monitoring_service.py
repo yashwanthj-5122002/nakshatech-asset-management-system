@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import User, utc_now
 from app.modules.finance.models import FinanceProject
+from app.modules.finance.visibility import filter_visible_project_ids
 from app.modules.operations.handover_models import ProjectDataHandover
 from app.modules.operations.handover_service import DEMO_DEPARTMENT_EMAILS, DEMO_EMPLOYEE_IDS
 from app.modules.operations.models import BDOpportunity, ProjectWorkstream
@@ -171,7 +172,7 @@ def _visible_project_ids(db: Session, *, actor: User, effective_role: str) -> tu
             BDOpportunity.owner_user_id == actor.id,
             BDOpportunity.linked_project_id.is_not(None),
         ).order_by(BDOpportunity.updated_at.desc())).all())
-        return "bd_monitor", [int(item) for item in ids if item is not None]
+        return "bd_monitor", filter_visible_project_ids(db, [int(item) for item in ids if item is not None])
     if role in TECHNICAL_ROLES:
         department_code = TECHNICAL_ROLE_DEPARTMENT_MAP[role]
         ids = list(db.scalars(select(ProjectWorkstream.project_id).where(
@@ -179,12 +180,12 @@ def _visible_project_ids(db: Session, *, actor: User, effective_role: str) -> tu
             ProjectWorkstream.project_manager_user_id == actor.id,
             ProjectWorkstream.is_active.is_(True),
         ).distinct()).all())
-        return "department", [int(item) for item in ids]
+        return "department", filter_visible_project_ids(db, [int(item) for item in ids])
     if role in {"management", "admin"}:
         ids = list(db.scalars(select(ProjectWorkstream.project_id).where(
             ProjectWorkstream.is_active.is_(True)
         ).distinct()).all())
-        return "read_only", [int(item) for item in ids]
+        return "read_only", filter_visible_project_ids(db, [int(item) for item in ids])
     raise PermissionError("Master Project Monitoring is not available for this role")
 
 

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(docker:*)",
+      "Shell(C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe:*)",
+      "Shell(/t:*)",
+      "Shell(findstr:*)",
+      "Shell(taskkill /f /im \"Docker Desktop.exe\" 2>&1; taskkill /f /im \"docker-desktop.exe\" 2>&1; taskkill /f /im \"vpnkit.exe\" 2>&1; taskkill /f /im \"Docker Desktop Service.exe\" 2>&1; timeout /t 3 &echo done)",
+      "Shell(taskkill:*)",
+      "Shell(taskkill /F /IM \"Docker Desktop.exe\" 2>&1; taskkill /F /IM \"com.docker.backend.exe\" 2>&1; taskkill /F /IM \"vmnetdhcp.exe\" 2>&1; taskkill /F /IM \"vpnkit.exe\" 2>&1; taskkill /F /IM \"docker-desktop-proxy.exe\" 2>&1)",
+      "powershell",
+      "Shell(curl -s http://localhost:8100/api/health 2>&1)",
+      "Shell(start:*)",
+      "agent_output"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

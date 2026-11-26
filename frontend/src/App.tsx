@@ -1,10 +1,15 @@
+import { OrganisationPoliciesPage } from './features/organisation_policies/OrganisationPoliciesPage'
+import ProjectTrackingPage from './pages/ProjectTrackingPage'
+import { BDAIPage } from './features/bd_ai/BDAIPage'
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { PayablesListPage, PayableNewPage, PayableDetailPage } from './features/payables/PayablesPage' // NAKSHA_PAYABLES_IMPORT
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { StrictProtectedRoute } from './components/StrictProtectedRoute'
 import { useAuth } from './context/AuthContext'
 import { AdminDashboard } from './pages/AdminDashboard'
+import { UAT2026ControlPage } from './pages/UAT2026ControlPage'
 import { AssetsPage } from './pages/AssetsPage'
 import { AssetFormPage } from './pages/AssetFormPage'
 import { DroneDashboardPage } from './features/drone/pages/DroneDashboardPage'
@@ -37,7 +42,7 @@ import { HandoverReturnPage } from './pages/HandoverReturnPage'
 import { PurchaseProcurementPage } from './pages/PurchaseProcurementPage'
 import { PurchaseRequestsPage } from './pages/PurchaseRequestsPage'
 import { BackupCenterPage } from './pages/BackupCenterPage'
-import { roleHomePath } from './lib/roles'
+import { roleHomePath, TECHNICAL_PM_ROLES } from './lib/roles'
 import { RegisterPage } from './features/employee_portal/pages/RegisterPage'
 import { ForgotPasswordPage } from './features/employee_portal/pages/ForgotPasswordPage'
 import { AuthenticatorPage } from './features/employee_portal/pages/AuthenticatorPage'
@@ -47,12 +52,17 @@ import { TicketCreatePage } from './features/employee_portal/pages/TicketCreateP
 import { TicketListPage } from './features/employee_portal/pages/TicketListPage'
 import { TicketDetailPage } from './features/employee_portal/pages/TicketDetailPage'
 import { SoftwareSecurityPage } from './features/employee_portal/pages/SoftwareSecurityPage'
+import { EmployeeMasterPage } from './features/employee_portal/pages/EmployeeMasterPage'
+import { ManagementEmployeeMasterPage } from './features/employee_portal/pages/ManagementEmployeeMasterPage'
+import { OnboardingPage } from './features/employee_portal/pages/OnboardingPage'
 import { AgentMonitorPage } from './features/agent_monitor/AgentMonitorPage'
 import { ExpenseClaimCreatePage } from './features/finance/pages/ExpenseClaimCreatePage'
 import { ExpenseClaimsPage } from './features/finance/pages/ExpenseClaimsPage'
 import { ExpenseClaimDetailPage } from './features/finance/pages/ExpenseClaimDetailPage'
 import { AdvanceSettlementPage } from './features/finance/pages/AdvanceSettlementPage'
+import { AttendancePage, LeavePage, HRManagementPage } from './features/hrms/HRMSPages'
 import { FinanceDashboardPage } from './features/finance/pages/FinanceDashboardPage'
+import ProjectTrackingSalesPage from './pages/ProjectTrackingPage' // NAKSHA_PTS_IMPORT
 import { FinanceClaimsPage } from './features/finance/pages/FinanceClaimsPage'
 import { FinanceReportsPage } from './features/finance/pages/FinanceReportsPage'
 import { ClientManagementPage } from './features/finance/pages/ClientManagementPage'
@@ -61,24 +71,27 @@ import { TravelKmCreatePage } from './features/travel_km/pages/TravelKmCreatePag
 import { TravelKmDetailPage } from './features/travel_km/pages/TravelKmDetailPage'
 import { TravelKmStaffDashboardPage } from './features/travel_km/pages/TravelKmStaffDashboardPage'
 import { BDDashboardPage } from './features/operations/pages/BDDashboardPage'
+import { BDMyTeamPage } from './features/operations/pages/BDMyTeamPage'
+import { BDEmployeeLoginPage } from './features/bd_employee/BDEmployeeLoginPage'
+import { BDEmployeeWorkspace } from './features/bd_employee/BDEmployeeWorkspace'
 import { BDClientManagementPage } from './features/operations/pages/BDClientManagementPage'
+
 import { BDProjectManagementPage } from './features/operations/pages/BDProjectManagementPage'
+import { BDProjectTrackingPage } from './features/operations/pages/BDProjectTrackingPage'
 import { NotificationsPage } from './features/operations/pages/NotificationsPage'
 import { OrthoDashboardPage } from './features/operations/pages/OrthoDashboardPage'
-import { ProjectWorkstreamsPage } from './features/operations/pages/ProjectWorkstreamsPage'
-import { SampleRequestsPage } from './features/operations/pages/SampleRequestsPage'
-import { ProjectHandoversPage } from './features/operations/pages/ProjectHandoversPage'
-import { ProjectMonitoringPage } from './features/operations/pages/ProjectMonitoringPage'
-import { ProjectCompletionPage } from './features/operations/pages/ProjectCompletionPage'
-import { TechnicalTeamDirectoryPage } from './features/operations/pages/TechnicalTeamDirectoryPage'
-import { ReportingDashboardPage } from './features/operations/pages/ReportingDashboardPage'
-import { ProductionReadinessPage } from './features/operations/pages/ProductionReadinessPage'
+import { ProductionTrackingPage } from './features/operations/pages/ProductionTrackingPage'
 import { ClientFeedbackPage } from './features/operations/pages/ClientFeedbackPage'
 import { BDClientFeedbackPage } from './features/operations/pages/BDClientFeedbackPage'
 import { FinanceBillingPage } from './features/finance/pages/FinanceBillingPage'
+import { GenerateInvoicePage } from './features/finance/pages/GenerateInvoicePage'
+import { SalesRevenuePage } from './features/finance/pages/SalesRevenuePage'
+import { FinanceCommandCenter } from './features/finance/pages/FinanceCommandCenter'
 import { ManagementProject360Page } from './features/operations/pages/ManagementProject360Page'
+import { ManagementClientRegisterPage } from './features/management/ManagementClientRegisterPage'
 import { FinanceClientRegisterPage } from './features/finance/pages/FinanceClientRegisterPage'
 import { FinanceProjectRegisterPage } from './features/finance/pages/FinanceProjectRegisterPage'
+import { FinanceManagementProjectsPage } from './features/finance/pages/FinanceManagementProjectsPage'
 import { BusinessDashboardPage } from './features/business/BusinessDashboardPage'
 import { BDCommercialPage } from './features/commercial/pages/BDCommercialPage'
 import { EmployeeProjectCostsPage } from './features/commercial/pages/EmployeeProjectCostsPage'
@@ -89,42 +102,94 @@ function WithLayout({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
 }
 
+// BD employees keep their dedicated workspace/sidebar while using the shared expense pages.
+function ExpenseEmployeeLayout({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  return user?.role === 'bd_employee' ? <BDEmployeeWorkspace /> : <WithLayout>{children}</WithLayout>
+}
+
+// BD employees use their own sidebar with the same shared HRMS self-service pages.
+function EmployeeAttendanceLayout({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  return user?.role === 'bd_employee'
+    ? <BDEmployeeWorkspace attendanceContent={children} />
+    : <WithLayout>{children}</WithLayout>
+}
+
 function ITWorkRoute() {
   const { user } = useAuth()
   return user?.role === 'management' ? <ManagementITWorkReadOnlyPage /> : <WorkFormPage />
 }
 
+function ManagementSalesAccess() {
+  const { user } = useAuth()
+  const allowed = user?.role === 'management' &&
+    ['vinod@nakshatech.com', 'chethan@nakshatech.com']
+      .includes((user.email || '').toLowerCase())
+
+  return allowed
+    ? <ProjectTrackingSalesPage />
+    : <Navigate to="/management" replace />
+}
 export default function App() {
   const { user, needsBranchSelection } = useAuth()
   return (
     <Routes>
       <Route path="/" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <WelcomePage />} />
       <Route path="/login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <LoginPage />} />
+      <Route path="/bd-employee/login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <BDEmployeeLoginPage />} />
       <Route path="/employee-login" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <LoginPage mode="employee" />} />
       <Route path="/register" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <RegisterPage />} />
       <Route path="/forgot-password" element={user ? <Navigate to={needsBranchSelection ? '/select-branch' : roleHomePath(user.role)} replace /> : <ForgotPasswordPage />} />
       <Route path="/verify-authenticator" element={<AuthenticatorPage />} />
       <Route path="/select-branch" element={<BranchSelectionPage />} />
+      <Route path="/hrms/leave/balance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="balance" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/apply" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="apply" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/calendar" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="calendar" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/leave/holidays" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><LeavePage mode="holidays" /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      <Route path="/hrms/attendance" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee', 'bd_employee']}><EmployeeAttendanceLayout><AttendancePage /></EmployeeAttendanceLayout></ProtectedRoute>} />
+      {/* NAKSHA_ORG_POLICIES_ROUTE */}
+      <Route
+  path="/organisation-policies"
+  element={
+    <StrictProtectedRoute roles={['hr', 'employee', 'bd_employee']}>
+      {user?.role === 'bd_employee' ? (
+        <Navigate
+          to={'/bd-employee/organisation-policies' + window.location.search}
+          replace
+        />
+      ) : (
+        <WithLayout>
+          <OrganisationPoliciesPage />
+        </WithLayout>
+      )}
+    </StrictProtectedRoute>
+  }
+/>
+      <Route path="/hrms/hr" element={<ProtectedRoute roles={['hr', 'admin']}><WithLayout><HRManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute roles={['software_team', 'admin', 'management', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'employee']}><WithLayout><ProfilePage /></WithLayout></ProtectedRoute>} />
       <Route path="/client-feedback/:token" element={<ClientFeedbackPage />} />
-      <Route path="/travel-km" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmClaimsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee']}><WithLayout><TravelKmCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/travel-km/:id" element={<ProtectedRoute roles={['employee', 'admin', 'hr', 'finance', 'management', 'software_team']}><WithLayout><TravelKmDetailPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/travel-km" element={<ProtectedRoute roles={['employee', 'bd_employee']}>{user?.role === 'bd_employee' ? <BDEmployeeWorkspace travelContent={<TravelKmClaimsPage />} /> : <WithLayout><TravelKmClaimsPage /></WithLayout>}</ProtectedRoute>} />
+      <Route path="/travel-km/new" element={<ProtectedRoute roles={['employee', 'bd_employee']}>{user?.role === 'bd_employee' ? <BDEmployeeWorkspace travelContent={<TravelKmCreatePage />} /> : <WithLayout><TravelKmCreatePage /></WithLayout>}</ProtectedRoute>} />
+      <Route path="/travel-km/:id" element={<ProtectedRoute roles={['employee', 'admin', 'hr', 'finance', 'management', 'software_team', 'bd_employee']}>{user?.role === 'bd_employee' ? <BDEmployeeWorkspace travelContent={<TravelKmDetailPage />} /> : <WithLayout><TravelKmDetailPage /></WithLayout>}</ProtectedRoute>} />
       <Route path="/admin/travel-km" element={<ProtectedRoute roles={['admin']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/hr/travel-km" element={<ProtectedRoute roles={['hr']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/travel-km" element={<ProtectedRoute roles={['finance']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/travel-km" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><TravelKmStaffDashboardPage /></WithLayout></ProtectedRoute>} />
       <Route path="/support" element={<ProtectedRoute roles={['employee']}><WithLayout><EmployeeSupportDashboard /></WithLayout></ProtectedRoute>} />
       <Route path="/support/new" element={<ProtectedRoute roles={['employee']}><WithLayout><TicketCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimsPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/expenses" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimsPage /></ExpenseEmployeeLayout></ProtectedRoute>} />
       <Route path="/project-costs" element={<ProtectedRoute roles={['employee']}><WithLayout><EmployeeProjectCostsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/new" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/:id/edit" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimCreatePage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/:id/settle" element={<ProtectedRoute roles={['employee']}><WithLayout><AdvanceSettlementPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/expenses/:id" element={<ProtectedRoute roles={['employee']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/expenses/new" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimCreatePage /></ExpenseEmployeeLayout></ProtectedRoute>} />
+      <Route path="/expenses/:id/edit" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimCreatePage /></ExpenseEmployeeLayout></ProtectedRoute>} />
+      <Route path="/expenses/:id/settle" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><AdvanceSettlementPage /></ExpenseEmployeeLayout></ProtectedRoute>} />
+      <Route path="/expenses/:id" element={<ProtectedRoute roles={['employee', 'bd_employee']}><ExpenseEmployeeLayout><ExpenseClaimDetailPage /></ExpenseEmployeeLayout></ProtectedRoute>} />
       <Route path="/tickets" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketListPage /></WithLayout></ProtectedRoute>} />
       <Route path="/tickets/:id" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'management', 'software_team']}><WithLayout><TicketDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/security" element={<ProtectedRoute roles={['software_team']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/software-team/employee-master" element={<ProtectedRoute roles={['software_team', 'admin']}><WithLayout><EmployeeMasterPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/employee-master" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementEmployeeMasterPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/onboarding" element={<ProtectedRoute roles={['hr', 'it', 'management', 'software_team', 'admin']}><WithLayout><OnboardingPage /></WithLayout></ProtectedRoute>} />
       <Route path="/software-team/agents" element={<ProtectedRoute roles={['software_team']}><WithLayout><AgentMonitorPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/activity" element={<ProtectedRoute roles={['management']}><WithLayout><SoftwareSecurityPage /></WithLayout></ProtectedRoute>} />
       <Route path="/it" element={<ProtectedRoute roles={['it', 'management', 'admin']}><WithLayout><ITDashboard /></WithLayout></ProtectedRoute>} />
@@ -149,34 +214,55 @@ export default function App() {
       <Route path="/drone/movements" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneMovementsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/kits" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneKitsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/drone/import" element={<ProtectedRoute roles={['drone', 'management', 'admin']}><WithLayout><DroneImportPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/bd-employee/tickets/:id" element={<StrictProtectedRoute roles={['bd_employee']}><BDEmployeeWorkspace /></StrictProtectedRoute>} />
+      <Route path="/bd-employee/*" element={<StrictProtectedRoute roles={['bd_employee']}><BDEmployeeWorkspace /></StrictProtectedRoute>} />
       <Route path="/bd" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/my-team" element={<StrictProtectedRoute roles={['bd']}><WithLayout><BDMyTeamPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/clients" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientManagementPage /></WithLayout></StrictProtectedRoute>} />
+      {/* BD AI - Client Requirements Assistant */}
+{/* BD AI - Client Requirements Assistant */}
+<Route
+  path="/bd-ai"
+  element={
+    <StrictProtectedRoute roles={['bd', 'bd_employee', 'management']}>
+      <WithLayout>
+        <BDAIPage />
+      </WithLayout>
+    </StrictProtectedRoute>
+  }
+/>
       <Route path="/bd/projects" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectManagementPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/tracking" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDProjectTrackingPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/bd/feedback" element={<StrictProtectedRoute roles={['bd', 'management', 'admin']}><WithLayout><BDClientFeedbackPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/bd/commercial" element={<StrictProtectedRoute roles={['bd', 'admin', 'management']}><WithLayout><BDCommercialPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute roles={['employee', 'it', 'drone', 'finance', 'hr', 'bd', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin', 'software_team']}><WithLayout><NotificationsPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/ortho" element={<StrictProtectedRoute roles={['ortho', 'employee', 'management', 'admin']}><WithLayout><OrthoDashboardPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/ortho/project-360/:projectId" element={<StrictProtectedRoute roles={['ortho', 'management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-workstreams" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectWorkstreamsPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/sample-requests" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><SampleRequestsPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-handovers" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectHandoversPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-monitoring" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectMonitoringPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/project-completion" element={<StrictProtectedRoute roles={['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'management', 'admin']}><WithLayout><ProjectCompletionPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/technical-team-directory" element={<StrictProtectedRoute roles={['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><TechnicalTeamDirectoryPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/reporting" element={<StrictProtectedRoute roles={['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><ReportingDashboardPage /></WithLayout></StrictProtectedRoute>} />
-      <Route path="/production-readiness" element={<StrictProtectedRoute roles={['admin', 'management', 'software_team']}><WithLayout><ProductionReadinessPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/ortho" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'survey', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><OrthoDashboardPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/production-tracking" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'survey', 'mobile_mapping', 'laser_scanning', 'civil', 'employee', 'management', 'admin']}><WithLayout><ProductionTrackingPage /></WithLayout></StrictProtectedRoute>} />
+      <Route path="/ortho/project-360/:projectId" element={<StrictProtectedRoute roles={['ortho', 'lidar', 'survey', 'mobile_mapping', 'laser_scanning', 'civil', 'management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></StrictProtectedRoute>} />
+      {/* NAKSHA_PAYABLES_ROUTES: independent module; existing paths untouched */}
+      <Route path="/payables" element={<ProtectedRoute roles={['admin','finance','management']}><WithLayout><PayablesListPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/payables/new" element={<ProtectedRoute roles={['admin','finance']}><WithLayout><PayableNewPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/payables/:id" element={<ProtectedRoute roles={['admin','finance','management']}><WithLayout><PayableDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceDashboardPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/project-tracking-sales" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementSalesAccess /></WithLayout></ProtectedRoute>} /> // NAKSHA_PTS_ROUTE
       <Route path="/finance/claims" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClaimsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/reports" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceReportsPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/clients" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceClientRegisterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/projects" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceProjectRegisterPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/management-projects" element={<StrictProtectedRoute roles={['finance']}><WithLayout><FinanceManagementProjectsPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/finance/billing" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceBillingPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/generate-invoice" element={<ProtectedRoute roles={['finance']}><WithLayout><GenerateInvoicePage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/sales" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="sales" /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/revenue" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><SalesRevenuePage mode="revenue" /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/command-center" element={<ProtectedRoute roles={['finance', 'admin', 'management', 'bd', ...TECHNICAL_PM_ROLES]}><WithLayout><FinanceCommandCenter /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/uat-2026" element={<ProtectedRoute roles={['finance']}><WithLayout><UAT2026ControlPage /></WithLayout></ProtectedRoute>} />
       <Route path="/business" element={<ProtectedRoute roles={['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping']}><WithLayout><BusinessDashboardPage /></WithLayout></ProtectedRoute>} />
-      <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/finance/commercial" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><FinanceCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/admin/client-master" element={<ProtectedRoute roles={['admin']}><WithLayout><ClientManagementPage /></WithLayout></ProtectedRoute>} />
       <Route path="/finance/claims/:id" element={<ProtectedRoute roles={['finance', 'admin', 'management']}><WithLayout><ExpenseClaimDetailPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementDashboard /></WithLayout></ProtectedRoute>} />
-      <Route path="/management/approvals" element={<ProtectedRoute roles={['management']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/approvals" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementApprovalCenter /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/project-management" element={<StrictProtectedRoute roles={['management']}><WithLayout><ManagementClientRegisterPage /></WithLayout></StrictProtectedRoute>} />
       <Route path="/management/project-360" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
       <Route path="/management/commercial" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementCommercialPage /></WithLayout></ProtectedRoute>} />
       <Route path="/management/project-360/:projectId" element={<ProtectedRoute roles={['management', 'admin']}><WithLayout><ManagementProject360Page /></WithLayout></ProtectedRoute>} />
@@ -188,6 +274,7 @@ export default function App() {
       <Route path="/naksha-copilot" element={<ProtectedRoute roles={['it', 'management', 'software_team']}><WithLayout><NakshaCopilotPage /></WithLayout></ProtectedRoute>} />
       <Route path="/backups" element={<ProtectedRoute roles={['admin', 'management', 'it', 'drone']}><WithLayout><BackupCenterPage /></WithLayout></ProtectedRoute>} />
       <Route path="/future" element={<ProtectedRoute roles={['admin']}><WithLayout><FutureFeaturesPage /></WithLayout></ProtectedRoute>} />
+      <Route path="/management/project-tracking" element={<ProtectedRoute roles={['management']}><WithLayout><ProjectTrackingPage /></WithLayout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? (needsBranchSelection ? '/select-branch' : roleHomePath(user.role)) : '/'} replace />} />
     </Routes>
   )

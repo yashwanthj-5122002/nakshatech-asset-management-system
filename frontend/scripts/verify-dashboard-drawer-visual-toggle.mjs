@@ -6,7 +6,7 @@ const root = process.cwd()
 function read(relative) {
   const full = path.join(root, relative)
   if (!fs.existsSync(full)) throw new Error(`Missing required frontend file: ${relative}`)
-  return fs.readFileSync(full, 'utf8')
+  return fs.readFileSync(full, 'utf8').replaceAll('\r\n', '\n')
 }
 
 function requireText(source, text, label) {
@@ -35,7 +35,7 @@ requireText(drawer, 'visualsOpen && data && data.filtered_total > 0', 'Charts re
 requireText(drawer, 'id="asset-drilldown-visuals"', 'Visual target id')
 requireText(drawer, "data-compact={data.visuals.department_distribution.length <= 4 ? 'true' : 'false'}", 'Adaptive department graph sizing')
 requireText(drawer, "selection.scope !== 'department'", 'Single-department drawers omit redundant allocation graph')
-requireOrder(drawer, 'className="drilldown-header-actions"', 'className="drilldown-toolbar"', 'Toggle remains visible in the drawer header')
+requireOrder(drawer, "className={`drilldown-header-actions", 'className="drilldown-toolbar"', 'Toggle remains visible in the drawer header')
 requireOrder(drawer, 'visualsOpen && data', 'className="drilldown-toolbar"', 'Expanded visuals remain above search/table')
 
 requireText(styles, '.drilldown-header-actions', 'Header toggle placement')

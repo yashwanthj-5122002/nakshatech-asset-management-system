@@ -28,11 +28,33 @@ INVOICE_COLUMNS = {
     "billing_basis_id": "INTEGER",
     "billed_quantity": "NUMERIC(14, 3)",
     "billed_milestone_id": "INTEGER",
+    # Invoice Generation V2 (additive). See ProjectInvoice in lifecycle_models.py.
+    "cgst_percent": "NUMERIC(6, 2)",
+    "cgst_amount": "NUMERIC(16, 2)",
+    "sgst_percent": "NUMERIC(6, 2)",
+    "sgst_amount": "NUMERIC(16, 2)",
+    "igst_percent": "NUMERIC(6, 2)",
+    "igst_amount": "NUMERIC(16, 2)",
+    "work_order_date": "DATE",
+    "dispatch_details": "VARCHAR(255)",
+    "dispatch_date": "DATE",
+    "place_of_supply": "VARCHAR(160)",
+    "entry_mode": "VARCHAR(20)",
+    "document_snapshot": "JSON",
 }
 ESTIMATE_COLUMNS = {
     "unit_rate": "NUMERIC(18, 4)",
     "estimated_quantity": "NUMERIC(14, 3)",
     "quantity_unit": "VARCHAR(30)",
+    "projected_payment_date": "DATE",
+    "advance_required": "BOOLEAN",
+    "advance_payment_type": "VARCHAR(30)",
+    "advance_percent": "NUMERIC(6, 2)",
+    "advance_amount": "NUMERIC(18, 2)",
+    "advance_base_amount": "NUMERIC(18, 2)",
+    "advance_currency_code": "VARCHAR(3)",
+    "expected_advance_date": "DATE",
+    "final_advance_date": "DATE",
 }
 PAYMENT_COLUMNS = {
     "payment_currency": "VARCHAR(3)",
@@ -44,6 +66,11 @@ PAYMENT_COLUMNS = {
     "inr_equivalent": "NUMERIC(18, 2)",
     "invoice_inr_equivalent": "NUMERIC(18, 2)",
     "fx_gain_loss_inr": "NUMERIC(18, 2)",
+}
+ADVANCE_TRANSACTION_COLUMNS = {
+    "adjusted_amount_inr": "NUMERIC(18, 2)",
+    "adjusted_invoice_id": "INTEGER",
+    "adjusted_at": "TIMESTAMP",
 }
 
 
@@ -70,6 +97,22 @@ def ensure_commercial_schema_compatibility() -> None:
             connection.execute(text("UPDATE project_invoices SET fx_locked = FALSE WHERE fx_locked IS NULL"))
         if "project_commercial_estimate_revisions" in tables:
             _add_missing(connection, "project_commercial_estimate_revisions", {c["name"] for c in inspector.get_columns("project_commercial_estimate_revisions")}, ESTIMATE_COLUMNS)
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_project_commercial_estimate_revisions_projected_payment_date "
+                "ON project_commercial_estimate_revisions (projected_payment_date)"
+            ))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_project_commercial_estimate_revisions_advance_payment_type "
+                "ON project_commercial_estimate_revisions (advance_payment_type)"
+            ))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_project_commercial_estimate_revisions_expected_advance_date "
+                "ON project_commercial_estimate_revisions (expected_advance_date)"
+            ))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_project_commercial_estimate_revisions_final_advance_date "
+                "ON project_commercial_estimate_revisions (final_advance_date)"
+            ))
         if "project_invoice_payments" in tables:
             _add_missing(connection, "project_invoice_payments", {c["name"] for c in inspector.get_columns("project_invoice_payments")}, PAYMENT_COLUMNS)
             connection.execute(text(
@@ -77,4 +120,15 @@ def ensure_commercial_schema_compatibility() -> None:
                 "fx_rate_date = payment_date, fx_rate_source = 'BASE_CURRENCY', fx_rate_mode = 'BASE_CURRENCY', "
                 "inr_equivalent = amount, invoice_inr_equivalent = amount, fx_gain_loss_inr = 0 "
                 "WHERE inr_equivalent IS NULL AND invoice_id IN (SELECT id FROM project_invoices WHERE UPPER(currency) = 'INR')"
+            ))
+        if "client_advance_transactions" in tables:
+            _add_missing(
+                connection,
+                "client_advance_transactions",
+                {c["name"] for c in inspector.get_columns("client_advance_transactions")},
+                ADVANCE_TRANSACTION_COLUMNS,
+            )
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_client_advance_transactions_adjusted_invoice_id "
+                "ON client_advance_transactions (adjusted_invoice_id)"
             ))

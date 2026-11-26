@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import Iterable
 from datetime import datetime
 
@@ -12,7 +14,24 @@ from app.core.roles import VALID_ROLES
 from app.models.entities import User, utc_now
 from app.modules.notifications.models import GlobalNotification
 
+logger = logging.getLogger(__name__)
+
 VALID_NOTIFICATION_CATEGORIES = {"approval", "ticket", "system"}
+
+# This change is deliberately presentation-only and limited to these two roles.
+# Other roles keep their existing category, listing and popup policies.
+REVIEWED_APPROVAL_ROLES = frozenset({"finance", "management"})
+
+# These exact events belonged exclusively to the rejected V7 Sample Request
+# workflow. Keep the list narrow so no current workflow notification is
+# suppressed by a prefix or a broad category rule.
+OBSOLETE_SAMPLE_NOTIFICATION_EVENT_TYPES = frozenset({
+    "technical.sample.requested",
+    "bd.sample.submitted",
+    "technical.sample.revision_requested",
+    "finance.bd_opportunity.client_approved",
+})
+OBSOLETE_SAMPLE_NOTIFICATION_RESOLUTION = "Obsolete Sample Request workflow retired"
 
 
 def _clean_text(value: str, *, field: str, max_length: int) -> str:
@@ -99,6 +118,11 @@ def create_global_notification(
     recipient_user_ids: Iterable[int] | None = None,
     recipient_roles: Iterable[str] | None = None,
     dedupe_key: str | None = None,
+    # --- additive, optional popup metadata (existing call sites are unaffected) ---
+    severity: str | None = None,
+    requires_action: bool | None = None,
+    metadata: dict | None = None,
+    is_reminder: bool | None = None,
 ) -> list[GlobalNotification]:
     """Create persistent per-user notifications without committing the caller's transaction.
 
@@ -108,6 +132,9 @@ def create_global_notification(
     """
 
     clean_event_type = _clean_text(event_type, field="event_type", max_length=80)
+    if clean_event_type in OBSOLETE_SAMPLE_NOTIFICATION_EVENT_TYPES:
+        logger.info("obsolete Sample Request notification suppressed event_type=%s", clean_event_type)
+        return []
     clean_title = _clean_text(title, field="title", max_length=255)
     clean_message = _clean_text(message, field="message", max_length=10_000)
     clean_category = str(category or "system").strip().lower()
@@ -119,10 +146,22 @@ def create_global_notification(
         raise ValueError("dedupe_key must be 255 characters or fewer")
 
     requested_roles = _normalize_roles(recipient_roles)
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a mapping")
+        cleaned_metadata = json.dumps(metadata, default=str)[:8000]
+    else:
+        cleaned_metadata = None
+
     users = resolve_recipient_users(
         db,
         recipient_user_ids=recipient_user_ids,
         recipient_roles=requested_roles,
+    )
+    logger.info(
+        "notification created event_type=%s recipients=%s",
+        clean_event_type,
+        [user.id for user in users],
     )
 
     created: list[GlobalNotification] = []
@@ -135,6 +174,12 @@ def create_global_notification(
                 )
             )
             if existing is not None:
+                logger.info(
+                    "notification dedupe skipped event_type=%s recipient=%s key=%s",
+                    clean_event_type,
+                    user.id,
+                    clean_dedupe_key,
+                )
                 continue
 
         matched_role = user.role if user.role in requested_roles else None
@@ -147,6 +192,10 @@ def create_global_notification(
             message=clean_message,
             target_url=clean_target_url,
             dedupe_key=clean_dedupe_key,
+            severity=(str(severity).strip().lower() or "info") if severity else "info",
+            requires_action=bool(requires_action),
+            metadata_json=cleaned_metadata,
+            is_reminder=bool(is_reminder),
         )
         try:
             with db.begin_nested():
@@ -159,6 +208,41 @@ def create_global_notification(
         created.append(notification)
 
     return created
+
+
+def retire_obsolete_sample_notifications(db: Session) -> int:
+    """Resolve only persisted notifications from the retired Sample Request flow.
+
+    Rows remain available as notification history. The update is idempotent and
+    deliberately uses an exact event allow-list so unrelated current events are
+    never changed.
+    """
+
+    rows = list(db.scalars(select(GlobalNotification).where(
+        GlobalNotification.event_type.in_(OBSOLETE_SAMPLE_NOTIFICATION_EVENT_TYPES)
+    )).all())
+    changed = 0
+    stamp = utc_now()
+    for row in rows:
+        if (
+            row.is_read
+            and row.read_at is not None
+            and not row.requires_action
+            and row.resolved_at is not None
+            and row.resolution_note == OBSOLETE_SAMPLE_NOTIFICATION_RESOLUTION
+            and row.target_url is None
+        ):
+            continue
+        row.is_read = True
+        row.read_at = row.read_at or stamp
+        row.requires_action = False
+        row.resolved_at = row.resolved_at or stamp
+        row.resolution_note = OBSOLETE_SAMPLE_NOTIFICATION_RESOLUTION
+        row.target_url = None
+        changed += 1
+    if changed:
+        logger.info("retired obsolete Sample Request notifications count=%s", changed)
+    return changed
 
 
 def _exclude_event_prefixes(query, prefixes: Iterable[str] | None):
@@ -178,15 +262,32 @@ def list_notifications_for_user(
     limit: int = 100,
     offset: int = 0,
     excluded_event_prefixes: Iterable[str] | None = None,
+    effective_role: str = "",
 ) -> list[GlobalNotification]:
     query = select(GlobalNotification).where(GlobalNotification.recipient_user_id == user_id)
     query = _exclude_event_prefixes(query, excluded_event_prefixes)
     if unread_only:
         query = query.where(GlobalNotification.is_read.is_(False))
-    if category:
-        normalized = category.strip().lower()
-        if normalized not in VALID_NOTIFICATION_CATEGORIES:
-            raise HTTPException(status_code=422, detail="Invalid notification category")
+    normalized = category.strip().lower() if category else None
+    if normalized and normalized not in VALID_NOTIFICATION_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Invalid notification category")
+    role = (effective_role or "").strip().lower()
+    if role in REVIEWED_APPROVAL_ROLES and normalized == "approval":
+        # Candidate selection happens in SQL, but BUSINESS-state validation happens
+        # before pagination; a legacy System row can therefore appear correctly.
+        from app.modules.notifications.approval_review import (
+            approval_events_for_role, is_pending_approval_for_user,
+        )
+        query = query.where(GlobalNotification.event_type.in_(approval_events_for_role(role)))
+        query = query.order_by(GlobalNotification.created_at.desc(), GlobalNotification.id.desc())
+        viewer = db.get(User, user_id)
+        if viewer is None:
+            return []
+        cache: dict = {}
+        eligible = [row for row in db.scalars(query).all()
+                    if is_pending_approval_for_user(db, row, viewer, role, cache)]
+        return eligible[offset:offset + limit]
+    if normalized:
         query = query.where(GlobalNotification.category == normalized)
     query = query.order_by(GlobalNotification.created_at.desc(), GlobalNotification.id.desc())
     return list(db.scalars(query.offset(offset).limit(limit)).all())
@@ -258,3 +359,298 @@ def mark_all_notifications_read(
     )
     db.flush()
     return int(result.rowcount or 0)
+# ---------------------------------------------------------------------------
+# Notification popup experience (additive helpers)
+# ---------------------------------------------------------------------------
+
+# Roles allowed to see monetary values inside notification metadata. Everyone
+# else receives the notification WITH the money fields stripped server-side, so
+# hiding them in the UI is never the only protection.
+MONEY_VISIBLE_ROLES = frozenset({"finance", "management", "admin", "software_team", "bd"})
+
+_MONEY_METADATA_KEYS = (
+    "amount",
+    "amount_due",
+    "pending_amount",
+    "commercial_value",
+    "project_value",
+    "invoice_total",
+)
+
+
+def _decode_metadata(notification: GlobalNotification) -> dict:
+    if not notification.metadata_json:
+        return {}
+    try:
+        parsed = json.loads(notification.metadata_json)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def redact_notification_metadata(metadata: dict, *, effective_role: str) -> dict:
+    """Strip monetary fields for roles that may not see financial amounts."""
+
+    if (effective_role or "").strip().lower() in MONEY_VISIBLE_ROLES:
+        return dict(metadata)
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key not in _MONEY_METADATA_KEYS and not key.startswith("amount")
+    }
+
+
+def notification_payload(
+    notification: GlobalNotification,
+    *,
+    effective_role: str,
+) -> dict:
+    """Serialize one notification for the bell and the center popup.
+
+    READ and RESOLVED stay independent so the UI can show
+    "read but still pending action" without conflating the two.
+    """
+
+    return {
+        "id": notification.id,
+        "recipient_role": notification.recipient_role,
+        "event_type": notification.event_type,
+        "category": notification.category,
+        "title": notification.title,
+        "message": notification.message,
+        "target_url": notification.target_url,
+        "is_read": bool(notification.is_read),
+        "read_at": notification.read_at,
+        "created_at": notification.created_at,
+        "severity": notification.severity or "info",
+        "requires_action": bool(notification.requires_action),
+        "is_resolved": notification.resolved_at is not None,
+        "resolved_at": notification.resolved_at,
+        "is_reminder": bool(notification.is_reminder),
+        "metadata": redact_notification_metadata(
+            _decode_metadata(notification), effective_role=effective_role
+        ),
+    }
+
+
+def reviewed_notification_payload(
+    db: Session,
+    notification: GlobalNotification,
+    *,
+    viewer: User,
+    effective_role: str,
+    cache: dict | None = None,
+) -> dict:
+    """Classify the displayed bell/popup row without updating stored history."""
+    payload = notification_payload(notification, effective_role=effective_role)
+    role = (effective_role or "").strip().lower()
+    if role not in REVIEWED_APPROVAL_ROLES:
+        return payload
+    from app.modules.notifications.approval_review import (
+        approval_events_for_role, is_pending_approval_for_user,
+    )
+    pending = (
+        notification.event_type in approval_events_for_role(role)
+        and is_pending_approval_for_user(db, notification, viewer, role, cache)
+    )
+    payload["approval_pending"] = pending
+    if pending:
+        payload.update(category="approval", requires_action=True, is_resolved=False, resolved_at=None)
+        # The existing popup response schema already exposes metadata; mark the
+        # verified approval here so legacy titles and non-approval wording pass
+        # the existing frontend eligibility policy without changing it.
+        payload["metadata"] = {**payload["metadata"], "notification_type": "approval"}
+    elif notification.category == "approval" or notification.event_type in approval_events_for_role(role):
+        # Legacy role-targeted informational notices were erroneously saved as
+        # approvals; retain their history but display them as information.
+        payload.update(category="system", requires_action=False)
+    return payload
+
+
+def list_popup_notifications(
+    db: Session,
+    *,
+    user_id: int,
+    effective_role: str,
+    limit: int = 5,
+    excluded_event_prefixes: Iterable[str] | None = None,
+    excluded_notification_ids: Iterable[int] | None = None,
+) -> list[dict]:
+    """Read-only popup queue: no business action or notification is mutated."""
+    role = (effective_role or "").strip().lower()
+    max_rows = max(1, min(int(limit), 20))
+    if role in REVIEWED_APPROVAL_ROLES:
+        from app.modules.notifications.approval_review import (
+            approval_events_for_role, is_pending_approval_for_user,
+        )
+        viewer = db.get(User, user_id)
+        if viewer is None:
+            return []
+        query = select(GlobalNotification).where(
+            GlobalNotification.recipient_user_id == user_id,
+            GlobalNotification.event_type.in_(approval_events_for_role(role)),
+        )
+        excluded = {int(nid) for nid in (excluded_notification_ids or ()) if int(nid) > 0}
+        if excluded:
+            query = query.where(~GlobalNotification.id.in_(excluded))
+        query = _exclude_event_prefixes(query, excluded_event_prefixes)
+        query = query.order_by(GlobalNotification.created_at.desc(), GlobalNotification.id.desc())
+        cache: dict = {}
+        result = []
+        # Filter by the REAL workflow before limiting, and skip approvals already
+        # dismissed this session so later pending requests can reach the popup.
+        for notification in db.scalars(query).all():
+            if is_pending_approval_for_user(db, notification, viewer, role, cache):
+                result.append(reviewed_notification_payload(
+                    db, notification, viewer=viewer, effective_role=role, cache=cache,
+                ))
+                if len(result) == max_rows:
+                    break
+        return result
+
+    # Preserve the previous queue behaviour for every other department.
+    query = select(GlobalNotification).where(
+        GlobalNotification.recipient_user_id == user_id,
+        GlobalNotification.resolved_at.is_(None),
+    )
+    query = _exclude_event_prefixes(query, excluded_event_prefixes)
+    query = query.order_by(
+        GlobalNotification.created_at.asc(), GlobalNotification.id.asc()
+    ).limit(max_rows)
+    rows = list(db.scalars(query).all())
+    return [notification_payload(row, effective_role=effective_role) for row in rows]
+
+
+def pending_count_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    excluded_event_prefixes: Iterable[str] | None = None,
+    effective_role: str = "",
+) -> int:
+    """Count of notifications that still require a business decision."""
+
+    role = (effective_role or "").strip().lower()
+    if role in REVIEWED_APPROVAL_ROLES:
+        from app.modules.notifications.approval_review import (
+            approval_events_for_role, is_pending_approval_for_user,
+        )
+        viewer = db.get(User, user_id)
+        if viewer is None:
+            return 0
+        candidates = select(GlobalNotification).where(
+            GlobalNotification.recipient_user_id == user_id,
+            GlobalNotification.event_type.in_(approval_events_for_role(role)),
+        )
+        candidates = _exclude_event_prefixes(candidates, excluded_event_prefixes)
+        cache: dict = {}
+        return sum(1 for row in db.scalars(candidates).all()
+                   if is_pending_approval_for_user(db, row, viewer, role, cache))
+
+    query = select(func.count(GlobalNotification.id)).where(
+        GlobalNotification.recipient_user_id == user_id,
+        GlobalNotification.resolved_at.is_(None),
+        GlobalNotification.requires_action.is_(True),
+    )
+    query = _exclude_event_prefixes(query, excluded_event_prefixes)
+    return int(db.scalar(query) or 0)
+
+
+def resolve_notifications(
+    db: Session,
+    *,
+    recipient_user_ids: Iterable[int],
+    event_type: str | None = None,
+    event_type_prefix: str | None = None,
+    dedupe_key_prefix: str | None = None,
+    dedupe_key: str | None = None,
+    target_url: str | None = None,
+    resolved_by_id: int | None = None,
+    resolution_note: str | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Resolve pending notifications AFTER a real workflow action succeeded.
+
+    Called from the existing approval services - never from the popup UI - so a
+    notification can only become resolved when the underlying business action
+    actually completed.
+    """
+
+    ids = {int(user_id) for user_id in recipient_user_ids if user_id}
+    if not ids:
+        return 0
+    conditions = [
+        GlobalNotification.recipient_user_id.in_(ids),
+        GlobalNotification.resolved_at.is_(None),
+    ]
+    if event_type:
+        conditions.append(GlobalNotification.event_type == event_type)
+    if event_type_prefix:
+        conditions.append(GlobalNotification.event_type.startswith(event_type_prefix))
+    if dedupe_key_prefix:
+        conditions.append(GlobalNotification.dedupe_key.like(f"{dedupe_key_prefix}%"))
+    if dedupe_key:
+        conditions.append(GlobalNotification.dedupe_key == dedupe_key)
+    if target_url:
+        conditions.append(GlobalNotification.target_url == target_url)
+
+    rows = list(db.scalars(select(GlobalNotification).where(*conditions)).all())
+    if not rows:
+        return 0
+    stamp = now or utc_now()
+    note = (resolution_note or "").strip()[:255] or None
+    for row in rows:
+        row.resolved_at = stamp
+        row.resolved_by_id = resolved_by_id
+        row.resolution_note = note
+    db.flush()
+    logger.info(
+        "notifications resolved event_type=%s prefix=%s count=%s",
+        event_type,
+        event_type_prefix,
+        len(rows),
+    )
+    return len(rows)
+
+
+def resolve_reminders(
+    db: Session,
+    *,
+    dedupe_key_prefixes: Iterable[str],
+    resolved_by_id: int | None = None,
+    resolution_note: str | None = None,
+) -> int:
+    """Stop recurring overdue reminders once the underlying condition clears.
+
+    Only clears the persisted reminder rows; it never inserts a new one, so the
+    recurring popup cycle can never turn into notification spam.
+    """
+
+    candidates = list(
+        db.scalars(
+            select(GlobalNotification).where(GlobalNotification.resolved_at.is_(None))
+        ).all()
+    )
+    total = 0
+    for prefix in dedupe_key_prefixes:
+        clean_prefix = str(prefix or "").strip()
+        if not clean_prefix:
+            continue
+        matched = [
+            row for row in candidates
+            if (row.dedupe_key or "").startswith(clean_prefix)
+            and row.resolved_at is None
+        ]
+        if not matched:
+            continue
+        stamp = utc_now()
+        note = (resolution_note or "").strip()[:255] or None
+        for row in matched:
+            row.resolved_at = stamp
+            row.resolved_by_id = resolved_by_id
+            row.resolution_note = note
+        db.flush()
+        total += len(matched)
+    if total:
+        logger.info("overdue reminders resolved count=%s", total)
+    return total

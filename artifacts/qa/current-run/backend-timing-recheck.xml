@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="22" skipped="0" tests="26" time="86.681" timestamp="2026-11-11T13:37:16.237285+05:30" hostname="DESKTOP-SO31FT741"><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_qc_timestamps_and_duration" time="3.398" /><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_duplicate_complete_does_not_double_count" time="3.047"><failure message="assert 1.2 == 1.16">backend\tests\test_item_daily_activity_flow_v8_3.py:165: in test_duplicate_complete_does_not_double_count
+    assert rows[0]["production_quantity"] == 1.16
+E   assert 1.2 == 1.16</failure></testcase><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_production_to_qc_gate" time="3.090"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_daily_activity_flow_v8_3.py:180: in test_production_to_qc_gate
+    run_production(db, ctx, item)
+backend\tests\test_production_master_excel_allocation_v8_3.py:105: in run_production
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_qc_to_qa_gate" time="3.222"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_daily_activity_flow_v8_3.py:192: in test_qc_to_qa_gate
+    run_review(db, ctx, item, "qc", "passed")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_qa_reject_preserves_history" time="3.233"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_daily_activity_flow_v8_3.py:217: in test_qa_reject_preserves_history
+    run_review(db, ctx, item, "qc", "passed")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_ready_for_delivery_gate" time="3.047"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_daily_activity_flow_v8_3.py:241: in test_ready_for_delivery_gate
+    run_review(db, ctx, item, "qa", "passed")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_daily_activity_flow_v8_3" name="test_delivery_gate_and_no_auto_finance" time="3.070"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_daily_activity_flow_v8_3.py:251: in test_delivery_gate_and_no_auto_finance
+    run_production(db, ctx, item)
+backend\tests\test_production_master_excel_allocation_v8_3.py:105: in run_production
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_multi_session_production_v8_3" name="test_qc_reject_allows_production_rework_without_double_counting_file" time="3.068"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_multi_session_production_v8_3.py:164: in test_qc_reject_allows_production_rework_without_double_counting_file
+    run_review(db, ctx, item, "qc", "rejected", remarks="Needs rework")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_multi_session_production_v8_3" name="test_qc_and_qa_gates_and_reject_history" time="3.126"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_multi_session_production_v8_3.py:273: in test_qc_and_qa_gates_and_reject_history
+    run_review(db, ctx, item, "qc", "rejected", remarks="Misaligned")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_item_multi_session_production_v8_3" name="test_ready_for_delivery_and_delivery_after_full_chain" time="3.196"><failure message="ValueError: End time must be after the start time">backend\tests\test_item_multi_session_production_v8_3.py:363: in test_ready_for_delivery_and_delivery_after_full_chain
+    run_review(db, ctx, item, "qc", "passed")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_e2e_final_v8_3" name="test_operational_completion_blocked_until_all_files_delivered" time="3.075"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_e2e_final_v8_3.py:221: in test_operational_completion_blocked_until_all_files_delivered
+    run_review(db, ctx, items[0], "qa", "passed")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_file_tracking_v8_2" name="test_team_lead_can_personally_perform_production" time="3.250"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_file_tracking_v8_2.py:329: in test_team_lead_can_personally_perform_production
+    done = stop_activity(db, actor=team["tl"], activity_id=activity.id, status="completed",
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_file_tracking_v8_2" name="test_employee_files_attribution_and_aggregation" time="3.040"><failure message="ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data.">backend\tests\test_production_file_tracking_v8_2.py:398: in test_employee_files_attribution_and_aggregation
+    stop_activity(db, actor=team["prod"], activity_id=activity.id, status="completed",
+backend\app\modules\operations\production_items.py:1018: in stop_activity
+    quantity_completed, unit = locked_actual_from_item(
+backend\app\modules\operations\production_items.py:74: in locked_actual_from_item
+    raise ValueError(
+E   ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data.</failure></testcase><testcase classname="backend.tests.test_production_file_tracking_v8_2" name="test_delay_category_system_malfunction_and_affected_file" time="2.969"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_file_tracking_v8_2.py:501: in test_delay_category_system_malfunction_and_affected_file
+    done = stop_activity(db, actor=team["prod"], activity_id=activity.id, status="completed",
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_file_tracking_v8_2" name="test_qc_start_end_duration_pass" time="3.434"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_file_tracking_v8_2.py:558: in test_qc_start_end_duration_pass
+    team, item = _ready_for_review(db, ctx, "qcp", prepare="qc")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tests\test_production_file_tracking_v8_2.py:546: in _ready_for_review
+    stop_activity(db, actor=team["prod"], activity_id=production.id, status="completed",
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_file_tracking_v8_2" name="test_delivery_after_qa_pass" time="3.064"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_file_tracking_v8_2.py:615: in test_delivery_after_qa_pass
+    team, item = _ready_for_review(db, ctx, "del", prepare="qa")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tests\test_production_file_tracking_v8_2.py:546: in _ready_for_review
+    stop_activity(db, actor=team["prod"], activity_id=production.id, status="completed",
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_file_tracking_v8_2" name="test_workbook_exact_project_and_sheet_names" time="3.249"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_file_tracking_v8_2.py:685: in test_workbook_exact_project_and_sheet_names
+    stop_activity(db, actor=ctx_a["team"]["prod"], activity_id=act.id, status="completed",
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_reimport_preserves_work_history" time="3.130" /><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_qa_gate_after_qc_pass" time="3.149"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_master_excel_allocation_v8_3.py:430: in test_qa_gate_after_qc_pass
+    run_production(db, ctx, item)
+backend\tests\test_production_master_excel_allocation_v8_3.py:105: in run_production
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_qc_reject_history_and_notification" time="3.150"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_master_excel_allocation_v8_3.py:452: in test_qc_reject_history_and_notification
+    run_production(db, ctx, item)
+backend\tests\test_production_master_excel_allocation_v8_3.py:105: in run_production
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_qa_reject_history" time="3.241"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_master_excel_allocation_v8_3.py:471: in test_qa_reject_history
+    run_production(db, ctx, item)
+backend\tests\test_production_master_excel_allocation_v8_3.py:105: in run_production
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_ready_when_all_qa_pass_and_tl_confirms" time="3.374"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_master_excel_allocation_v8_3.py:506: in test_ready_when_all_qa_pass_and_tl_confirms
+    run_production(db, ctx, item)
+backend\tests\test_production_master_excel_allocation_v8_3.py:105: in run_production
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_pm_can_import_and_monitor" time="3.036" /><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_area_master_exact_26_and_file_level_values" time="3.184"><failure message="assert 1.2 == 1.16">backend\tests\test_production_master_excel_allocation_v8_3.py:635: in test_area_master_exact_26_and_file_level_values
+    assert row[6] == 1.16           # ACTUAL KM (actual production quantity)
+    ^^^^^^^^^^^^^^^^^^^^^
+E   assert 1.2 == 1.16</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_employee_productivity_counts" time="3.266"><failure message="ValueError: End time must be after the start time">backend\tests\test_production_master_excel_allocation_v8_3.py:666: in test_employee_productivity_counts
+    run_review(db, ctx, items[0], "qc", "passed")
+backend\tests\test_production_master_excel_allocation_v8_3.py:114: in run_review
+    return items_service.stop_activity(
+backend\app\modules\operations\production_items.py:933: in stop_activity
+    raise ValueError("End time must be after the start time")
+E   ValueError: End time must be after the start time</failure></testcase><testcase classname="backend.tests.test_production_master_excel_allocation_v8_3" name="test_workbook_is_a_live_snapshot" time="3.282" /></testsuite></testsuites>

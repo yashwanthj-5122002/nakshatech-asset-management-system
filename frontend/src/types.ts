@@ -1,4 +1,4 @@
-export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'finance' | 'hr' | 'bd' | 'ortho' | 'lidar' | 'civil' | 'laser_scanning' | 'bim' | 'mobile_mapping' | 'employee'
+export type Role = 'software_team' | 'admin' | 'management' | 'it' | 'drone' | 'finance' | 'hr' | 'bd' | 'bd_employee' | 'ortho' | 'lidar' | 'survey' | 'civil' | 'laser_scanning' | 'bim' | 'mobile_mapping' | 'employee'
 
 export interface ManagementLoginAccount {
   display_name: string
@@ -14,6 +14,7 @@ export interface AuthUser {
   branch: string
   employee_id?: string
   department?: string
+  department_code?: string
   designation?: string
   phone_number?: string | null
   joining_date?: string | null

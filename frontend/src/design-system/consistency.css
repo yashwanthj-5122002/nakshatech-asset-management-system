@@ -1,0 +1,279 @@
+/* ==========================================================================
+   NakshaTech Design System — Consistency Layer
+   Loaded last (after erp-premium.css) so every shared component resolves to
+   one typography scale, one spacing rhythm, one badge system, one card shell.
+
+   Presentation only — no behavior, routing, permission or workflow changes.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. One application font everywhere
+   -------------------------------------------------------------------------- */
+.app-shell {
+  font-family: var(--nk-font);
+}
+
+/* --------------------------------------------------------------------------
+   2. Micro labels / eyebrows / section kickers — one uppercase style
+   -------------------------------------------------------------------------- */
+.app-shell .section-kicker,
+.app-shell .eyebrow {
+  display: block;
+  margin: 0;
+  padding: 0;
+  color: var(--primary-cyan);
+  font-family: var(--nk-font);
+  font-size: var(--nk-caption);
+  font-weight: var(--nk-w-bold);
+  letter-spacing: 0.13em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   3. Shared section header
+        SECTION LABEL
+        Title                                View all
+   -------------------------------------------------------------------------- */
+.app-shell .section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.app-shell .section-heading > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-shell .section-heading h2 {
+  margin: 0;
+  color: var(--nk-text);
+  font-size: var(--nk-card-title);
+  font-weight: var(--nk-w-semibold);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .section-heading > a {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--nk-radius-sm);
+  color: #0e7ea4;
+  background: transparent;
+  font-size: var(--nk-meta-lg);
+  font-weight: var(--nk-w-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background var(--nk-dur-fast) var(--nk-ease),
+    border-color var(--nk-dur-fast) var(--nk-ease),
+    color var(--nk-dur-fast) var(--nk-ease);
+}
+
+.app-shell .section-heading > a:hover {
+  color: #0a6c8e;
+  border-color: color-mix(in srgb, var(--dept-accent) 28%, var(--nk-border));
+  background: color-mix(in srgb, var(--dept-accent) 7%, #fff);
+}
+
+/* --------------------------------------------------------------------------
+   4. One card shell: shared padding + radius for every panel-card
+   -------------------------------------------------------------------------- */
+.app-shell .panel-card {
+  padding: var(--nk-card-pad) 22px;
+  border-radius: var(--nk-radius-lg);
+}
+
+/* Panels whose sections/toolbars carry their own internal padding */
+.app-shell .ticket-list-panel,
+.app-shell .ticket-simple-create-form,
+.app-shell .software-security-panel {
+  padding: 0;
+}
+
+/* --------------------------------------------------------------------------
+   5. Buttons — one medium control system
+   -------------------------------------------------------------------------- */
+.app-shell .primary-button,
+.app-shell .secondary-button,
+.app-shell .danger-button,
+.app-shell .text-button,
+.app-shell .ghost-button,
+.app-shell .icon-button,
+.app-shell .sso-button {
+  border-radius: var(--nk-radius-md);
+  font-weight: var(--nk-w-semibold);
+  letter-spacing: 0;
+  gap: 8px;
+}
+
+.app-shell .primary-button,
+.app-shell .secondary-button,
+.app-shell .danger-button,
+.app-shell .sso-button {
+  min-height: var(--nk-control-h);
+  font-size: 0.84rem;
+}
+
+/* --------------------------------------------------------------------------
+   6. Badges / pills — one 25px height system with unified typography
+   -------------------------------------------------------------------------- */
+.app-shell .status,
+.app-shell .ticket-progress-pill,
+.app-shell .ticket-sla-badge,
+.app-shell .ticket-priority,
+.app-shell .finance-status,
+.app-shell .finance-type-badge,
+.app-shell .operations-status,
+.app-shell .travel-km-status,
+.app-shell .topbar-status,
+.app-shell .nk-meta-chip,
+.app-shell .count-chip {
+  min-height: var(--nk-badge-h);
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: var(--nk-caption);
+  font-weight: var(--nk-w-semibold);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+/* --------------------------------------------------------------------------
+   7. Empty states — compact, subtle border, icon + short message
+   -------------------------------------------------------------------------- */
+.app-shell .operations-empty,
+.app-shell .operations-empty-compact,
+.app-shell .finance-empty-state,
+.app-shell .travel-km-empty,
+.app-shell .sr-empty,
+.app-shell .empty-state {
+  min-height: 0;
+  padding: 26px 22px;
+  gap: 8px;
+  border: 1px solid var(--nk-border);
+  background: var(--nk-surface-soft);
+}
+
+.app-shell .empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--nk-meta-lg);
+}
+
+.app-shell .empty-state strong,
+.app-shell .operations-empty strong,
+.app-shell .finance-empty-state strong,
+.app-shell .travel-km-empty strong,
+.app-shell .sr-empty strong {
+  font-weight: var(--nk-w-bold);
+}
+
+/* Stacked recent panels share one inter-panel rhythm (no per-panel margins). */
+.app-shell .support-recent-panel + .support-recent-panel {
+  margin-top: 20px;
+}
+
+/* Support dashboard empty states carry a real icon in markup */
+.app-shell .support-recent-panel .empty-state::before {
+  display: none;
+}
+.app-shell .support-recent-panel .empty-state::before {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   8. Form controls — one radius, one type size
+   -------------------------------------------------------------------------- */
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  border-radius: var(--nk-radius-sm);
+  font-size: 0.85rem;
+}
+
+/* --------------------------------------------------------------------------
+   9. Keyboard focus indicators (accessibility)
+   -------------------------------------------------------------------------- */
+.app-shell a:focus-visible,
+.app-shell button:focus-visible,
+.app-shell [role="button"]:focus-visible,
+.app-shell input:focus-visible,
+.app-shell select:focus-visible,
+.app-shell textarea:focus-visible,
+.app-shell summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dept-accent) 70%, #08b8d9);
+  outline-offset: 2px;
+}
+
+.app-shell input:focus-visible,
+.app-shell select:focus-visible,
+.app-shell textarea:focus-visible {
+  outline-offset: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   10. Weight normalization for shared shell + card surfaces
+        (arbitrary 720–850 weights resolve to the 400/500/600/700 scale)
+   -------------------------------------------------------------------------- */
+.app-shell .sidebar-title strong { font-weight: var(--nk-w-bold); }
+.app-shell .sidebar-title span { font-weight: var(--nk-w-semibold); }
+.app-shell .sidebar-group-toggle { font-weight: var(--nk-w-semibold); }
+.app-shell .sidebar nav a { font-weight: var(--nk-w-medium); }
+.app-shell .sidebar .ghost-button { font-weight: var(--nk-w-semibold); letter-spacing: 0.01em; }
+.app-shell .topbar-status { font-weight: var(--nk-w-semibold); font-size: var(--nk-meta); }
+.app-shell .sidebar-section-label { font-weight: var(--nk-w-semibold); }
+
+.app-shell .panel-heading h2,
+.app-shell .panel-heading h3,
+.app-shell .panel-title-row h2,
+.app-shell .panel-title-row h3,
+.app-shell .finance-panel-header h2 {
+  font-weight: var(--nk-w-bold);
+}
+
+/* --------------------------------------------------------------------------
+   11. Support dashboard rows — predictable row structure + rhythm
+   -------------------------------------------------------------------------- */
+.app-shell .support-ticket-list {
+  gap: 10px;
+}
+
+.app-shell .support-ticket-row {
+  min-height: 56px;
+  padding: 12px 16px;
+  gap: 16px;
+  border-radius: var(--nk-radius-md);
+}
+
+.app-shell .support-ticket-row > div {
+  min-width: 0;
+}
+
+.app-shell .support-ticket-row strong {
+  font-size: 0.84rem;
+  font-weight: var(--nk-w-semibold);
+  line-height: 1.35;
+}
+
+.app-shell .support-ticket-row div span {
+  font-size: var(--nk-meta);
+  line-height: 1.4;
+}
+
+.app-shell .support-ticket-row > .ticket-progress-pill,
+.app-shell .support-ticket-row > .finance-status {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+

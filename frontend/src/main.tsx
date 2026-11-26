@@ -6,6 +6,12 @@ import { AuthProvider } from './context/AuthContext'
 import { ITMonthProvider } from './context/ITMonthContext'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './styles.css'
+import './design-system/tokens.css'
+import './design-system/naksha-ui.css'
+import './design-system/shell.css'
+import './design-system/page-archetypes.css'
+import './design-system/erp-premium.css'
+import './design-system/consistency.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

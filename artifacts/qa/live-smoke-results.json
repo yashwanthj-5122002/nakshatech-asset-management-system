@@ -1,0 +1,116 @@
+[
+  {
+    "url": "http://localhost:3100/",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:3100/api/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:3100/assets",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:3100/api/assets",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8088/",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8088/api/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8088/assets",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8088/api/assets",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/assets",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/assets",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/auth/login",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/dashboard/summary",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/dashboard/it",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/assets?limit=5",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/it-activity/handover-records?limit=5",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/it-activity/custody-employees?search=qa&limit=5",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/notifications/global/unread-count",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "url": "http://localhost:8100/api/management/project-tracking-sales/access",
+    "status": 403,
+    "expected": 403,
+    "passed": true
+  }
+]

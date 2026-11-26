@@ -1,4 +1,5 @@
-import { FileCheck2, FileUp, PlusCircle, ReceiptIndianRupee, Search, ShoppingCart } from 'lucide-react'
+import { indiaDateInput } from '../lib/date'
+import { CalendarDays, FileCheck2, FileUp, PlusCircle, ReceiptIndianRupee, Search, ShoppingCart } from 'lucide-react'
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DashboardHeader } from '../components/DashboardHeader'
@@ -10,7 +11,7 @@ import { isFullAccessRole } from '../lib/roles'
 import type { Asset, ITPurchaseRecord, ITPurchaseRequest } from '../types'
 
 function today() {
-  return new Date().toISOString().slice(0, 10)
+  return indiaDateInput()
 }
 
 const initialForm = {
@@ -200,6 +201,11 @@ export function PurchaseProcurementPage() {
         eyebrow="PURCHASE TRACEABILITY"
         title="IT Purchase & Procurement"
         description={`Purchases saved now are reported in ${monthLabel(selectedMonth)}. IT purchase records must be created from a Management-approved permission request.`}
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Reported in {monthLabel(selectedMonth)}</span>
+          <span className="nk-meta-chip"><FileCheck2 size={14} /> Requires a Management-approved permission request</span>
+          <span className="nk-meta-chip"><ReceiptIndianRupee size={14} /> {canEdit ? 'Purchase entry enabled for your role' : 'Read-only purchase register'}</span>
+        </>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}

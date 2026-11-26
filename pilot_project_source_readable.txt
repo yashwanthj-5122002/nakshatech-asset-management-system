@@ -1,0 +1,2471 @@
+
+===== BEGIN backend/app/modules/management_clients/models.py =====
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+from app.models.entities import utc_now
+
+
+class ManagementClientIntake(Base):
+    """Isolated client register; not a FinanceProject or a BD-owned client."""
+
+    __tablename__ = "management_client_intakes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    client_name: Mapped[str] = mapped_column(String(255), index=True)
+    client_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    organization_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    country: Mapped[str] = mapped_column(String(100), default="India")
+    gst_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    contact_person_name: Mapped[str] = mapped_column(String(255))
+    contact_person_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_person_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    work_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_person_name: Mapped[str] = mapped_column(String(255), index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class ManagementAdditionalProjectRequest(Base):
+    """Persistent source-owned request. No duplicate client or project is created here."""
+
+    __tablename__ = "management_additional_project_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    management_client_id: Mapped[int] = mapped_column(ForeignKey("management_client_intakes.id", ondelete="RESTRICT"), index=True)
+    requested_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    project_name: Mapped[str] = mapped_column(String(255))
+    scope_text: Mapped[str] = mapped_column(Text)
+    expected_start_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
+    created_project_id: Mapped[int | None] = mapped_column(ForeignKey("finance_projects.id", ondelete="RESTRICT"), nullable=True, unique=True)
+    completed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+===== END backend/app/modules/management_clients/models.py =====
+
+===== BEGIN backend/app/modules/management_clients/schemas.py =====
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class ManagementClientInput(BaseModel):
+    client_code: str = Field(min_length=2, max_length=32)
+    client_name: str = Field(min_length=2, max_length=255)
+    client_email: str | None = Field(default=None, max_length=255)
+    organization_email: str | None = Field(default=None, max_length=255)
+    address: str | None = Field(default=None, max_length=3000)
+    country: str = Field(default="India", min_length=2, max_length=100)
+    gst_number: str | None = Field(default=None, max_length=32)
+    contact_person_name: str = Field(min_length=2, max_length=255)
+    contact_person_email: str | None = Field(default=None, max_length=255)
+    contact_person_phone: str | None = Field(default=None, max_length=40)
+    work_description: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("client_code", mode="before")
+    @classmethod
+    def normalize_client_code(cls, value):
+        if not isinstance(value, str):
+            return value
+        value = value.strip().upper()
+        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/. ")
+        if any(character not in allowed for character in value):
+            raise ValueError("Client ID contains unsupported characters")
+        return value
+
+    @field_validator(
+        "client_name", "client_email", "organization_email", "address", "country",
+        "gst_number", "contact_person_name", "contact_person_email", "contact_person_phone",
+        "work_description", mode="before",
+    )
+    @classmethod
+    def strip_text(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("client_email", "organization_email", "contact_person_email")
+    @classmethod
+    def validate_email(cls, value):
+        if not value:
+            return value
+        value = value.lower()
+        local, separator, domain = value.partition("@")
+        if not separator or not local or not domain or "." not in domain or domain.startswith(".") or domain.endswith("."):
+            raise ValueError("Enter a valid email address")
+        return value
+
+    @field_validator("gst_number")
+    @classmethod
+    def normalize_gst(cls, value):
+        return value.upper().replace(" ", "") if value else value
+
+
+class ManagementClientResponse(ManagementClientInput):
+    model_config = ConfigDict(from_attributes=True)
+    can_request_project: bool = False
+
+    id: int
+    source_person_name: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+===== END backend/app/modules/management_clients/schemas.py =====
+
+===== BEGIN backend/app/modules/management_clients/router.py =====
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import CurrentAuth, get_current_auth
+from app.core.database import get_db
+from app.modules.employee_portal.service import record_audit
+from app.models.entities import utc_now
+from app.modules.finance.models import FinanceClient, FinanceProject
+from app.modules.management_projects.models import ManagementProjectLink
+from app.modules.management_projects.router import (
+    _legacy_stage_counts, _project_packages, _project_payload, _tracking_rollup,
+)
+from app.modules.operations.models import ProjectWorkflow, WorkPackageItemActivity
+from app.modules.operations.lifecycle_models import ProjectInvoice
+from app.modules.operations.lifecycle_service import (
+    APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING,
+    MANAGEMENT_SOURCE_APPROVED_EVENT, _transition, management_source_approval_event,
+)
+from app.modules.operations.production_items import build_item_rows, file_aggregates_for_packages
+from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
+from app.modules.management_clients.schemas import ManagementClientInput, ManagementClientResponse
+from app.modules.notifications.service import create_global_notification
+
+router = APIRouter(prefix="/management/client-register", tags=["Management Client Register"])
+
+# The two authoritative management logins. This is enforced server-side, not only in the sidebar.
+MANAGEMENT_EMAILS = frozenset({"vinod@nakshatech.com", "chethan@nakshatech.com"})
+
+
+def _management_only(auth: CurrentAuth) -> None:
+    role = str(auth.effective_role or "").strip().lower()
+    email = str(auth.user.email or "").strip().lower()
+    if role != "management" or email not in MANAGEMENT_EMAILS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Management client register access denied")
+
+
+def _check_code(db: Session, client_code: str, exclude_id: int | None = None) -> None:
+    existing = db.scalar(select(ManagementClientIntake.id).where(ManagementClientIntake.client_code == client_code))
+    if existing is not None and existing != exclude_id:
+        raise HTTPException(status_code=409, detail="Client ID is already registered in Management")
+    # Avoid an identifier collision when Finance later converts this intake into the Client Master.
+    finance_existing = db.scalar(select(FinanceClient).where(FinanceClient.client_code == client_code))
+    # Finance creates a linked management-sourced FinanceClient on the first project.
+    # That linked copy must not block normal edits to the ORIGINAL management intake.
+    same_intake = db.get(ManagementClientIntake, exclude_id) if exclude_id is not None else None
+    if finance_existing is not None and not (
+        same_intake is not None and same_intake.client_code == client_code
+        and finance_existing.source_team == "management"
+    ):
+        raise HTTPException(status_code=409, detail="Client ID already exists in the Finance Client Master")
+
+
+def _values(payload: ManagementClientInput) -> dict:
+    return payload.model_dump()
+
+
+@router.get("", response_model=list[ManagementClientResponse])
+def list_management_clients(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    rows = db.scalars(
+        select(ManagementClientIntake).order_by(
+            ManagementClientIntake.created_at.desc(), ManagementClientIntake.id.desc()
+        )
+    ).all()
+    return [ManagementClientResponse.model_validate(row).model_copy(
+        update={"can_request_project": row.created_by_id == auth.user.id and row.is_active},
+    ) for row in rows]
+
+
+@router.post("", response_model=ManagementClientResponse, status_code=status.HTTP_201_CREATED)
+def create_management_client(
+    payload: ManagementClientInput, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    _check_code(db, payload.client_code)
+    row = ManagementClientIntake(
+        **_values(payload),
+        source_person_name=auth.user.full_name,
+        created_by_id=auth.user.id,
+        updated_by_id=auth.user.id,
+        is_active=True,
+    )
+    try:
+        db.add(row)
+        db.flush()
+        record_audit(
+            db, event_type="MANAGEMENT_CLIENT_REGISTERED", request=request, user=auth.user,
+            module="management", target_type="management_client_intake", target_id=str(row.id),
+            details={"client_code": row.client_code, "source_person_name": row.source_person_name},
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Client ID already exists") from exc
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(row)
+    return row
+
+
+@router.put("/{client_id}", response_model=ManagementClientResponse)
+def update_management_client(
+    client_id: int, payload: ManagementClientInput, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    row = db.get(ManagementClientIntake, client_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Management client not found")
+    _check_code(db, payload.client_code, exclude_id=row.id)
+    linked_finance_client = db.scalar(select(FinanceClient).where(FinanceClient.client_code == row.client_code))
+    if linked_finance_client is not None and linked_finance_client.source_team == "management":
+        if payload.client_code != row.client_code:
+            raise HTTPException(status_code=409, detail="Client ID cannot change after Finance has created a management project")
+        # Keep the linked Finance invoice/client snapshot fields in sync without changing
+        # the original management source, BD ownership or historical invoice records.
+        linked_finance_client.client_name = payload.client_name
+        linked_finance_client.client_email = payload.client_email
+        linked_finance_client.contact_person_name = payload.contact_person_name
+        linked_finance_client.contact_person_phone = payload.contact_person_phone or "Not provided"
+        linked_finance_client.address = payload.address
+        linked_finance_client.country = payload.country
+        linked_finance_client.gst_number = payload.gst_number
+        linked_finance_client.description = payload.work_description
+        linked_finance_client.updated_by_id = auth.user.id
+        if linked_finance_client.master_profile is not None:
+            linked_finance_client.master_profile.organization_email = payload.organization_email
+            linked_finance_client.master_profile.contact_person_email = payload.contact_person_email
+            linked_finance_client.master_profile.task = payload.work_description
+            linked_finance_client.master_profile.updated_by_id = auth.user.id
+    for field, value in _values(payload).items():
+        setattr(row, field, value)
+    row.updated_by_id = auth.user.id
+    try:
+        record_audit(
+            db, event_type="MANAGEMENT_CLIENT_UPDATED", request=request, user=auth.user,
+            module="management", target_type="management_client_intake", target_id=str(row.id),
+            details={"client_code": row.client_code, "source_person_name": row.source_person_name},
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Client ID already exists") from exc
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(row)
+    return row
+
+
+def _approval_flags(
+    db: Session, *, link: ManagementProjectLink, workflow_status: str,
+    summary: dict, viewer_user_id: int,
+) -> dict:
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    workflow = db.get(ProjectWorkflow, link.project_id)
+    approved = management_source_approval_event(db, link.project_id) is not None
+    fully_delivered = (
+        summary["work_units"] > 0 and summary["rework_count"] == 0
+        and all(summary["stages"][stage]["completed"] == summary["work_units"]
+                for stage in ("production", "qc", "qa", "delivery"))
+    )
+    return {
+        "source_approved": approved,
+        "can_approve": bool(
+            intake is not None and intake.created_by_id == viewer_user_id
+            and workflow is not None and workflow.operational_completed_at is not None
+            and workflow_status == APPROVAL_PENDING and fully_delivered and not approved
+        ),
+    }
+
+
+@router.post("/projects/{project_id}/approve")
+def approve_management_project(
+    project_id: int, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Only the original source may approve a fully delivered Management project."""
+    _management_only(auth)
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    if intake is None or intake.created_by_id != auth.user.id:
+        raise HTTPException(status_code=403, detail="Only the original Management source may approve this project")
+    try:
+        workflow = db.scalar(select(ProjectWorkflow).where(
+            ProjectWorkflow.project_id == project_id,
+        ).with_for_update())
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Project workflow not found")
+        if workflow.status not in {APPROVAL_PENDING, FEEDBACK_NOT_SENT, READY_FOR_BILLING}:
+            raise HTTPException(status_code=409, detail="Project is not awaiting Management approval")
+        if workflow.operational_completed_at is None:
+            raise HTTPException(status_code=409, detail="Project has not completed operational delivery")
+        if management_source_approval_event(db, project_id) is not None:
+            raise HTTPException(status_code=409, detail="This project is already approved")
+        if db.scalar(select(ProjectInvoice.id).where(ProjectInvoice.project_id == project_id).limit(1)) is not None:
+            raise HTTPException(status_code=409, detail="Existing invoices require manual review before approval")
+        packages = _project_packages(db, [project_id]).get(project_id, [])
+        aggregates = file_aggregates_for_packages(db, [package.id for package in packages])
+        summary = _tracking_rollup(packages, aggregates)
+        if not _approval_flags(db, link=link, workflow_status=APPROVAL_PENDING,
+                               summary=summary, viewer_user_id=auth.user.id)["can_approve"]:
+            raise HTTPException(status_code=409, detail="Production, QC, QA and Delivery must all be completed")
+        _transition(
+            db, workflow=workflow, actor=auth.user, status=READY_FOR_BILLING,
+            event_type=MANAGEMENT_SOURCE_APPROVED_EVENT,
+            title="Original Management source approved project for billing",
+            comments=f"Approved by {auth.user.full_name} after Production, QC, QA and Delivery.",
+        )
+        record_audit(
+            db, event_type="MANAGEMENT_PROJECT_SOURCE_APPROVED", request=request, user=auth.user,
+            module="management", target_type="finance_project", target_id=str(project_id),
+            details={"project_code": db.get(FinanceProject, project_id).project_code,
+                     "management_client_id": link.management_client_id,
+                     "approved_by_user_id": auth.user.id},
+        )
+        db.commit()
+        return {"project_id": project_id, "workflow_status": READY_FOR_BILLING,
+                "approved_by_user_id": auth.user.id}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+
+# Management tracking and project-specific source approval share the same records.
+@router.get("/project-tracking")
+def management_client_project_tracking(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    links = db.scalars(select(ManagementProjectLink).order_by(
+        ManagementProjectLink.created_at.desc(), ManagementProjectLink.project_id.desc(),
+    )).all()
+    project_ids = [link.project_id for link in links]
+    packages_by_project = _project_packages(db, project_ids)
+    all_packages = [package for packages in packages_by_project.values() for package in packages]
+    aggregates = file_aggregates_for_packages(db, [package.id for package in all_packages])
+    last_activities = {}
+    if project_ids:
+        last_activities = dict(db.execute(select(
+            WorkPackageItemActivity.project_id, func.max(WorkPackageItemActivity.updated_at),
+        ).where(WorkPackageItemActivity.project_id.in_(project_ids)).group_by(
+            WorkPackageItemActivity.project_id,
+        )).all())
+
+    projects = []
+    by_client = {}
+    for link in links:
+        project = _project_payload(db, link)
+        summary = _tracking_rollup(
+            packages_by_project[link.project_id], aggregates,
+            last_activities.get(link.project_id),
+        )
+        projects.append({**project, "tracking": summary, **_approval_flags(
+            db, link=link, workflow_status=project["workflow_status"],
+            summary=summary, viewer_user_id=auth.user.id,
+        )})
+        by_client.setdefault(link.management_client_id, []).append(summary)
+
+    clients = {}
+    for client_id, summaries in by_client.items():
+        work_units = sum(item["work_units"] for item in summaries)
+        stage_completed = sum(
+            item["stages"][stage]["completed"]
+            for item in summaries for stage in ("production", "qc", "qa", "delivery")
+        )
+        clients[str(client_id)] = {
+            "project_count": len(summaries),
+            "active_projects": sum(
+                item["work_units"] == 0 or
+                item["stages"]["delivery"]["completed"] < item["work_units"]
+                for item in summaries
+            ),
+            "completed_projects": sum(
+                item["work_units"] > 0 and
+                item["stages"]["delivery"]["completed"] == item["work_units"]
+                for item in summaries
+            ),
+            "overall_percent": round(100 * stage_completed / (4 * work_units), 1)
+            if work_units else 0.0,
+            "work_units": work_units,
+        }
+    return {"as_of": utc_now().isoformat(), "projects": projects, "clients": clients}
+
+
+@router.get("/project-tracking/{project_id}")
+def management_client_project_tracking_detail(
+    project_id: int, db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    packages = _project_packages(db, [project_id]).get(project_id, [])
+    package_ids = [package.id for package in packages]
+    aggregates = file_aggregates_for_packages(db, package_ids)
+    rows = build_item_rows(db, package_ids)
+    active_packages = {row["work_package_id"] for row in rows if row["is_active"]}
+    package_by_id = {package.id: package for package in packages}
+    file_rows = []
+    for row in rows:
+        package = package_by_id[row["work_package_id"]]
+        file_rows.append({
+            "work_package_item_id": row["work_package_item_id"],
+            "package_code": package.package_code,
+            "item_number": row["item_number"], "item_name": row.get("item_name"),
+            "is_active": row["is_active"], "tracking_basis": "file_activity",
+            "production": "rework" if row.get("production_rework_pending") else row["production_status"],
+            "qc": row["qc_status"], "qa": row["qa_status"],
+            "delivery": row["delivery_status"],
+            "production_completed_at": row.get("production_completed_at"),
+            "qc_completed_at": row.get("qc_end"),
+            "qa_completed_at": row.get("qa_end"),
+            "delivered_at": row.get("delivery_at"),
+            "production_employee": row.get("production_employee"),
+            "qc_employee": row.get("qc_employee"),
+            "qa_employee": row.get("qa_employee"),
+        })
+    for package in packages:
+        if package.id in active_packages:
+            continue
+        # Area-only legacy work is counted once; inactive-only files are not.
+        if any(row["work_package_id"] == package.id for row in rows):
+            continue
+        stage = (package.current_stage or "").lower()
+        legacy = _legacy_stage_counts(package)
+        file_rows.append({
+            "work_package_item_id": None,
+            "package_code": package.package_code,
+            "item_number": package.package_code,
+            "item_name": package.package_name,
+            "is_active": True, "tracking_basis": "legacy_area",
+            "production": "rework" if stage == "production_rework" else
+                ("completed" if legacy["production"] else package.production_state),
+            "qc": "passed" if legacy["qc"] else package.qc_state,
+            "qa": "passed" if legacy["qa"] else package.qa_state,
+            "delivery": "delivered" if legacy["delivery"] else "pending",
+            "production_completed_at": package.production_completed_at.isoformat()
+                if package.production_completed_at else None,
+            "qc_completed_at": package.qc_submitted_at.isoformat()
+                if package.qc_submitted_at else None,
+            "qa_completed_at": package.qa_submitted_at.isoformat()
+                if package.qa_submitted_at else None,
+            "delivered_at": package.delivered_at.isoformat() if package.delivered_at else None,
+            "production_employee": None, "qc_employee": None, "qa_employee": None,
+        })
+    activity_at = db.scalar(select(func.max(WorkPackageItemActivity.updated_at)).where(
+        WorkPackageItemActivity.project_id == project_id,
+    ))
+    project = _project_payload(db, link)
+    summary = _tracking_rollup(packages, aggregates, activity_at)
+    return {
+        "project_id": project_id,
+        "as_of": utc_now().isoformat(),
+        "project": {**project, **_approval_flags(
+            db, link=link, workflow_status=project["workflow_status"],
+            summary=summary, viewer_user_id=auth.user.id,
+        )},
+        "summary": summary,
+        "files": file_rows,
+    }
+
+
+# NAKSHA_MGMT_NEW_PROJECT_REQUEST_V1 - separate from the original client intake.
+class AdditionalProjectRequestInput(BaseModel):
+    management_client_id: int = Field(gt=0)
+    project_name: str = Field(min_length=2, max_length=255)
+    scope_text: str = Field(min_length=2, max_length=5000)
+    expected_start_date: str | None = Field(default=None, max_length=10)
+    remarks: str | None = Field(default=None, max_length=2000)
+
+
+def _additional_request_payload(db: Session, row: ManagementAdditionalProjectRequest) -> dict:
+    client = db.get(ManagementClientIntake, row.management_client_id)
+    project = db.get(FinanceProject, row.created_project_id) if row.created_project_id else None
+    return {
+        "id": row.id, "management_client_id": row.management_client_id,
+        "client_code": client.client_code if client else "", "client_name": client.client_name if client else "",
+        "source_person_name": client.source_person_name if client else "",
+        "project_name": row.project_name, "scope_text": row.scope_text,
+        "expected_start_date": row.expected_start_date.date().isoformat() if row.expected_start_date else None,
+        "remarks": row.remarks, "status": row.status,
+        "created_project_id": row.created_project_id,
+        "created_project_code": project.project_code if project else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+    }
+
+
+@router.get("/additional-project-requests")
+def list_my_additional_project_requests(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    rows = db.scalars(select(ManagementAdditionalProjectRequest).where(
+        ManagementAdditionalProjectRequest.requested_by_id == auth.user.id,
+    ).order_by(ManagementAdditionalProjectRequest.created_at.desc(),
+               ManagementAdditionalProjectRequest.id.desc())).all()
+    return [_additional_request_payload(db, row) for row in rows]
+
+
+@router.post("/additional-project-requests", status_code=status.HTTP_201_CREATED)
+def submit_additional_project_request(
+    payload: AdditionalProjectRequestInput, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _management_only(auth)
+    from datetime import date, datetime
+    try:
+        # Lock the client so two clicks cannot create competing pending requests.
+        client = db.scalar(select(ManagementClientIntake).where(
+            ManagementClientIntake.id == payload.management_client_id,
+        ).with_for_update())
+        if client is None or not client.is_active:
+            raise HTTPException(status_code=404, detail="Active Management client not found")
+        if client.created_by_id != auth.user.id:
+            raise HTTPException(status_code=403, detail="Only the original Management source may request a project for this client")
+        exists = db.scalar(select(ManagementAdditionalProjectRequest.id).where(
+            ManagementAdditionalProjectRequest.management_client_id == client.id,
+            ManagementAdditionalProjectRequest.status == "PENDING",
+        ).limit(1))
+        if exists is not None:
+            raise HTTPException(status_code=409, detail="This client already has a pending new-project request")
+        if len(payload.project_name.strip()) < 2 or len(payload.scope_text.strip()) < 2:
+            raise HTTPException(status_code=422, detail="Project name and scope must each contain at least two characters")
+        date_value = None
+        if payload.expected_start_date:
+            try:
+                date_value = datetime.combine(date.fromisoformat(payload.expected_start_date), datetime.min.time())
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="Expected start date must be YYYY-MM-DD") from exc
+        row = ManagementAdditionalProjectRequest(
+            management_client_id=client.id, requested_by_id=auth.user.id,
+            project_name=payload.project_name.strip(), scope_text=payload.scope_text.strip(),
+            expected_start_date=date_value, remarks=(payload.remarks or "").strip() or None,
+            status="PENDING",
+        )
+        db.add(row)
+        db.flush()
+        record_audit(db, event_type="MANAGEMENT_ADDITIONAL_PROJECT_REQUESTED", request=request,
+            user=auth.user, module="management", target_type="management_additional_project_request",
+            target_id=str(row.id), details={"management_client_id": client.id, "client_code": client.client_code})
+        create_global_notification(db,
+            event_type="management.additional_project.requested", category="approval",
+            title="Existing Management client needs another project",
+            message=f"{client.client_code} - {client.client_name}: {row.project_name} requested by {auth.user.full_name}.",
+            target_url="/finance/management-projects", recipient_roles=["finance"],
+            dedupe_key=f"mgmt_add_project_request_{row.id}", severity="info", requires_action=True,
+            metadata={"request_id": row.id, "client_id": client.id})
+        db.commit()
+        db.refresh(row)
+        return _additional_request_payload(db, row)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+
+===== END backend/app/modules/management_clients/router.py =====
+
+===== BEGIN backend/app/modules/management_projects/router.py =====
+"""Finance-only Management Projects, sharing the existing project and invoice engine."""
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field, field_validator, model_validator
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import CurrentAuth, get_current_auth
+from app.core.database import get_db
+from app.core.departments import SUPPORTED_DEPARTMENTS, department_label, normalize_department_code
+from app.models.entities import utc_now
+from app.modules.commercial.schemas import ProjectCommercialInput
+from app.modules.commercial.service import freeze_baseline_on_finance_approval, upsert_baseline_estimate
+from app.modules.employee_portal.service import record_audit
+from app.modules.finance.models import FinanceClient, FinanceProject
+from app.modules.finance.schemas import FinanceClientCreateRequest, FinanceClientProjectCreateRequest
+from app.modules.finance.service import create_client_project, create_finance_client
+from app.modules.management_clients.models import ManagementClientIntake, ManagementAdditionalProjectRequest
+from app.modules.management_projects.models import ManagementProjectLink
+from app.modules.notifications.service import create_global_notification
+from app.modules.notifications.models import GlobalNotification
+from app.modules.operations.models import (
+    OrthoWorkPackage, ProjectWorkflow, ProjectWorkflowEvent,
+    WorkPackageItem, WorkPackageItemActivity,
+)
+from app.modules.operations.production_items import (
+    build_item_rows, file_aggregates_for_packages,
+)
+from app.modules.operations.lifecycle_models import ProjectInvoice, ProjectInvoicePayment
+from app.modules.operations.lifecycle_service import management_billing_status, management_source_approval_event
+from app.modules.operations.schemas import WorkflowPMAssignment
+from app.modules.operations.workflow_service import (
+    WORKFLOW_FINANCE_APPROVED, assign_project_manager, email_project_manager_assignment,
+    project_manager_options,
+)
+
+router = APIRouter(prefix="/finance/management-projects", tags=["Finance Management Projects"])
+
+
+def _finance_only(auth: CurrentAuth) -> None:
+    if (auth.effective_role or "").strip().lower() != "finance":
+        raise HTTPException(status_code=403, detail="Finance access required")
+
+
+class ManagementProjectCreate(BaseModel):
+    management_client_id: int = Field(gt=0)
+    additional_request_id: int | None = Field(default=None, gt=0)
+    project_code: str = Field(min_length=2, max_length=80)
+    project_name: str = Field(min_length=2, max_length=255)
+    start_date: date
+    end_date: date
+    scope_text: str = Field(min_length=2, max_length=5000)
+    performing_department_code: str
+    priority: str = Field(default="medium", pattern="^(low|medium|high|urgent)$")
+    quantity: Decimal | None = Field(default=None, ge=0)
+    quantity_unit: str = Field(default="unit", min_length=1, max_length=30)
+    description: str | None = Field(default=None, max_length=5000)
+    commercial: ProjectCommercialInput
+    project_manager_id: int | None = Field(default=None, gt=0)
+
+    @field_validator("project_code", mode="before")
+    @classmethod
+    def normalize_project_code(cls, value):
+        if not isinstance(value, str):
+            return value
+        value = value.strip().upper()
+        if any(c not in set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/. ") for c in value):
+            raise ValueError("Unsupported Project ID characters")
+        return value
+
+    @field_validator("performing_department_code")
+    @classmethod
+    def validate_department(cls, value):
+        code = normalize_department_code(value)
+        if code is None:
+            raise ValueError("Select an existing BD performing department")
+        return code
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.end_date < self.start_date:
+            raise ValueError("End date cannot be earlier than start date")
+        return self
+
+
+def _client_payload(row: ManagementClientIntake) -> dict:
+    return {
+        "id": row.id, "client_code": row.client_code, "client_name": row.client_name,
+        "source_person_name": row.source_person_name, "contact_person_name": row.contact_person_name,
+        "client_email": row.client_email, "address": row.address, "gst_number": row.gst_number,
+        "work_description": row.work_description, "is_active": row.is_active,
+    }
+
+
+def _project_payload(db: Session, link: ManagementProjectLink) -> dict:
+    project = db.get(FinanceProject, link.project_id)
+    workflow = db.get(ProjectWorkflow, link.project_id)
+    if project is None or workflow is None:
+        raise RuntimeError("Management project link points to an incomplete project")
+    pm = project.master_profile.project_manager if project.master_profile else None
+    return {
+        "id": project.id, "management_client_id": link.management_client_id,
+        "project_code": project.project_code, "project_name": project.project_name,
+        "source_person_name": link.source_person_name,
+        "department_code": workflow.performing_department_code,
+        "department_label": department_label(workflow.performing_department_code),
+        "workflow_status": management_billing_status(db, workflow),
+        "source_approved": management_source_approval_event(db, project.id) is not None,
+        "project_manager_id": pm.id if pm else None,
+        "project_manager_name": pm.full_name if pm else None,
+        "start_date": project.start_date, "end_date": project.end_date,
+        "created_at": link.created_at,
+        "project_value": float(workflow.commercial_value) if workflow.commercial_value is not None else None,
+        "currency": workflow.currency or "INR",
+    }
+
+
+@router.get("")
+def list_management_projects(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    clients = db.scalars(select(ManagementClientIntake).order_by(ManagementClientIntake.client_name)).all()
+    links = db.scalars(select(ManagementProjectLink).order_by(ManagementProjectLink.created_at.desc())).all()
+    return {"clients": [_client_payload(row) for row in clients], "projects": [_project_payload(db, row) for row in links]}
+
+
+
+# The existing lifecycle dashboard's progress_percent is DELIVERY progress, not
+# Production/QC/QA completion. This Finance-only read model uses the same
+# per-file aggregation as the Production Tracking screen, without changing the
+# operational engine, project statuses, invoices or permissions.
+_TRACKING_STAGES = ("production", "qc", "qa", "delivery")
+
+
+def _legacy_stage_counts(package: OrthoWorkPackage) -> dict[str, int]:
+    """One legacy area = one work unit only when it has no active file children."""
+    stage = (package.current_stage or "").lower()
+    rework = stage == "production_rework"
+    delivered = stage == "delivered" or package.delivered_at is not None
+    production = (package.production_state or "").lower() == "completed" or stage in {
+        "qc", "qa", "delivery_ready", "delivered",
+    }
+    qc = (package.qc_state or "").lower() in {"approved", "passed"} or stage in {
+        "qa", "delivery_ready", "delivered",
+    }
+    qa = (package.qa_state or "").lower() in {"approved", "passed"} or stage in {
+        "delivery_ready", "delivered",
+    }
+    return {
+        "production": int(bool(production and not rework)),
+        "qc": int(bool(qc and not rework)),
+        "qa": int(bool(qa and not rework)),
+        "delivery": int(bool(delivered)),
+    }
+
+
+def _tracking_rollup(packages: list[OrthoWorkPackage], aggregates: dict[int, dict],
+                     last_activity_at=None) -> dict:
+    """Stage percentages are per physical file (or legacy area), not km/quantity.
+
+    Rework flags and file-completed counts come from the authoritative shared
+    file_aggregates_for_packages function, which ignores inactive files and
+    handles repeated attempts without counting the same file twice.
+    """
+    total = 0
+    counts = dict.fromkeys(_TRACKING_STAGES, 0)
+    in_progress = dict.fromkeys(_TRACKING_STAGES, 0)
+    rework = 0
+    active_files = 0
+    legacy_areas = 0
+    updated = last_activity_at
+    for package in packages:
+        if package.updated_at is not None and (updated is None or package.updated_at > updated):
+            updated = package.updated_at
+        agg = aggregates.get(package.id, {})
+        expected = int(agg.get("files_expected") or 0)
+        if expected:
+            active_files += expected
+            total += expected
+            for stage, field in (("production", "files_production_done"),
+                                 ("qc", "files_qc_passed"),
+                                 ("qa", "files_qa_passed"),
+                                 ("delivery", "files_delivered")):
+                counts[stage] += int(agg.get(field) or 0)
+            for stage in ("production", "qc", "qa"):
+                in_progress[stage] += int(agg.get(f"{stage}_in_progress") or 0)
+            # The shared aggregate can flag one rejected file in both
+            # production_rework and qc_rework; count that file only once.
+            rework += max(int(agg.get("production_rework") or 0),
+                          int(agg.get("qc_rework") or 0)) + int(agg.get("qa_rework") or 0)
+        elif int(agg.get("files_total") or 0) > 0:
+            # Inactive-only file packages must not become fake legacy work units.
+            continue
+        else:
+            legacy_areas += 1
+            total += 1
+            legacy = _legacy_stage_counts(package)
+            for stage in _TRACKING_STAGES:
+                counts[stage] += legacy[stage]
+            if (package.current_stage or "").lower() == "production_rework":
+                rework += 1
+            if (package.current_stage or "").lower() == "production":
+                in_progress["production"] += 1
+    stages = {
+        stage: {
+            "completed": counts[stage], "total": total,
+            "percent": round(100 * counts[stage] / total, 1) if total else 0.0,
+            "in_progress": in_progress[stage],
+        }
+        for stage in _TRACKING_STAGES
+    }
+    overall = round(100 * sum(counts.values()) / (4 * total), 1) if total else 0.0
+    if not total:
+        operational_status = "Awaiting work allocation"
+    elif rework:
+        operational_status = "Rework in progress"
+    elif counts["delivery"] == total:
+        operational_status = "Delivered"
+    elif counts["qa"] == total:
+        operational_status = "Ready for delivery"
+    elif counts["qa"] or in_progress["qa"]:
+        operational_status = "QA in progress"
+    elif counts["qc"] == total:
+        operational_status = "Ready for QA"
+    elif counts["qc"] or in_progress["qc"]:
+        operational_status = "QC in progress"
+    elif counts["production"] == total:
+        operational_status = "Production complete - QC pending"
+    elif counts["production"] or in_progress["production"]:
+        operational_status = "Production in progress"
+    else:
+        operational_status = "Assigned - work not started"
+    return {
+        "overall_percent": overall, "operational_status": operational_status,
+        "work_units": total, "active_files": active_files, "legacy_areas": legacy_areas,
+        "rework_count": rework, "stages": stages,
+        "last_activity_at": updated.isoformat() if updated is not None else None,
+    }
+
+
+def _project_packages(db: Session, project_ids: list[int]) -> dict[int, list[OrthoWorkPackage]]:
+    if not project_ids:
+        return {}
+    rows = db.scalars(select(OrthoWorkPackage).where(
+        OrthoWorkPackage.project_id.in_(project_ids)
+    ).order_by(OrthoWorkPackage.project_id, OrthoWorkPackage.id)).all()
+    result: dict[int, list[OrthoWorkPackage]] = {project_id: [] for project_id in project_ids}
+    for row in rows:
+        result[row.project_id].append(row)
+    return result
+
+
+@router.get("/tracking")
+def management_project_tracking(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Read-only Finance tracking for management-linked projects, bulk and no BD access."""
+    _finance_only(auth)
+    project_ids = list(db.scalars(select(ManagementProjectLink.project_id)).all())
+    by_project = _project_packages(db, project_ids)
+    all_packages = [package for rows in by_project.values() for package in rows]
+    aggregates = file_aggregates_for_packages(db, [package.id for package in all_packages])
+    last_activities = {}
+    if project_ids:
+        activity_rows = db.execute(select(
+            WorkPackageItemActivity.project_id,
+            func.max(WorkPackageItemActivity.updated_at),
+        ).where(WorkPackageItemActivity.project_id.in_(project_ids)).group_by(
+            WorkPackageItemActivity.project_id,
+        )).all()
+        last_activities = dict(activity_rows)
+    return {
+        "as_of": utc_now().isoformat(),
+        "projects": {
+            str(project_id): _tracking_rollup(
+                by_project[project_id], aggregates, last_activities.get(project_id),
+            )
+            for project_id in project_ids
+        },
+    }
+
+
+@router.get("/{project_id}/tracking")
+def management_project_tracking_detail(
+    project_id: int, db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Per-file tracking, restricted to a real management project link."""
+    _finance_only(auth)
+    if db.get(ManagementProjectLink, project_id) is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    packages = _project_packages(db, [project_id]).get(project_id, [])
+    package_ids = [package.id for package in packages]
+    aggregates = file_aggregates_for_packages(db, package_ids)
+    rows = build_item_rows(db, package_ids)
+    active_packages = {row["work_package_id"] for row in rows if row["is_active"]}
+    package_by_id = {package.id: package for package in packages}
+    file_rows = []
+    for row in rows:
+        package = package_by_id[row["work_package_id"]]
+        file_rows.append({
+            "work_package_item_id": row["work_package_item_id"],
+            "package_code": package.package_code,
+            "item_number": row["item_number"], "item_name": row.get("item_name"),
+            "is_active": row["is_active"], "tracking_basis": "file_activity",
+            "production": "rework" if row.get("production_rework_pending") else row["production_status"],
+            "qc": row["qc_status"], "qa": row["qa_status"],
+            "delivery": row["delivery_status"],
+            "production_completed_at": row.get("production_completed_at"),
+            "qc_completed_at": row.get("qc_end"),
+            "qa_completed_at": row.get("qa_end"),
+            "delivered_at": row.get("delivery_at"),
+            "production_employee": row.get("production_employee"),
+            "qc_employee": row.get("qc_employee"),
+            "qa_employee": row.get("qa_employee"),
+        })
+    for package in packages:
+        if package.id in active_packages:
+            continue
+        # Legacy area-only packages use their existing stage fields. If there
+        # are only inactive files, they do not inflate the active file count.
+        if any(row["work_package_id"] == package.id for row in rows):
+            continue
+        stage = (package.current_stage or "").lower()
+        legacy = _legacy_stage_counts(package)
+        file_rows.append({
+            "work_package_item_id": None,
+            "package_code": package.package_code,
+            "item_number": package.package_code,
+            "item_name": package.package_name,
+            "is_active": True, "tracking_basis": "legacy_area",
+            "production": "rework" if stage == "production_rework" else ("completed" if legacy["production"] else package.production_state),
+            "qc": "passed" if legacy["qc"] else package.qc_state,
+            "qa": "passed" if legacy["qa"] else package.qa_state,
+            "delivery": "delivered" if legacy["delivery"] else "pending",
+            "production_completed_at": package.production_completed_at.isoformat() if package.production_completed_at else None,
+            "qc_completed_at": package.qc_submitted_at.isoformat() if package.qc_submitted_at else None,
+            "qa_completed_at": package.qa_submitted_at.isoformat() if package.qa_submitted_at else None,
+            "delivered_at": package.delivered_at.isoformat() if package.delivered_at else None,
+            "production_employee": None, "qc_employee": None, "qa_employee": None,
+        })
+    return {
+        "project_id": project_id, "as_of": utc_now().isoformat(),
+        "summary": _tracking_rollup(packages, aggregates),
+        "files": file_rows,
+    }
+
+def _amount_inr(amount: Decimal, currency: str | None, stored_inr: Decimal | None, rate: Decimal | None) -> Decimal | None:
+    """Use the recorded accounting/realization FX, never a guessed live rate."""
+    if stored_inr is not None:
+        return Decimal(stored_inr)
+    if (currency or "INR").upper() == "INR":
+        return Decimal(amount)
+    if rate is not None and Decimal(rate) > 0:
+        return Decimal(amount) * Decimal(rate)
+    return None
+
+
+@router.get("/summary")
+def management_project_summary(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    """Management-only invoice/payment aggregates in INR, sourced from existing ledgers.
+
+    Draft/cancelled invoices are not treated as issued revenue. Unconverted foreign
+    currency rows are reported, not silently converted using an invented rate.
+    """
+    _finance_only(auth)
+    project_ids = list(db.scalars(select(ManagementProjectLink.project_id)).all())
+    zero = {"invoice_count": 0, "invoiced_inr": 0.0, "received_inr": 0.0,
+            "outstanding_inr": 0.0, "missing_fx_rows": 0}
+    if not project_ids:
+        return {"projects": {}, "totals": {**zero, "collection_rate": 0.0}}
+
+    invoices = list(db.scalars(select(ProjectInvoice).where(ProjectInvoice.project_id.in_(project_ids))).all())
+    invoice_ids = [row.id for row in invoices]
+    payments = list(db.scalars(select(ProjectInvoicePayment).where(
+        ProjectInvoicePayment.invoice_id.in_(invoice_ids)
+    )).all()) if invoice_ids else []
+    by_invoice: dict[int, list[ProjectInvoicePayment]] = {}
+    for payment in payments:
+        by_invoice.setdefault(payment.invoice_id, []).append(payment)
+    stats: dict[int, dict] = {pid: {**zero, "settled_inr": 0.0} for pid in project_ids}
+    for invoice in invoices:
+        target = stats[invoice.project_id]
+        target["invoice_count"] += 1
+        if invoice.status in {"INVOICE_DRAFT", "CANCELLED", "CANCELED"}:
+            continue
+        currency = (invoice.currency or "INR").upper()
+        total = Decimal(invoice.amount or 0) + Decimal(invoice.tax_amount or 0)
+        invoice_total_inr = _amount_inr(total, currency, invoice.total_inr, invoice.fx_rate_to_inr)
+        if invoice_total_inr is None:
+            target["missing_fx_rows"] += 1
+        else:
+            target["invoiced_inr"] += float(invoice_total_inr)
+        paid_at_invoice_rate = Decimal("0")
+        paid_is_complete = True
+        for payment in by_invoice.get(invoice.id, []):
+            paid_inr = _amount_inr(
+                Decimal(payment.amount), payment.payment_currency or currency,
+                payment.inr_equivalent, payment.fx_rate_to_inr,
+            )
+            if paid_inr is None:
+                target["missing_fx_rows"] += 1
+            else:
+                target["received_inr"] += float(paid_inr)
+            applied_inr = _amount_inr(
+                Decimal(payment.amount), currency,
+                payment.invoice_inr_equivalent, invoice.fx_rate_to_inr,
+            )
+            if applied_inr is None:
+                paid_is_complete = False
+            else:
+                paid_at_invoice_rate += applied_inr
+        if invoice_total_inr is not None and paid_is_complete:
+            applied = min(invoice_total_inr, paid_at_invoice_rate)
+            target["settled_inr"] += float(applied)
+            target["outstanding_inr"] += float(max(Decimal("0"), invoice_total_inr - applied))
+        elif invoice_total_inr is not None:
+            target["missing_fx_rows"] += 1
+
+    totals = {key: sum(item[key] for item in stats.values()) for key in
+              ("invoice_count", "invoiced_inr", "received_inr", "outstanding_inr", "missing_fx_rows", "settled_inr")}
+    totals["collection_rate"] = round(
+        100 * totals["settled_inr"] / totals["invoiced_inr"], 1
+    ) if totals["invoiced_inr"] else 0.0
+    for item in stats.values():
+        item.pop("settled_inr")
+    totals.pop("settled_inr")
+    return {"projects": {str(key): value for key, value in stats.items()}, "totals": totals}
+
+
+@router.get("/assignment-options")
+def assignment_options(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    return {
+        "departments": [{"code": code, "label": department_label(code)} for code in SUPPORTED_DEPARTMENTS],
+        "project_managers_by_department": {code: project_manager_options(db, department_code=code) for code in SUPPORTED_DEPARTMENTS},
+    }
+
+
+def _finance_client_for_intake(db: Session, intake: ManagementClientIntake, auth: CurrentAuth) -> FinanceClient:
+    # The intake is the sole authority for client/source data. No user-supplied source is trusted.
+    client = db.scalar(select(FinanceClient).where(FinanceClient.client_code == intake.client_code).with_for_update())
+    if client is not None:
+        if client.source_team != "management":
+            raise ValueError("Client code is already owned by a non-management Finance client")
+        if not client.is_active:
+            raise ValueError("Finance client is inactive")
+        return client
+    return create_finance_client(db, actor=auth.user, payload=FinanceClientCreateRequest(
+        client_code=intake.client_code, client_name=intake.client_name,
+        client_email=intake.client_email, organization_email=intake.organization_email,
+        contact_person_name=intake.contact_person_name,
+        contact_person_phone=intake.contact_person_phone,
+        contact_person_email=intake.contact_person_email,
+        task=intake.work_description, address=intake.address,
+        description=intake.work_description, country=intake.country,
+        gst_number=intake.gst_number, source_team="management",
+        source_person_name=intake.source_person_name, bd_name=None,
+    ))
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_management_project(
+    payload: ManagementProjectCreate, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    try:
+        intake = db.get(ManagementClientIntake, payload.management_client_id)
+        if intake is None or not intake.is_active:
+            raise ValueError("Select an active management-registered client")
+        request_row = None
+        if payload.additional_request_id is not None:
+            request_row = db.scalar(select(ManagementAdditionalProjectRequest).where(
+                ManagementAdditionalProjectRequest.id == payload.additional_request_id,
+            ).with_for_update())
+            if request_row is None or request_row.management_client_id != intake.id:
+                raise HTTPException(status_code=409, detail="Project request does not belong to this client")
+            if request_row.status != "PENDING" or request_row.created_project_id is not None:
+                raise HTTPException(status_code=409, detail="Project request was already processed")
+        client = _finance_client_for_intake(db, intake, auth)
+        project = create_client_project(db, client=client, actor=auth.user, payload=FinanceClientProjectCreateRequest(
+            project_code=payload.project_code, project_name=payload.project_name,
+            task=payload.scope_text, project_status="active", is_active=True,
+            project_source_team="management", project_source_person_name=intake.source_person_name,
+            start_date=payload.start_date, end_date=payload.end_date,
+            description=payload.description,
+        ))
+        now = utc_now()
+        workflow = ProjectWorkflow(
+            project_id=project.id, bd_owner_user_id=auth.user.id,
+            status=WORKFLOW_FINANCE_APPROVED,
+            performing_department_code=payload.performing_department_code,
+            scope_text=payload.scope_text, quantity=payload.quantity,
+            quantity_unit=payload.quantity_unit, priority=payload.priority,
+            commercial_value=payload.commercial.estimated_amount,
+            currency=payload.commercial.currency_code,
+            po_wo_number=payload.commercial.po_wo_reference,
+            attachment_references="[]", finance_reviewer_id=auth.user.id,
+            finance_reviewed_at=now, approved_at=now,
+            created_by_id=auth.user.id, updated_by_id=auth.user.id,
+        )
+        db.add(workflow)
+        db.add(ManagementProjectLink(
+            project_id=project.id, management_client_id=intake.id,
+            finance_client_id=client.id, source_person_name=intake.source_person_name,
+            created_by_id=auth.user.id,
+        ))
+        db.flush()
+        db.add(ProjectWorkflowEvent(
+            project_id=project.id, event_type="management_finance_project_created",
+            from_status=None, to_status=WORKFLOW_FINANCE_APPROVED,
+            comments="Finance created and approved a management-sourced project",
+            actor_user_id=auth.user.id,
+        ))
+        upsert_baseline_estimate(db, actor=auth.user, project_id=project.id, payload=payload.commercial)
+        freeze_baseline_on_finance_approval(db, actor=auth.user, project_id=project.id)
+        if payload.project_manager_id is not None:
+            assign_project_manager(
+                db, actor=auth.user, project_id=project.id,
+                payload=WorkflowPMAssignment(project_manager_id=payload.project_manager_id),
+                allow_management_finance=True,
+            )
+        record_audit(db, event_type="MANAGEMENT_PROJECT_CREATED_BY_FINANCE", request=request,
+                     user=auth.user, module="finance", target_type="finance_project",
+                     target_id=str(project.id), details={
+                         "management_client_id": intake.id, "source_person_name": intake.source_person_name,
+                         "department": payload.performing_department_code,
+                         "project_manager_id": payload.project_manager_id,
+                         "additional_request_id": request_row.id if request_row else None,
+                     })
+        if request_row is not None:
+            request_row.status = "CREATED"
+            request_row.created_project_id = project.id
+            request_row.completed_by_id = auth.user.id
+            request_row.completed_at = utc_now()
+            # Resolve the specific Finance action prompt when its request is fulfilled.
+            for note in db.scalars(select(GlobalNotification).where(
+                GlobalNotification.dedupe_key == f"mgmt_add_project_request_{request_row.id}",
+                GlobalNotification.resolved_at.is_(None),
+            )).all():
+                note.resolved_at = utc_now()
+                note.resolved_by_id = auth.user.id
+                note.resolution_note = "Project created"
+                note.requires_action = False
+            record_audit(db, event_type="MANAGEMENT_ADDITIONAL_PROJECT_CREATED", request=request,
+                user=auth.user, module="finance", target_type="management_additional_project_request",
+                target_id=str(request_row.id), details={"project_id": project.id, "client_id": intake.id})
+            create_global_notification(db,
+                event_type="management.additional_project.created", category="system",
+                title="Requested Management project has been created",
+                message=f"Finance created {project.project_code} for {intake.client_code} ({request_row.project_name}).",
+                target_url="/management/project-management", recipient_user_ids=[request_row.requested_by_id],
+                dedupe_key=f"mgmt_add_project_created_{request_row.id}", severity="success",
+                metadata={"request_id": request_row.id, "project_id": project.id})
+        db.commit()
+        if payload.project_manager_id is not None:
+            email_project_manager_assignment(db, project_id=project.id, pm_id=payload.project_manager_id)
+        return {"project_id": project.id, "project_code": project.project_code,
+                "workflow_status": workflow.status}
+    except HTTPException:
+        db.rollback()
+        raise
+    except (ValueError, PermissionError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Client or Project ID already exists") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/{project_id}/assign-pm")
+def assign_management_pm(
+    project_id: int, payload: WorkflowPMAssignment, request: Request,
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    if db.get(ManagementProjectLink, project_id) is None:
+        raise HTTPException(status_code=404, detail="Management project not found")
+    try:
+        workflow, pm = assign_project_manager(
+            db, actor=auth.user, project_id=project_id, payload=payload,
+            allow_management_finance=True,
+        )
+        record_audit(db, event_type="MANAGEMENT_PROJECT_PM_ASSIGNED_BY_FINANCE", request=request,
+                     user=auth.user, module="finance", target_type="finance_project",
+                     target_id=str(project_id), details={"project_manager_id": pm.id})
+        db.commit()
+        email_project_manager_assignment(db, project_id=project_id, pm_id=pm.id)
+        return {"project_id": project_id, "project_manager_id": pm.id, "workflow_status": workflow.status}
+    except (ValueError, PermissionError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+# NAKSHA_MGMT_NEW_PROJECT_REQUEST_V1 - Finance-only pending queue.
+@router.get("/additional-project-requests")
+def list_finance_additional_project_requests(
+    db: Session = Depends(get_db), auth: CurrentAuth = Depends(get_current_auth),
+):
+    _finance_only(auth)
+    rows = db.scalars(select(ManagementAdditionalProjectRequest).order_by(
+        ManagementAdditionalProjectRequest.created_at.desc(),
+        ManagementAdditionalProjectRequest.id.desc(),
+    )).all()
+    result = []
+    for row in rows:
+        intake = db.get(ManagementClientIntake, row.management_client_id)
+        project = db.get(FinanceProject, row.created_project_id) if row.created_project_id else None
+        result.append({
+            "id": row.id, "management_client_id": row.management_client_id,
+            "client_code": intake.client_code if intake else "",
+            "client_name": intake.client_name if intake else "",
+            "source_person_name": intake.source_person_name if intake else "",
+            "project_name": row.project_name, "scope_text": row.scope_text,
+            "expected_start_date": row.expected_start_date.date().isoformat() if row.expected_start_date else None,
+            "remarks": row.remarks, "status": row.status,
+            "created_project_id": row.created_project_id,
+            "created_project_code": project.project_code if project else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        })
+    return result
+
+
+===== END backend/app/modules/management_projects/router.py =====
+
+===== BEGIN frontend/src/features/management/ManagementClientRegisterPage.tsx =====
+import './naksha-management-tracking-light-v4.css';
+import { Activity, ArrowLeft, Building2, CheckCircle2, ChevronDown, ChevronRight, Eye, Pencil, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { Fragment, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { DashboardHeader } from '../../components/DashboardHeader'
+import { apiFetch } from '../../lib/api'
+import '../operations/operations.css'
+import './management-project-tracking.css'
+import { CountrySelect } from './CountrySelect'
+type Client = {
+  id: number
+  client_code: string
+  client_name: string
+  client_email: string | null
+  organization_email: string | null
+  address: string | null
+  country: string
+  gst_number: string | null
+  contact_person_name: string
+  contact_person_email: string | null
+  contact_person_phone: string | null
+  work_description: string | null
+  source_person_name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  can_request_project: boolean
+}
+
+type ClientForm = {
+  client_code: string
+  client_name: string
+  client_email: string
+  organization_email: string
+  address: string
+  country: string
+  gst_number: string
+  contact_person_name: string
+  contact_person_email: string
+  contact_person_phone: string
+  work_description: string
+}
+
+const emptyForm: ClientForm = {
+  client_code: '', client_name: '', client_email: '', organization_email: '',
+  address: '', country: 'India', gst_number: '', contact_person_name: '',
+  contact_person_email: '', contact_person_phone: '', work_description: '',
+}
+
+type AdditionalProjectRequest = {
+  id: number; management_client_id: number; client_code: string; client_name: string
+  source_person_name: string; project_name: string; scope_text: string
+  expected_start_date: string | null; remarks: string | null
+  status: 'PENDING' | 'CREATED'; created_project_code: string | null; created_at: string
+}
+const endpoint = '/management/client-register'
+const requestEndpoint = `${endpoint}/additional-project-requests`
+type StageKey = 'production' | 'qc' | 'qa' | 'delivery'
+type Stage = { completed: number; total: number; percent: number; in_progress: number }
+type TrackingSummary = {
+  overall_percent: number; operational_status: string; work_units: number
+  active_files: number; legacy_areas: number; rework_count: number
+  last_activity_at: string | null; stages: Record<StageKey, Stage>
+}
+type ManagementProject = {
+  id: number; management_client_id: number; project_code: string; project_name: string
+  source_person_name: string; department_label: string; workflow_status: string
+  project_manager_name: string | null; start_date: string; end_date: string
+  project_value: number | null; currency: string; tracking: TrackingSummary
+  can_approve: boolean; source_approved: boolean
+}
+type ClientTracking = {
+  project_count: number; active_projects: number; completed_projects: number
+  overall_percent: number; work_units: number
+}
+type TrackingRegister = {
+  as_of: string; projects: ManagementProject[]; clients: Record<string, ClientTracking>
+}
+type TrackingFile = {
+  work_package_item_id: number | null; package_code: string; item_number: string
+  item_name: string | null; is_active: boolean; tracking_basis: 'file_activity' | 'legacy_area'
+  production: string; qc: string; qa: string; delivery: string
+  production_completed_at: string | null; qc_completed_at: string | null
+  qa_completed_at: string | null; delivered_at: string | null
+  production_employee: string | null; qc_employee: string | null; qa_employee: string | null
+}
+type TrackingDetail = {
+  project_id: number; as_of: string; project: Omit<ManagementProject, 'tracking'>
+  summary: TrackingSummary; files: TrackingFile[]
+}
+const stages: StageKey[] = ['production', 'qc', 'qa', 'delivery']
+const stageLabels: Record<StageKey, string> = { production: 'Production', qc: 'QC', qa: 'QA', delivery: 'Delivery' }
+const trackingEndpoint = `${endpoint}/project-tracking`
+const readable = (value: string) => (value || 'Not started').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const stageTone = (value: string) => {
+  const normalized = (value || '').toLowerCase()
+  if (['completed', 'passed', 'approved', 'delivered'].includes(normalized)) return 'complete'
+  if (normalized.includes('rework') || ['rejected', 'failed'].includes(normalized)) return 'rework'
+  if (['in_progress', 'started'].includes(normalized)) return 'active'
+  return 'pending'
+}
+const percentText = (value: number) => `${Number.isFinite(value) ? Math.round(value) : 0}%`
+
+function ProgressMeter({ value, label }: { value: number; label: string }) {
+  return <div className="mct-progress" role="progressbar" aria-label={label} aria-valuenow={Math.min(100, Math.max(0, value))} aria-valuemin={0} aria-valuemax={100}>
+    <span style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+  </div>
+}
+
+function ManagementTrackingDialog({ project, client, onClose }: {
+  project: ManagementProject; client: Client | undefined; onClose: () => void
+}) {
+  const [detail, setDetail] = useState<TrackingDetail | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    let busy = false
+    async function refresh() {
+      if (!active || busy || document.hidden) return
+      busy = true
+      try {
+        const result = await apiFetch<TrackingDetail>(`${trackingEndpoint}/${project.id}`)
+        if (active) { setDetail(result); setError('') }
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Tracking is temporarily unavailable')
+      } finally { busy = false }
+    }
+    function onFocus() { void refresh() }
+    function onKey(event: KeyboardEvent) { if (event.key === 'Escape') onClose() }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5000)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [project.id, onClose])
+  // Keep the background ERP page from scrolling while the tracking dialog is open.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [])
+  const summary = detail?.summary ?? project.tracking
+  const projectInfo = detail?.project ?? project
+  const files = detail?.files ?? []
+  const asOf = detail?.as_of
+  return createPortal(<div className="mct-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <section className="mct-modal" role="dialog" aria-modal="true" aria-label={`Tracking for project ${project.project_code}`} data-naksha-management-live-v4="true">
+      <header className="mct-modal-header">
+        <div><span className="mct-eyebrow">MANAGEMENT PROJECT · {project.source_person_name}</span>
+          <h2>{project.project_code} — {project.project_name}</h2>
+          <p>{client?.client_name ?? 'Management client'} · {project.department_label} · Read-only live tracking</p>
+        </div>
+        <button className="mct-close" type="button" onClick={onClose}><X size={16} /> Close</button>
+      </header>
+      {error && <div className="mct-warning" role="alert">Unable to refresh tracking: {error}. {detail ? 'Showing last successful data.' : 'Showing the latest project summary.'}</div>}
+      <div className="mct-modal-metrics">
+        <div className="mct-dark-card">
+          <h3>Overall Stage Completion</h3>
+          <strong className="mct-big-percent">{percentText(summary.overall_percent)}</strong>
+          <div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(summary.overall_percent)}><ProgressMeter value={summary.overall_percent} label="Overall project stage completion" /></div>
+          <small>{summary.operational_status}</small>
+        </div>
+        <div className="mct-dark-card mct-stages-card"><h3>Stage Progress</h3>
+          <div className="mct-stages-grid">{stages.map(stage => {
+            const value = summary.stages[stage]
+            return <div className="mct-stage" key={stage}>
+              <strong>{stageLabels[stage]}</strong>
+              <span>{percentText(value.percent)} ({value.completed}/{value.total})</span>
+              <div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(value.percent)}><ProgressMeter value={value.percent} label={`${stageLabels[stage]} completion`} /></div>
+            </div>
+          })}</div>
+        </div>
+        <div className="mct-dark-card mct-project-details"><h3>Project Details</h3>
+          <dl><dt>Client Source</dt><dd>{project.source_person_name}</dd>
+            <dt>Project Manager</dt><dd>{projectInfo.project_manager_name || 'Not assigned'}</dd>
+            <dt>Administrative Status</dt><dd>{readable(projectInfo.workflow_status)}</dd>
+            <dt>Active Files</dt><dd>{summary.active_files}</dd>
+            <dt>Rework Items</dt><dd>{summary.rework_count}</dd>
+          </dl>
+        </div>
+      </div>
+      <div className="mct-dark-card mct-files">
+        <div className="mct-files-heading"><h3>File / Segment Tracking</h3>
+          <span>{detail ? `${summary.active_files} active files · ${summary.legacy_areas} legacy areas` : 'Loading file details…'}</span></div>
+        {!detail && !error ? <p>Loading current employee activity…</p> : detail && files.length === 0 ?
+          <p>No work packages or files have been allocated to this project yet.</p> :
+          <div className="mct-file-scroll"><table><thead><tr>
+            <th>File / Segment</th><th>Production</th><th>QC</th><th>QA</th><th>Delivery</th><th>Last Stage Update</th>
+          </tr></thead><tbody>{files.map((file, index) => <tr key={`${file.work_package_item_id ?? 'legacy'}-${file.package_code}-${index}`} className={!file.is_active ? 'mct-inactive' : ''}>
+            <td><strong>{file.item_name || file.item_number}</strong><small>{file.package_code}{file.tracking_basis === 'legacy_area' ? ' · Area tracking' : ''}{!file.is_active ? ' · Inactive' : ''}</small></td>
+            {stages.map(stage => <td key={stage}>
+              <span className={`mct-status ${stageTone(file[stage])}`} data-management-status={readable(file[stage])}>{readable(file[stage])}</span>
+              {stage !== 'delivery' && file[`${stage}_employee` as 'production_employee' | 'qc_employee' | 'qa_employee'] &&
+                <small>{file[`${stage}_employee` as 'production_employee' | 'qc_employee' | 'qa_employee']}</small>}
+            </td>)}
+            <td><small>{[file.delivered_at, file.qa_completed_at, file.qc_completed_at, file.production_completed_at]
+              .filter(Boolean).slice(0, 1).map(value => formatDateTime(value!)).join('') || '—'}</small></td>
+          </tr>)}</tbody></table></div>}
+      </div>
+      <div className="mct-dark-card"><h3>Workflow Timeline</h3>
+        <div className="mct-timeline">{stages.map(stage => <div key={stage}>
+          <span className={`mct-timeline-dot ${summary.stages[stage].percent === 100 ? 'done' : summary.stages[stage].percent > 0 ? 'partial' : ''}`} />
+          <strong>{stageLabels[stage]}</strong>
+          <small>{summary.stages[stage].percent === 100 ? 'Completed' : summary.stages[stage].percent > 0 ? `In progress (${percentText(summary.stages[stage].percent)})` : 'Pending'}</small>
+        </div>)}</div>
+      </div>
+      <footer className="mct-modal-footer"><span>Read-only · Refreshes every 5 seconds while open{asOf ? ` · Updated ${formatDateTime(asOf)}` : ''}</span>
+        <button className="mct-close" type="button" onClick={onClose}>Close</button></footer>
+    </section>
+  </div>, document.body)
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('en-IN')
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()
+}
+
+
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION START
+// Management UI presentation only. Never change incoming percentages.
+function managementProgressTone(p: number): 'red'|'orange'|'yellow'|'green' {
+  const n = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0
+  if (n < 30) return 'red'
+  if (n < 50) return 'orange'
+  if (n < 70) return 'yellow'
+  return 'green'
+}
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION END
+
+export function ManagementClientRegisterPage() {
+  const [clients, setClients] = useState<Client[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [query, setQuery] = useState('')
+  const [ownerFilter, setOwnerFilter] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [form, setForm] = useState<ClientForm>(emptyForm)
+  const [tracking, setTracking] = useState<TrackingRegister | null>(null)
+  const [trackingError, setTrackingError] = useState('')
+  const [additionalRequests, setAdditionalRequests] = useState<AdditionalProjectRequest[]>([])
+  const [requestingClientId, setRequestingClientId] = useState<number | null>(null)
+  const [requestProjectName, setRequestProjectName] = useState('')
+  const [requestScope, setRequestScope] = useState('')
+  const [requestStart, setRequestStart] = useState('')
+  const [requestRemarks, setRequestRemarks] = useState('')
+  const [requestBusy, setRequestBusy] = useState(false)
+  const [requestError, setRequestError] = useState('')
+  const [trackingView, setTrackingView] = useState<'clients' | 'projects'>('clients')
+  const [expandedClientId, setExpandedClientId] = useState<number | null>(null)
+  const [trackingProjectId, setTrackingProjectId] = useState<number | null>(null)
+  // NAKSHA_MGMT_CLIENTS_PAGINATION_5_V2: only the Management users' Registered Clients table.
+  const [managementClientPage, setManagementClientPage] = useState(1)
+  // Reset after search/source filter changes; keep search across ALL clients.
+  useEffect(() => { setManagementClientPage(1) }, [query, ownerFilter])
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      setClients(await apiFetch<Client[]>(endpoint))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load management clients')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void load() }, [])
+  // New-project requests are separate from client and operational tracking state.
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void apiFetch<AdditionalProjectRequest[]>(requestEndpoint)
+        .then(rows => { if (alive) setAdditionalRequests(rows) })
+        .catch(() => undefined)
+    }
+    refresh()
+    const interval = window.setInterval(refresh, 5000)
+    return () => { alive = false; window.clearInterval(interval) }
+  }, [])
+
+  function openAdditionalRequest(client: Client) {
+    if (!client.can_request_project) return
+    setRequestingClientId(client.id)
+    setRequestProjectName('')
+    setRequestScope('')
+    setRequestStart('')
+    setRequestRemarks('')
+    setRequestError('')
+  }
+
+  async function submitAdditionalRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (requestingClientId === null || requestBusy) return
+    setRequestBusy(true); setRequestError('')
+    try {
+      await apiFetch(requestEndpoint, { method: 'POST', body: JSON.stringify({
+        management_client_id: requestingClientId,
+        project_name: requestProjectName.trim(), scope_text: requestScope.trim(),
+        expected_start_date: requestStart || null, remarks: requestRemarks.trim() || null,
+      }) })
+      setAdditionalRequests(await apiFetch<AdditionalProjectRequest[]>(requestEndpoint))
+      setRequestingClientId(null)
+      setNotice('Project request sent to Finance. The status will change to Project Created when Finance creates and links the new project.')
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : 'Unable to request a project')
+    } finally { setRequestBusy(false) }
+  }
+  useEffect(() => {
+    let active = true
+    let busy = false
+    async function refreshTracking() {
+      if (!active || busy || document.hidden) return
+      busy = true
+      try {
+        const result = await apiFetch<TrackingRegister>(trackingEndpoint)
+        if (active) { setTracking(result); setTrackingError('') }
+      } catch (err) {
+        if (active) setTrackingError(err instanceof Error ? err.message : 'Unable to load project tracking')
+      } finally { busy = false }
+    }
+    function onFocus() { void refreshTracking() }
+    void refreshTracking()
+    const timer = window.setInterval(() => void refreshTracking(), 5000)
+    window.addEventListener('focus', onFocus)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
+  }, [])
+
+  const owners = useMemo(() => [...new Set(clients.map(row => row.source_person_name))].sort(), [clients])
+  const filtered = useMemo(() => clients.filter(row => {
+    const term = query.trim().toLowerCase()
+    const matchesText = !term || [row.client_code, row.client_name, row.contact_person_name, row.client_email,
+      row.organization_email, row.work_description, row.source_person_name].some(value => (value || '').toLowerCase().includes(term))
+    return matchesText && (!ownerFilter || row.source_person_name === ownerFilter)
+  }), [clients, ownerFilter, query])
+  const selected = clients.find(row => row.id === selectedId) ?? null
+  const projects = tracking?.projects ?? []
+  const selectedTrackingProject = projects.find(row => row.id === trackingProjectId) ?? null
+  const closeTracking = useCallback(() => setTrackingProjectId(null), [])
+  const filteredProjects = projects.filter(project => {
+    const client = clients.find(item => item.id === project.management_client_id)
+    const term = query.trim().toLowerCase()
+    return (!ownerFilter || project.source_person_name === ownerFilter) && (!term ||
+      [project.project_code, project.project_name, project.department_label, project.source_person_name,
+        client?.client_name, client?.client_code].some(value => (value || '').toLowerCase().includes(term)))
+  })
+  const activeProjects = Object.values(tracking?.clients ?? {}).reduce((sum, client) => sum + client.active_projects, 0)
+  const completedProjects = Object.values(tracking?.clients ?? {}).reduce((sum, client) => sum + client.completed_projects, 0)
+
+  async function approveProject(project: ManagementProject) {
+    if (busy || !project.can_approve) return
+    if (!window.confirm(`Approve ${project.project_code} — ${project.project_name} for Finance billing?`)) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      await apiFetch(`${endpoint}/projects/${project.id}/approve`, { method: 'POST' })
+      setNotice(`${project.project_code} approved by its original Management source. Finance may now create an invoice.`)
+      try {
+        setTracking(await apiFetch<TrackingRegister>(trackingEndpoint))
+      } catch {
+        setTrackingError('Approval saved, but tracking could not refresh. Reopen this page to see the latest status.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to approve Management project')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function updateField<K extends keyof ClientForm>(field: K, value: ClientForm[K]) {
+    setForm(previous => ({ ...previous, [field]: value }))
+  }
+
+  function openCreate() {
+    setForm({ ...emptyForm })
+    setEditingId(null)
+    setShowForm(true)
+    setSelectedId(null)
+    setError('')
+    setNotice('')
+  }
+
+  function openEdit(client: Client) {
+    setForm({
+      client_code: client.client_code, client_name: client.client_name,
+      client_email: client.client_email || '', organization_email: client.organization_email || '',
+      address: client.address || '', country: client.country || 'India', gst_number: client.gst_number || '',
+      contact_person_name: client.contact_person_name, contact_person_email: client.contact_person_email || '',
+      contact_person_phone: client.contact_person_phone || '', work_description: client.work_description || '',
+    })
+    setEditingId(client.id)
+    setSelectedId(client.id)
+    setShowForm(true)
+    setError('')
+    setNotice('')
+  }
+
+  async function saveClient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const payload = {
+        ...form,
+        client_code: form.client_code.trim().toUpperCase(),
+        gst_number: form.gst_number.trim().toUpperCase(),
+      }
+      const saved = await apiFetch<Client>(editingId === null ? endpoint : `${endpoint}/${editingId}`, {
+        method: editingId === null ? 'POST' : 'PUT', body: JSON.stringify(payload),
+      })
+      setShowForm(false)
+      setEditingId(null)
+      setSelectedId(saved.id)
+      setNotice(`Client ${saved.client_code} ${editingId === null ? 'registered' : 'updated'} successfully.`)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save client')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const managementClientPageSize = 5
+  const managementClientTotal = (filtered).length
+  const managementClientPageCount = Math.max(1, Math.ceil(managementClientTotal / managementClientPageSize))
+  const managementClientSafePage = Math.min(managementClientPage, managementClientPageCount)
+  const managementClientFirst = managementClientTotal === 0 ? 0 : (managementClientSafePage - 1) * managementClientPageSize + 1
+  const managementClientLast = Math.min(managementClientSafePage * managementClientPageSize, managementClientTotal)
+  return <div className="operations-page">
+    <DashboardHeader
+      eyebrow="MANAGEMENT · CLIENT INTAKE"
+      title="Client Register"
+      description="Register Management-direct clients and record their initial requirements. This page does not create projects or assign departments."
+      details={<>
+        <div><span>Management Clients</span><strong>{clients.length}</strong></div>
+        <div><span>Client Sources</span><strong>{owners.length}</strong></div>
+        <div><span>Work Notes Recorded</span><strong>{clients.filter(row => Boolean(row.work_description)).length}</strong></div>
+        <div><span>Active Projects</span><strong>{tracking ? activeProjects : '—'}</strong></div>
+        <div><span>Completed Projects</span><strong>{tracking ? completedProjects : '—'}</strong></div>
+      </>}
+      actions={<>
+        <button type="button" className="operations-button" onClick={openCreate}><Plus size={16} /> Register Client</button>
+        <button type="button" className="operations-button secondary" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</button>
+      </>}
+    />
+
+    {notice && <div className="operations-alert success" role="status">{notice}</div>}
+    {error && <div className="operations-alert error" role="alert">{error}</div>}
+
+    {showForm && <section className="operations-panel">
+      <header><div><span className="operations-kicker">{editingId === null ? 'NEW CLIENT' : 'EDIT CLIENT'}</span>
+        <h2>{editingId === null ? 'Client Registration' : 'Update Client Details'}</h2>
+        <p>Use the same core client details as BD. This registration does not create a project or assign a department.</p>
+      </div></header>
+      <form className="operations-form-grid" onSubmit={event => void saveClient(event)}>
+        <label className="operations-field"><span>Client ID / Code *</span><input required maxLength={32} value={form.client_code} onChange={event => updateField('client_code', event.target.value.toUpperCase())} placeholder="CLIENT-001" /></label>
+        <label className="operations-field"><span>Client Organization Name *</span><input required maxLength={255} value={form.client_name} onChange={event => updateField('client_name', event.target.value)} /></label>
+        <label className="operations-field"><span>Client Email ID</span><input type="email" value={form.client_email} onChange={event => updateField('client_email', event.target.value)} /></label>
+        <label className="operations-field"><span>Organization Email ID</span><input type="email" value={form.organization_email} onChange={event => updateField('organization_email', event.target.value)} /></label>
+        
+<CountrySelect
+  value={form.country || 'India'}
+  onChange={(country) =>
+    setForm((prev) => ({
+      ...prev,
+      country,
+    }))
+  }
+/>
+
+        <label className="operations-field"><span>GST / VAT / SUT</span><input maxLength={32} value={form.gst_number} onChange={event => updateField('gst_number', event.target.value.toUpperCase())} /></label>
+        <label className="operations-field operations-span-2"><span>Client Address</span><textarea rows={2} value={form.address} onChange={event => updateField('address', event.target.value)} /></label>
+        <label className="operations-field"><span>Contact Person Name *</span><input required value={form.contact_person_name} onChange={event => updateField('contact_person_name', event.target.value)} /></label>
+        <label className="operations-field"><span>Contact Person Email ID</span><input type="email" value={form.contact_person_email} onChange={event => updateField('contact_person_email', event.target.value)} /></label>
+        <label className="operations-field"><span>Contact Person Phone</span><input type="tel" maxLength={40} value={form.contact_person_phone} onChange={event => updateField('contact_person_phone', event.target.value)} /></label>
+        <label className="operations-field operations-span-2"><span>Client Work / Initial Requirement</span><textarea rows={4} maxLength={5000} value={form.work_description} onChange={event => updateField('work_description', event.target.value)} placeholder="Describe the work requested by the client. Project creation is handled separately." /></label>
+        <div className="operations-note operations-span-2">The client source is automatically recorded as the logged-in Management user. BD, project creation, and Finance approval workflows are not triggered.</div>
+        <div className="operations-actions operations-span-2">
+          <button className="operations-button" type="submit" disabled={busy}>{busy ? 'Saving…' : editingId === null ? 'Create Client' : 'Save Changes'}</button>
+          <button className="operations-button secondary" type="button" disabled={busy} onClick={() => setShowForm(false)}>Cancel</button>
+        </div>
+      </form>
+    </section>}
+
+    {requestingClientId !== null && <section className="operations-panel" aria-label="New project request for existing client">
+      <header><div><span className="operations-kicker">EXISTING MANAGEMENT CLIENT</span>
+        <h2>Request Another Project</h2>
+        <p>Finance will create the project under the same existing client. This request does not create a project.</p>
+      </div></header>
+      {requestError && <div className="operations-alert error" role="alert">{requestError}</div>}
+      <form className="operations-form-grid" onSubmit={event => void submitAdditionalRequest(event)}>
+        <div className="operations-field"><span>Client</span><strong>{clients.find(c => c.id === requestingClientId)?.client_name || 'Existing client'} ({clients.find(c => c.id === requestingClientId)?.client_code})</strong></div>
+        <label className="operations-field"><span>Requested Project Name *</span><input required minLength={2} maxLength={255} value={requestProjectName} onChange={event => setRequestProjectName(event.target.value)} /></label>
+        <label className="operations-field operations-span-2"><span>New Project Scope / Requirements *</span><textarea required minLength={2} maxLength={5000} rows={3} value={requestScope} onChange={event => setRequestScope(event.target.value)} /></label>
+        <label className="operations-field"><span>Expected Start (optional)</span><input type="date" value={requestStart} onChange={event => setRequestStart(event.target.value)} /></label>
+        <label className="operations-field operations-span-2"><span>Remarks (optional)</span><textarea maxLength={2000} rows={2} value={requestRemarks} onChange={event => setRequestRemarks(event.target.value)} /></label>
+        <div className="operations-actions operations-span-2"><button type="submit" className="operations-button" disabled={requestBusy}>{requestBusy ? 'Sending…' : 'Send Request to Finance'}</button>
+          <button type="button" className="operations-button secondary" disabled={requestBusy} onClick={() => setRequestingClientId(null)}>Cancel</button></div>
+      </form>
+    </section>}
+
+    {!showForm && selected && <section className="operations-panel">
+      <header><div><span className="operations-kicker">CLIENT DETAILS · {selected.client_code}</span><h2>{selected.client_name}</h2><p>Registered by {selected.source_person_name} · {formatDate(selected.created_at)}</p></div></header>
+      <div className="operations-form-grid">
+        <div className="operations-field"><span>Contact Person</span><strong>{selected.contact_person_name}</strong></div>
+        <div className="operations-field"><span>Contact Phone</span><strong>{selected.contact_person_phone || '—'}</strong></div>
+        <div className="operations-field"><span>Client Email</span><strong>{selected.client_email || '—'}</strong></div>
+        <div className="operations-field"><span>Contact Email</span><strong>{selected.contact_person_email || '—'}</strong></div>
+        <div className="operations-field"><span>Organization Email</span><strong>{selected.organization_email || '—'}</strong></div>
+        <div className="operations-field"><span>Country</span><strong>{selected.country}</strong></div>
+        <div className="operations-field"><span>GST / VAT / SUT</span><strong>{selected.gst_number || '—'}</strong></div>
+        <div className="operations-field"><span>Address</span><strong>{selected.address || '—'}</strong></div>
+        <div className="operations-field operations-span-2"><span>Client Work / Initial Requirement</span><p>{selected.work_description || 'No work notes recorded yet.'}</p></div>
+      </div>
+      {additionalRequests.filter(row => row.management_client_id === selected.id).length > 0 && <div className="operations-note" style={{ marginBottom: 12 }}>
+        <strong>Additional Project Request History</strong>
+        {additionalRequests.filter(row => row.management_client_id === selected.id).map(row =>
+          <p key={row.id}>{row.project_name} · <span style={{ color: row.status === 'CREATED' ? '#166534' : '#9f3636' }}>{row.status === 'CREATED' ? `Project Created (${row.created_project_code || 'Linked'})` : 'Awaiting Finance'}</span></p>
+        )}
+      </div>}
+      <div className="operations-actions">
+        <button type="button" className="operations-button secondary" onClick={() => setSelectedId(null)}><ArrowLeft size={16} /> Back to Register</button>
+        <button type="button" className="operations-button" onClick={() => openEdit(selected)}><Pencil size={16} /> Edit Client</button>
+      </div>
+    </section>}
+
+    <section className="operations-panel">
+      <header><div><span className="operations-kicker">MANAGEMENT CLIENT REGISTER</span><h2><Building2 size={19} /> Registered Clients</h2><p>Only clients registered by the two Management accounts appear here.</p></div>
+        <div className="mct-view-switch" role="group" aria-label="Management client and project views">
+          <button type="button" className={trackingView === 'clients' ? 'active' : ''} onClick={() => setTrackingView('clients')}><Building2 size={15} /> Client View</button>
+          <button type="button" className={trackingView === 'projects' ? 'active' : ''} onClick={() => setTrackingView('projects')}><Activity size={15} /> Project Tracking</button>
+        </div></header>
+      <div className="operations-form-grid">
+        <label className="operations-field"><span>Search Clients</span><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Search size={16} /><input aria-label="Search management clients" value={query} onChange={event => setQuery(event.target.value)} placeholder="Client ID, company, contact, work…" /></div></label>
+        <label className="operations-field"><span>Registered By</span><select value={ownerFilter} onChange={event => setOwnerFilter(event.target.value)}><option value="">Both Management Users</option>{owners.map(owner => <option key={owner} value={owner}>{owner}</option>)}</select></label>
+      </div>
+      {trackingError && <div className="mct-inline-warning" role="alert">Project tracking could not refresh: {trackingError}. Client registration remains available.</div>}
+      {trackingView === 'clients' ? (loading ? <div className="operations-empty">Loading clients…</div> : filtered.length === 0 ?
+        <div className="operations-empty">No management clients found.</div> :
+        <div className="operations-table-wrap"><table className="operations-table mct-register-table"><thead><tr>
+          <th>Client ID</th><th>Client Organization</th><th>Contact Person</th><th>Registered By</th><th>Created</th><th>Projects</th><th>Tracking (Overall)</th><th>Actions</th>
+        </tr></thead><tbody>{(filtered).slice((managementClientSafePage - 1) * managementClientPageSize, managementClientSafePage * managementClientPageSize).map(client => {
+          const clientTracking = tracking?.clients[String(client.id)]
+          const clientProjects = projects.filter(project => project.management_client_id === client.id)
+          const hasApprovableProject = clientProjects.some(project => project.can_approve)
+          const expanded = expandedClientId === client.id
+          const latestRequest = additionalRequests.find(row => row.management_client_id === client.id)
+          const pendingRequest = additionalRequests.some(row => row.management_client_id === client.id && row.status === 'PENDING')
+          return <Fragment key={client.id}>
+            <tr><td><button className="mct-expand" type="button" onClick={() => setExpandedClientId(expanded ? null : client.id)} aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} projects for ${client.client_name}`}>
+              {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              <strong>{client.client_code}</strong></button></td>
+              <td>{client.client_name}</td><td>{client.contact_person_name}</td><td>{client.source_person_name}</td><td>{formatDate(client.created_at)}</td>
+              <td><button type="button" className="mct-count" onClick={() => setExpandedClientId(expanded ? null : client.id)}>{clientTracking ? `${clientTracking.project_count} ${clientTracking.project_count === 1 ? 'Project' : 'Projects'}` : '—'}</button></td>
+              <td>{clientTracking && clientTracking.project_count ? <div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(clientTracking.overall_percent)}><ProgressMeter value={clientTracking.overall_percent} label={`${client.client_name} stage completion`} /></div><span>{percentText(clientTracking.overall_percent)}</span></div> : '—'}</td>
+              <td><div className="operations-actions"><button type="button" className="operations-button secondary" onClick={() => { setSelectedId(client.id); setShowForm(false) }}>View</button><button type="button" className="operations-button secondary" onClick={() => openEdit(client)}><Pencil size={14} /> Edit</button>
+                {client.can_request_project && <button type="button" className="operations-button secondary" disabled={pendingRequest || requestBusy} onClick={() => openAdditionalRequest(client)}><Plus size={14} /> Request Project</button>}
+                {latestRequest && <span title={latestRequest.project_name} style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', padding: '6px 9px', borderRadius: 8, background: latestRequest.status === 'CREATED' ? '#e8f6eb' : '#fcebea', color: latestRequest.status === 'CREATED' ? '#166534' : '#a23e3e', border: `1px solid ${latestRequest.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}` }}>{latestRequest.status === 'CREATED' ? `Project Created: ${latestRequest.created_project_code || ''}` : 'Awaiting Finance'}</span>}
+                {hasApprovableProject && <button type="button" className="operations-button secondary" onClick={() => setExpandedClientId(client.id)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+            </tr>
+            {expanded && <tr className="mct-expanded-row"><td colSpan={8}>
+              <div className="mct-client-projects"><h3>Client Projects — {client.client_name} ({clientProjects.length})</h3>
+                {clientProjects.length === 0 ? <p>No Finance-created management projects for this client yet.</p> :
+                  <div className="mct-projects-scroll"><table className="mct-projects-table"><thead><tr><th>Project Code</th><th>Project Name</th><th>Department</th><th>Production</th><th>QC</th><th>QA</th><th>Delivery</th><th>Status</th><th>Action</th></tr></thead>
+                    <tbody>{clientProjects.map(project => <tr key={project.id}>
+                      <td><strong>{project.project_code}</strong></td><td>{project.project_name}</td><td>{project.department_label}</td>
+                      {stages.map(stage => <td key={stage}>{percentText(project.tracking.stages[stage].percent)}</td>)}
+                      <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
+                      <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+                    </tr>)}</tbody></table></div>}
+              </div>
+            </td></tr>}
+          </Fragment>
+        })}</tbody></table>
+          {/* Management Client Register: pagination, appearance only. */}
+          <nav aria-label="Registered clients pagination" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, padding: "12px 8px 6px", color: "#234969", fontSize: 13 }}>
+            <span aria-live="polite">Showing {managementClientFirst}–{managementClientLast} of {managementClientTotal} clients</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button type="button" disabled={managementClientSafePage <= 1} onClick={() => setManagementClientPage(page => Math.max(1, Math.min(page, managementClientPageCount) - 1))} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #bdd4e8", background: "#ffffff", color: "#153e60", fontSize: 13, cursor: managementClientSafePage <= 1 ? "not-allowed" : "pointer", opacity: managementClientSafePage <= 1 ? 0.5 : 1 }}>Previous</button>
+              <span style={{ whiteSpace: "nowrap" }}>Page {managementClientSafePage} of {managementClientPageCount}</span>
+              <button type="button" disabled={managementClientSafePage >= managementClientPageCount} onClick={() => setManagementClientPage(page => Math.min(managementClientPageCount, Math.min(page, managementClientPageCount) + 1))} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #bdd4e8", background: "#ffffff", color: "#153e60", fontSize: 13, cursor: managementClientSafePage >= managementClientPageCount ? "not-allowed" : "pointer", opacity: managementClientSafePage >= managementClientPageCount ? 0.5 : 1 }}>Next</button>
+            </div>
+          </nav></div>) :
+        <div className="operations-table-wrap"><table className="operations-table mct-register-table"><thead><tr>
+          <th>Project Code</th><th>Client / Source</th><th>Project Name</th><th>Department</th><th>Progress</th><th>Operational Status</th><th>Action</th>
+        </tr></thead><tbody>{filteredProjects.map(project => {
+          const client = clients.find(item => item.id === project.management_client_id)
+          return <tr key={project.id}><td><strong>{project.project_code}</strong></td>
+            <td><strong>{client?.client_name || 'Management client'}</strong><small>{project.source_person_name}</small></td>
+            <td><strong>{project.project_name}</strong><small>PM: {project.project_manager_name || 'Not assigned'}</small></td>
+            <td>{project.department_label}</td><td><div className="mct-progress-cell"><div className={'mct-management-progress-tone mct-v8-' + managementProgressTone(project.tracking.overall_percent)}><ProgressMeter value={project.tracking.overall_percent} label={`${project.project_code} stage completion`} /></div><span>{percentText(project.tracking.overall_percent)}</span></div></td>
+            <td>{project.tracking.operational_status}<small> · {project.source_approved && project.workflow_status === 'READY_FOR_BILLING' ? 'Approved / Ready for Billing' : readable(project.workflow_status)}</small></td>
+            <td><div className="operations-actions"><button type="button" className="mct-track-button" onClick={() => setTrackingProjectId(project.id)}><Eye size={14} /> View Tracking</button>{project.can_approve && <button type="button" className="operations-button secondary" disabled={busy} onClick={() => void approveProject(project)}><CheckCircle2 size={14} /> Approve</button>}</div></td>
+          </tr>
+        })}</tbody></table>{filteredProjects.length === 0 && <div className="operations-empty">{tracking ? 'No matching management projects.' : 'Loading management project tracking…'}</div>}</div>}
+      <div className="mct-tracking-footer">Live project tracking · Only the original Management source can approve fully delivered projects · Automatically refreshes every 5 seconds while this page is open{tracking?.as_of ? ` · Last updated ${formatDateTime(tracking.as_of)}` : ''}</div>
+    </section>
+    {selectedTrackingProject && <ManagementTrackingDialog key={selectedTrackingProject.id} project={selectedTrackingProject}
+      client={clients.find(item => item.id === selectedTrackingProject.management_client_id)}
+      onClose={closeTracking} />}
+  </div>
+}
+
+
+===== END frontend/src/features/management/ManagementClientRegisterPage.tsx =====
+
+===== BEGIN frontend/src/features/finance/pages/FinanceManagementProjectsPage.tsx =====
+import {
+  Activity, ArrowRight, BadgeIndianRupee, CheckCircle2, ChevronRight,
+  ClipboardCheck, Download, Eye, FileCheck2, FilePlus2, FileText, FolderKanban,
+  IndianRupee, Layers3, Plus, RefreshCcw, Search, Send, ShieldCheck,
+  SlidersHorizontal, UsersRound, Wallet, X,
+} from 'lucide-react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { apiFetch } from '../../../lib/api'
+import { commercialFormProblems, commercialFormToPayload, emptyCommercialForm, type CommercialFormState } from '../../commercial/commercial-form'
+import { CommercialDetailsSection } from '../../commercial/components/CommercialDetailsSection'
+import type { CurrencyPayload } from '../../commercial/types'
+import type { LifecycleDashboard } from '../../operations/lifecycle-types'
+import { FinanceBillingPage } from './FinanceBillingPage'
+import '../../operations/operations.css'
+import './finance-management-projects.css'
+import './finance-management-prussian-theme.css'
+
+type ManagementClient = {
+  id: number; client_code: string; client_name: string; source_person_name: string
+  contact_person_name: string; client_email: string | null; address: string | null
+  gst_number: string | null; work_description: string | null; is_active: boolean
+}
+type ManagementProject = {
+  id: number; management_client_id: number; project_code: string; project_name: string
+  source_person_name: string; department_code: string; department_label: string
+  workflow_status: string; project_manager_id: number | null; project_manager_name: string | null
+  start_date: string; end_date: string; created_at: string
+  project_value: number | null; currency: string; source_approved: boolean
+}
+type AdditionalProjectRequest = {
+  id: number; management_client_id: number; client_code: string; client_name: string
+  source_person_name: string; project_name: string; scope_text: string
+  expected_start_date: string | null; remarks: string | null; status: 'PENDING' | 'CREATED'
+  created_project_id: number | null; created_project_code: string | null; created_at: string
+}
+type Register = { clients: ManagementClient[]; projects: ManagementProject[] }
+type PM = { id: number; full_name: string; employee_id?: string | null }
+type Options = { departments: Array<{ code: string; label: string }>; project_managers_by_department: Record<string, PM[]> }
+type ProjectFinancial = {
+  invoice_count: number; invoiced_inr: number; received_inr: number
+  outstanding_inr: number; missing_fx_rows: number
+}
+type Summary = {
+  projects: Record<string, ProjectFinancial>
+  totals: ProjectFinancial & { collection_rate: number }
+}
+type StageKey = 'production' | 'qc' | 'qa' | 'delivery'
+type StageTracking = { completed: number; total: number; percent: number; in_progress: number }
+type ProjectTracking = {
+  overall_percent: number; operational_status: string; work_units: number
+  active_files: number; legacy_areas: number; rework_count: number
+  last_activity_at: string | null; stages: Record<StageKey, StageTracking>
+}
+type TrackingResponse = { as_of: string; projects: Record<string, ProjectTracking> }
+type TrackingFile = {
+  work_package_item_id: number | null; package_code: string; item_number: string
+  item_name: string | null; is_active: boolean; tracking_basis: 'file_activity' | 'legacy_area'
+  production: string; qc: string; qa: string; delivery: string
+  production_completed_at: string | null; qc_completed_at: string | null
+  qa_completed_at: string | null; delivered_at: string | null
+  production_employee: string | null; qc_employee: string | null; qa_employee: string | null
+}
+type TrackingDetail = { project_id: number; as_of: string; summary: ProjectTracking; files: TrackingFile[] }
+const STAGE_KEYS: StageKey[] = ['production', 'qc', 'qa', 'delivery']
+const STAGE_LABELS: Record<StageKey, string> = { production: 'Production', qc: 'QC', qa: 'QA', delivery: 'Delivery' }
+const statusTone = (value: string) => {
+  const s = value.toLowerCase()
+  if (['completed', 'passed', 'approved', 'delivered'].includes(s)) return 'complete'
+  if (['rejected', 'rework', 'production_rework'].includes(s)) return 'rework'
+  if (s === 'in_progress' || s === 'started') return 'active'
+  return 'pending'
+}
+
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION START
+// Management UI presentation only. Never change incoming percentages.
+function managementProgressTone(p: number): 'red'|'orange'|'yellow'|'green' {
+  const n = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0
+  if (n < 30) return 'red'
+  if (n < 50) return 'orange'
+  if (n < 70) return 'yellow'
+  return 'green'
+}
+// NAKSHA MANAGEMENT PROGRESS V8 FUNCTION END
+
+function StageTrackingBars({ tracking, compact = false }: { tracking: ProjectTracking; compact?: boolean }) {
+  return <div className={compact ? 'mp-stage-tracking compact' : 'mp-stage-tracking'}>
+    {STAGE_KEYS.map(stage => {
+      const item = tracking.stages[stage]
+      return <div className="mp-stage-track" key={stage}>
+        <div className="mp-stage-track-label"><strong>{STAGE_LABELS[stage]}</strong><span>{item.completed}/{item.total} · {item.percent.toFixed(0)}%</span></div>
+        <div className="mp-progress"><span className={`mp-v8-${managementProgressTone(item.percent)}`} style={{ width: `${Math.min(100, Math.max(0, item.percent))}%` }}/></div>
+      </div>
+    })}
+  </div>
+}
+function FileTrackingTable({ detail }: { detail: TrackingDetail }) {
+  return <div className="mp-file-tracking">
+    <div className="mp-file-heading"><h3>File-wise Tracking</h3><span>{detail.summary.active_files} active files · {detail.summary.legacy_areas} legacy areas</span></div>
+    {detail.files.length === 0 ? <p className="mp-tracking-note">No work packages or files have been allocated to this project yet.</p> :
+      <div className="mp-table-scroll"><table className="mp-table mp-file-table"><thead><tr><th>Area / File</th><th>Production</th><th>QC</th><th>QA</th><th>Delivery</th></tr></thead><tbody>
+        {detail.files.map((file, index) => <tr key={`${file.work_package_item_id ?? 'area'}-${file.package_code}-${index}`} className={!file.is_active ? 'mp-inactive-file' : ''}>
+          <td><strong>{file.item_number}</strong><small>{file.package_code}{file.tracking_basis === 'legacy_area' ? ' · Area tracking' : ''}{!file.is_active ? ' · Inactive' : ''}</small></td>
+          {STAGE_KEYS.map(stage => {
+            const raw = file[stage] || 'not_started'
+            const person = stage === 'delivery' ? null : file[`${stage}_employee` as 'production_employee' | 'qc_employee' | 'qa_employee']
+            return <td key={stage}><span className={`mp-stage-badge ${statusTone(raw)}`} data-management-status={statusLabel(raw)}>{statusLabel(raw)}</span>{person && <small>{person}</small>}</td>
+          })}
+        </tr>)}
+      </tbody></table></div>}
+  </div>
+}
+type ProjectForm = {
+  project_code: string; project_name: string; scope_text: string; start_date: string
+  end_date: string; performing_department_code: string; priority: string
+  quantity: string; quantity_unit: string; description: string; project_manager_id: string
+}
+type MainTab = 'projects' | 'clients' | 'invoices' | 'payments' | 'tracking' | 'requests'
+type DetailTab = 'overview' | 'workflow' | 'billing'
+
+const emptyProject = (): ProjectForm => ({
+  project_code: '', project_name: '', scope_text: '', start_date: '', end_date: '',
+  performing_department_code: '', priority: 'medium', quantity: '', quantity_unit: 'unit',
+  description: '', project_manager_id: '',
+})
+const EMPTY_FINANCIAL: ProjectFinancial = {
+  invoice_count: 0, invoiced_inr: 0, received_inr: 0, outstanding_inr: 0, missing_fx_rows: 0,
+}
+const INVOICE_STATES = new Set([
+  'READY_FOR_BILLING', 'INVOICE_DRAFT', 'INVOICE_RAISED', 'PAYMENT_PENDING',
+  'PARTIALLY_PAID', 'PAYMENT_OVERDUE', 'CLOSED',
+])
+const WORKFLOW_STEPS = [
+  { label: 'Create Project', sub: 'Finance', icon: FilePlus2 },
+  { label: 'Assign Department', sub: 'Project Manager', icon: UsersRound },
+  { label: 'Production', sub: 'Execution', icon: Layers3 },
+  { label: 'QC / QA', sub: 'Quality Checks', icon: ClipboardCheck },
+  { label: 'Delivery', sub: 'Final Output', icon: Send },
+  { label: 'Generate Invoice', sub: 'Existing Engine', icon: FileText },
+  { label: 'Receive Payment', sub: 'Full / Partial', icon: IndianRupee },
+  { label: 'Project Closure', sub: 'Completed', icon: CheckCircle2 },
+]
+const money = (amount: number) => `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(amount)}`
+const projectMoney = (amount: number | null, currency: string) => amount == null ? '—' :
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2 }).format(amount)
+const statusLabel = (status: string) => status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+const managementStatusLabel = (status: string, approved: boolean) =>
+  status.toUpperCase() === 'READY_FOR_BILLING' && approved
+    ? 'Approved / Ready for Billing' : statusLabel(status)
+const shortDate = (value: string) => value ? new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+const currentWorkflowStep = (status: string) => {
+  const s = status.toUpperCase()
+  if (s === 'CLOSED') return 7
+  if (/PAYMENT|INVOICE_RAISED|OVERDUE/.test(s)) return 6
+  if (/INVOICE_DRAFT|READY_FOR_BILLING/.test(s)) return 5
+  if (/DELIVER|APPROVAL_PENDING|CLIENT_FEEDBACK|CLIENT_ACCEPT/.test(s)) return 4
+  if (/\bQA\b|\bQC\b|QUALITY/.test(s)) return 3
+  if (/PRODUCTION|IN_PROGRESS|WORK/.test(s)) return 2
+  if (/PM_ASSIGNED|ASSIGNED/.test(s)) return 1
+  return 0
+}
+function exportCsv(rows: ManagementProject[], clients: ManagementClient[], lifecycle: LifecycleDashboard | null, summary: Summary | null, tracking: TrackingResponse | null) {
+  const escapeCell = (value: string | number | null | undefined) => {
+    const raw = String(value ?? '')
+    // Avoid formula execution when the CSV is opened in Excel.
+    const safe = /^[\s]*[=+@\-\t\r]/.test(raw) && typeof value === 'string' ? `'${raw}` : raw
+    return `"${safe.replace(/"/g, '""')}"`
+  }
+  const columns = ['Project Code', 'Project Name', 'Client', 'Source', 'Department', 'Project Manager', 'Status', 'Operational Status', 'Overall Stage Progress %', 'Production %', 'QC %', 'QA %', 'Delivery %', 'Project Value', 'Currency', 'Invoiced INR', 'Received INR', 'Outstanding INR']
+  const csv = [columns.map(escapeCell).join(','), ...rows.map(row => {
+    const client = clients.find(item => item.id === row.management_client_id)
+    const life = lifecycle?.projects.find(item => item.id === row.id)
+    const financial = summary?.projects[String(row.id)] ?? EMPTY_FINANCIAL
+    const stages = tracking?.projects[String(row.id)]
+    return [row.project_code, row.project_name, client?.client_name, row.source_person_name, row.department_label,
+      row.project_manager_name, life?.workflow_status ?? row.workflow_status,
+      stages?.operational_status ?? 'Tracking unavailable', stages?.overall_percent ?? '',
+      ...STAGE_KEYS.map(stage => stages?.stages[stage].percent ?? ''),
+      row.project_value, row.currency, financial.invoiced_inr, financial.received_inr, financial.outstanding_inr].map(escapeCell).join(',')
+  })].join('\r\n')
+  const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'nakshatech-management-projects.csv'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export function FinanceManagementProjectsPage() {
+  const [data, setData] = useState<Register>({ clients: [], projects: [] })
+  const [options, setOptions] = useState<Options>({ departments: [], project_managers_by_department: {} })
+  const [currencies, setCurrencies] = useState<CurrencyPayload | null>(null)
+  const [lifecycle, setLifecycle] = useState<LifecycleDashboard | null>(null)
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [tracking, setTracking] = useState<TrackingResponse | null>(null)
+  const [trackingDetail, setTrackingDetail] = useState<TrackingDetail | null>(null)
+  const [trackingError, setTrackingError] = useState('')
+  const [detailError, setDetailError] = useState('')
+  const [trackingRefreshedAt, setTrackingRefreshedAt] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [additionalRequests, setAdditionalRequests] = useState<AdditionalProjectRequest[]>([])
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
+  const [requestSearch, setRequestSearch] = useState('')
+  const [requestFetchError, setRequestFetchError] = useState('')
+  const [project, setProject] = useState<ProjectForm>(emptyProject)
+  const [commercial, setCommercial] = useState<CommercialFormState>(emptyCommercialForm)
+  const [pmChoice, setPmChoice] = useState<Record<number, string>>({})
+  const [activeTab, setActiveTab] = useState<MainTab>('projects')
+  const [detailTab, setDetailTab] = useState<DetailTab>('overview')
+  const [search, setSearch] = useState('')
+  const [departmentFilter, setDepartmentFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [clientPage, setClientPage] = useState(1)
+  const [projectPage, setProjectPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const [register, assignment, billing, financial] = await Promise.all([
+        apiFetch<Register>('/finance/management-projects'),
+        apiFetch<Options>('/finance/management-projects/assignment-options'),
+        apiFetch<LifecycleDashboard>('/operations/lifecycle/dashboard'),
+        apiFetch<Summary>('/finance/management-projects/summary'),
+      ])
+      setData(register); setOptions(assignment); setLifecycle(billing); setSummary(financial)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load Management Projects')
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { void load(); void apiFetch<CurrencyPayload>('/commercial/currencies').then(setCurrencies).catch(() => undefined) }, [])
+  // Refresh only management records and their existing financial ledger every 15 seconds.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void Promise.all([
+        apiFetch<Register>('/finance/management-projects'),
+        apiFetch<LifecycleDashboard>('/operations/lifecycle/dashboard'),
+        apiFetch<Summary>('/finance/management-projects/summary'),
+      ]).then(([register, billing, financial]) => {
+        setData(register); setLifecycle(billing); setSummary(financial)
+      }).catch(() => undefined)
+    }, 15000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  // The independent Finance request queue refreshes even when the normal project tab is open.
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void apiFetch<AdditionalProjectRequest[]>('/finance/management-projects/additional-project-requests')
+        .then(rows => { if (alive) { setAdditionalRequests(rows); setRequestFetchError('') } })
+        .catch(err => { if (alive) setRequestFetchError(err instanceof Error ? err.message : 'Request list unavailable') })
+    }
+    refresh()
+    const interval = window.setInterval(refresh, 5000)
+    return () => { alive = false; window.clearInterval(interval) }
+  }, [])
+
+  // File-level tracking is a separate read-only Finance endpoint. Do not let a
+  // tracking outage blank the client register, invoices or other Finance data.
+  useEffect(() => {
+    let alive = true
+    let pending = false
+    const refresh = async () => {
+      if (pending || document.visibilityState === 'hidden') return
+      pending = true
+      try {
+        const result = await apiFetch<TrackingResponse>('/finance/management-projects/tracking')
+        if (alive) {
+          setTracking(result)
+          setTrackingError('')
+          setTrackingRefreshedAt(new Date().toLocaleTimeString('en-IN'))
+        }
+      } catch (err) {
+        if (alive) setTrackingError(err instanceof Error ? err.message : 'Tracking refresh failed')
+      } finally { pending = false }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5000)
+    const onFocus = () => void refresh()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
+  }, [])
+  useEffect(() => {
+    if (selectedProjectId === null) { setTrackingDetail(null); setDetailError(''); return }
+    let alive = true
+    let pending = false
+    setTrackingDetail(null)
+    const refresh = async () => {
+      if (pending || document.visibilityState === 'hidden') return
+      pending = true
+      try {
+        const detail = await apiFetch<TrackingDetail>(`/finance/management-projects/${selectedProjectId}/tracking`)
+        if (alive) { setTrackingDetail(detail); setDetailError('') }
+      } catch (err) {
+        if (alive) setDetailError(err instanceof Error ? err.message : 'File tracking unavailable')
+      } finally { pending = false }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5000)
+    const onFocus = () => void refresh()
+    window.addEventListener('focus', onFocus)
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
+  }, [selectedProjectId])
+
+  const selectedClient = data.clients.find(row => row.id === selectedClientId) ?? null
+  const selectedProject = data.projects.find(row => row.id === selectedProjectId) ?? null
+  const selectedLifecycle = lifecycle?.projects.find(row => row.id === selectedProjectId) ?? null
+  const selectedTracking = selectedProjectId === null ? null : tracking?.projects[String(selectedProjectId)] ?? null
+  const selectedFinancial = selectedProject ? (summary?.projects[String(selectedProject.id)] ?? EMPTY_FINANCIAL) : EMPTY_FINANCIAL
+  const billingStatus = selectedLifecycle?.workflow_status ?? selectedProject?.workflow_status ?? ''
+  const canOpenInvoices = INVOICE_STATES.has(billingStatus.toUpperCase()) &&
+    (Boolean(selectedProject?.source_approved) || selectedFinancial.invoice_count > 0)
+  const pmOptions = options.project_managers_by_department[project.performing_department_code] ?? []
+  const clientById = useMemo(() => new Map(data.clients.map(row => [row.id, row])), [data.clients])
+  const lifecycleById = useMemo(() => new Map((lifecycle?.projects ?? []).map(row => [row.id, row])), [lifecycle])
+  const sources = useMemo(() => [...new Set(data.clients.map(row => row.source_person_name).filter(Boolean))].sort(), [data.clients])
+  const statuses = useMemo(() => [...new Set(data.projects.map(row => lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status))].sort(), [data.projects, lifecycleById])
+  const filteredProjects = useMemo(() => data.projects.filter(row => {
+    const client = clientById.get(row.management_client_id)
+    const status = lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status
+    const term = search.trim().toLowerCase()
+    return (!term || [row.project_code, row.project_name, client?.client_name, row.source_person_name, row.department_label]
+      .some(value => (value ?? '').toLowerCase().includes(term))) &&
+      (!departmentFilter || row.department_code === departmentFilter) &&
+      (!statusFilter || status === statusFilter) &&
+      (!sourceFilter || row.source_person_name === sourceFilter)
+  }), [data.projects, clientById, lifecycleById, search, departmentFilter, statusFilter, sourceFilter])
+  const filteredClients = useMemo(() => data.clients.filter(row => {
+    const term = search.trim().toLowerCase()
+    return (!term || [row.client_code, row.client_name, row.source_person_name].some(value => value.toLowerCase().includes(term))) &&
+      (!sourceFilter || row.source_person_name === sourceFilter)
+  }), [data.clients, search, sourceFilter])
+  // NAKSHA_FINANCE_PAGINATION_5_PER_PAGE_V1: restrict ONLY Projects/Clients table rows, not the source datasets.
+  const financePageSize = 5
+  const clientPageCount = Math.max(1, Math.ceil(filteredClients.length / financePageSize))
+  const projectPageCount = Math.max(1, Math.ceil(filteredProjects.length / financePageSize))
+  const currentClientPage = Math.min(clientPage, clientPageCount)
+  const currentProjectPage = Math.min(projectPage, projectPageCount)
+  const paginatedClients = filteredClients.slice((currentClientPage - 1) * financePageSize, currentClientPage * financePageSize)
+  const paginatedProjects = filteredProjects.slice((currentProjectPage - 1) * financePageSize, currentProjectPage * financePageSize)
+  // Search and filters still operate on ALL clients/projects; restart from page 1 on filter changes.
+  useEffect(() => { setClientPage(1); setProjectPage(1) }, [search, departmentFilter, statusFilter, sourceFilter])
+  // Clamp each page if live refresh removes records.
+  useEffect(() => { if (clientPage > clientPageCount) setClientPage(clientPageCount) }, [clientPage, clientPageCount])
+  useEffect(() => { if (projectPage > projectPageCount) setProjectPage(projectPageCount) }, [projectPage, projectPageCount])
+  const paginationIsClients = activeTab === 'clients'
+  const paginationCount = paginationIsClients ? filteredClients.length : filteredProjects.length
+  const paginationPage = paginationIsClients ? currentClientPage : currentProjectPage
+  const paginationPages = paginationIsClients ? clientPageCount : projectPageCount
+  const paginationFirst = paginationCount === 0 ? 0 : (paginationPage - 1) * financePageSize + 1
+  const paginationLast = Math.min(paginationPage * financePageSize, paginationCount)
+  const activeProjects = data.projects.filter(row => !['CLOSED', 'COMPLETED'].includes((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())).length
+  const total = summary?.totals ?? { ...EMPTY_FINANCIAL, collection_rate: 0 }
+
+  function openCreate(client?: ManagementClient, requestRow?: AdditionalProjectRequest) {
+    const chosen = client ?? data.clients.find(item => item.is_active)
+    if (!chosen) {
+      setActiveTab('clients')
+      setNotice('No active management clients yet. Vinod Sir or Chethan Sir must register a client first.')
+      return
+    }
+    setSelectedClientId(chosen.id)
+    setSelectedRequestId(requestRow?.id ?? null)
+    setProject({ ...emptyProject(),
+      project_name: requestRow?.project_name ?? '',
+      scope_text: requestRow?.scope_text ?? chosen.work_description ?? '',
+      start_date: requestRow?.expected_start_date ?? '',
+      description: requestRow?.remarks ?? '',
+    })
+    setCommercial(emptyCommercialForm())
+    setShowCreate(true)
+    setError(''); setNotice('')
+  }
+
+  function openDetails(row: ManagementProject, tab: DetailTab = 'overview') {
+    setSelectedProjectId(row.id)
+    setDetailTab(tab)
+    setShowCreate(false)
+  }
+
+  async function createProject(event: FormEvent) {
+    event.preventDefault()
+    if (!selectedClient) return
+    if (!project.performing_department_code) { setError('Select the Performing Department.'); return }
+    const problems = commercialFormProblems(commercial)
+    if (problems.length) { setError(problems[0]); return }
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const result = await apiFetch<{ project_id: number; project_code: string }>('/finance/management-projects', {
+        method: 'POST', body: JSON.stringify({
+          management_client_id: selectedClient.id,
+          additional_request_id: selectedRequestId,
+          project_code: project.project_code, project_name: project.project_name,
+          scope_text: project.scope_text, start_date: project.start_date, end_date: project.end_date,
+          performing_department_code: project.performing_department_code, priority: project.priority,
+          quantity: project.quantity ? Number(project.quantity) : null,
+          quantity_unit: project.quantity_unit || 'unit', description: project.description || null,
+          project_manager_id: project.project_manager_id ? Number(project.project_manager_id) : null,
+          commercial: commercialFormToPayload(commercial),
+        }),
+      })
+      setShowCreate(false)
+      setSelectedRequestId(null)
+      void apiFetch<AdditionalProjectRequest[]>('/finance/management-projects/additional-project-requests').then(setAdditionalRequests).catch(() => undefined)
+      setSelectedProjectId(result.project_id)
+      setDetailTab('overview')
+      setActiveTab('projects')
+      setNotice(`${result.project_code} created and Finance-approved. ${project.project_manager_id ? 'Department Project Manager assigned.' : 'Assign a department Project Manager to begin operations.'} Invoicing is available after Ready For Billing.`)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create Management Project')
+    } finally { setBusy(false) }
+  }
+
+  async function assignPm(row: ManagementProject) {
+    const id = Number(pmChoice[row.id] || 0)
+    if (!id) { setError('Select a Project Manager for the assigned department.'); return }
+    setBusy(true); setError(''); setNotice('')
+    try {
+      await apiFetch(`/finance/management-projects/${row.id}/assign-pm`, {
+        method: 'POST', body: JSON.stringify({ project_manager_id: id }),
+      })
+      setNotice(`${row.project_code}: Department Project Manager assigned.`)
+      await load()
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to assign Project Manager') }
+    finally { setBusy(false) }
+  }
+
+  const tabs: Array<{ id: MainTab; label: string; icon: typeof FolderKanban }> = [
+    { id: 'projects', label: 'Projects', icon: FolderKanban },
+    { id: 'clients', label: 'Clients', icon: UsersRound },
+    { id: 'invoices', label: 'Invoices', icon: FileText },
+    { id: 'payments', label: 'Payments', icon: Wallet },
+    { id: 'tracking', label: 'Tracking', icon: Activity },
+    { id: 'requests', label: 'Project Requests', icon: FilePlus2 },
+  ]
+
+  return <div className="operations-page mp-page">
+    <header className="mp-heading">
+      <div className="mp-heading-title">
+        <div className="mp-heading-icon"><Layers3 size={25}/></div>
+        <div>
+          <span className="mp-eyebrow">FINANCE / MANAGEMENT PROJECTS</span>
+          <h1>Management Projects</h1>
+          <p>Projects created by Finance for Management Clients (Vinod Sir / Chethan Sir)</p>
+        </div>
+      </div>
+      <div className="mp-heading-actions">
+        <button className="mp-button mp-button-muted" type="button" disabled={loading} onClick={() => void load()}><RefreshCcw size={16}/> Refresh</button>
+        <button className="mp-button mp-button-primary" type="button" onClick={() => openCreate()}><Plus size={18}/> Create Management Project</button>
+      </div>
+    </header>
+
+    {error && <div className="operations-alert error" role="alert">{error}</div>}
+    {notice && <div className="operations-alert success" role="status">{notice}</div>}
+    {loading && <div className="mp-loading" role="status">Refreshing management clients, projects and financial totals…</div>}
+
+    <div className="mp-stats">
+      <div className="mp-stat mp-stat-blue"><div className="mp-stat-label"><UsersRound size={19}/> Management Clients</div><strong>{data.clients.length}</strong><small>{sources.map(source => `${source}: ${data.clients.filter(c => c.source_person_name === source).length}`).join('  ·  ') || 'No clients registered'}</small></div>
+      <div className="mp-stat mp-stat-green"><div className="mp-stat-label"><FolderKanban size={19}/> Total Projects</div><strong>{data.projects.length}</strong><small>Active: {activeProjects} · Closed: {data.projects.length - activeProjects}</small></div>
+      <div className="mp-stat mp-stat-gold"><div className="mp-stat-label"><FileText size={19}/> Total Invoiced (INR)</div><strong>{money(total.invoiced_inr)}</strong><small>{total.invoice_count} invoice record(s), including drafts</small></div>
+      <div className="mp-stat mp-stat-cyan"><div className="mp-stat-label"><Wallet size={19}/> Amount Received (INR)</div><strong>{money(total.received_inr)}</strong><small>Outstanding: {money(total.outstanding_inr)}</small></div>
+      <div className="mp-stat mp-stat-purple"><div className="mp-stat-label"><BadgeIndianRupee size={19}/> Collection Rate</div><strong>{total.collection_rate.toFixed(1)}%</strong><div className="mp-progress mp-stat-progress"><span style={{ width: `${Math.max(0, Math.min(100, total.collection_rate))}%` }}/></div><small>Invoice-value settlement basis</small></div>
+    </div>
+    {total.missing_fx_rows > 0 && <p className="mp-fx-note">Some foreign-currency invoice/payment rows have no recorded INR FX value ({total.missing_fx_rows}). INR totals exclude those amounts; see the existing Finance ledger for reconciliation.</p>}
+
+    <nav className="mp-tabs" aria-label="Management Projects sections">
+      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={activeTab === id ? 'mp-tab active' : 'mp-tab'} aria-current={activeTab === id ? 'page' : undefined} onClick={() => { setActiveTab(id); setSelectedProjectId(null) }}><Icon size={16}/>{label}{id === 'requests' && additionalRequests.filter(r => r.status === 'PENDING').length > 0 && <span style={{ marginLeft: 4, background: '#fcebea', color: '#a23e3e', borderRadius: 9, padding: '2px 6px', fontSize: 11 }}>{additionalRequests.filter(r => r.status === 'PENDING').length}</span>}</button>)}
+    </nav>
+
+    {activeTab === 'requests' && <section className="mp-panel" aria-label="Existing client project requests">
+      <div className="mp-panel-heading"><h2>Existing Client – Project Requests</h2><span>{additionalRequests.filter(r => r.status === 'PENDING').length} awaiting Finance</span></div>
+      <p style={{ margin: '8px 0 12px', color: '#46647c', fontSize: 13 }}>When Vinod Sir or Chethan Sir requests another project for an existing client, it appears here. Use the normal Create Project form to complete it.</p>
+      {requestFetchError && <p role="alert" style={{ color: '#a23e3e' }}>{requestFetchError}</p>}
+      <label className="mp-search" style={{ display: 'block', marginBottom: 12 }}><Search size={17}/><input aria-label="Search project requests" placeholder="Search client, project or Management source…" value={requestSearch} onChange={e => setRequestSearch(e.target.value)}/></label>
+      <div className="mp-table-scroll"><table className="mp-table"><thead><tr><th>Client</th><th>Requested Project</th><th>Management Source</th><th>Requested</th><th>Status</th><th>Action</th></tr></thead><tbody>
+        {additionalRequests.filter(row => !requestSearch.trim() || [row.client_code, row.client_name, row.project_name, row.source_person_name].some(value => (value || '').toLowerCase().includes(requestSearch.trim().toLowerCase()))).sort((a,b) => (a.status === 'PENDING' ? 0 : 1) - (b.status === 'PENDING' ? 0 : 1)).map(row =>
+          <tr key={row.id}><td><strong>{row.client_code}</strong><small>{row.client_name}</small></td>
+            <td><strong>{row.project_name}</strong><small>{row.scope_text}</small>{row.remarks && <small>Notes: {row.remarks}</small>}</td>
+            <td>{row.source_person_name}</td><td>{row.created_at ? new Date(row.created_at).toLocaleDateString('en-IN') : '—'}</td>
+            <td><span style={{ display: 'inline-block', fontSize: 12, fontWeight: 500, borderRadius: 8, padding: '6px 9px', background: row.status === 'CREATED' ? '#e8f6eb' : '#fcebea', border: `1px solid ${row.status === 'CREATED' ? '#b9dec1' : '#efc9c6'}`, color: row.status === 'CREATED' ? '#166534' : '#a23e3e' }}>{row.status === 'CREATED' ? `Project Created: ${row.created_project_code || ''}` : 'Awaiting Finance'}</span></td>
+            <td>{row.status === 'PENDING' ? <button className="mp-button mp-button-primary mp-button-small" type="button" disabled={!clientById.get(row.management_client_id)?.is_active} onClick={() => openCreate(clientById.get(row.management_client_id), row)}><Plus size={14}/> Create Project</button> : row.created_project_code}</td></tr>
+        )}</tbody></table></div>
+      {additionalRequests.length === 0 && !requestFetchError && <div className="mp-empty">No additional project requests yet.</div>}
+    </section>}
+
+    {activeTab !== 'requests' && <>
+    <div className="mp-toolbar">
+      <label className="mp-search"><Search size={17}/><input aria-label="Search management projects or clients" placeholder="Search by project, client or code…" value={search} onChange={e => setSearch(e.target.value)}/></label>
+      {activeTab !== 'clients' && <select aria-label="Department filter" value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)}><option value="">All Departments</option>{options.departments.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}</select>}
+      {activeTab !== 'clients' && <select aria-label="Status filter" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">All Statuses</option>{statuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select>}
+      <select aria-label="Management source filter" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}><option value="">All Sources</option>{sources.map(s => <option key={s} value={s}>{s}</option>)}</select>
+      <button type="button" className="mp-button mp-button-muted" onClick={() => { setSearch(''); setDepartmentFilter(''); setStatusFilter(''); setSourceFilter('') }}><SlidersHorizontal size={15}/> Reset</button>
+      <button type="button" className="mp-button mp-button-muted" onClick={() => exportCsv(filteredProjects, data.clients, lifecycle, summary, tracking)} disabled={!filteredProjects.length} title="Export filtered management projects as CSV"><Download size={15}/> Export CSV</button>
+    </div>
+
+    <section className="mp-panel" aria-label={`${activeTab} register`}>
+      <div className="mp-panel-heading"><h2>{({ projects: 'Management Project Register', clients: 'Registered Management Clients', invoices: 'Management Project Invoices', payments: 'Payments & Collections', tracking: 'Project Tracking', requests: 'Project Requests' })[activeTab]}</h2><span>{activeTab === 'clients' ? filteredClients.length : filteredProjects.length} records</span></div>
+      <div className="mp-table-scroll">
+        {activeTab === 'clients' ? <table className="mp-table"><thead><tr><th>Client Code</th><th>Client</th><th>Source</th><th>Projects</th><th>Action</th></tr></thead><tbody>
+          {paginatedClients.map(client => <tr key={client.id}><td className="mp-code">{client.client_code}</td><td><strong>{client.client_name}</strong><small>{client.contact_person_name}</small></td><td><span className="mp-source">{client.source_person_name}</span></td><td>{data.projects.filter(p => p.management_client_id === client.id).length}</td><td><button type="button" className="mp-button mp-button-primary mp-button-small" disabled={!client.is_active} onClick={() => openCreate(client)}><Plus size={14}/> Create Project</button></td></tr>)}
+        </tbody></table> : <table className="mp-table"><thead><tr><th>Project Code</th><th>Client / Source</th><th>Project Name</th><th>Department</th>{activeTab === 'payments' || activeTab === 'invoices' ? <><th>Invoiced (INR)</th><th>Received (INR)</th><th>Outstanding (INR)</th></> : <><th>Project Value</th><th>Status</th><th>Progress</th></>}<th>Action</th></tr></thead><tbody>
+          {(activeTab === 'projects' ? paginatedProjects : filteredProjects).filter(row => activeTab !== 'invoices' || (summary?.projects[String(row.id)]?.invoice_count ?? 0) > 0 || INVOICE_STATES.has((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())).map(row => {
+            const client = clientById.get(row.management_client_id)
+            const life = lifecycleById.get(row.id)
+            const status = life?.workflow_status ?? row.workflow_status
+            const stageTracking = tracking?.projects[String(row.id)]
+            const progress = Math.min(100, Math.max(0, stageTracking?.overall_percent ?? 0))
+            const financial = summary?.projects[String(row.id)] ?? EMPTY_FINANCIAL
+            return <tr key={row.id} className={selectedProjectId === row.id ? 'mp-row-selected' : ''}>
+              <td className="mp-code">{row.project_code}</td>
+              <td><strong>{client?.client_name ?? 'Management Client'}</strong><small>{row.source_person_name}</small></td>
+              <td><strong>{row.project_name}</strong><small>PM: {row.project_manager_name || 'Awaiting assignment'}</small></td>
+              <td><span className="mp-department">{row.department_label}</span></td>
+              {activeTab === 'payments' || activeTab === 'invoices' ? <><td>{money(financial.invoiced_inr)}</td><td>{money(financial.received_inr)}</td><td>{money(financial.outstanding_inr)}</td></> : <><td className="mp-project-value-visible">  {projectMoney(row.project_value, row.currency)}</td><td><span className="mp-status">{stageTracking?.operational_status ?? managementStatusLabel(status, row.source_approved)}</span>{stageTracking && <small>ERP: {managementStatusLabel(status, row.source_approved)}</small>}</td><td><div className="mp-progress-label"><div className="mp-progress"><span className={`mp-v8-${managementProgressTone(progress)}`} style={{ width: `${progress}%` }}/></div>{stageTracking ? `${progress.toFixed(0)}%` : '—'}</div></td></>}
+              <td><button type="button" className="mp-icon-button" title="View project details" aria-label={`View ${row.project_code}`} onClick={() => openDetails(row, activeTab === 'payments' || activeTab === 'invoices' ? 'billing' : activeTab === 'tracking' ? 'workflow' : 'overview')}><Eye size={17}/></button><button type="button" className="mp-icon-button" title="Open invoice and payments" aria-label={`Open invoices for ${row.project_code}`} onClick={() => openDetails(row, 'billing')}><FileText size={17}/></button></td>
+            </tr>
+          })}
+        </tbody></table>}
+      </div>
+      {(activeTab === 'projects' || activeTab === 'clients') && <nav aria-label={`${paginationIsClients ? 'Clients' : 'Projects'} pagination`} className="mp-finance-pagination" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 12 }}>
+        <span aria-live="polite">Showing {paginationFirst}–{paginationLast} of {paginationCount} {paginationIsClients ? 'clients' : 'projects'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" className="mp-button mp-button-muted" disabled={paginationPage <= 1} onClick={() => paginationIsClients ? setClientPage(page => Math.max(1, page - 1)) : setProjectPage(page => Math.max(1, page - 1))}>Previous</button>
+          <span style={{ whiteSpace: 'nowrap' }}>Page {paginationPage} of {paginationPages}</span>
+          <button type="button" className="mp-button mp-button-muted" disabled={paginationPage >= paginationPages} onClick={() => paginationIsClients ? setClientPage(page => Math.min(clientPageCount, page + 1)) : setProjectPage(page => Math.min(projectPageCount, page + 1))}>Next</button>
+        </div>
+      </nav>}
+      {activeTab === 'clients' && filteredClients.length === 0 && <div className="mp-empty">No management clients match these filters. Vinod Sir and Chethan Sir register clients from their existing Client Register.</div>}
+      {activeTab !== 'clients' && filteredProjects.length === 0 && <div className="mp-empty">No management projects match these filters. Select an active management client to create one.</div>}
+      {activeTab === 'invoices' && filteredProjects.length > 0 && !filteredProjects.some(row => (summary?.projects[String(row.id)]?.invoice_count ?? 0) > 0 || INVOICE_STATES.has((lifecycleById.get(row.id)?.workflow_status ?? row.workflow_status).toUpperCase())) && <div className="mp-empty">No management project invoices yet. Invoicing becomes available once a project reaches Ready For Billing.</div>}
+    </section>
+
+    </>}
+
+    {selectedProject && <section className="mp-panel mp-project-detail" aria-label="Selected management project">
+      <div className="mp-detail-heading"><div><span className="mp-eyebrow">MANAGEMENT PROJECT · {selectedProject.source_person_name}</span><h2>{selectedProject.project_code} — {selectedProject.project_name}</h2><p>{clientById.get(selectedProject.management_client_id)?.client_name} · {selectedProject.department_label} · {managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</p></div><button type="button" className="mp-button mp-button-muted" onClick={() => setSelectedProjectId(null)}><X size={15}/> Close</button></div>
+      <div className="mp-detail-tabs"><button className={detailTab === 'overview' ? 'active' : ''} type="button" onClick={() => setDetailTab('overview')}>Overview</button><button className={detailTab === 'workflow' ? 'active' : ''} type="button" onClick={() => setDetailTab('workflow')}>Workflow & Tracking</button><button className={detailTab === 'billing' ? 'active' : ''} type="button" onClick={() => setDetailTab('billing')}>Invoices & Payments</button></div>
+      {detailTab === 'overview' && <div className="mp-detail-grid">
+        <div className="mp-detail-card"><h3>Project Information</h3><dl><dt>Project Code</dt><dd>{selectedProject.project_code}</dd><dt>Client</dt><dd>{clientById.get(selectedProject.management_client_id)?.client_name ?? '—'}</dd><dt>Source</dt><dd>{selectedProject.source_person_name}</dd><dt>Department</dt><dd>{selectedProject.department_label}</dd><dt>Project Manager</dt><dd>{selectedProject.project_manager_name || 'Not assigned'}</dd><dt>Project Value</dt><dd>{projectMoney(selectedProject.project_value, selectedProject.currency)}</dd><dt>Start Date</dt><dd>{shortDate(selectedProject.start_date)}</dd><dt>Expected Delivery</dt><dd>{shortDate(selectedProject.end_date)}</dd></dl></div>
+        <div className="mp-detail-card"><h3>Production & Quality Progress</h3>
+          {selectedTracking ? <><div className="mp-large-progress"><strong>{selectedTracking.work_units ? `${selectedTracking.overall_percent.toFixed(0)}%` : '—'}</strong><div className="mp-progress"><span className={`mp-v8-${managementProgressTone(selectedTracking.overall_percent)}`} style={{ width: `${Math.min(100, Math.max(0, selectedTracking.overall_percent))}%` }}/></div></div><p><strong>{selectedTracking.operational_status}</strong></p><StageTrackingBars tracking={selectedTracking} compact/><p>{selectedTracking.work_units} tracked work units · {selectedTracking.active_files} active files{selectedTracking.rework_count > 0 ? ` · ${selectedTracking.rework_count} rework flags` : ''}</p></> : <p>{trackingError ? 'Tracking temporarily unavailable' : 'Loading file-level tracking…'}</p>}
+          <p>Administrative ERP status: <strong>{managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</strong></p>
+          {trackingError && <p className="mp-tracking-error" role="alert">Tracking refresh failed. Showing last successful data, if available.</p>}
+          {trackingRefreshedAt && <p className="mp-tracking-refreshed">Last checked: {trackingRefreshedAt}</p>}
+          <button type="button" className="mp-button mp-button-muted" onClick={() => setDetailTab('workflow')}>View Tracking <ChevronRight size={15}/></button></div>
+        <div className="mp-detail-card"><h3>Billing Summary</h3><dl><dt>Invoice Records</dt><dd>{selectedFinancial.invoice_count}</dd><dt>Total Invoiced (INR)</dt><dd>{money(selectedFinancial.invoiced_inr)}</dd><dt>Received (INR)</dt><dd>{money(selectedFinancial.received_inr)}</dd><dt>Outstanding (INR)</dt><dd>{money(selectedFinancial.outstanding_inr)}</dd></dl><button type="button" className="mp-button mp-button-primary" onClick={() => setDetailTab('billing')}><FileText size={15}/> {canOpenInvoices ? 'Open Invoice Generator' : 'View Billing Status'}</button></div>
+      </div>}
+      {detailTab === 'workflow' && <div className="mp-tracking-detail"><div className="mp-tracking-header"><h3>Project Workflow & Live Tracking</h3><span>Administrative status: {managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</span></div>
+        {selectedTracking ? <><p className="mp-tracking-current">Operational status: <strong>{selectedTracking.operational_status}</strong> · Overall stage completion: <strong>{selectedTracking.work_units ? `${selectedTracking.overall_percent.toFixed(1)}%` : 'Not allocated'}</strong></p><StageTrackingBars tracking={selectedTracking}/></> : <p className="mp-tracking-note">{trackingError ? 'Tracking temporarily unavailable.' : 'Loading tracking…'}</p>}
+        {detailError && <p className="mp-tracking-error" role="alert">File tracking refresh failed. Showing last successful details, if available.</p>}
+        {trackingDetail ? <FileTrackingTable detail={trackingDetail}/> : <p className="mp-tracking-note">Loading file-wise status…</p>}
+        <h3 className="mp-tracking-milestones">Administrative workflow</h3><div className="mp-workflow-steps">{WORKFLOW_STEPS.map(({ label, sub, icon: Icon }, index) => <div className={index === currentWorkflowStep(billingStatus) ? 'mp-workflow-step current' : 'mp-workflow-step'} key={label}><div className="mp-workflow-icon"><Icon size={19}/></div><strong>{label}</strong><small>{sub}</small></div>)}</div><p className="mp-tracking-note">Operational stage percentages are calculated from active file completion records, with legacy area-level fallback. Rework remains visible. Administrative status and billing readiness remain separate; department, QC/QA and delivery actions stay in their original ERP modules.</p></div>}
+      {detailTab === 'billing' && <div className="mp-billing-container">{canOpenInvoices ? <FinanceBillingPage key={selectedProject.id} embeddedProjectId={selectedProject.id}/> : <div className="mp-billing-locked"><ShieldCheck size={27}/><h3>Invoice generation is not available yet</h3><p>Management projects require approval from their original Management source after Delivery, followed by <strong>Ready For Billing</strong>. Finance can then use the existing invoice, PDF, signing and payment controls.</p><p>Current status: <strong>{managementStatusLabel(billingStatus, Boolean(selectedProject?.source_approved))}</strong></p></div>}</div>}
+      {!selectedProject.project_manager_id && ['finance_approved', 'pm_assigned'].includes(selectedProject.workflow_status.toLowerCase()) && <div className="mp-assign-box"><div><strong>Department Project Manager not assigned</strong><small>Select a manager from the existing BD department mapping.</small></div><select aria-label={`Project Manager for ${selectedProject.project_code}`} value={pmChoice[selectedProject.id] || ''} onChange={e => setPmChoice(prev => ({ ...prev, [selectedProject.id]: e.target.value }))}><option value="">Select Project Manager</option>{(options.project_managers_by_department[selectedProject.department_code] ?? []).map(pm => <option key={pm.id} value={pm.id}>{pm.full_name}</option>)}</select><button className="mp-button mp-button-primary" type="button" disabled={busy || !pmChoice[selectedProject.id]} onClick={() => void assignPm(selectedProject)}>Assign Manager <ArrowRight size={15}/></button></div>}
+    </section>}
+
+    <section className="mp-panel mp-workflow-panel">
+      <div className="mp-panel-heading"><div><h2>Management Project Workflow</h2><p>End-to-end flow from Finance project creation to invoice settlement and closure</p></div><span><FileCheck2 size={17}/> Existing ERP lifecycle</span></div>
+      <div className="mp-workflow-steps">{WORKFLOW_STEPS.map(({ label, sub, icon: Icon }, index) => <div className="mp-workflow-step" key={label}><div className="mp-workflow-icon"><Icon size={20}/></div><strong>{label}</strong><small>{sub}</small>{index < WORKFLOW_STEPS.length - 1 && <ArrowRight className="mp-workflow-arrow" size={15}/>}</div>)}</div>
+      <p className="mp-workflow-disclaimer">Management projects require original-source approval after Delivery before the existing Finance Billing engine can draft an invoice. Finance owns management-project creation; BD cannot view these management-sourced records.</p>
+    </section>
+
+    {showCreate && selectedClient && <div className="mp-overlay" role="presentation"><aside className="mp-create-dialog" role="dialog" aria-modal="true" aria-label="Create Management Project">
+      <div className="mp-dialog-heading"><div><span className="mp-eyebrow">FINANCE DEPARTMENT</span><h2>Create Management Project</h2><p>Choose a management client, assign department, then save.</p></div><button type="button" className="mp-icon-button" aria-label="Close project form" disabled={busy} onClick={() => setShowCreate(false)}><X size={19}/></button></div>
+      <form className="mp-dialog-body" onSubmit={event => void createProject(event)}>
+        <div className="mp-form-section"><h3>1. Client Information</h3><label className="mp-field"><span>Management Client *</span><select value={selectedClientId ?? ''} disabled={selectedRequestId !== null} onChange={e => { const id = Number(e.target.value); const chosen = data.clients.find(c => c.id === id); setSelectedClientId(id); if (chosen) setProject(prev => ({ ...prev, scope_text: chosen.work_description || prev.scope_text })) }}>{data.clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}</select></label><div className="mp-readonly-pair"><div><span>Client Source</span><strong>{selectedClient.source_person_name}</strong></div><div><span>Client Code</span><strong>{selectedClient.client_code}</strong></div></div></div>
+        <div className="mp-form-section"><h3>2. Project Details</h3><div className="mp-form-grid"><label className="mp-field"><span>Project Code *</span><input required minLength={2} value={project.project_code} onChange={e => setProject({ ...project, project_code: e.target.value.toUpperCase() })} placeholder="MGT-PRJ-001"/></label><label className="mp-field"><span>Project Name *</span><input required minLength={2} value={project.project_name} onChange={e => setProject({ ...project, project_name: e.target.value })} placeholder="Enter project name"/></label><label className="mp-field mp-full"><span>Project Description / Scope of Work *</span><textarea required minLength={2} value={project.scope_text} onChange={e => setProject({ ...project, scope_text: e.target.value })} placeholder="Describe deliverables"/></label><label className="mp-field"><span>Start Date *</span><input required type="date" value={project.start_date} onChange={e => setProject({ ...project, start_date: e.target.value })}/></label><label className="mp-field"><span>Expected Delivery *</span><input required type="date" min={project.start_date || undefined} value={project.end_date} onChange={e => setProject({ ...project, end_date: e.target.value })}/></label><label className="mp-field mp-full"><span>Finance Notes</span><textarea value={project.description} onChange={e => setProject({ ...project, description: e.target.value })}/></label></div></div>
+        <div className="mp-form-section"><h3>3. Department Assignment · Same as BD</h3><div className="mp-form-grid"><label className="mp-field"><span>Assign Department *</span><select required value={project.performing_department_code} onChange={e => setProject({ ...project, performing_department_code: e.target.value, project_manager_id: '' })}><option value="">Select Department</option>{options.departments.map(dept => <option key={dept.code} value={dept.code}>{dept.label}</option>)}</select></label><label className="mp-field"><span>Department Project Manager</span><select value={project.project_manager_id} onChange={e => setProject({ ...project, project_manager_id: e.target.value })} disabled={!project.performing_department_code}><option value="">Assign after creation</option>{pmOptions.map(pm => <option key={pm.id} value={pm.id}>{pm.employee_id ? `${pm.employee_id} · ` : ''}{pm.full_name}</option>)}</select></label><label className="mp-field"><span>Priority</span><select value={project.priority} onChange={e => setProject({ ...project, priority: e.target.value })}><option value="low">Low</option><option value="medium">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label className="mp-field"><span>Planned Quantity</span><input type="number" min="0" step="0.001" value={project.quantity} onChange={e => setProject({ ...project, quantity: e.target.value })}/></label><label className="mp-field"><span>Quantity Unit</span><input value={project.quantity_unit} onChange={e => setProject({ ...project, quantity_unit: e.target.value })}/></label></div><p className="mp-form-help">The existing BD department/PM assignment and notification mechanism is reused. Finance approves the project on creation.</p></div>
+        <div className="mp-form-section"><h3>4. Commercial Information</h3><div className="mp-commercial"><CommercialDetailsSection form={commercial} onChange={setCommercial} currencies={currencies} disabled={busy}/></div></div>
+        <div className="mp-form-section"><h3>5. Invoice Generation</h3><p className="mp-form-help"><ShieldCheck size={15}/> The existing Finance invoice generator, A4 PDF, themes, signature and payment ledger will open inside this page after the project reaches Ready For Billing. No invoice is issued during project creation.</p></div>
+        <div className="mp-dialog-actions"><button type="button" className="mp-button mp-button-muted" disabled={busy} onClick={() => setShowCreate(false)}>Cancel</button><button type="submit" className="mp-button mp-button-primary" disabled={busy}>{busy ? 'Creating Project…' : 'Create & Assign Project'} <ChevronRight size={17}/></button></div>
+      </form>
+    </aside></div>}
+  </div>
+}
+
+
+===== END frontend/src/features/finance/pages/FinanceManagementProjectsPage.tsx =====

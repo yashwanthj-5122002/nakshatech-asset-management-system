@@ -122,6 +122,11 @@ export function RentalAssetReturnsPage() {
         title="Returned Assets & Spare Monitors"
         description="Read-only visualization of computers removed through Asset Register → Return / Remove and monitors retained for reuse through Component Changes. Return actions remain in Asset Register only."
         actions={<button className="secondary-button" onClick={() => void exportReturns()}><Download size={17} /> Returned Assets & Spares Excel</button>}
+        meta={<>
+          <span className="nk-meta-chip"><PackageCheck size={14} /> Read-only return register</span>
+          <span className="nk-meta-chip"><Monitor size={14} /> Retained monitors feed Component Changes</span>
+          <span className="nk-meta-chip"><RotateCcw size={14} /> Return actions stay in Asset Register</span>
+        </>}
       />
       {error && <div className="error-message">{error}</div>}
 

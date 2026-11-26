@@ -1,5 +1,5 @@
-import { createContext, type ReactNode, useContext, useMemo, useState } from 'react'
-import { apiFetch } from '../lib/api'
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
+import { AUTH_EXPIRED_EVENT, apiFetch, getToken } from '../lib/api'
 import type { AuthLoginResponse, AuthUser, Branch, Role } from '../types'
 
 interface PendingAuthenticatorSetup {
@@ -16,6 +16,7 @@ interface AuthContextValue {
   user: AuthUser | null
   needsBranchSelection: boolean
   pendingAuthenticatorSetup: PendingAuthenticatorSetup | null
+  clearPendingAuthenticatorSetup: () => void
   login: (role: Role | undefined, email: string, password: string, remember: boolean, accessMode?: 'employee_support') => Promise<AuthLoginResponse>
   acceptAuthResponse: (result: AuthLoginResponse, remember?: boolean) => void
   confirmRegistrationAuthenticator: (code: string) => Promise<AuthLoginResponse>
@@ -29,6 +30,8 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 function readStoredUser(): AuthUser | null {
+  // A cached user alone is not a valid login session.
+  if (!getToken()) return null
   const raw = localStorage.getItem('asset_user') ?? sessionStorage.getItem('asset_user')
   if (!raw) return null
   try { return JSON.parse(raw) as AuthUser } catch { return null }
@@ -59,10 +62,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsBranchSelection, setNeedsBranchSelection] = useState(readBranchSelectionRequired)
   const [pendingAuthenticatorSetup, setPendingAuthenticatorSetup] = useState<PendingAuthenticatorSetup | null>(readPendingAuthenticatorSetup)
 
+  useEffect(() => {
+    const expireSession = () => {
+      clearAuthStorage()
+      sessionStorage.removeItem('asset_pending_authenticator_setup')
+      setUser(null)
+      setNeedsBranchSelection(false)
+      setPendingAuthenticatorSetup(null)
+    }
+    // 401 from a protected API: stop all authenticated background polling.
+    const handleStorage = (event: StorageEvent) => {
+      // Also handle logout in another tab using a remembered (localStorage) token.
+      if (event.key === 'asset_token' && !getToken()) expireSession()
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, expireSession)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, expireSession)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [])
+
   function savePendingAuthenticatorSetup(pending: PendingAuthenticatorSetup | null) {
     setPendingAuthenticatorSetup(pending)
     if (pending) sessionStorage.setItem('asset_pending_authenticator_setup', JSON.stringify(pending))
     else sessionStorage.removeItem('asset_pending_authenticator_setup')
+  }
+
+  function clearPendingAuthenticatorSetup() {
+    savePendingAuthenticatorSetup(null)
   }
 
   function acceptAuthResponse(result: AuthLoginResponse, remember = false) {
@@ -171,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       needsBranchSelection,
       pendingAuthenticatorSetup,
+      clearPendingAuthenticatorSetup,
       login,
       acceptAuthResponse,
       confirmRegistrationAuthenticator,

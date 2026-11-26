@@ -1,0 +1,27 @@
+NAKSHA BD AI RAG STARTER PACK - SYNTHETIC EDUCATIONAL REFERENCE
+Version: 1.0 | Scope: Fictional sample knowledge; not real company SOP
+Approval: NOT APPROVED FOR PRODUCTION OR CLIENT QUOTATIONS
+Privacy: No real client records or restricted Finance/Management content included
+
+REFERENCE ID: NBD-LIDAR-203
+TOPIC: LiDAR acquisition, classification and extraction scoping
+
+PROJECT TYPES
+Airborne LiDAR for large areas; mobile LiDAR for roads/urban corridors; terrestrial laser scanning for buildings and assets. The technique should be confirmed, not assumed from the word LiDAR alone.
+
+INPUT QUESTIONS
+Is point cloud already supplied or is scanning required? What is survey footprint/corridor length AND corridor width? Required point density/spacing, horizontal and vertical accuracy, return attributes, intensity or RGB availability, CRS and vertical datum? What is the intended classification schema and ground definition? What are output formats, tiling, naming, QA tolerances and delivery date?
+
+CLASSIFICATION
+Typical workstreams may include ground, vegetation at specified height bands, buildings and other classes. Exact LAS classification codes, height thresholds, multi-return handling and utility classes must follow project specifications. Distinguish automated initial classification, manual review and final validated output.
+
+PRODUCTS
+Classified LAS/LAZ, DTM/DSM, contours, linework/CAD, feature extraction, power-line clearance analysis, cross sections, asset inventories, digital twin-ready geometry. Only products expressly requested are confirmed.
+
+QUALITY CONCERNS
+Vegetation/building confusion near roofs; low-density areas; noise/outliers; bridges; water; sloped terrain; datum mismatch; strip alignment; coverage gaps; urban clutter. Verify on independent reference samples and preserve auditability. An AI model output alone is not evidence of ground-truth classification accuracy.
+
+CASE 1
+Client says '42 km road LiDAR, LAZ and road features' - corridor width, method, accuracy, points density, deliverable schema and schedule remain unknown.
+CASE 2
+Client says 'classify supplied LAZ into Ground, Vegetation and Building' - scanning is not confirmed in scope; ask for class specification, LAZ sample and acceptance criteria.

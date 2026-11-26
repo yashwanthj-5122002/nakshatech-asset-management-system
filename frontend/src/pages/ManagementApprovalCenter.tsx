@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   CheckCircle2,
   Download,
   ExternalLink,
@@ -186,10 +187,21 @@ export function ManagementApprovalCenter() {
   return (
     <>
       <DashboardHeader
+        variant="ops"
+        icon={ShieldCheck}
         eyebrow="PURCHASE GOVERNANCE"
         title="Purchase Approval Centre"
         description={`Management purchase governance for ${monthLabel(selectedMonth)}. Every Purchase Request remains visible through Pending, Approved, Sent Back, Rejected and Purchase Completed states.`}
         actions={<button className="secondary-button" onClick={() => void exportWorkbook()} disabled={busy === 'excel'}><Download size={17} /> {busy === 'excel' ? 'Preparing…' : 'Purchase Excel'}</button>}
+        summary={<>
+          <StatCard icon={FileCheck2} label="Pending Approval" value={summary?.pending_approval ?? '—'} tone="purple" note="Awaiting a Management decision" />
+          <StatCard icon={RotateCcw} label="Sent Back" value={summary?.sent_back ?? '—'} tone="orange" note="Returned for correction" />
+          <StatCard icon={ThumbsDown} label="Rejected" value={summary?.rejected ?? '—'} tone="red" note="Declined requests" />
+        </>}
+        meta={<>
+          <span className="nk-meta-chip"><ShieldCheck size={14} /> Approve · send back · reject pending requests</span>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> {monthLabel(selectedMonth)}</span>
+        </>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
@@ -197,10 +209,7 @@ export function ManagementApprovalCenter() {
       <div className="approval-note"><ShieldCheck size={16} /> Management can Approve, Send Back or Reject only Pending Purchase Requests. Approved, Sent Back, Rejected and Purchase Completed requests stay visible as read-only trace records.</div>
 
       <section className="stats-grid management-control-kpis">
-        <StatCard icon={FileCheck2} label="Pending" value={summary?.pending_approval ?? '—'} tone="purple" />
         <StatCard icon={CheckCircle2} label="Approved" value={summary?.approved ?? '—'} tone="green" />
-        <StatCard icon={RotateCcw} label="Sent Back" value={summary?.sent_back ?? '—'} tone="orange" />
-        <StatCard icon={ThumbsDown} label="Rejected" value={summary?.rejected ?? '—'} tone="red" />
         <StatCard icon={FileCheck2} label="Purchase Completed" value={summary?.purchase_completed ?? '—'} tone="blue" />
         <StatCard icon={IndianRupee} label="Approved Purchase Value" value={summary ? formatMoney(summary.approved_purchase_value) : '—'} tone="green" />
       </section>

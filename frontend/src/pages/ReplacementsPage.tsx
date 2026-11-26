@@ -1,4 +1,4 @@
-import { Mail, Repeat2, Save, Settings2, ShieldCheck, ShoppingCart } from 'lucide-react'
+import { CalendarDays, Mail, Repeat2, Save, Settings2, ShieldCheck, ShoppingCart } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
@@ -118,6 +118,11 @@ export function ReplacementsPage() {
         eyebrow="ASSET LIFECYCLE"
         title="Complete Asset Replacement"
         description={`IT controls the technical replacement workflow for ${monthLabel(selectedMonth)}. Available spare stock is used first. Management permission is required only when a Purchase Request is created.`}
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Reporting month {monthLabel(selectedMonth)}</span>
+          <span className="nk-meta-chip"><Repeat2 size={14} /> Spare stock first → purchase only when required</span>
+          <span className="nk-meta-chip"><ShieldCheck size={14} /> Management approves Purchase Requests only</span>
+        </>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}

@@ -186,9 +186,16 @@ export function AgentMonitorPage() {
   return (
     <>
       <DashboardHeader
+        variant="ops"
+        icon={MonitorCheck}
         eyebrow="SOFTWARE TEAM · ENDPOINT VISIBILITY"
         title="Agent Monitoring"
         description="Read-only workstation, user, software, activity and lifecycle visibility through the approved NakshaTech system agent service."
+        meta={<>
+          <span className="nk-meta-chip"><MonitorCheck size={14} /> {stats.online ?? '—'} online · {stats.delayed ?? '—'} delayed · {stats.offline ?? '—'} offline</span>
+          <span className="nk-meta-chip"><Activity size={14} /> Auto-refreshes every 15 seconds</span>
+          <span className="nk-meta-chip"><Laptop size={14} /> {stats.total_agents ?? agents.length} enrolled endpoints</span>
+        </>}
       />
 
       {error && <div className="agent-monitor-error"><strong>Agent monitor unavailable.</strong><span>{error}</span></div>}

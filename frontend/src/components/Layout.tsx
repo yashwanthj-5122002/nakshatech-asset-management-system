@@ -4,13 +4,18 @@ import {
   BarChart3,
   Bell,
   Building2,
+  CalendarDays,
+  CalendarCheck2,
+  Clock3,
   Boxes,
   ChevronDown,
+  ClipboardCheck,
   ClipboardList,
   Code2,
   Database,
   FileCheck2,
   FileDown,
+  FilePlus2,
   FolderKanban,
   HardDrive,
   History,
@@ -32,6 +37,7 @@ import {
   ShieldCheck,
   TrendingUp,
   UploadCloud,
+  UserRound,
   Users,
   X,
 } from 'lucide-react'
@@ -43,29 +49,34 @@ import { useITMonth } from '../context/ITMonthContext'
 import type { Role } from '../types'
 import { Logo } from './Logo'
 import { GlobalNotificationBell } from './GlobalNotificationBell'
+import { NotificationPopupHost } from '../features/notifications/NotificationPopupHost'
+import { NotificationPopupProvider } from '../features/notifications/NotificationPopupProvider'
 import { GlobalSearch } from './GlobalSearch'
-import { canAccessRole, isFullAccessRole, roleHomePath } from '../lib/roles'
+import { canAccessRole, isFullAccessRole, isTechnicalProjectManager, roleHomePath, TECHNICAL_PM_ROLES } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import { apiFetch } from '../lib/api'
+import { canAccessBDAI } from '../features/bd_ai/access'
 
 interface NavItem {
   to: string
   label: string
   icon: AppIcon
   roles: Role[]
-  group: 'overview' | 'support' | 'management' | 'business' | 'ortho' | 'finance' | 'hr' | 'it' | 'drone' | 'system'
-  managementGroup?: NavItem['group']
+  group: string
+  managementGroup?: 'executive' | 'operations' | 'finance' | 'governance'
   managementLabel?: string
 }
 
 interface NavGroupDefinition {
-  id: NavItem['group']
+  id: string
   label: string
 }
 
 const navGroups: NavGroupDefinition[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'support', label: 'Employee Support' },
+  { id: 'leave', label: 'Leave' },
+  { id: 'attendance', label: 'Attendance' },
   { id: 'management', label: 'Management' },
   { id: 'business', label: 'Business Development' },
   { id: 'ortho', label: 'Ortho' },
@@ -76,64 +87,110 @@ const navGroups: NavGroupDefinition[] = [
   { id: 'system', label: 'System' },
 ]
 
+const managementNavGroups: NavGroupDefinition[] = [
+  { id: 'executive', label: 'Executive Suite' },
+  { id: 'operations', label: 'Operations & Fleet' },
+  { id: 'finance', label: 'Finance & Revenue' },
+  { id: 'governance', label: 'Governance & Audit' },
+  { id: 'attendance', label: 'HRMS Attendance' },
+]
+
+const adminNavGroups: NavGroupDefinition[] = [
+  { id: 'executive', label: 'Executive Suite' },
+  { id: 'operations', label: 'Operations & Fleet' },
+  { id: 'finance', label: 'Finance & Revenue' },
+  { id: 'governance', label: 'Governance & Audit' },
+  { id: 'attendance', label: 'HRMS Attendance' },
+  { id: 'admin', label: 'System Administration' },
+]
+
 const navItems: NavItem[] = [
+  // Personal Leave & Attendance: individual employee accounts only.
+  { to: '/hrms/leave/balance', label: 'Leave Balance', icon: CalendarDays, roles: ['employee'], group: 'attendance' },
+  { to: '/hrms/leave/apply', label: 'Leave Application', icon: CalendarCheck2, roles: ['employee'], group: 'attendance' },
+  { to: '/hrms/leave/calendar', label: 'My Leave Calendar', icon: CalendarDays, roles: ['employee'], group: 'attendance' },
+  { to: '/hrms/leave/holidays', label: 'Holiday Calendar', icon: CalendarDays, roles: ['employee'], group: 'attendance' },
+  { to: '/hrms/attendance', label: 'My Attendance / Check-in', icon: Clock3, roles: ['employee'], group: 'attendance' },
+
+  // HR department management: retain employee-wide approvals and monitoring.
+ { to: '/hrms/hr', label: 'HR Leave & Attendance Dashboard', icon: CalendarCheck2, roles: ['hr', 'admin'], group: 'hr' },
+  // NAKSHA_ORG_POLICIES_NAV
+  { to: '/organisation-policies', label: 'Organisation Policies', icon: FileCheck2, roles: ['hr', 'employee'], group: 'hr' },
   { to: '/support', label: 'Support Dashboard', icon: LifeBuoy, roles: ['employee'], group: 'support' },
   { to: '/support/new', label: 'Raise New Ticket', icon: MessageSquarePlus, roles: ['employee'], group: 'support' },
   { to: '/expenses/new', label: 'New Project Expense', icon: FileCheck2, roles: ['employee'], group: 'support' },
   { to: '/expenses', label: 'My Expense Claims', icon: ShoppingCart, roles: ['employee'], group: 'support' },
   { to: '/project-costs', label: 'Project Cost Entries', icon: FileCheck2, roles: ['employee'], group: 'support' },
-  { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee'], group: 'support' },
-  { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee'], group: 'support' },
-  { to: '/admin/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['admin'], group: 'management' },
+  { to: '/travel-km/new', label: 'Start Travel / KM Claim', icon: MapPinned, roles: ['employee', 'bd_employee'], group: 'support' },
+  { to: '/travel-km', label: 'My Travel / KM Claims', icon: MapPinned, roles: ['employee', 'bd_employee'], group: 'support' },
+  { to: '/admin/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['admin'], group: 'management', managementGroup: 'governance', managementLabel: 'Travel KM Verification' },
   { to: '/hr/travel-km', label: 'Travel KM Verification', icon: MapPinned, roles: ['hr'], group: 'hr' },
   { to: '/finance/travel-km', label: 'Travel KM Payments', icon: MapPinned, roles: ['finance'], group: 'finance' },
-  { to: '/management/travel-km', label: 'Employee Travel Oversight', icon: MapPinned, roles: ['management'], group: 'management' },
-  { to: '/tickets', label: 'Support Tickets', icon: ClipboardList, roles: ['employee', 'it', 'drone', 'management', 'software_team'], group: 'support' },
+  { to: '/management/travel-km', label: 'Employee Travel Oversight', icon: MapPinned, roles: ['management'], group: 'management', managementGroup: 'governance', managementLabel: 'Employee Travel' },
+  { to: '/tickets', label: 'Support Tickets', icon: ClipboardList, roles: ['employee', 'it', 'drone', 'management', 'software_team'], group: 'support', managementGroup: 'operations', managementLabel: 'Support Tickets & SLA' },
   { to: '/software-team/agents', label: 'Agent Monitoring', icon: MonitorCheck, roles: ['software_team'], group: 'system' },
   { to: '/software-team/security', label: 'Users & Audit', icon: Activity, roles: ['software_team'], group: 'system' },
-  { to: '/management/activity', label: 'Users & Activity', icon: Activity, roles: ['management'], group: 'system' },
+  { to: '/management/activity', label: 'Users & Activity', icon: Activity, roles: ['management'], group: 'system', managementGroup: 'governance', managementLabel: 'Users & Audit Trail' },
   { to: '/software-team', label: 'Software Team Overview', icon: Code2, roles: ['software_team'], group: 'overview' },
-  { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview' },
-  { to: '/admin/client-master', label: 'Client Master (Admin Edit)', icon: Building2, roles: ['admin'], group: 'overview' },
-  { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
-  { to: '/management/project-360', label: 'Project 360 (Feedback, Rework, Billing)', icon: FolderKanban, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
-  { to: '/management/commercial', label: 'Commercial Analytics', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'overview' },
+  { to: '/admin', label: 'Admin Overview', icon: ShieldCheck, roles: ['admin'], group: 'overview', managementLabel: 'Admin Overview' },
+  { to: '/software-team/security', label: 'Software Security', icon: ShieldCheck, roles: ['software_team'], group: 'overview' },
+  { to: '/software-team/employee-master', label: 'Employee Master', icon: Users, roles: ['software_team', 'admin'], group: 'overview' },
+  { to: '/management/employee-master', label: 'Employee Data Control', icon: Users, roles: ['management'], group: 'management', managementGroup: 'governance', managementLabel: 'Employee Data Control' },
+  { to: '/onboarding', label: 'New Joiner Onboarding', icon: UserRound, roles: ['hr', 'it', 'management', 'software_team', 'admin'], group: 'overview', managementGroup: 'executive', managementLabel: 'New Joiner Onboarding' },
+  { to: '/admin/client-master', label: 'Client Master (Admin Edit)', icon: Building2, roles: ['admin'], group: 'overview', managementLabel: 'Client Master' },
+  { to: '/management', label: 'Management Dashboard', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Dashboard' },
+  { to: '/management/approvals', label: 'Purchase Approval Centre', icon: ClipboardCheck, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Purchase Approvals' },
+  { to: '/management/project-management', label: 'Client Register', icon: FolderKanban, roles: ['management'], group: 'management', managementGroup: 'executive', managementLabel: 'Client Register' },
+  { to: '/management/project-360', label: 'Project 360', icon: FolderKanban, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Project 360' },
+  { to: '/management/commercial', label: 'Commercial Analytics', icon: BarChart3, roles: ['admin', 'management'], group: 'management', managementGroup: 'executive', managementLabel: 'Commercial Analytics' },
+  { to: '/bd-employee', label: 'BD Employee Workspace', icon: Building2, roles: ['bd_employee'], group: 'business' },
   { to: '/bd', label: 'BD Dashboard', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
+  { to: '/bd/my-team', label: 'My Team', icon: Users, roles: ['bd'], group: 'business' },
   { to: '/bd/clients', label: 'Client Management', icon: Building2, roles: ['bd', 'admin', 'management'], group: 'business' },
+  // NAKSHA_BD_AI_NAV
+// NAKSHA_BD_AI_NAV
+{
+  to: '/bd-ai',
+  label: 'BD AI',
+  icon: Sparkles,
+  roles: ['bd', 'bd_employee', 'management'],
+  group: 'business',
+},
   { to: '/bd/projects', label: 'Project Management', icon: FolderKanban, roles: ['bd', 'admin', 'management'], group: 'business' },
-  { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin'], group: 'business' },
+  { to: '/bd/tracking', label: 'Project Tracking', icon: Activity, roles: ['bd'], group: 'business' },
+  { to: '/bd/commercial', label: 'Commercial Estimates', icon: BarChart3, roles: ['bd', 'admin', 'management'], group: 'business', managementGroup: 'finance', managementLabel: 'Commercial Estimates' },
   { to: '/bd/feedback', label: 'Client Feedback', icon: FileCheck2, roles: ['bd', 'admin', 'management'], group: 'business' },
   { to: '/notifications', label: 'Notifications', icon: Bell, roles: ['bd', 'admin', 'management'], group: 'business' },
-  { to: '/ortho', label: 'Ortho Work Dashboard', icon: FolderKanban, roles: ['ortho', 'employee', 'admin', 'management'], group: 'ortho' },
-  { to: '/project-workstreams', label: 'Project Workstreams', icon: FolderKanban, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/sample-requests', label: 'Sample Requests', icon: FolderKanban, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/project-handovers', label: 'Data Handovers', icon: ArrowRightLeft, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/project-monitoring', label: 'Project Monitoring', icon: BarChart3, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/project-completion', label: 'Final Delivery & Closure', icon: FileCheck2, roles: ['lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping', 'admin', 'management'], group: 'overview' },
-  { to: '/technical-team-directory', label: 'Technical Team Directory', icon: Users, roles: ['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'overview' },
-  { to: '/reporting', label: 'Executive & Manager Reporting', icon: Users, roles: ['admin', 'management', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'overview' },
-  { to: '/production-readiness', label: 'Production Readiness', icon: Users, roles: ['admin', 'management', 'software_team'], group: 'overview' },
-  { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance' },
+  { to: '/ortho', label: 'Project Operations', icon: FolderKanban, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho' },
+  { to: '/production-tracking', label: 'Production Tracking', icon: Activity, roles: [...TECHNICAL_PM_ROLES, 'employee', 'admin', 'management'], group: 'ortho', managementGroup: 'operations', managementLabel: 'Production Tracking' },
+  { to: '/payables', label: 'Payables', icon: FileCheck2, roles: ['admin', 'finance', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Payables' }, // NAKSHA_PAYABLES_NAV
+  { to: '/finance', label: 'Finance Dashboard', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Dashboard' },
+  { to: '/management/project-tracking', label: 'Project Tracking', icon: BarChart3, roles: ['management'], group: 'finance', managementGroup: 'operations', managementLabel: 'Project Tracking' }, // NAKSHA_PTS_NAV
   { to: '/finance/claims', label: 'Expense Claims & Approvals', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
   { to: '/finance/clients', label: 'Client Register', icon: Building2, roles: ['finance', 'admin', 'management'], group: 'finance' },
-  { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance' },
-  { to: '/finance/billing', label: 'Billing & Invoices', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance' },
-  { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin'], group: 'finance' },
+  { to: '/finance/projects', label: 'Project Register', icon: FolderKanban, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Project Register' },
+  { to: '/finance/management-projects', label: 'Management Projects', icon: FolderKanban, roles: ['finance'], group: 'finance' },
+  { to: '/finance/billing', label: 'Billing & Invoices', icon: FileCheck2, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Billing & Invoices' },
+  { to: '/finance/generate-invoice', label: 'Generate Invoice', icon: FilePlus2, roles: ['finance'], group: 'finance' },
+  { to: '/finance/commercial', label: 'Commercial Control', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Commercial Control' },
   { to: '/finance/reports', label: 'Finance Reports & Excel', icon: FileDown, roles: ['finance', 'admin', 'management'], group: 'finance' },
-  { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'ortho', 'lidar', 'civil', 'laser_scanning', 'bim', 'mobile_mapping'], group: 'business', managementGroup: 'overview' },
-  { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it' },
-  { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/business', label: 'Business & Total Sell', icon: TrendingUp, roles: ['finance', 'bd', 'management', 'admin', 'software_team', 'bim', ...TECHNICAL_PM_ROLES], group: 'business', managementGroup: 'executive', managementLabel: 'Business & Total Sell' },
+  { to: '/finance/sales', label: 'Sales', icon: TrendingUp, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Sales Pipeline' },
+  { to: '/finance/revenue', label: 'Revenue', icon: BarChart3, roles: ['finance', 'admin', 'management'], group: 'finance', managementGroup: 'finance', managementLabel: 'Revenue' },
+  { to: '/finance/command-center', label: 'Finance Command Center', icon: BarChart3, roles: ['finance', 'admin', 'management', 'bd', ...TECHNICAL_PM_ROLES], group: 'finance', managementGroup: 'finance', managementLabel: 'Finance Command Center' },
+  { to: '/it', label: 'IT Dashboard', icon: LayoutDashboard, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'operations', managementLabel: 'IT Infrastructure' },
+  { to: '/assets', label: 'Asset Register', icon: HardDrive, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'operations', managementLabel: 'Asset Register' },
   { to: '/work', label: 'IT Work Records', icon: ClipboardList, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/replacements', label: 'Component Changes', icon: Repeat2, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/it/handover-return', label: 'Handover & Return', icon: ArrowRightLeft, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/it/rental-returns', label: 'Returned Assets & Spares', icon: PackageCheck, roles: ['admin', 'management', 'it'], group: 'it' },
-  { to: '/it/purchase-requests', label: 'Purchase Requests', icon: FileCheck2, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'management', managementLabel: 'Purchase Order Approval' },
-  { to: '/it/purchases', label: 'Purchase & Procurement', icon: ShoppingCart, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'management' },
+  { to: '/it/purchase-requests', label: 'Purchase Requests', icon: FileCheck2, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/it/purchases', label: 'Purchase & Procurement', icon: ShoppingCart, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/it/recent-changes', label: 'Recent Changes', icon: History, roles: ['admin', 'management', 'it'], group: 'it' },
   { to: '/data-quality', label: 'Data Quality Centre', icon: SearchCheck, roles: ['software_team', 'management', 'it'], group: 'it' },
-  { to: '/reports', label: 'IT Excel & Reports', icon: FileDown, roles: ['admin', 'management', 'it'], group: 'it' },
+  { to: '/reports', label: 'IT Excel & Reports', icon: FileDown, roles: ['admin', 'management', 'it'], group: 'it', managementGroup: 'governance', managementLabel: 'Executive Reports' },
   { to: '/naksha-copilot', label: 'Naksha Copilot', icon: Sparkles, roles: ['software_team', 'management', 'it'], group: 'it' },
-  { to: '/drone', label: 'Drone Dashboard', icon: Drone, roles: ['admin', 'management', 'drone'], group: 'drone' },
+  { to: '/drone', label: 'Drone Dashboard', icon: Drone, roles: ['admin', 'management', 'drone'], group: 'drone', managementGroup: 'operations', managementLabel: 'Drone Fleet' },
   { to: '/drone/assets', label: 'Drone Assets', icon: Boxes, roles: ['admin', 'management', 'drone'], group: 'drone' },
   { to: '/drone/kits', label: 'Drone Kits', icon: PackageCheck, roles: ['admin', 'management', 'drone'], group: 'drone' },
   { to: '/drone/projects', label: 'Drone Projects', icon: FolderKanban, roles: ['admin', 'management', 'drone'], group: 'drone' },
@@ -141,11 +198,15 @@ const navItems: NavItem[] = [
   { to: '/drone/work-records', label: 'Drone Work Records', icon: ClipboardList, roles: ['admin', 'management', 'drone'], group: 'drone' },
   { to: '/drone/movements', label: 'Movement History', icon: ArrowRightLeft, roles: ['admin', 'management', 'drone'], group: 'drone' },
   { to: '/drone/import', label: 'Drone Import', icon: UploadCloud, roles: ['admin'], group: 'drone' },
-  { to: '/backups', label: 'Backups & History', icon: Database, roles: ['admin', 'management', 'it', 'drone'], group: 'system' },
-  { to: '/future', label: 'Future Modules', icon: Settings, roles: ['admin'], group: 'system' },
+  { to: '/backups', label: 'Backups & History', icon: Database, roles: ['admin', 'management', 'it', 'drone'], group: 'system', managementGroup: 'governance', managementLabel: 'System Backups' },
+  { to: '/future', label: 'Future Modules', icon: Settings, roles: ['admin'], group: 'system', managementLabel: 'System Settings & Future' },
 ]
 
+// BD and other roles keep their existing navigation; only department employees use this dropdown.
+const employeeExpensePaths = new Set(['/expenses/new', '/expenses', '/travel-km/new', '/travel-km'])
+
 function isPathInItem(pathname: string, item: NavItem): boolean {
+  if (item.to === '/management') return pathname === '/management'
   if (item.to === '/drone') return pathname === '/drone'
   if (item.to === '/finance') return pathname === '/finance'
   if (item.to === '/bd') return pathname === '/bd'
@@ -157,24 +218,113 @@ function isPathInItem(pathname: string, item: NavItem): boolean {
   return pathname === item.to || pathname.startsWith(`${item.to}/`)
 }
 
+/** Exactly one sidebar link may be active: the most specific (longest path) match. */
+function findActiveNavItem(items: NavItem[], pathname: string): NavItem | undefined {
+  let best: NavItem | undefined
+  for (const item of items) {
+    if (!isPathInItem(pathname, item)) continue
+    if (!best || item.to.length > best.to.length) best = item
+  }
+  return best
+}
+
 function canViewItem(role: Role, item: NavItem): boolean {
-  // Keep the two full-access home pages separate while sharing all Admin permissions elsewhere.
+  if (item.to === '/organisation-policies') return role === 'hr' || role === 'employee'
+  if (item.to === '/management/project-management') return role === 'management'
   if (item.to === '/software-team') return role === 'software_team'
   if (item.to === '/admin') return role === 'admin'
-  // New department modules use exact-role access. Do not inherit the legacy Software Team -> Admin elevation.
-  if (item.to.startsWith('/bd') || item.to === '/notifications' || item.to === '/ortho' || item.to === '/project-workstreams' || item.to === '/sample-requests' || item.to === '/project-handovers' || item.to === '/project-monitoring' || item.to === '/project-completion' || item.to === '/technical-team-directory' || item.to === '/reporting' || item.to === '/production-readiness') return item.roles.includes(role)
+  if (item.to.startsWith('/bd') || item.to === '/notifications' || item.to === '/ortho') return item.roles.includes(role)
   return canAccessRole(role, item.roles)
 }
 
-function navigationGroupForItem(role: Role, item: NavItem): NavItem['group'] {
-  return role === 'management' && item.managementGroup ? item.managementGroup : item.group
+const ADMIN_SIDEBAR_PATHS = ['/admin', '/admin/client-master', '/future', '/software-team/employee-master']
+
+/** Sidebar must never advertise a link the route guard will bounce back to the role home. */
+function canShowInSidebar(role: Role, item: NavItem): boolean {
+  if (role === 'management' || role === 'admin') {
+    const inManagementSuite = Boolean(item.managementGroup) || (role === 'admin' && ADMIN_SIDEBAR_PATHS.includes(item.to))
+    return (item.to.startsWith('/hrms/leave/') || inManagementSuite) && canViewItem(role, item)
+  }
+  return canViewItem(role, item)
+}
+
+function navigationGroupForItem(role: Role, item: NavItem): string {
+  if (role === 'management' || role === 'admin') {
+    if (item.to.startsWith('/hrms/leave/')) return 'attendance'
+    if (item.managementGroup) return item.managementGroup
+    if (role === 'admin') return 'admin'
+  }
+  return item.group
 }
 
 function navigationLabelForItem(role: Role, item: NavItem): string {
-  return role === 'management' && item.managementLabel ? item.managementLabel : item.label
+  if ((role === 'management' || role === 'admin') && item.managementLabel) {
+    return item.managementLabel
+  }
+  return item.label
+}
+
+/** Visual-only department accent key for the design system (no access changes). */
+function deptAccentForRole(role: Role): string {
+  switch (role) {
+    case 'finance': return 'finance'
+    case 'hr': return 'hr'
+    case 'it': return 'it'
+    case 'drone': return 'drone'
+    case 'ortho': return 'ortho'
+    case 'lidar': return 'lidar'
+    case 'mobile_mapping': return 'mobile_mapping'
+    case 'laser_scanning': return 'laser_scanning'
+    case 'civil': return 'civil'
+    case 'management': return 'management'
+    case 'bd': return 'bd'
+    case 'bim': return 'bim'
+    case 'employee': return 'employee'
+    case 'admin': return 'admin'
+    case 'software_team': return 'software_team'
+    default: return 'finance'
+  }
+}
+
+/**
+ * Visual workspace identity follows the page being viewed, not only the
+ * signed-in role. This keeps cross-department Admin/Management views themed
+ * like the department they are inspecting without changing access rules.
+ */
+function deptAccentForWorkspace(pathname: string, role: Role): string {
+  if (pathname === '/finance/sales') return 'sales'
+  if (pathname === '/finance/revenue') return 'revenue'
+  if (pathname === '/finance' || pathname.startsWith('/finance/')) return 'finance'
+  if (pathname === '/bd' || pathname.startsWith('/bd/')) return 'bd'
+  if (pathname === '/ortho' || pathname.startsWith('/ortho/')) {
+    return TECHNICAL_PM_ROLES.includes(role) ? deptAccentForRole(role) : 'ortho'
+  }
+  if (pathname === '/drone' || pathname.startsWith('/drone/')) return 'drone'
+  if (pathname === '/it' || pathname.startsWith('/it/')) return 'it'
+  // IT register + IT workbenches share the IT technology theme
+  if (['/assets', '/work', '/replacements', '/data-quality'].some(p => pathname === p || pathname.startsWith(`${p}/`))) return 'it'
+  if (['/it/handover-return', '/it/rental-returns', '/it/purchase-requests', '/it/purchases'].some(p => pathname === p || pathname.startsWith(`${p}/`))) return 'it'
+  if (pathname === '/management' || pathname.startsWith('/management/')) return 'management'
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin'
+  if (pathname === '/software-team' || pathname.startsWith('/software-team/')) return 'software_team'
+  // Management-owned intelligence pages keep the executive theme
+  if (pathname === '/reporting' || pathname.startsWith('/reporting/') || pathname === '/business' || pathname.startsWith('/business/')) return 'management'
+  // People / process theme for HR travel workspaces and the employee portal
+  if (pathname === '/travel-km' || pathname.startsWith('/travel-km/') || pathname.startsWith('/portal/') || pathname.startsWith('/agent-monitor')) return 'hr'
+  if (pathname.startsWith('/commercial') || pathname.endsWith('/commercial')) return 'commercial'
+  return deptAccentForRole(role)
 }
 
 export function Layout({ children }: { children: ReactNode }) {
+  return (
+    <NotificationPopupProvider>
+      <LayoutShell>{children}</LayoutShell>
+      <NotificationPopupHost />
+    </NotificationPopupProvider>
+  )
+}
+
+function LayoutShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const { selectedMonth } = useITMonth()
   const navigate = useNavigate()
@@ -193,23 +343,32 @@ export function Layout({ children }: { children: ReactNode }) {
       return next
     })
   }
-  const [openGroups, setOpenGroups] = useState<Record<NavItem['group'], boolean>>({
-    overview: true,
-    management: false,
-    business: true,
-    ortho: true,
-    finance: true,
-    hr: true,
-    it: false,
-    drone: false,
-    support: true,
-    system: false,
+  // Default closed on normal pages; preserve the menu on direct expense/travel links.
+  const [expensesOpen, setExpensesOpen] = useState(() =>
+    [...employeeExpensePaths].some(path => location.pathname === path || location.pathname.startsWith(`${path}/`))
+  )
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    const currentRole = user?.role
+    const targetGroups = currentRole === 'management' ? managementNavGroups : currentRole === 'admin' ? adminNavGroups : navGroups
+    targetGroups.forEach(g => { initial[g.id] = false })
+    if (currentRole) {
+      const activeItem = findActiveNavItem(navItems.filter(item => canShowInSidebar(currentRole, item)), location.pathname)
+      if (activeItem) {
+        if (currentRole === 'management' && activeItem.to === '/management/project-management') return initial
+        const activeGroup = navigationGroupForItem(currentRole, activeItem)
+        initial[activeGroup] = true
+        return initial
+      }
+    }
+    initial[targetGroups[0]?.id || 'executive'] = true
+    return initial
   })
 
   useEffect(() => {
     if (!user || (!isFullAccessRole(user.role) && user.role !== 'management')) return
-    const activeItem = navItems.find(item => canViewItem(user.role, item) && isPathInItem(location.pathname, item))
-    if (activeItem) {
+    const activeItem = findActiveNavItem(navItems.filter(item => canShowInSidebar(user.role, item)), location.pathname)
+    if (activeItem && activeItem.to !== '/management/project-management') {
       const activeGroup = navigationGroupForItem(user.role, activeItem)
       setOpenGroups(current => ({ ...current, [activeGroup]: true }))
     }
@@ -223,10 +382,25 @@ export function Layout({ children }: { children: ReactNode }) {
     }).catch(() => undefined)
   }, [location.pathname, user])
 
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual'
+    window.scrollTo({ top: 0, left: 0 })
+  }, [location.pathname])
+
   if (!user) return null
   const currentUser = user
+  const isManagement = currentUser.role === 'management'
+  const isAdmin = currentUser.role === 'admin'
+  const activeNavGroups = isManagement ? managementNavGroups : isAdmin ? adminNavGroups : navGroups
 
-  const visibleItems = navItems.filter(item => canViewItem(currentUser.role, item))
+  const visibleItems = navItems.filter(item =>
+    (item.to !== '/management/project-tracking-sales' ||
+      (currentUser.role === 'management' &&
+        ['vinod@nakshatech.com', 'chethan@nakshatech.com']
+          .includes((currentUser.email || '').toLowerCase()))) &&
+    (item.to !== '/payables' || currentUser.role !== 'management' || ['vinod@nakshatech.com', 'chethan@nakshatech.com'].includes(currentUser.email.toLowerCase())) &&
+    (item.to !== '/bd-ai' || canAccessBDAI(currentUser)) &&
+canShowInSidebar(currentUser.role, item))
 
   const available = currentUser.role === 'it'
     ? [
@@ -234,7 +408,10 @@ export function Layout({ children }: { children: ReactNode }) {
         ...visibleItems.filter(item => item.to === '/tickets'),
       ]
     : visibleItems
-  const groupedNavigation = isFullAccessRole(currentUser.role) || currentUser.role === 'management'
+  const activeNavItem = findActiveNavItem(available, location.pathname)
+  const expenseNavItems = available.filter(item => employeeExpensePaths.has(item.to))
+  const expenseHasActive = Boolean(activeNavItem && employeeExpensePaths.has(activeNavItem.to))
+  const groupedNavigation = isFullAccessRole(currentUser.role) || isManagement
 
   // Only surface topbar context that is not already stated elsewhere on screen. The department
   // workspace labels were a third repeat of the sidebar footer role, so they are not shown here.
@@ -251,33 +428,41 @@ export function Layout({ children }: { children: ReactNode }) {
         key={item.to}
         to={item.group === 'it' ? withITMonth(item.to, selectedMonth) : item.to}
         onClick={() => setMobileOpen(false)}
-        className={() => isPathInItem(location.pathname, item) ? 'active' : ''}
+        className={() => item === activeNavItem ? 'active' : ''}
       >
         <Icon size={18} />
-        <span>{navigationLabelForItem(currentUser.role, item)}</span>
+        <span>{currentUser.role === 'employee' && item.to === '/ortho' ? 'Daily Activity Report' : navigationLabelForItem(currentUser.role, item)}</span>
       </NavLink>
     )
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-dept={deptAccentForWorkspace(location.pathname, currentUser.role)}>
       <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button>
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <button className="mobile-close" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X /></button>
         <Logo inverse compact />
         <div className="sidebar-title">
-          <strong>Asset Management</strong>
-          <span>Unified operations platform</span>
+          <strong>NakshaTech ERP</strong>
+          <span>Inspiring geospatial standards</span>
         </div>
-        <span className="sidebar-section-label">Asset Operations</span>
+        <span className="sidebar-section-label">
+          {isManagement || location.pathname.startsWith('/management')
+            ? 'Management Suite'
+            : isAdmin
+            ? 'Unified Operations & Admin'
+            : 'Asset Operations'}
+        </span>
         <nav className={groupedNavigation ? 'grouped-navigation' : ''}>
+          {groupedNavigation && isManagement && available.filter(item => item.to === '/management/project-management').map(renderNavItem)}
           {groupedNavigation
-            ? navGroups.map(group => {
-                const items = available.filter(item => navigationGroupForItem(currentUser.role, item) === group.id)
+            ? activeNavGroups.map(group => {
+                const items = available.filter(item => item.to !== '/management/project-management' && navigationGroupForItem(currentUser.role, item) === group.id)
                 if (items.length === 0) return null
                 const isOpen = openGroups[group.id]
+                const hasActive = Boolean(activeNavItem && items.includes(activeNavItem))
                 return (
-                  <section className={`sidebar-nav-group ${isOpen ? 'open' : ''}`} key={group.id}>
+                  <section className={`sidebar-nav-group ${isOpen ? 'open' : ''} ${hasActive ? 'has-active' : ''}`} key={group.id}>
                     <button
                       type="button"
                       className="sidebar-group-toggle"
@@ -285,13 +470,49 @@ export function Layout({ children }: { children: ReactNode }) {
                       aria-expanded={isOpen}
                     >
                       <span>{group.label}</span>
-                      <ChevronDown size={16} aria-hidden="true" />
+                      <div className="sidebar-group-meta">
+                        <span className="sidebar-group-count">{items.length}</span>
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </div>
                     </button>
                     {isOpen && <div className="sidebar-group-items">{items.map(renderNavItem)}</div>}
                   </section>
                 )
               })
-            : available.map(renderNavItem)}
+            : available.map((item, index) => {
+                if (currentUser.role === 'employee' && employeeExpensePaths.has(item.to)) {
+                  // The first existing link becomes the dropdown position; never render duplicates.
+                  if (item.to !== '/expenses/new') return null
+                  return (
+                    <section className={`sidebar-nav-group ${expensesOpen ? 'open' : ''} ${expenseHasActive ? 'has-active' : ''}`} key="employee-my-expenses">
+                      <button
+                        type="button"
+                        className="sidebar-group-toggle"
+                        onClick={() => setExpensesOpen(open => !open)}
+                        aria-expanded={expensesOpen}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <ShoppingCart size={16} aria-hidden="true" /> My Expenses
+                        </span>
+                        <ChevronDown size={14} aria-hidden="true" />
+                      </button>
+                      {expensesOpen && <div className="sidebar-group-items">{expenseNavItems.map(renderNavItem)}</div>}
+                    </section>
+                  )
+                }
+                if (item.group !== 'leave' && item.group !== 'attendance') return renderNavItem(item)
+                const previous = available[index - 1]
+                if (previous?.group === item.group) return null
+                const groupName = item.group === 'leave' ? 'Leave' : 'Attendance'
+                const links = available.filter(link => link.group === item.group)
+                const open = openGroups[item.group] ?? location.pathname.startsWith(`/hrms/${item.group}`)
+                return <section className={`sidebar-nav-group ${open ? 'open' : ''}`} key={item.group}>
+                  <button type="button" className="sidebar-group-toggle" aria-expanded={open} onClick={() => setOpenGroups(current => ({ ...current, [item.group]: !open }))}>
+                    <span>{groupName}</span><ChevronDown size={14}/>
+                  </button>
+                  {open && <div className="sidebar-group-items">{links.map(renderNavItem)}</div>}
+                </section>
+              })}
         </nav>
         <div className="sidebar-footer">
           <button
@@ -328,7 +549,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <ArrowLeft size={17} aria-hidden="true" />
               <span>Back</span>
             </button>
-            <div className="topbar-status"><span className="system-indicator" /><span>System online</span></div>
+            <div className="topbar-status"><span className="system-indicator" /><span>System Online</span></div>
           </div>
           <div className="topbar-right">
             {['bd', 'management', 'admin'].includes(currentUser.role) && <GlobalSearch />}

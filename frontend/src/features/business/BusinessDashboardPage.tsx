@@ -1,4 +1,4 @@
-import { CheckCircle2, History, IndianRupee, RefreshCcw, Save, TrendingUp, Wand2, WalletCards } from 'lucide-react'
+import { CheckCircle2, FolderOpen, History, IndianRupee, RefreshCcw, Save, TrendingUp, Wand2, WalletCards } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../components/DashboardHeader'
 import { useAuth } from '../../context/AuthContext'
@@ -78,12 +78,13 @@ function DraftInput({
   )
 }
 
-export function BusinessDashboardPage() {
+export function BusinessDashboardPage({ employeeScoped = false }: { employeeScoped?: boolean } = {}) {
   const { user } = useAuth()
   const role = user?.role
-  const isFinance = canEnterBusiness(role)
-  const isPrivileged = canSeeBusinessTotals(role)
-  const canVerify = role === 'management' || role === 'admin' || role === 'software_team'
+  const isFinance = !employeeScoped && canEnterBusiness(role)
+  const isPrivileged = employeeScoped || canSeeBusinessTotals(role)
+  const canVerify = !employeeScoped && (role === 'management' || role === 'admin' || role === 'software_team')
+  const overviewPath = employeeScoped ? '/bd-employee/direct/business/overview' : '/business/overview'
 
   const [month, setMonth] = useState(currentReportingMonth)
   const [data, setData] = useState<BusinessOverview | null>(null)
@@ -99,11 +100,11 @@ export function BusinessDashboardPage() {
     setLoading(true)
     setError('')
     setHistory(null)
-    void apiFetch<BusinessOverview>(`/business/overview?month=${encodeURIComponent(month)}`)
+    void apiFetch<BusinessOverview>(`${overviewPath}?month=${encodeURIComponent(month)}`)
       .then((payload) => setData(payload))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load Business data'))
       .finally(() => setLoading(false))
-  }, [month])
+  }, [month, overviewPath])
 
   useEffect(load, [load])
 
@@ -219,7 +220,10 @@ export function BusinessDashboardPage() {
     if (row.record_id == null) return
     setError('')
     try {
-      const entries = await apiFetch<BusinessHistoryEntry[]>(`/business/records/${row.record_id}/history`)
+      const historyPath = employeeScoped
+        ? `/bd-employee/direct/business/records/${row.record_id}/history`
+        : `/business/records/${row.record_id}/history`
+      const entries = await apiFetch<BusinessHistoryEntry[]>(historyPath)
       setHistory({ row, entries })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load history')
@@ -243,12 +247,21 @@ export function BusinessDashboardPage() {
   return (
     <div className="finance-page">
       <DashboardHeader
+        variant="ops"
+        icon={TrendingUp}
         eyebrow="BUSINESS · TOTAL SELL"
-        title={data ? businessViewerLabel(data.viewer) : 'Business & Total Sell'}
-        description={isPrivileged
-          ? 'Figures come from Billing & Invoices for the month. Verify them, save, and every change is kept in history.'
-          : 'Track how much business your projects have done and how much the client has paid.'}
+        title={employeeScoped ? 'My Business & Total Sell' : data ? businessViewerLabel(data.viewer) : 'Business & Total Sell'}
+        description={employeeScoped
+          ? 'Your authorized BD clients and projects only. Monthly figures come from the same Finance business records as the BD Manager view; this page is read-only.'
+          : isPrivileged
+            ? 'Figures come from Billing & Invoices for the month. Verify them, save, and every change is kept in history.'
+            : 'Track how much business your projects have done and how much the client has paid.'}
         actions={headerActions}
+        meta={<>
+          <span className="nk-meta-chip"><TrendingUp size={14} /> Business done vs client paid</span>
+          <span className="nk-meta-chip"><IndianRupee size={14} /> Reporting month {monthLabel(month)}</span>
+          <span className="nk-meta-chip"><CheckCircle2 size={14} /> Figures come from Billing & Invoices</span>
+        </>}
       />
 
       <section className="business-month-bar">
@@ -277,8 +290,10 @@ export function BusinessDashboardPage() {
       {loading && <div className="finance-panel finance-empty-state">Loading Business data…</div>}
 
       {!loading && data?.viewer === 'unavailable' && (
-        <div className="finance-panel finance-empty-state">
-          You are not currently assigned as a Project Manager on any project, so there is no business data to show.
+        <div className="nk-empty">
+          <span className="nk-empty-icon"><FolderOpen size={22} /></span>
+          <h3>No projects assigned to you</h3>
+          <p>You are not currently assigned as a Project Manager on any project, so there is no business data to show for {monthLabel(month)}. Projects appear here as soon as an assignment is made.</p>
         </div>
       )}
 
@@ -316,7 +331,12 @@ export function BusinessDashboardPage() {
               <div><span className="finance-panel-kicker">MY PROJECTS</span><h2>{monthLabel(data.month)} Business</h2><p>Business done and the amount the client has paid for each of your projects.</p></div>
             </div>
             {data.rows.length === 0
-              ? <div className="finance-empty-state">No business recorded for your projects this month.</div>
+              ? <div className="nk-empty">
+                  <span className="nk-empty-icon"><WalletCards size={22} /></span>
+                  <h3>No business recorded this month</h3>
+                  <p>No invoice or payment has been recorded for your projects in {monthLabel(data.month)} yet. Business done and client-paid figures appear here automatically as Billing & Invoices records them.</p>
+                  <div className="nk-empty-action"><button type="button" className="finance-secondary-button" onClick={load}><RefreshCcw size={16} /> Refresh</button></div>
+                </div>
               : <div className="finance-table-wrap">
                   <table className="finance-table">
                     <thead><tr><th>Project</th><th>Client</th><th>Business done</th><th>Client paid</th></tr></thead>
@@ -357,12 +377,21 @@ export function BusinessDashboardPage() {
                 <h2>{isFinance ? 'Monthly Business Entry' : `${monthLabel(data.month)} Business`}</h2>
                 <p>{isFinance
                   ? 'Values are pre-filled from Billing & Invoices. Check them against the billing record, adjust if needed, then Save. Every change is kept in history.'
-                  : 'Project-wise business recorded by Finance for the selected month.'}</p>
+                  : employeeScoped
+                    ? 'Only your authorized BD projects. Values are recorded by Finance and cannot be edited here.'
+                    : 'Project-wise business recorded by Finance for the selected month.'}</p>
               </div>
               {isPrivileged && <small>{verifiedCount} of {enteredRows.length} record(s) verified</small>}
             </div>
 
-            {groups.length === 0 && <div className="finance-empty-state">No projects are available to record for this month yet.</div>}
+            {groups.length === 0 && (
+              <div className="nk-empty">
+                <span className="nk-empty-icon"><FolderOpen size={22} /></span>
+                <h3>No projects to record for this month</h3>
+                <p>No client projects are mapped for {monthLabel(month)} yet. Choose another reporting month above, or refresh once projects have billing activity.</p>
+                <div className="nk-empty-action"><button type="button" className="finance-secondary-button" onClick={load}><RefreshCcw size={16} /> Refresh</button></div>
+              </div>
+            )}
 
             {groups.map(([clientName, rows]) => (
               <div key={clientName} style={{ marginBottom: '1rem' }}>
@@ -472,7 +501,11 @@ function BreakdownPanel({ title, items }: { title: string; items: BusinessOvervi
         <div><span className="finance-panel-kicker">ANALYTICS</span><h2>{title}</h2><p>Business done in the selected month.</p></div>
       </div>
       {items.length === 0
-        ? <div className="finance-empty-state">No business recorded for this month.</div>
+        ? <div className="nk-empty">
+            <span className="nk-empty-icon"><IndianRupee size={22} /></span>
+            <h3>Nothing recorded yet</h3>
+            <p>No business has been recorded in this breakdown for the selected month. Figures appear as soon as Finance saves project entries.</p>
+          </div>
         : <div className="finance-breakdown-list">
             {items.slice(0, 8).map((item) => (
               <div className="finance-breakdown-row" key={item.key}>

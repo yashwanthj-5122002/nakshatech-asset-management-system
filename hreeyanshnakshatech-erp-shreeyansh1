@@ -1,0 +1,63 @@
+warning: in the working copy of 'backend/app/modules/operations/production_items.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/modules/operations/workflow_router.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/features/operations/components/ItemStageActivityControls.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/features/operations/components/ProductionTrackingPanel.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/features/operations/pages/OrthoDashboardPage.tsx', LF will be replaced by CRLF the next time Git touches it
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:1: trailing whitespace.
+[32m+[m[32mimport { AlertTriangle, Building2, CheckCircle2, FolderKanban, Plus, RefreshCcw, RefreshCw, ShieldCheck, X } from 'lucide-react'[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:41: trailing whitespace.
+[32m+[m[32m  // Alerts are shown as a short-lived floating popup instead of an inline banner that shifts the page.[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:42: trailing whitespace.
+[32m+[m[32m  const [alertVisible,setAlertVisible]=useState(false);const [alertSeq,setAlertSeq]=useState(0)[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:43: trailing whitespace.
+[32m+[m[32m  function showError(message:string){setError(message);setAlertVisible(true);setAlertSeq(value=>value+1)}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:44: trailing whitespace.
+[32m+[m[32m  function clearError(){setError('');setAlertVisible(false)}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:48: trailing whitespace.
+[32m+[m[32m  function load(){clearError();void apiFetch<Dashboard>('/operations/workflow/bd/dashboard').then(setData).catch(err=>showError(err instanceof Error?err.message:'Unable to load clients'))}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:66: trailing whitespace.
+[32m+[m[32m    if(!delivery.performing_department_code){showError('Select the performing department.');return}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:67: trailing whitespace.
+[32m+[m[32m    setBusy(true);clearError();setNotice('')[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:81: trailing whitespace.
+[32m+[m[32m    }catch(err){showError(err instanceof Error?err.message:'Unable to create pilot')}finally{setBusy(false)}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:84: trailing whitespace.
+[32m+[m[32m    setBusy(true);clearError()[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:88: trailing whitespace.
+[32m+[m[32m    }catch(err){showError(err instanceof Error?err.message:'Pilot operation failed')}finally{setBusy(false)}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:102: trailing whitespace.
+[32m+[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:103: trailing whitespace.
+[32m+[m[32m  useEffect(() => {[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:104: trailing whitespace.
+[32m+[m[32m   if (!error || !alertVisible) return[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:105: trailing whitespace.
+[32m+[m[32m   const handle = window.setTimeout(() => setAlertVisible(false), 7000)[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:106: trailing whitespace.
+[32m+[m[32m   return () => window.clearTimeout(handle)[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:107: trailing whitespace.
+[32m+[m[32m  }, [error, alertSeq, alertVisible])[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:112: trailing whitespace.
+[32m+[m[32m    event.preventDefault();setBusy(true);clearError();setNotice('')[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:121: trailing whitespace.
+[32m+[m[32m    }catch(err){showError(err instanceof Error?err.message:'Unable to create client')}finally{setBusy(false)}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:126: trailing whitespace.
+[32m+[m[32m    clearError();setNotice('')[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:127: trailing whitespace.
+[32m+[m[32m    if(!delivery.performing_department_code){showError('Select the Performing Department before saving or submitting this project.');return}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:129: trailing whitespace.
+[32m+[m[32m    if(problems.length){showError(problems[0]);return}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:146: trailing whitespace.
+[32m+[m[32m          showError(`${result.project_code} was CREATED as a paid project, but its pilot link failed. Paid Project ID: ${result.project_id}. Reason: ${linkErr instanceof Error?linkErr.message:'Unknown error'}. Do not create a duplicate project.`)[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:155: trailing whitespace.
+[32m+[m[32m        showError(`${result.project_code} was saved as a Draft with its commercial details, but ${failed.length} document(s) could not be uploaded (${failed.join(', ')}). Attach them from Project Management, then submit to Finance.`)[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:161: trailing whitespace.
+[32m+[m[32m    }catch(err){showError(err instanceof Error?err.message:'Unable to create project')}finally{setBusy(false)}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:169: trailing whitespace.
+[32m+[m[32m    {(notice||(error&&alertVisible))&&<div className="operations-toast-stack">[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:170: trailing whitespace.
+[32m+[m[32m      {notice&&<div className="operations-toast success" role="status" aria-live="polite"><CheckCircle2 size={16}/><div>{notice}</div><button type="button" className="operations-toast-close" aria-label="Dismiss message" onClick={()=>setNotice('')}><X size={14}/></button></div>}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:171: trailing whitespace.
+[32m+[m[32m      {error&&alertVisible&&<div className="operations-toast error" role="alert" aria-live="assertive"><AlertTriangle size={16}/><div>{error}</div><button className="operations-button secondary" type="button" onClick={load}><RefreshCw size={14}/> Retry</button><button type="button" className="operations-toast-close" aria-label="Dismiss error" onClick={()=>setAlertVisible(false)}><X size={14}/></button></div>}[m[41m[m
+frontend/src/features/operations/pages/BDClientManagementPage.tsx:172: trailing whitespace.
+[32m+[m[32m    </div>}[m[41m[m

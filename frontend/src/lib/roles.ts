@@ -6,6 +6,32 @@ export function isFullAccessRole(role: Role): boolean {
   return FULL_ACCESS_ROLES.includes(role)
 }
 
+// One shared operational workflow (BD -> Finance -> PM -> Team Lead -> Production/QC/QA ->
+// Delivery -> Billing) covers all five technical Project Manager roles. Use this helper instead
+// of scattering role === 'lidar' / 'civil' / ... checks across components.
+export const TECHNICAL_PM_ROLES: Role[] = ['ortho', 'lidar', 'survey', 'mobile_mapping', 'laser_scanning', 'civil']
+
+export function isTechnicalProjectManager(role: Role): boolean {
+  return TECHNICAL_PM_ROLES.includes(role)
+}
+
+// Finance Command Center: management/admin/finance see all departments, BD sees its own
+// advance-payment projects, and technical PMs see status for their department.
+export const COMMAND_CENTER_ROLES: Role[] = ['finance', 'admin', 'management', 'bd', ...TECHNICAL_PM_ROLES]
+
+const ROLE_DEPARTMENT_CODE: Partial<Record<Role, string>> = {
+  ortho: 'ortho',
+  lidar: 'lidar',
+  survey: 'survey',
+  mobile_mapping: 'mobile_mapping',
+  laser_scanning: 'laser_scanning',
+  civil: 'civil',
+}
+
+export function departmentCodeForRole(role: Role): string | null {
+  return ROLE_DEPARTMENT_CODE[role] ?? null
+}
+
 export function canAccessRole(userRole: Role, allowedRoles?: Role[]): boolean {
   if (!allowedRoles || allowedRoles.length === 0) return true
   if (allowedRoles.includes(userRole)) return true
@@ -22,12 +48,15 @@ export function roleHomePath(role: Role): string {
     finance: '/finance',
     hr: '/hr/travel-km',
     bd: '/bd',
+    bd_employee: '/bd-employee',
     ortho: '/ortho',
-    lidar: '/project-workstreams',
-    civil: '/project-workstreams',
-    laser_scanning: '/project-workstreams',
-    bim: '/project-workstreams',
-    mobile_mapping: '/project-workstreams',
+    // Same shared operational dashboard as Ortho (one workflow, department-aware inside).
+    lidar: '/ortho',
+    survey: '/ortho',
+    civil: '/ortho',
+    laser_scanning: '/ortho',
+    mobile_mapping: '/ortho',
+    bim: '/ortho',
     employee: '/support',
   }
   return paths[role]
@@ -43,8 +72,10 @@ export function roleDisplayName(role: Role): string {
     finance: 'Finance Department',
     hr: 'HR Department',
     bd: 'Business Development',
+    bd_employee: 'BD Employee',
     ortho: 'Ortho',
     lidar: 'LiDAR',
+    survey: 'Survey',
     civil: 'Civil Department',
     laser_scanning: 'Laser Scanning',
     bim: 'BIM Department',

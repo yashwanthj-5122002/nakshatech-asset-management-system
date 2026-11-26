@@ -49,12 +49,23 @@ logger = logging.getLogger(__name__)
 
 
 def _role(auth: CurrentAuth) -> str:
+    # BD employees use the existing requester workflow, never staff approval roles.
+    if auth.user.role == "bd_employee" and auth.effective_role.strip().lower() == "bd_employee":
+        return EMPLOYEE_ROLE
     return auth.effective_role.strip().lower()
 
 
 def _require(auth: CurrentAuth, *roles: str) -> None:
     if _role(auth) not in set(roles):
         raise HTTPException(status_code=403, detail="Insufficient permission for this Travel & KM action")
+
+
+def _bd_employee_travel_project_ids(db: Session, auth: CurrentAuth) -> set[int]:
+    # Reuse the existing BD Employee authorization boundary; no browser-supplied IDs.
+    if auth.user.role != "bd_employee" or auth.effective_role.strip().lower() != "bd_employee":
+        raise HTTPException(status_code=403, detail="BD Employee access required")
+    from app.modules.bd_employee.direct_router import _business_project_ids
+    return _business_project_ids(db, auth.user)
 
 
 def _claim(db: Session, auth: CurrentAuth, claim_id: int) -> TravelKmClaim:
@@ -204,7 +215,10 @@ def employee_project_numbers(
     """
     _require(auth, EMPLOYEE_ROLE)
     rows: list[dict] = []
+    bd_project_ids = _bd_employee_travel_project_ids(db, auth) if auth.user.role == "bd_employee" else None
     for project in all_projects(db):
+        if bd_project_ids is not None and project.id not in bd_project_ids:
+            continue
         safe = employee_project_payload(project)
         rows.append({
             "id": project.id,
@@ -241,6 +255,8 @@ def create(
     auth: CurrentAuth = Depends(get_current_auth),
 ) -> dict:
     _require(auth, EMPLOYEE_ROLE)
+    if auth.user.role == "bd_employee" and payload.project_id not in _bd_employee_travel_project_ids(db, auth):
+        raise HTTPException(status_code=404, detail="Your BD project was not found")
     # Project lifecycle/status is the access gate. create_claim() validates the
     # selected project against status and project dates.
     try:
@@ -284,6 +300,8 @@ def get_project_site_geofence(
 ) -> dict:
     _require(auth, EMPLOYEE_ROLE, ADMIN_ROLE, HR_ROLE, FINANCE_ROLE, MANAGEMENT_ROLE, SOFTWARE_TEAM_ROLE)
     try:
+        if auth.user.role == "bd_employee" and project_id not in _bd_employee_travel_project_ids(db, auth):
+            raise HTTPException(status_code=404, detail="Your BD project was not found")
         payload = project_geofence_payload(db, project_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -488,6 +506,7 @@ async def upload_photo(
     longitude: float = Query(ge=-180, le=180),
     accuracy_m: float | None = Query(default=None, ge=0),
     captured_at: datetime = Query(...),
+    gps_source: str = Query(default="live", pattern="^(live|photo_exif)$"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
@@ -507,17 +526,41 @@ async def upload_photo(
         row.start_accuracy_m, row.start_captured_at = accuracy_m, captured_at.replace(tzinfo=None)
     else:
         if row.end_km is None:
-            raise HTTPException(status_code=409, detail="Record End KM and live End GPS before uploading the End photo")
+            raise HTTPException(status_code=409, detail="Record End KM and End coordinates before uploading the End photo")
         row.end_latitude, row.end_longitude = latitude, longitude
         row.end_accuracy_m, row.end_captured_at = accuracy_m, captured_at.replace(tzinfo=None)
 
     mismatch_m = None
     flag = "live_gps_captured"
-    if photo.exif_latitude is not None and photo.exif_longitude is not None:
+    if gps_source == "photo_exif":
+
+        if photo.exif_latitude is None or photo.exif_longitude is None:
+            raise HTTPException(status_code=422, detail="Original End photo has no readable EXIF GPS coordinates.")
+        if photo.exif_captured_at is None:
+            raise HTTPException(status_code=422, detail="Original End photo has no readable EXIF capture time.")
+        distance_m = haversine_km(latitude, longitude, photo.exif_latitude, photo.exif_longitude) * 1000.0
+        if distance_m > 30:
+            raise HTTPException(status_code=422, detail="Submitted coordinates do not match the original End photo.")
+        time_difference = abs((captured_at.replace(tzinfo=None) - photo.exif_captured_at).total_seconds())
+        if time_difference > 300:
+            raise HTTPException(status_code=422, detail="Submitted capture time does not match the original End photo.")
+        if phase == "start":
+            row.start_latitude = photo.exif_latitude
+            row.start_longitude = photo.exif_longitude
+            row.start_accuracy_m = None
+            row.start_captured_at = photo.exif_captured_at
+        else:
+            row.end_latitude = photo.exif_latitude
+            row.end_longitude = photo.exif_longitude
+            row.end_accuracy_m = None
+            row.end_captured_at = photo.exif_captured_at
+        flag = "photo_exif_gps"
+    elif photo.exif_latitude is not None and photo.exif_longitude is not None:
         mismatch_m = haversine_km(latitude, longitude, photo.exif_latitude, photo.exif_longitude) * 1000.0
         flag = "exif_matches_live_gps" if mismatch_m <= 250 else "exif_live_gps_mismatch"
     elif accuracy_m is not None and accuracy_m > 100:
         flag = "low_gps_accuracy"
+
 
     existing = db.scalar(select(TravelKmAttachment).where(TravelKmAttachment.claim_id == row.id, TravelKmAttachment.phase == phase))
     old_key = existing.storage_key if existing else None

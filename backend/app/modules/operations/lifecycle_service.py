@@ -11,12 +11,17 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.departments import is_technical_pm_role
 from app.models.entities import Asset, User, utc_now
 from app.modules.drone.models import DroneProject
 from app.modules.employee_portal.models import SupportTicket
 from app.modules.employee_portal.service import send_email
 from app.modules.finance.models import FinanceClient, FinanceProject, FinanceProjectMasterProfile
+from app.modules.finance.visibility import exclude_hidden_clients, exclude_hidden_projects
+from app.modules.management_clients.models import ManagementClientIntake
+from app.modules.management_projects.models import ManagementProjectLink
 from app.modules.notifications.service import create_global_notification
+from app.core.management_access import MANAGEMENT_EMAILS
 from app.modules.operations.lifecycle_models import (
     ProjectChangeRequest,
     ProjectDeliveryVersion,
@@ -24,21 +29,29 @@ from app.modules.operations.lifecycle_models import (
     ProjectFeedbackRequest,
     ProjectFeedbackResponse,
     ProjectInvoice,
+    ProjectInvoiceLineItem,
     ProjectInvoicePayment,
+    ProjectInvoiceBadDebt,
+    ProjectInvoiceBadDebtApproval,
     ProjectMessage,
     ProjectReworkCycle,
     ProjectTimelineEvent,
 )
 from app.modules.operations.lifecycle_schemas import (
+    BadDebtDecision,
+    BadDebtProposalCreate,
+    BadDebtRecoveryCreate,
     ChangeRequestDecision,
     DeemedAcceptanceCreate,
     FeedbackClassification,
     FeedbackRequestCreate,
     FeedbackResponseCreate,
+    InvoiceBillingSnapshotOverride,
     InvoiceClose,
     InvoiceDraftCreate,
     InvoicePaymentCreate,
     InvoiceRaise,
+    ManualFeedbackResponseCreate,
     NoFeedbackRecommendation,
     ProjectMessageCreate,
     ReworkStageUpdate,
@@ -64,10 +77,15 @@ REWORK_QC = "REWORK_QC"
 REWORK_QA = "REWORK_QA"
 REWORK_DELIVERED = "REWORK_DELIVERED"
 REWORK_RESUBMITTED = "REWORK_RESUBMITTED"
+CLIENT_ACCEPTANCE_PENDING_BD = "CLIENT_ACCEPTANCE_PENDING_BD"
 CLIENT_ACCEPTED = "CLIENT_ACCEPTED"
 NO_FEEDBACK_CLOSURE_RECOMMENDED = "NO_FEEDBACK_CLOSURE_RECOMMENDED"
 DEEMED_ACCEPTED = "DEEMED_ACCEPTED"
 CHANGE_REQUEST_PENDING = "CHANGE_REQUEST_PENDING"
+APPROVAL_PENDING = "APPROVAL_PENDING"
+MANAGEMENT_APPROVAL_PENDING_EVENT = "management_approval_pending"
+MANAGEMENT_SOURCE_APPROVED_EVENT = "management_source_approved"
+MANAGEMENT_SOURCE_REVOKED_EVENT = "management_source_approval_revoked"
 READY_FOR_BILLING = "READY_FOR_BILLING"
 INVOICE_DRAFT = "INVOICE_DRAFT"
 INVOICE_RAISED = "INVOICE_RAISED"
@@ -103,6 +121,49 @@ def _workflow(db: Session, project_id: int) -> ProjectWorkflow:
     if workflow is None:
         raise ValueError("Project workflow not found")
     return workflow
+
+
+def management_source_approval_event(db: Session, project_id: int) -> ProjectWorkflowEvent | None:
+    """Authoritative approval: the original client source signed off after the latest delivery."""
+    link = db.get(ManagementProjectLink, project_id)
+    if link is None:
+        return None
+    intake = db.get(ManagementClientIntake, link.management_client_id)
+    if intake is None or intake.created_by_id is None:
+        return None
+    last_pending_id = db.scalar(select(func.max(ProjectWorkflowEvent.id)).where(
+        ProjectWorkflowEvent.project_id == project_id,
+        ProjectWorkflowEvent.event_type == MANAGEMENT_APPROVAL_PENDING_EVENT,
+    )) or 0
+    latest = db.scalar(select(ProjectWorkflowEvent).where(
+        ProjectWorkflowEvent.project_id == project_id,
+        ProjectWorkflowEvent.event_type.in_((MANAGEMENT_SOURCE_APPROVED_EVENT, MANAGEMENT_SOURCE_REVOKED_EVENT)),
+        ProjectWorkflowEvent.actor_user_id == intake.created_by_id,
+        ProjectWorkflowEvent.id > last_pending_id,
+    ).order_by(ProjectWorkflowEvent.id.desc()).limit(1))
+    return latest if latest is not None and latest.event_type == MANAGEMENT_SOURCE_APPROVED_EVENT else None
+
+
+def management_billing_status(db: Session, workflow: ProjectWorkflow) -> str:
+    """Display old Management deliveries as pending without rewriting historical rows.
+
+    A legacy management project may already have FEEDBACK_NOT_SENT or
+    READY_FOR_BILLING from the BD path. Until its original source approves,
+    show Approval Pending, but do not change invoice/payment history.
+    """
+    if workflow.status not in {FEEDBACK_NOT_SENT, READY_FOR_BILLING}:
+        return workflow.status
+    if workflow.operational_completed_at is None:
+        return workflow.status
+    if db.get(ManagementProjectLink, workflow.project_id) is None:
+        return workflow.status
+    if management_source_approval_event(db, workflow.project_id) is not None:
+        return workflow.status
+    if db.scalar(select(ProjectInvoice.id).where(
+        ProjectInvoice.project_id == workflow.project_id,
+    ).limit(1)) is not None:
+        return workflow.status
+    return APPROVAL_PENDING
 
 
 def add_timeline_event(
@@ -203,16 +264,31 @@ def _notify(
     recipient_user_ids: list[int] | None = None,
     dedupe_key: str | None = None,
 ) -> None:
+    # Only genuine Finance/Management approval requests become actionable.
+    # Keep the historical BD/other-role behaviour unchanged.
+    approval_request = event_type in {
+        "lifecycle.management_approval_requested",
+        "lifecycle.bad_debt.proposed",
+        "lifecycle.no_feedback_authorization_required",
+    }
+    financial_viewers = bool(set(recipient_roles or ()) & {"finance", "management"})
+    category = (
+        "approval" if approval_request else
+        "system" if financial_viewers else
+        "approval" if recipient_roles else "system"
+    )
     create_global_notification(
         db,
         event_type=event_type,
         title=title,
         message=f"Project ID {project.project_code}: {message}",
-        category="approval" if recipient_roles else "system",
+        category=category,
         target_url=target_url,
         recipient_roles=recipient_roles,
         recipient_user_ids=recipient_user_ids,
         dedupe_key=dedupe_key,
+        requires_action=True if approval_request else None,
+        metadata={"notification_type": "approval"} if approval_request else None,
     )
 
 
@@ -223,7 +299,7 @@ def enter_feedback_lifecycle(
     project: FinanceProject,
     workflow: ProjectWorkflow,
 ) -> None:
-    """Move a newly operationally-complete project into feedback, never billing closure."""
+    """Route operational completion to BD feedback or original Management approval."""
     _transition(
         db,
         workflow=workflow,
@@ -233,15 +309,24 @@ def enter_feedback_lifecycle(
         title="PM Operational Completion",
         comments=workflow.completion_remarks,
     )
-    _transition(
-        db,
-        workflow=workflow,
-        actor=actor,
-        status=FEEDBACK_NOT_SENT,
-        event_type="client_feedback_lifecycle_opened",
-        title="Client feedback lifecycle opened",
-        comments="Business Development must send the client feedback request before billing.",
-    )
+    management_link = db.get(ManagementProjectLink, project.id)
+    if management_link is not None:
+        _transition(
+            db, workflow=workflow, actor=actor, status=APPROVAL_PENDING,
+            event_type=MANAGEMENT_APPROVAL_PENDING_EVENT,
+            title="Awaiting original Management source approval",
+            comments="Delivery completed. Only the original Management source can approve billing.",
+        )
+    else:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=FEEDBACK_NOT_SENT,
+            event_type="client_feedback_lifecycle_opened",
+            title="Client feedback lifecycle opened",
+            comments="Business Development must send the client feedback request before billing.",
+        )
     next_version = int(db.scalar(select(func.max(ProjectDeliveryVersion.version_number)).where(
         ProjectDeliveryVersion.project_id == project.id
     )) or 0) + 1
@@ -254,13 +339,26 @@ def enter_feedback_lifecycle(
             delivered_by_id=actor.id,
             delivered_at=workflow.operational_completed_at or utc_now(),
         ))
+    if management_link is not None:
+        intake = db.get(ManagementClientIntake, management_link.management_client_id)
+        if intake is not None and intake.created_by_id is not None:
+            _notify(
+                db, project=project,
+                event_type="lifecycle.management_approval_requested",
+                title=f"Management approval pending: {project.project_code}",
+                message="Delivery is complete; your approval is required before Finance can invoice.",
+                target_url="/management/client-register",
+                recipient_user_ids=[intake.created_by_id],
+                dedupe_key=f"lifecycle:management-approval:{project.id}",
+            )
+        return
     _notify(
         db,
         project=project,
         event_type="lifecycle.operational_completed",
         title=f"Operational completion: {project.project_code}",
         message="operational delivery is complete; client feedback must now be requested.",
-        target_url="/bd/feedback",
+        target_url=f"/bd/feedback?project={project.id}",
         recipient_user_ids=[workflow.bd_owner_user_id],
         dedupe_key=f"lifecycle:operational-complete:{project.id}",
     )
@@ -270,10 +368,35 @@ def enter_feedback_lifecycle(
         event_type="lifecycle.operational_completed_management",
         title=f"Operational completion: {project.project_code}",
         message="entered the client feedback lifecycle.",
-        target_url="/management/project-360",
+        target_url=f"/management/project-360/{project.id}",
         recipient_roles=["management"],
         dedupe_key=f"lifecycle:operational-complete:management:{project.id}",
     )
+
+
+def _employee_feedback_project_ids(db: Session, actor: User) -> set[int]:
+    """Reuse the BD Employee project visibility boundary, including legacy
+    approved handoffs, hidden records and source-team restrictions. Never accept
+    an employee identifier from a request body or trust the frontend filter.
+    """
+    if (actor.role or "").strip().lower() != "bd_employee" or not actor.is_active:
+        return set()
+    # Deferred import avoids a service/router import cycle at application startup.
+    from app.modules.bd_employee.direct_router import _business_project_ids
+
+    return _business_project_ids(db, actor)
+
+
+def _can_manage_feedback(db: Session, actor: User, workflow: ProjectWorkflow) -> bool:
+    """Employee feedback rights apply ONLY to employee-visible BD projects.
+
+    Retain existing BD-owner and Admin access exactly as before. Historical
+    manager-created employee projects remain owned by their original BD manager
+    for Finance/notification purposes; we never rewrite workflow attribution.
+    """
+    if (actor.role or "").strip().lower() == "bd_employee":
+        return workflow.project_id in _employee_feedback_project_ids(db, actor)
+    return workflow.bd_owner_user_id == actor.id or (actor.role or "").lower() == "admin"
 
 
 def create_feedback_request(
@@ -285,7 +408,9 @@ def create_feedback_request(
 ) -> tuple[ProjectFeedbackRequest, str, str]:
     project = _project(db, project_id)
     workflow = _workflow(db, project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if db.get(ManagementProjectLink, project_id) is not None:
+        raise ValueError("Management projects require original-source approval, not BD feedback")
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can send client feedback requests")
     allowed = {FEEDBACK_NOT_SENT, REWORK_RESUBMITTED, FEEDBACK_REMINDER_SENT, AWAITING_CLIENT_FEEDBACK}
     if workflow.status not in allowed:
@@ -339,7 +464,7 @@ def create_feedback_request(
         event_type="lifecycle.feedback_requested",
         title=f"Feedback requested: {project.project_code}",
         message=f"client feedback request {request_code} was sent.",
-        target_url="/management/project-360",
+        target_url=f"/management/project-360/{project.id}",
         recipient_roles=["management"],
         dedupe_key=f"lifecycle:feedback-request:{row.id}",
     )
@@ -381,7 +506,7 @@ def send_feedback_reminder(
     if row is None:
         raise ValueError("Feedback request not found")
     workflow = _workflow(db, row.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can send feedback reminders")
     if row.status != "sent" or row.responded_at is not None:
         raise ValueError("Only an unanswered feedback request can be reminded")
@@ -465,13 +590,18 @@ def submit_feedback_response(
         client_name=(payload.client_name or "").strip() or None,
         client_email=str(payload.client_email).strip().lower() if payload.client_email else None,
         external_message_id=(payload.external_message_id or "").strip() or None,
-        classification_status="confirmed" if positive else "pending_bd",
-        classified_as="accepted" if positive else None,
-        classified_by_id=actor.id if positive else None,
-        classified_at=utc_now() if positive else None,
+        # Every client response is confirmed by the owning BD user before it can
+        # drive an internal workflow transition. This keeps the client-facing
+        # response and NakshaTech's internal billing/rework decision separate.
+        classification_status="pending_bd",
+        classified_as=None,
+        classified_by_id=None,
+        classified_at=None,
     )
     db.add(response)
     db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=response.project_id, milestone="client_feedback_updated", event_id=response.id)
     for attachment in payload.attachments:
         db.add(ProjectFeedbackAttachment(
             project_id=request_row.project_id,
@@ -489,29 +619,20 @@ def submit_feedback_response(
             db,
             workflow=workflow,
             actor=actor,
-            status=CLIENT_ACCEPTED,
-            event_type="client_accepted",
-            title="Client Accepted",
+            status=CLIENT_ACCEPTANCE_PENDING_BD,
+            event_type="client_acceptance_requires_bd_confirmation",
+            title="Client acceptance requires BD confirmation",
             comments=payload.comments,
-        )
-        _transition(
-            db,
-            workflow=workflow,
-            actor=actor,
-            status=READY_FOR_BILLING,
-            event_type="project_ready_for_billing",
-            title="Ready For Billing",
-            comments="Client acceptance received through the secure feedback request.",
         )
         _notify(
             db,
             project=project,
-            event_type="lifecycle.client_accepted",
-            title=f"Ready for billing: {project.project_code}",
-            message="the client accepted the delivery. Finance can prepare the invoice.",
-            target_url="/finance/billing",
-            recipient_roles=["finance"],
-            dedupe_key=f"lifecycle:client-accepted:{response.id}",
+            event_type="lifecycle.client_acceptance_requires_bd",
+            title=f"Client accepted: {project.project_code}",
+            message="The client submitted positive feedback. Confirm acceptance and send the project to Finance for billing.",
+            target_url=f"/bd/feedback?project={project.id}&response={response.id}",
+            recipient_user_ids=[workflow.bd_owner_user_id],
+            dedupe_key=f"lifecycle:accepted-awaiting-bd:{response.id}",
         )
     else:
         # Non-positive client responses (correction or additional scope) never create a
@@ -533,9 +654,76 @@ def submit_feedback_response(
             event_type="lifecycle.client_response_requires_bd",
             title=f"BD classification required: {project.project_code}",
             message="client feedback requires confirmation as correction/rework or additional scope.",
-            target_url="/bd/feedback",
+            target_url=f"/bd/feedback?project={project.id}",
             recipient_user_ids=[workflow.bd_owner_user_id],
             dedupe_key=f"lifecycle:classify-response:{response.id}",
+        )
+    return response
+
+
+def record_manual_feedback_response(
+    db: Session,
+    *,
+    actor: User,
+    project_id: int,
+    payload: ManualFeedbackResponseCreate,
+) -> ProjectFeedbackResponse:
+    """BD records an offline client outcome (call, email or letter).
+
+    This is the BD Feedback Action Center's manual path for clients that never
+    respond through the secure portal link. It creates a ProjectFeedbackResponse
+    row marked source='bd_manual' and then reuses the exact same transitions as
+    a portal response: positive -> CLIENT_ACCEPTANCE_PENDING_BD (BD confirms via
+    confirm_client_acceptance), negative -> FEEDBACK_NEGATIVE (BD classifies via
+    classify_feedback_response). No competing transition is introduced.
+    """
+    project = _project(db, project_id)
+    workflow = _workflow(db, project_id)
+    if not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("Only the project BD owner can record a manual client feedback response")
+    allowed = {FEEDBACK_NOT_SENT, FEEDBACK_REQUESTED, FEEDBACK_REMINDER_SENT, AWAITING_CLIENT_FEEDBACK}
+    if workflow.status not in allowed:
+        raise ValueError(f"Manual client feedback cannot be recorded while project is {workflow.status}")
+
+    positive = payload.response_type == "accepted"
+    response = ProjectFeedbackResponse(
+        project_id=project_id,
+        feedback_request_id=None,
+        response_type=payload.response_type,
+        comments=(payload.comments or "").strip() or None,
+        correction_description=(payload.correction_description or "").strip() or None,
+        client_name=(payload.client_name or "").strip() or None,
+        client_email=None,
+        external_message_id=(payload.reference or "").strip() or None,
+        source="bd_manual",
+        classification_status="pending_bd",
+        classified_as=None,
+        classified_by_id=None,
+        classified_at=None,
+    )
+    db.add(response)
+    db.flush()
+    from app.modules.bd_employee.notification_service import safe_notify_project_milestone
+    safe_notify_project_milestone(db, project_id=project_id, milestone="client_feedback_updated", event_id=response.id)
+    if positive:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=CLIENT_ACCEPTANCE_PENDING_BD,
+            event_type="client_acceptance_requires_bd_confirmation",
+            title="Client acceptance requires BD confirmation",
+            comments=payload.comments,
+        )
+    else:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=FEEDBACK_NEGATIVE,
+            event_type="client_feedback_requires_classification",
+            title="Client feedback requires BD classification",
+            comments=payload.correction_description,
         )
     return response
 
@@ -574,6 +762,57 @@ def _ensure_change_request(
     return row
 
 
+def confirm_client_acceptance(
+    db: Session, *, actor: User, response_id: int
+) -> ProjectFeedbackResponse:
+    response = db.get(ProjectFeedbackResponse, response_id)
+    if response is None:
+        raise ValueError("Feedback response not found")
+    workflow = _workflow(db, response.project_id)
+    if not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("Only the owning BD user can confirm client acceptance")
+    if response.response_type != "accepted":
+        raise ValueError("Only positive client feedback can be confirmed as accepted")
+    if response.classification_status == "confirmed" and response.classified_as == "accepted":
+        return response
+    if response.classification_status != "pending_bd":
+        raise ValueError("This client acceptance is not awaiting BD confirmation")
+    project = _project(db, response.project_id)
+    response.classification_status = "confirmed"
+    response.classified_as = "accepted"
+    response.classified_by_id = actor.id
+    response.classified_at = utc_now()
+    _transition(
+        db,
+        workflow=workflow,
+        actor=actor,
+        status=CLIENT_ACCEPTED,
+        event_type="bd_confirmed_client_acceptance",
+        title="Client Accepted",
+        comments=response.comments,
+    )
+    _transition(
+        db,
+        workflow=workflow,
+        actor=actor,
+        status=READY_FOR_BILLING,
+        event_type="project_ready_for_billing",
+        title="Ready For Billing",
+        comments="BD confirmed the client's positive feedback and released the project for billing.",
+    )
+    _notify(
+        db,
+        project=project,
+        event_type="lifecycle.client_accepted",
+        title=f"Ready for billing: {project.project_code}",
+        message="BD confirmed positive client feedback. Finance can prepare the invoice using the approved commercial and PM billing basis.",
+        target_url=f"/finance/billing?project={project.id}",
+        recipient_roles=["finance"],
+        dedupe_key=f"lifecycle:client-accepted:{response.id}",
+    )
+    return response
+
+
 def classify_feedback_response(
     db: Session,
     *,
@@ -585,7 +824,7 @@ def classify_feedback_response(
     if response is None:
         raise ValueError("Feedback response not found")
     workflow = _workflow(db, response.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can confirm feedback classification")
     if response.classification_status == "confirmed":
         raise ValueError("This feedback response has already been classified")
@@ -751,7 +990,7 @@ def _apply_rework_stage(
             event_type="lifecycle.rework_delivered",
             title=f"Rework delivered: {project.project_code}",
             message=f"rework cycle {cycle.cycle_number} is ready for BD resubmission.",
-            target_url="/bd/feedback",
+            target_url=f"/bd/feedback?project={project.id}",
             recipient_user_ids=[workflow.bd_owner_user_id],
             dedupe_key=f"lifecycle:rework-delivered:{cycle.id}",
         )
@@ -832,7 +1071,10 @@ def reconcile_rework_cycle(db: Session, *, actor: User, cycle_id: int) -> tuple[
     workflow = _workflow(db, cycle.project_id)
     project = _project(db, cycle.project_id)
     pm_id = project.master_profile.project_manager_id if project.master_profile else None
-    if not (actor.role == "admin" or actor.id in {cycle.project_manager_user_id, cycle.team_leader_user_id, workflow.bd_owner_user_id, pm_id}):
+    can_update = _can_manage_feedback(db, actor, workflow)
+    if actor.role != "bd_employee":
+        can_update = can_update or actor.id in {cycle.project_manager_user_id, cycle.team_leader_user_id, pm_id}
+    if not can_update:
         raise PermissionError("Only the assigned PM, Team Lead, BD owner or an Admin can reconcile this rework cycle")
     before = cycle.status
     sync_rework_cycle_with_packages(db, actor=actor, cycle_id=cycle_id, note="Reconciled from work-package state")
@@ -850,7 +1092,7 @@ def resubmit_rework(
     if cycle is None:
         raise ValueError("Rework cycle not found")
     workflow = _workflow(db, cycle.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can resubmit a rework delivery")
     if cycle.status != REWORK_DELIVERED:
         raise ValueError("The rework must be delivered before client resubmission")
@@ -875,7 +1117,7 @@ def recommend_no_feedback_closure(
     if row is None:
         raise ValueError("Feedback request not found")
     workflow = _workflow(db, row.project_id)
-    if workflow.bd_owner_user_id != actor.id and actor.role != "admin":
+    if not _can_manage_feedback(db, actor, workflow):
         raise PermissionError("Only the project BD owner can recommend no-feedback closure")
     if row.status != "sent" or row.responded_at is not None:
         raise ValueError("No-feedback closure requires an unanswered request")
@@ -900,7 +1142,7 @@ def recommend_no_feedback_closure(
         event_type="lifecycle.no_feedback_authorization_required",
         title=f"No-feedback decision required: {project.project_code}",
         message="BD recommends contractual deemed acceptance; authorized confirmation is required.",
-        target_url="/management/project-360",
+        target_url=f"/management/project-360/{project.id}",
         recipient_roles=["management"],
         dedupe_key=f"lifecycle:no-feedback-recommendation:{row.id}",
     )
@@ -944,7 +1186,7 @@ def authorize_deemed_acceptance(
         event_type="lifecycle.deemed_accepted",
         title=f"Ready for billing: {project.project_code}",
         message="authorized deemed acceptance was recorded.",
-        target_url="/finance/billing",
+        target_url=f"/finance/billing?project={project.id}",
         recipient_roles=["finance"],
         dedupe_key=f"lifecycle:deemed-accepted:{row.id}",
     )
@@ -954,14 +1196,16 @@ def authorize_deemed_acceptance(
 def decide_change_request(
     db: Session, *, actor: User, change_request_id: int, payload: ChangeRequestDecision
 ) -> ProjectChangeRequest:
-    if actor.role not in (MANAGEMENT_ROLES | BD_ROLES | FINANCE_ROLES):
+    if actor.role not in (MANAGEMENT_ROLES | BD_ROLES | FINANCE_ROLES | {"bd_employee"}):
         raise PermissionError("Only Management, BD, Finance or Admin can decide a change request")
     row = db.get(ProjectChangeRequest, change_request_id)
     if row is None:
         raise ValueError("Change request not found")
+    workflow = _workflow(db, row.project_id)
+    if actor.role == "bd_employee" and not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("This project is not assigned to this BD Employee")
     if row.status != "pending":
         raise ValueError("Change request has already been decided")
-    workflow = _workflow(db, row.project_id)
     if workflow.status != CHANGE_REQUEST_PENDING:
         raise ValueError("Project workflow is not awaiting a change request decision")
     row.status = payload.decision
@@ -1045,11 +1289,118 @@ def decide_change_request(
             event_type="lifecycle.change_request_rejected",
             title=f"Additional scope rejected: {project.project_code}",
             message=f"{row.request_code} was rejected. Send a client feedback request to obtain explicit acceptance before billing.",
-            target_url="/bd/feedback",
+            target_url=f"/bd/feedback?project={project.id}",
             recipient_user_ids=[workflow.bd_owner_user_id],
             dedupe_key=f"lifecycle:change-request-rejected:{row.id}",
         )
     return row
+
+
+def _resolve_invoice_document_snapshot(db: Session, *, project: FinanceProject, overrides: "InvoiceBillingSnapshotOverride | None") -> dict:
+    """Build the point-in-time billing/company/bank snapshot for a new invoice.
+
+    Auto Fill mode calls this with no overrides (pure ERP data). Manual mode may supply
+    ``overrides`` for any subset of fields; everything left blank still falls back to the
+    live Client Master / app configuration, exactly like Auto Fill. Once stored on the
+    invoice, this dict is what every later preview/PDF/print reads — a later Client Master
+    edit or company-configuration change never retroactively changes an issued invoice.
+    """
+    from app.modules.operations.invoice_documents import _configured_company
+
+    client = project.client
+    override = overrides.model_dump() if overrides is not None else {}
+    company = _configured_company()
+
+    def pick(key: str, fallback):
+        value = override.get(key)
+        return value if value not in (None, "") else fallback
+
+    return {
+        "billing": {
+            "name": pick("billing_name", (client.client_name if client else project.client_name) or "Client not recorded"),
+            "address": pick("billing_address", client.address if client else None),
+            "gstin": pick("billing_gstin", client.gst_number if client else None),
+            "pan": pick("billing_pan", None),
+            "email": pick("billing_email", (client.client_email if client else None)),
+            "phone": pick("billing_phone", (client.contact_person_phone or client.primary_phone) if client else None),
+        },
+        "company": {
+            "name": pick("company_name", company["name"]),
+            "address": pick("company_address", company["address"]),
+            "gstin": pick("company_gstin", company["gstin"]),
+            "pan": pick("company_pan", company["pan"]),
+            "phone": pick("company_phone", company["phone"]),
+            "email": pick("company_email", company["email"]),
+            "website": pick("company_website", None),
+            "hsn_sac": pick("company_hsn_sac", None),
+        },
+        "bank": {
+            "bank_name": pick("bank_name", company["bank_name"]),
+            "account_name": pick("bank_account_name", company["bank_account_name"]),
+            "account_number": pick("bank_account_number", company["bank_account_number"]),
+            "ifsc": pick("bank_ifsc", company["bank_ifsc"]),
+            "swift": pick("bank_swift", None),
+            "branch": pick("bank_branch", company["bank_branch"]),
+        },
+    }
+
+
+def invoice_auto_fill(db: Session, *, project_id: int) -> dict:
+    """Auto Fill mode: pull everything the ERP already knows for this project.
+
+    Pure read — creates nothing, changes nothing. Finance reviews every field in the
+    common invoice editor before clicking Create Invoice Draft; nothing here raises an
+    invoice or writes to the database. Client/company/bank data always reuses this same
+    helper the invoice itself will snapshot from (``_resolve_invoice_document_snapshot``),
+    so what Finance sees here is exactly what the issued document will show.
+    """
+    project = _project(db, project_id)
+    client = project.client
+    snapshot = _resolve_invoice_document_snapshot(db, project=project, overrides=None)
+
+    from app.modules.commercial.service import billing_recommendation
+
+    try:
+        recommendation = billing_recommendation(db, project_id=project_id)
+    except Exception:  # noqa: BLE001 - a legacy/unlinked project must still auto-fill client/company data
+        recommendation = None
+
+    recommended = None
+    rec = (recommendation or {}).get("recommendation") if recommendation else None
+    basis = (recommendation or {}).get("commercial_basis") if recommendation else None
+    if rec:
+        recommended = {
+            "currency": rec["currency_code"],
+            "amount": rec["base_amount"],
+            "tax_percent": rec["tax_percent"],
+            "tax_amount": rec["tax_amount"],
+            "payment_terms": (basis or {}).get("payment_terms"),
+            "po_wo_reference": (basis or {}).get("po_wo_reference"),
+            "links": {
+                "estimate_revision_id": rec.get("estimate_revision_id"),
+                "billing_basis_id": rec.get("billing_basis_id"),
+                "billed_quantity": rec.get("quantity") if rec.get("method") == "UNIT_RATE" else None,
+                "billed_milestone_id": rec.get("milestone_id") if rec.get("method") == "MILESTONE" else None,
+            },
+        }
+
+    return {
+        "client": {
+            "name": (client.client_name if client else project.client_name) or "Client not recorded",
+            "address": client.address if client else None,
+            "gstin": client.gst_number if client else None,
+            "email": (client.client_email if client else None),
+            "phone": (client.contact_person_phone or client.primary_phone) if client else None,
+        },
+        "project": {
+            "code": project.project_code,
+            "name": project.project_name,
+            "description": project.description,
+        },
+        "company": snapshot["company"],
+        "bank": snapshot["bank"],
+        "recommended": recommended,
+    }
 
 
 def create_invoice_draft(
@@ -1057,6 +1408,9 @@ def create_invoice_draft(
 ) -> ProjectInvoice:
     project = _project(db, project_id)
     workflow = _workflow(db, project_id)
+    if (db.get(ManagementProjectLink, project_id) is not None
+            and management_source_approval_event(db, project_id) is None):
+        raise ValueError("Original Management source approval is required before invoice drafting")
     if workflow.status not in {READY_FOR_BILLING, INVOICE_DRAFT}:
         raise ValueError("Client acceptance and Ready For Billing are required before invoice drafting")
     invoice_number = payload.invoice_number.strip()
@@ -1078,7 +1432,21 @@ def create_invoice_draft(
         po_wo_reference=(payload.po_wo_reference or "").strip() or None,
         notes=(payload.notes or "").strip() or None,
         created_by_id=actor.id,
+        entry_mode=payload.entry_mode,
+        # V8.7: the chosen A4 presentation theme is STORED on the invoice (NULL = legacy classic).
+        theme=(_normalize_theme(payload.theme) if getattr(payload, "theme", None) else None),
+        cgst_percent=payload.cgst_percent,
+        cgst_amount=payload.cgst_amount,
+        sgst_percent=payload.sgst_percent,
+        sgst_amount=payload.sgst_amount,
+        igst_percent=payload.igst_percent,
+        igst_amount=payload.igst_amount,
+        work_order_date=payload.work_order_date,
+        dispatch_details=(payload.dispatch_details or "").strip() or None,
+        dispatch_date=payload.dispatch_date,
+        place_of_supply=(payload.place_of_supply or "").strip() or None,
     )
+    invoice.document_snapshot = _resolve_invoice_document_snapshot(db, project=project, overrides=payload.billing_snapshot)
     from app.modules.commercial.service import apply_invoice_billing_links, prepare_client_invoice_fx
 
     # Validate the approved-basis / PM-basis links BEFORE the row is added, so a rejected link leaves nothing behind.
@@ -1092,6 +1460,17 @@ def create_invoice_draft(
     )
     db.add(invoice)
     db.flush()
+    for item in payload.line_items:
+        db.add(ProjectInvoiceLineItem(
+            invoice_id=invoice.id,
+            sequence=item.sequence,
+            description=item.description,
+            hsn_sac=item.hsn_sac,
+            unit=item.unit,
+            quantity=item.quantity,
+            rate=item.rate,
+            amount=item.amount,
+        ))
     prepare_client_invoice_fx(
         db,
         actor=actor,
@@ -1120,6 +1499,13 @@ def raise_invoice(
         raise ValueError("Invoice not found")
     if invoice.status != INVOICE_DRAFT:
         raise ValueError("Only a draft invoice can be raised")
+    if db.get(ManagementProjectLink, invoice.project_id) is not None:
+        # Serialize against Management revocation; only management-linked projects are affected.
+        management_workflow = db.scalar(select(ProjectWorkflow).where(
+            ProjectWorkflow.project_id == invoice.project_id,
+        ).with_for_update())
+        if management_workflow is None or management_source_approval_event(db, invoice.project_id) is None:
+            raise ValueError("Active Management source approval is required before raising this invoice")
     from app.modules.commercial.service import lock_client_invoice_fx
 
     lock_client_invoice_fx(
@@ -1130,7 +1516,7 @@ def raise_invoice(
         manual_mode=payload.fx_rate_mode,
         manual_reason=payload.fx_override_reason,
     )
-    invoice.status = INVOICE_RAISED
+    invoice.status = PAYMENT_PENDING
     invoice.raised_by_id = actor.id
     invoice.raised_at = utc_now()
     if payload.notes:
@@ -1161,7 +1547,7 @@ def raise_invoice(
         event_type="lifecycle.invoice_raised",
         title=f"Invoice raised: {project.project_code}",
         message=f"invoice {invoice.invoice_number} is due {invoice.due_date.isoformat()}.",
-        target_url="/management/project-360",
+        target_url=f"/management/project-360/{project.id}",
         recipient_roles=["management"],
         dedupe_key=f"lifecycle:invoice-raised:{invoice.id}",
     )
@@ -1169,21 +1555,107 @@ def raise_invoice(
 
 
 def _payment_total(db: Session, invoice_id: int) -> Decimal:
-    return Decimal(db.scalar(select(func.coalesce(func.sum(ProjectInvoicePayment.amount), 0)).where(
+    """Amount already settled against an invoice, in the invoice's own currency.
+
+    A client advance applied to this invoice settles it just as a normal payment
+    does, so it is included here. The advance is never duplicated into
+    ``project_invoice_payments``: the amount is read from the isolated
+    ``client_advance_transactions`` ledger, so the invoice face value, the
+    revenue recognition rule and the Employee Advance flow are all unchanged.
+    """
+    cash = Decimal(db.scalar(select(func.coalesce(func.sum(ProjectInvoicePayment.amount), 0)).where(
         ProjectInvoicePayment.invoice_id == invoice_id
     )) or 0)
+    from app.modules.finance.advance_settlement_service import advance_applied_original_by_invoice
+
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        return cash
+    applied = advance_applied_original_by_invoice(db, {int(invoice.id): invoice}).get(int(invoice.id), Decimal("0"))
+    return Decimal(cash) + Decimal(applied)
+
+
+def _invoice_total_due(invoice: ProjectInvoice) -> Decimal:
+    return Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0)
+
+
+def compute_invoice_payment_status(*, invoice_total: Decimal, paid_total: Decimal) -> str:
+    """Derive invoice payment status from recorded payments.
+
+    remaining_balance = invoice_total - sum(all payments)
+    - remaining_balance <= 0 -> INVOICE_CLOSED
+    - paid_total > 0 and remaining_balance > 0 -> PARTIALLY_PAID
+    - paid_total == 0 -> PAYMENT_PENDING
+    """
+    remaining_balance = invoice_total - paid_total
+    if remaining_balance <= 0:
+        return INVOICE_CLOSED
+    if paid_total > 0:
+        return PARTIALLY_PAID
+    return PAYMENT_PENDING
+
+
+def _maybe_finance_closure_pending(
+    db: Session, *, actor: User, workflow: ProjectWorkflow, exclude_invoice_id: int
+) -> None:
+    other_invoices = list(db.scalars(select(ProjectInvoice).where(
+        ProjectInvoice.project_id == workflow.project_id,
+        ProjectInvoice.id != exclude_invoice_id,
+    )).all())
+    open_invoices = [row for row in other_invoices if not (
+        row.status == INVOICE_CLOSED
+        or _approved_bad_debt_remaining(db, row.id) >= _invoice_cash_balance(db, row)
+    )]
+    if not open_invoices:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=FINANCE_CLOSURE_PENDING,
+            event_type="finance_closure_pending",
+            title="Finance Closure Pending",
+            comments="All invoices are fully settled or covered by Management-approved Bad Debt.",
+        )
 
 
 def record_invoice_payment(
-    db: Session, *, actor: User, invoice_id: int, payload: InvoicePaymentCreate
+    db: Session,
+    *,
+    actor: User,
+    invoice_id: int,
+    payload: InvoicePaymentCreate,
+    _allow_bad_debt_recovery: bool = False,
 ) -> ProjectInvoicePayment:
     invoice = db.get(ProjectInvoice, invoice_id)
     if invoice is None:
         raise ValueError("Invoice not found")
-    if invoice.status not in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE}:
+    closed_recovery = _allow_bad_debt_recovery and invoice.status == INVOICE_CLOSED
+    if not closed_recovery and invoice.status not in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE}:
         raise ValueError("Payments can only be recorded against an open raised invoice")
-    total_due = Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0)
+    total_due = _invoice_total_due(invoice)
     paid_before = _payment_total(db, invoice.id)
+
+    # Keep ordinary collection and Bad Debt recovery as two explicit paths.
+    # When Management has approved a write-off, Finance may still collect any
+    # amount that remains genuinely collectible outside that write-off. Money
+    # received against the written-off portion must go through
+    # ``record_bad_debt_recovery`` so the original write-off history and
+    # recovered_amount remain accurate.
+    if not _allow_bad_debt_recovery:
+        approved_bad_debt = _approved_bad_debt_remaining(db, invoice.id)
+        if approved_bad_debt > 0:
+            collectible_before = max(total_due - paid_before - approved_bad_debt, Decimal("0"))
+            if payload.amount > collectible_before:
+                if collectible_before <= 0:
+                    raise ValueError(
+                        "This invoice balance is covered by Management-approved Bad Debt; "
+                        "use Bad Debt Recovery to record money received against the write-off"
+                    )
+                raise ValueError(
+                    "Payment exceeds the collectible balance while Management-approved Bad Debt exists; "
+                    "use Bad Debt Recovery for the written-off portion"
+                )
+
     if paid_before + payload.amount > total_due:
         raise ValueError("Payment exceeds the outstanding invoice balance")
     payment = ProjectInvoicePayment(
@@ -1210,19 +1682,29 @@ def record_invoice_payment(
         manual_reason=payload.fx_override_reason,
     )
     paid_after = paid_before + payload.amount
-    complete = paid_after == total_due
-    invoice.status = PAYMENT_RECEIVED if complete else PARTIALLY_PAID
+    new_status = compute_invoice_payment_status(invoice_total=total_due, paid_total=paid_after)
+    if paid_after > total_due or (paid_after < total_due and new_status == INVOICE_CLOSED) or (
+        paid_after == 0 and new_status != PAYMENT_PENDING
+    ):
+        raise ValueError("Inconsistent invoice payment status calculation")
+    invoice.status = INVOICE_CLOSED if closed_recovery else new_status
+    complete = new_status == INVOICE_CLOSED
+    if complete and not closed_recovery:
+        invoice.closed_by_id = actor.id
+        invoice.closed_at = utc_now()
     workflow = _workflow(db, invoice.project_id)
-    state = PAYMENT_RECEIVED if complete else PARTIALLY_PAID
-    _transition(
-        db,
-        workflow=workflow,
-        actor=actor,
-        status=state,
-        event_type="invoice_payment_received" if complete else "invoice_partial_payment",
-        title="Payment Received" if complete else "Partial Payment",
-        comments=f"{invoice.currency} {payload.amount} ({payload.payment_reference})",
-    )
+    if not closed_recovery:
+        _transition(
+            db,
+            workflow=workflow,
+            actor=actor,
+            status=new_status,
+            event_type="invoice_payment_received" if complete else "invoice_partial_payment",
+            title="Payment Received" if complete else "Partial Payment",
+            comments=f"{invoice.currency} {payload.amount} ({payload.payment_reference})",
+        )
+    if complete and not closed_recovery:
+        _maybe_finance_closure_pending(db, actor=actor, workflow=workflow, exclude_invoice_id=invoice.id)
     project = _project(db, invoice.project_id)
     _notify(
         db,
@@ -1230,7 +1712,7 @@ def record_invoice_payment(
         event_type="lifecycle.payment_received" if complete else "lifecycle.partial_payment",
         title=("Payment received" if complete else "Partial payment") + f": {project.project_code}",
         message=f"{invoice.currency} {payload.amount} recorded for invoice {invoice.invoice_number}.",
-        target_url="/management/project-360",
+        target_url=f"/management/project-360/{project.id}",
         recipient_roles=["management"],
         dedupe_key=f"lifecycle:payment:{payment.id}",
     )
@@ -1263,11 +1745,651 @@ def mark_invoice_overdue(db: Session, *, actor: User, invoice_id: int) -> Projec
         event_type="lifecycle.payment_overdue",
         title=f"Payment overdue: {project.project_code}",
         message=f"invoice {invoice.invoice_number} is overdue.",
-        target_url="/finance/billing",
+        target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
         recipient_roles=["finance", "management"],
         dedupe_key=f"lifecycle:invoice-overdue:{invoice.id}",
     )
     return invoice
+
+
+BAD_DEBT_PROPOSED = "PROPOSED"
+BAD_DEBT_APPROVED = "APPROVED"
+BAD_DEBT_REJECTED = "REJECTED"
+BAD_DEBT_RECOVERED = "RECOVERED"
+
+# ---------------------------------------------------------------------------
+# DUAL management approval for Bad Debt (Vinod Sir AND Chethan).
+#
+# The two approvers are NOT hard-coded numeric employee ids: they are the two
+# authorized MANAGEMENT accounts already defined by the platform
+# (``app.core.management_access.MANAGEMENT_ACCOUNTS`` / ``MANAGEMENT_EMAILS``).
+# Only the email is used as the identity key, and the configuration is validated
+# loudly — if those addresses are not authorized management accounts the feature
+# refuses to guess.
+# ---------------------------------------------------------------------------
+BAD_DEBT_APPROVER_EMAILS: dict[str, str] = {
+    "vinod": "vinod@nakshatech.com",
+    "chethan": "chethan@nakshatech.com",
+}
+BAD_DEBT_APPROVER_LABELS: dict[str, str] = {
+    "vinod": "Vinod Sir",
+    "chethan": "Chethan",
+}
+
+
+def _assert_bad_debt_approver_configuration() -> None:
+    missing = [addr for addr in BAD_DEBT_APPROVER_EMAILS.values() if addr not in MANAGEMENT_EMAILS]
+    if missing:
+        raise RuntimeError(
+            "Bad Debt approver configuration is ambiguous — these addresses are not authorized "
+            "management accounts: " + ", ".join(missing)
+        )
+
+
+def bad_debt_approver_key(actor: User) -> str:
+    """Resolve the authenticated user to 'vinod' / 'chethan', else refuse."""
+    _assert_bad_debt_approver_configuration()
+    email = (actor.email or "").strip().lower()
+    for key, address in BAD_DEBT_APPROVER_EMAILS.items():
+        if email == address:
+            return key
+    raise PermissionError(
+        "Only the authorized management approvers (Vinod Sir / Chethan) can decide a Bad Debt proposal"
+    )
+
+
+def _current_bad_debt_approvals(db: Session, row: ProjectInvoiceBadDebt) -> dict[str, ProjectInvoiceBadDebtApproval]:
+    """Latest decision per approver within the CURRENT proposal cycle (append-only)."""
+    rows = list(db.scalars(select(ProjectInvoiceBadDebtApproval).where(
+        ProjectInvoiceBadDebtApproval.bad_debt_id == row.id,
+        ProjectInvoiceBadDebtApproval.decided_at >= row.proposed_at,
+    ).order_by(ProjectInvoiceBadDebtApproval.decided_at.asc(), ProjectInvoiceBadDebtApproval.id.asc())).all())
+    latest: dict[str, ProjectInvoiceBadDebtApproval] = {}
+    for approval in rows:
+        latest[approval.approver_key] = approval
+    return latest
+
+
+def _bad_debt_approval_payload(db: Session, row: ProjectInvoiceBadDebt | None) -> dict:
+    """Dual-approval status for UI/reporting (never mixes pending with approved)."""
+    if row is None:
+        return {"required_approvers": [], "decisions": [], "approved_count": 0, "required_count": len(BAD_DEBT_APPROVER_EMAILS)}
+    decisions = _current_bad_debt_approvals(db, row)
+    return {
+        "required_approvers": [
+            {"key": key, "label": BAD_DEBT_APPROVER_LABELS[key]} for key in BAD_DEBT_APPROVER_EMAILS
+        ],
+        "decisions": [
+            {
+                "approver_key": key,
+                "approver_label": BAD_DEBT_APPROVER_LABELS.get(key, key),
+                "approver_name": _user_display_name(db, approval.approver_user_id),
+                "decision": approval.decision,
+                "comment": approval.comment,
+                "decided_at": approval.decided_at.isoformat() if approval.decided_at else None,
+            }
+            for key, approval in decisions.items()
+        ],
+        "approved_count": sum(1 for a in decisions.values() if a.decision == "approved"),
+        "required_count": len(BAD_DEBT_APPROVER_EMAILS),
+    }
+
+
+def _bad_debt_row(db: Session, invoice_id: int) -> ProjectInvoiceBadDebt | None:
+    return db.scalar(select(ProjectInvoiceBadDebt).where(ProjectInvoiceBadDebt.invoice_id == invoice_id))
+
+
+def _user_display_name(db: Session, user_id: int | None) -> str | None:
+    if user_id is None:
+        return None
+    user = db.get(User, user_id)
+    return user.full_name if user is not None else None
+
+
+def _invoice_cash_balance(db: Session, invoice: ProjectInvoice) -> Decimal:
+    return max(_invoice_total_due(invoice) - _payment_total(db, invoice.id), Decimal("0"))
+
+
+def _approved_bad_debt_remaining(db: Session, invoice_id: int) -> Decimal:
+    return approved_bad_debt_remaining(_bad_debt_row(db, invoice_id))
+
+
+def approved_bad_debt_remaining(row: ProjectInvoiceBadDebt | None) -> Decimal:
+    """Shared balance resolution for approved write-offs; never a payment amount."""
+    if row is None or row.status != BAD_DEBT_APPROVED:
+        return Decimal("0")
+    return max(Decimal(row.approved_amount or 0) - Decimal(row.recovered_amount or 0), Decimal("0"))
+
+
+def _normalize_theme(value: str | None) -> str:
+    """Local re-export of the theme normalizer (avoids a circular import at module load)."""
+    from app.modules.operations.invoice_documents import normalize_invoice_theme
+    return normalize_invoice_theme(value)
+
+
+# Fields whose change alters the APPROVED FINANCIAL CONTENT of a signed invoice. A change to
+# any of these invalidates a previous signature; presentation-only fields (theme, notes,
+# payment terms) do not.
+GST_SPLIT_FIELDS: tuple[str, ...] = (
+    "cgst_percent", "cgst_amount", "sgst_percent", "sgst_amount", "igst_percent", "igst_amount",
+)
+
+# Split fields that must be cleared when an edit switches the invoice to a GST type.
+_GST_MODE_CLEARS: dict[str, tuple[str, ...]] = {
+    "none": GST_SPLIT_FIELDS,
+    "cgst_sgst": ("igst_percent", "igst_amount"),
+    "igst": ("cgst_percent", "cgst_amount", "sgst_percent", "sgst_amount"),
+}
+
+INVOICE_MATERIAL_FIELDS: tuple[str, ...] = (
+    "amount", "tax_amount", "tax_percent", "invoice_date", "due_date", *GST_SPLIT_FIELDS,
+    "po_wo_reference", "place_of_supply", "work_order_date", "dispatch_date", "dispatch_details",
+)
+
+INVOICE_EDITABLE_FIELDS: tuple[str, ...] = INVOICE_MATERIAL_FIELDS + (
+    "theme", "notes", "payment_terms",
+)
+
+
+def update_invoice(
+    db: Session, *, actor: User, invoice_id: int, payload: "InvoiceUpdate"
+) -> ProjectInvoice:
+    """Safe edit of an EXISTING invoice (never a duplicate). Editing financial content is
+    blocked once money or accounting history exists; a material change to a signed invoice
+    invalidates the previous signature so it can never represent changed content."""
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    if invoice.status in {INVOICE_CLOSED, PAYMENT_RECEIVED, "INVOICE_CANCELLED"}:
+        raise ValueError("A closed or cancelled invoice cannot be edited")
+
+    payments = db.scalar(select(func.count(ProjectInvoicePayment.id)).where(
+        ProjectInvoicePayment.invoice_id == invoice_id
+    )) or 0
+    bad_debt = _bad_debt_row(db, invoice_id)
+    financial_history = bool(payments) or bad_debt is not None
+
+    provided = payload.model_dump(exclude_unset=True, exclude_none=True)
+    gst_mode = provided.pop("gst_mode", None)
+    if gst_mode is not None:
+        for field in _GST_MODE_CLEARS[gst_mode]:
+            provided[field] = None
+    # Only fields whose value actually changes count, so re-sending unchanged values
+    # (e.g. a theme-only edit after a payment) is not treated as a financial edit.
+    material_requested = [
+        f for f in INVOICE_MATERIAL_FIELDS if f in provided and getattr(invoice, f) != provided[f]
+    ]
+
+    # The GST split must still reconcile to the tax amount after the edit.
+    effective = {f: provided.get(f, getattr(invoice, f)) for f in ("tax_amount", *GST_SPLIT_FIELDS)}
+    split = [effective[f] for f in ("cgst_amount", "sgst_amount", "igst_amount")]
+    if any(value is not None for value in split):
+        cgst, sgst, igst = (Decimal(value or 0) for value in split)
+        if igst > 0 and (cgst > 0 or sgst > 0):
+            raise ValueError("IGST cannot be combined with CGST/SGST on the same invoice")
+        if abs(cgst + sgst + igst - Decimal(effective["tax_amount"] or 0)) > Decimal("0.01"):
+            raise ValueError(
+                f"CGST + SGST + IGST ({cgst + sgst + igst}) must equal the tax amount ({effective['tax_amount']})"
+            )
+    # Theme-only (or presentation-only) edits stay possible; money-affecting edits do not.
+    if financial_history and material_requested:
+        if payments:
+            raise ValueError(
+                "Financial fields cannot be edited after a payment has been recorded "
+                "(edit only the theme, notes or payment terms)"
+            )
+        raise ValueError(
+            "Financial fields cannot be edited while a Bad Debt case exists on this invoice "
+            "(edit only the theme, notes or payment terms)"
+        )
+
+    changed_material: list[str] = []
+    for field in INVOICE_EDITABLE_FIELDS:
+        if field not in provided:
+            continue
+        value = provided[field]
+        if field == "theme":
+            value = _normalize_theme(value) if value else None
+        if getattr(invoice, field) != value:
+            setattr(invoice, field, value)
+            if field in INVOICE_MATERIAL_FIELDS:
+                changed_material.append(field)
+    invoice.updated_at = utc_now()
+
+    if changed_material and invoice.signed:
+        # The previous sign-off no longer represents the edited content.
+        previous_by, previous_at = invoice.signed_by_id, invoice.signed_at
+        invoice.signed = False
+        invoice.signed_by_id = None
+        invoice.signed_at = None
+        invoice.signature_invalidated_at = utc_now()
+        add_timeline_event(
+            db, project_id=invoice.project_id, event_type="invoice_signature_invalidated",
+            title=f"Invoice signature invalidated · {invoice.invoice_number}",
+            status=invoice.status, actor_user_id=actor.id,
+            details=(
+                f"Material edit invalidated the signature by user {previous_by} at {previous_at}. "
+                f"Changed: {', '.join(changed_material)}."
+            ),
+        )
+    db.flush()
+    add_timeline_event(
+        db, project_id=invoice.project_id, event_type="invoice_updated",
+        title=f"Invoice updated · {invoice.invoice_number}", status=invoice.status,
+        actor_user_id=actor.id,
+        details=f"Fields: {', '.join(sorted(provided)) or 'none'}"
+                + (f" · signature invalidated ({', '.join(changed_material)})" if changed_material and not invoice.signed else ""),
+    )
+    db.flush()
+    return invoice
+
+
+def sign_invoice(db: Session, *, actor: User, invoice_id: int, payload: "InvoiceSign | None" = None) -> ProjectInvoice:
+    """Record the AUTHORISED SIGNATORY approval (visual signature + company stamp).
+
+    This is an application approval signature, NOT a statutory cryptographic DSC signature.
+    Authorization is enforced by the caller (Finance/Admin roles); repeated calls are
+    idempotent so a double click never rewrites the original sign-off time.
+    """
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    if invoice.status == "INVOICE_CANCELLED":
+        raise ValueError("A cancelled invoice cannot be signed")
+    if invoice.signed:
+        return invoice  # idempotent: keep the original signer/timestamp
+    invoice.signed = True
+    invoice.signed_by_id = actor.id
+    invoice.signed_at = utc_now()
+    invoice.signature_invalidated_at = None
+    add_timeline_event(
+        db, project_id=invoice.project_id, event_type="invoice_signed",
+        title=f"Invoice signed · {invoice.invoice_number}", status=invoice.status,
+        actor_user_id=actor.id,
+        details=(payload.remarks if payload is not None else None)
+                or f"Authorised signatory: {actor.full_name}",
+    )
+    db.flush()
+    return invoice
+
+
+def propose_bad_debt(
+    db: Session, *, actor: User, invoice_id: int, payload: BadDebtProposalCreate
+) -> ProjectInvoiceBadDebt:
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    if invoice.due_date >= date.today():
+        raise ValueError("Bad Debt can only be proposed after the invoice due date")
+    balance = _invoice_cash_balance(db, invoice)
+    if balance <= 0:
+        raise ValueError("This invoice has no unpaid balance")
+    if invoice.status != PAYMENT_OVERDUE:
+        raise ValueError("Mark the invoice Payment Overdue before proposing Bad Debt")
+    row = _bad_debt_row(db, invoice_id)
+    if row is not None and row.status == BAD_DEBT_APPROVED:
+        raise ValueError("Bad Debt is already approved for this invoice")
+    if row is not None and row.status == BAD_DEBT_PROPOSED:
+        raise ValueError("A Bad Debt proposal is already pending Management review")
+    # Finance may write off the full collectible balance (default) or a smaller
+    # amount. The proposal can never exceed what is still collectible.
+    proposed_amount = payload.proposed_amount if payload.proposed_amount is not None else balance
+    if proposed_amount <= 0:
+        raise ValueError("Bad Debt amount must be greater than zero")
+    if proposed_amount > balance:
+        raise ValueError("Bad Debt amount cannot exceed the outstanding collectible balance")
+    if row is None:
+        row = ProjectInvoiceBadDebt(
+            project_id=invoice.project_id,
+            invoice_id=invoice.id,
+            status=BAD_DEBT_PROPOSED,
+            proposed_amount=proposed_amount,
+            approved_amount=None,
+            recovered_amount=Decimal("0"),
+            currency=invoice.currency,
+            reason=payload.reason.strip(),
+            collection_attempts=payload.collection_attempts.strip(),
+            last_followup_date=payload.last_followup_date,
+            finance_remarks=(payload.finance_remarks or "").strip() or None,
+            proposed_by_id=actor.id,
+        )
+        db.add(row)
+    else:
+        row.status = BAD_DEBT_PROPOSED
+        row.proposed_amount = proposed_amount
+        row.approved_amount = None
+        row.recovered_amount = Decimal("0")
+        row.reason = payload.reason.strip()
+        row.collection_attempts = payload.collection_attempts.strip()
+        row.last_followup_date = payload.last_followup_date
+        row.finance_remarks = (payload.finance_remarks or "").strip() or None
+        row.proposed_by_id = actor.id
+        row.proposed_at = utc_now()
+        row.reviewed_by_id = None
+        row.reviewed_at = None
+        row.decision_reason = None
+    db.flush()
+    project = _project(db, invoice.project_id)
+    add_timeline_event(
+        db,
+        project_id=invoice.project_id,
+        event_type="bad_debt_proposed",
+        title=f"Bad Debt Proposed · {invoice.invoice_number}",
+        status=PAYMENT_OVERDUE,
+        actor_user_id=actor.id,
+        details=f"{invoice.currency} {row.proposed_amount} proposed for Management review. {row.reason}",
+    )
+    _notify(
+        db,
+        project=project,
+        event_type="lifecycle.bad_debt.proposed",
+        title=f"Bad Debt approval required: {project.project_code}",
+        message=f"Finance proposed {invoice.currency} {row.proposed_amount} Bad Debt for invoice {invoice.invoice_number}.",
+        target_url=f"/management/project-360/{project.id}?tab=actions&invoice={invoice.id}",
+        recipient_roles=["management"],
+        dedupe_key=f"lifecycle:bad-debt:proposal:{invoice.id}:{int(row.proposed_at.timestamp())}",
+    )
+    return row
+
+
+def decide_bad_debt(
+    db: Session, *, actor: User, invoice_id: int, payload: BadDebtDecision
+) -> ProjectInvoiceBadDebt:
+    """Record ONE authorized management decision on a pending Bad Debt proposal.
+
+    DUAL APPROVAL: the write-off becomes effective only when BOTH management
+    approvers (Vinod Sir AND Chethan) approve. A single approval leaves the case
+    pending (no financial effect). Either approver rejecting rejects the case.
+    Repeated or concurrent calls are idempotent — one decision per approver per
+    proposal cycle, so the financial effect is applied exactly once.
+    """
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    approver_key = bad_debt_approver_key(actor)
+    # Serialize concurrent decisions for this invoice (double-click / two approvers).
+    row = db.scalar(select(ProjectInvoiceBadDebt).where(
+        ProjectInvoiceBadDebt.invoice_id == invoice_id).with_for_update())
+    if row is None:
+        raise ValueError("A pending Bad Debt proposal is required")
+    decisions = _current_bad_debt_approvals(db, row)
+    if approver_key in decisions:
+        # Idempotent replay: this approver already decided in the current cycle (even if
+        # the case has since been finalized) — return the authoritative state untouched.
+        return row
+    if row.status not in {BAD_DEBT_PROPOSED}:
+        raise ValueError("A pending Bad Debt proposal is required")
+    if payload.decision not in {"approved", "rejected"}:
+        raise ValueError("Decision must be approved or rejected")
+    if payload.decision == "rejected" and not (payload.comments or "").strip():
+        raise ValueError("A rejection reason is required")
+
+    if payload.decision == "approved":
+        balance = _invoice_cash_balance(db, invoice)
+        if Decimal(row.proposed_amount or 0) > balance:
+            # Never trust the proposal snapshot — the client may have paid while the
+            # proposal was pending. Refuse (no silent shrink, no negative balance).
+            raise ValueError(
+                "The collectible balance changed after this proposal "
+                f"({invoice.currency} {balance} remaining) — amend or resubmit the Bad Debt proposal"
+            )
+
+    db.add(ProjectInvoiceBadDebtApproval(
+        bad_debt_id=row.id,
+        invoice_id=invoice.id,
+        project_id=invoice.project_id,
+        approver_key=approver_key,
+        approver_user_id=actor.id,
+        approver_email=(actor.email or "").strip().lower(),
+        decision=payload.decision,
+        comment=(payload.comments or "").strip() or None,
+    ))
+    db.flush()
+    decisions = _current_bad_debt_approvals(db, row)
+
+    if any(a.decision == "rejected" for a in decisions.values()):
+        row.status = BAD_DEBT_REJECTED
+        row.approved_amount = None
+    elif len(decisions) == len(BAD_DEBT_APPROVER_EMAILS) and all(
+        a.decision == "approved" for a in decisions.values()
+    ):
+        # BOTH approvals present -> the write-off becomes effective exactly once.
+        row.status = BAD_DEBT_APPROVED
+        row.approved_amount = Decimal(row.proposed_amount or 0)
+    # else: still PROPOSED (awaiting the remaining approval) — no financial effect.
+
+    row.reviewed_by_id = actor.id
+    row.reviewed_at = utc_now()
+    row.decision_reason = (payload.comments or "").strip() or row.decision_reason
+    db.flush()
+
+    project = _project(db, invoice.project_id)
+    approver_label = BAD_DEBT_APPROVER_LABELS.get(approver_key, approver_key)
+    final = row.status in {BAD_DEBT_APPROVED, BAD_DEBT_REJECTED}
+    add_timeline_event(
+        db,
+        project_id=invoice.project_id,
+        event_type=(
+            "bad_debt_approved" if row.status == BAD_DEBT_APPROVED
+            else "bad_debt_rejected" if row.status == BAD_DEBT_REJECTED
+            else "bad_debt_decision_recorded"
+        ),
+        title=(
+            f"Bad Debt {'Approved' if row.status == BAD_DEBT_APPROVED else 'Rejected'}" if final
+            else f"Bad Debt approval {approver_label} recorded"
+        ) + f" · {invoice.invoice_number}",
+        status=PAYMENT_OVERDUE,
+        actor_user_id=actor.id,
+        details=row.decision_reason,
+    )
+    if final:
+        _notify(
+            db,
+            project=project,
+            event_type="lifecycle.bad_debt.approved" if row.status == BAD_DEBT_APPROVED else "lifecycle.bad_debt.rejected",
+            title=("Bad Debt approved" if row.status == BAD_DEBT_APPROVED else "Bad Debt rejected") + f": {project.project_code}",
+            message=f"Invoice {invoice.invoice_number}: {row.decision_reason}",
+            target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
+            recipient_roles=["finance"],
+            dedupe_key=f"lifecycle:bad-debt:final:{invoice.id}:{row.status}",
+        )
+    else:
+        # Still pending: tell management the remaining approval is awaited, and tell
+        # Finance that a decision was recorded. Dedupe key includes the approval so
+        # repeated calls never spam.
+        _notify(
+            db,
+            project=project,
+            event_type="lifecycle.bad_debt.partially_approved",
+            title=f"Bad Debt awaiting final approval: {project.project_code}",
+            message=(
+                f"{approver_label} recorded a decision on invoice {invoice.invoice_number}. "
+                f"{len(decisions)} of {len(BAD_DEBT_APPROVER_EMAILS)} required approvals recorded."
+            ),
+            target_url=f"/management/project-360/{project.id}?tab=actions&invoice={invoice.id}",
+            recipient_roles=["management"],
+            dedupe_key=f"lifecycle:bad-debt:partial:{invoice.id}:{approver_key}",
+        )
+        _notify(
+            db,
+            project=project,
+            event_type="lifecycle.bad_debt.partially_approved",
+            title=f"Bad Debt decision recorded: {project.project_code}",
+            message=(
+                f"{approver_label} recorded a decision on invoice {invoice.invoice_number}. "
+                f"{len(decisions)} of {len(BAD_DEBT_APPROVER_EMAILS)} required approvals recorded."
+            ),
+            target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
+            recipient_roles=["finance"],
+            dedupe_key=f"lifecycle:bad-debt:partial:{invoice.id}:{approver_key}",
+        )
+    if (
+        row.status == BAD_DEBT_APPROVED
+        and invoice.status != INVOICE_CLOSED
+        and _approved_bad_debt_remaining(db, invoice.id) >= _invoice_cash_balance(db, invoice)
+    ):
+        # A partial write-off must never make the project look closure-ready
+        # while a normal collectible balance still remains.
+        _maybe_finance_closure_pending(
+            db,
+            actor=actor,
+            workflow=_workflow(db, invoice.project_id),
+            exclude_invoice_id=invoice.id,
+        )
+    return row
+
+
+def record_bad_debt_recovery(
+    db: Session, *, actor: User, invoice_id: int, payload: BadDebtRecoveryCreate
+) -> ProjectInvoiceBadDebt:
+    """Record real cash recovered against an approved Bad Debt write-off.
+
+    The money is booked through the normal invoice payment architecture (no
+    fake payment rows, no separate settlement), while the original Bad Debt
+    record and its history are preserved. The write-off only shrinks to the
+    extent the client actually pays back.
+    """
+    invoice = db.get(ProjectInvoice, invoice_id)
+    if invoice is None:
+        raise ValueError("Invoice not found")
+    row = _bad_debt_row(db, invoice_id)
+    if row is None or row.status not in {BAD_DEBT_APPROVED, BAD_DEBT_RECOVERED}:
+        raise ValueError("An approved Bad Debt write-off is required before recording a recovery")
+    approved = Decimal(row.approved_amount or 0)
+    recovered_before = Decimal(row.recovered_amount or 0)
+    unrecovered = max(approved - recovered_before, Decimal("0"))
+    if unrecovered <= 0:
+        raise ValueError("This Bad Debt is already fully recovered")
+    amount = payload.amount
+    if amount <= 0:
+        raise ValueError("Recovery amount must be greater than zero")
+    if amount > unrecovered:
+        raise ValueError("Recovery amount cannot exceed the unrecovered Bad Debt balance")
+
+    # Real money: reuse the existing invoice payment path so Cash Received,
+    # Outstanding and FX handling stay correct. Never a synthetic settlement.
+    record_invoice_payment(
+        db,
+        actor=actor,
+        invoice_id=invoice_id,
+        payload=InvoicePaymentCreate(
+            payment_reference=payload.payment_reference.strip(),
+            payment_date=payload.payment_date,
+            amount=amount,
+            payment_mode=payload.payment_mode.strip().lower(),
+            comments=f"Bad Debt recovery. {payload.remarks}".strip(),
+        ),
+        _allow_bad_debt_recovery=True,
+    )
+
+    recovered_after = recovered_before + amount
+    row.recovered_amount = recovered_after
+    row.status = BAD_DEBT_RECOVERED if recovered_after >= approved else BAD_DEBT_APPROVED
+    db.flush()
+
+    # For an open invoice, ``record_invoice_payment`` moved the workflow through
+    # a payment status. If the still-unpaid cash balance remains fully covered by
+    # the still-approved write-off, restore Finance Closure Pending eligibility.
+    # This keeps a partial recovery from accidentally making an already-approved
+    # write-off project appear open again.
+    if (
+        row.status == BAD_DEBT_APPROVED
+        and invoice.status != INVOICE_CLOSED
+        and _approved_bad_debt_remaining(db, invoice.id) >= _invoice_cash_balance(db, invoice)
+    ):
+        _maybe_finance_closure_pending(
+            db,
+            actor=actor,
+            workflow=_workflow(db, invoice.project_id),
+            exclude_invoice_id=invoice.id,
+        )
+
+    project = _project(db, invoice.project_id)
+    unrecovered_after = max(approved - recovered_after, Decimal("0"))
+    add_timeline_event(
+        db,
+        project_id=invoice.project_id,
+        event_type="bad_debt_recovered",
+        title=f"Bad Debt Recovery · {invoice.invoice_number}",
+        status=INVOICE_CLOSED if invoice.status == INVOICE_CLOSED else (
+            PAYMENT_OVERDUE if unrecovered_after > 0 else PAYMENT_RECEIVED
+        ),
+        actor_user_id=actor.id,
+        details=(
+            f"{invoice.currency} {amount} recovered. Written off {invoice.currency} {approved}, "
+            f"recovered {invoice.currency} {recovered_after}, remaining unrecovered {invoice.currency} {unrecovered_after}."
+        ),
+    )
+    _notify(
+        db,
+        project=project,
+        event_type="lifecycle.bad_debt.recovered",
+        title=f"Bad Debt recovery recorded: {project.project_code}",
+        message=(
+            f"Invoice {invoice.invoice_number}: {invoice.currency} {amount} recovered. "
+            f"Remaining unrecovered {invoice.currency} {unrecovered_after}."
+        ),
+        target_url=f"/finance/billing?project={project.id}&invoice={invoice.id}",
+        recipient_roles=["finance", "management"],
+        dedupe_key=f"lifecycle:bad-debt:recovery:{invoice.id}:{int((row.updated_at or utc_now()).timestamp())}",
+    )
+    return row
+
+
+def _client_name(project: FinanceProject) -> str:
+    client = project.client
+    return ((client.client_name if client is not None else project.client_name) or "Client not recorded").strip()
+
+
+def list_bad_debts(db: Session) -> list[dict]:
+    rows = list(db.scalars(select(ProjectInvoiceBadDebt).order_by(ProjectInvoiceBadDebt.updated_at.desc(), ProjectInvoiceBadDebt.id.desc())).all())
+    invoice_ids = [row.invoice_id for row in rows]
+    invoices = {row.id: row for row in db.scalars(select(ProjectInvoice).where(ProjectInvoice.id.in_(invoice_ids))).all()} if invoice_ids else {}
+    projects = {row.id: row for row in db.scalars(_project_query().where(FinanceProject.id.in_({r.project_id for r in rows}))).unique().all()} if rows else {}
+    result = []
+    for row in rows:
+        invoice = invoices.get(row.invoice_id)
+        project = projects.get(row.project_id)
+        if invoice is None or project is None:
+            continue
+        cash_balance = _invoice_cash_balance(db, invoice)
+        approved_remaining = _approved_bad_debt_remaining(db, invoice.id)
+        result.append({
+            "id": row.id,
+            "project_id": row.project_id,
+            "project_code": project.project_code,
+            "project_name": project.project_name,
+            "client_name": _client_name(project),
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "invoice_total": float(_invoice_total_due(invoice)),
+            "paid_amount": float(_payment_total(db, invoice.id)),
+            "cash_balance": float(cash_balance),
+            "status": row.status,
+            "proposed_amount": float(row.proposed_amount),
+            "approved_amount": float(row.approved_amount) if row.approved_amount is not None else None,
+            "recovered_amount": float(row.recovered_amount or 0),
+            "net_bad_debt": float(approved_remaining),
+            "unrecovered_amount": float(
+                max(Decimal(row.approved_amount or 0) - Decimal(row.recovered_amount or 0), Decimal("0"))
+            ) if row.approved_amount is not None else 0.0,
+            "currency": row.currency,
+            "reason": row.reason,
+            "collection_attempts": row.collection_attempts,
+            "last_followup_date": row.last_followup_date.isoformat() if row.last_followup_date else None,
+            "finance_remarks": row.finance_remarks,
+            "proposed_at": row.proposed_at.isoformat(),
+            "proposed_by_name": _user_display_name(db, row.proposed_by_id),
+            "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "reviewed_by_name": _user_display_name(db, row.reviewed_by_id),
+            "decision_reason": row.decision_reason,
+            "approvals": _bad_debt_approval_payload(db, row),
+            "final_approved_at": (
+                row.reviewed_at.isoformat()
+                if row.status == BAD_DEBT_APPROVED and row.reviewed_at else None
+            ),
+        })
+    return result
 
 
 def close_invoice(
@@ -1276,13 +2398,30 @@ def close_invoice(
     invoice = db.get(ProjectInvoice, invoice_id)
     if invoice is None:
         raise ValueError("Invoice not found")
-    total_due = Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0)
-    if _payment_total(db, invoice.id) < total_due or invoice.status != PAYMENT_RECEIVED:
-        raise ValueError("Full payment is required before invoice closure")
+    total_due = _invoice_total_due(invoice)
+    paid = _payment_total(db, invoice.id)
+    if paid + _approved_bad_debt_remaining(db, invoice.id) < total_due:
+        raise ValueError("Full payment or Management-approved Bad Debt is required before invoice closure")
+    if invoice.status == INVOICE_CLOSED:
+        if invoice.closed_at is None:
+            invoice.closed_at = utc_now()
+            invoice.closed_by_id = actor.id
+        return invoice
+    if paid > total_due:
+        raise ValueError("Inconsistent invoice payment status calculation")
     invoice.status = INVOICE_CLOSED
     invoice.closed_by_id = actor.id
     invoice.closed_at = utc_now()
     workflow = _workflow(db, invoice.project_id)
+    if (workflow.status or "").upper() == CLOSED and workflow.finance_closed_at is not None:
+        # Complete an invoice omitted by a historical Finance project closure
+        # without reopening that genuinely closed project or rewriting its history.
+        add_timeline_event(
+            db, project_id=invoice.project_id, event_type="invoice_closed",
+            title=f"Invoice Closed {invoice.invoice_number}", status=INVOICE_CLOSED,
+            actor_user_id=actor.id, details=payload.comments,
+        )
+        return invoice
     _transition(
         db,
         workflow=workflow,
@@ -1292,21 +2431,7 @@ def close_invoice(
         title=f"Invoice Closed {invoice.invoice_number}",
         comments=payload.comments,
     )
-    open_count = int(db.scalar(select(func.count(ProjectInvoice.id)).where(
-        ProjectInvoice.project_id == invoice.project_id,
-        ProjectInvoice.id != invoice.id,
-        ProjectInvoice.status != INVOICE_CLOSED,
-    )) or 0)
-    if open_count == 0:
-        _transition(
-            db,
-            workflow=workflow,
-            actor=actor,
-            status=FINANCE_CLOSURE_PENDING,
-            event_type="finance_closure_pending",
-            title="Finance Closure Pending",
-            comments="All invoices are fully paid and closed.",
-        )
+    _maybe_finance_closure_pending(db, actor=actor, workflow=workflow, exclude_invoice_id=invoice.id)
     return invoice
 
 
@@ -1327,12 +2452,18 @@ def assert_finance_closable(db: Session, *, workflow: ProjectWorkflow) -> None:
             return
     if workflow.status != FINANCE_CLOSURE_PENDING:
         raise ValueError("Finance Closure Pending is required before Finance Closure")
-    accepted = db.scalar(select(ProjectTimelineEvent.id).where(
-        ProjectTimelineEvent.project_id == workflow.project_id,
-        ProjectTimelineEvent.status.in_([CLIENT_ACCEPTED, DEEMED_ACCEPTED]),
-    ).limit(1))
-    if accepted is None:
-        raise ValueError("Client acceptance or authorized deemed acceptance is required")
+    # Management projects require original Management-source approval.
+    # BD projects retain their existing client acceptance validation.
+    if db.get(ManagementProjectLink, workflow.project_id) is not None:
+        if management_source_approval_event(db, workflow.project_id) is None:
+            raise ValueError("Original Management source approval is required before Finance Closure")
+    else:
+        accepted = db.scalar(select(ProjectTimelineEvent.id).where(
+            ProjectTimelineEvent.project_id == workflow.project_id,
+            ProjectTimelineEvent.status.in_([CLIENT_ACCEPTED, DEEMED_ACCEPTED]),
+        ).limit(1))
+        if accepted is None:
+            raise ValueError("Client acceptance or authorized deemed acceptance is required")
     ready = db.scalar(select(ProjectTimelineEvent.id).where(
         ProjectTimelineEvent.project_id == workflow.project_id,
         ProjectTimelineEvent.status == READY_FOR_BILLING,
@@ -1343,10 +2474,18 @@ def assert_finance_closable(db: Session, *, workflow: ProjectWorkflow) -> None:
     if not invoices:
         raise ValueError("At least one invoice is required")
     for invoice in invoices:
-        if invoice.status != INVOICE_CLOSED:
-            raise ValueError(f"Invoice {invoice.invoice_number} must be fully paid and closed")
-        if _payment_total(db, invoice.id) < Decimal(invoice.amount) + Decimal(invoice.tax_amount or 0):
-            raise ValueError(f"Invoice {invoice.invoice_number} has an outstanding payment balance")
+        paid = _payment_total(db, invoice.id)
+        total_due = _invoice_total_due(invoice)
+        cash_balance = max(total_due - paid, Decimal("0"))
+        approved_bad_debt = _approved_bad_debt_remaining(db, invoice.id)
+        if cash_balance <= 0:
+            if invoice.status != INVOICE_CLOSED:
+                raise ValueError(f"Invoice {invoice.invoice_number} must be closed after full settlement")
+            continue
+        if approved_bad_debt < cash_balance:
+            raise ValueError(
+                f"Invoice {invoice.invoice_number} has an outstanding balance not covered by Management-approved Bad Debt"
+            )
 
     # Additive V8.1 Commercial guard: unresolved estimate revisions, employee
     # expenses/declarations, or vendor payables must not be silently bypassed.
@@ -1371,11 +2510,52 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
     paid = _payment_total(db, row.id)
     due = Decimal(row.amount) + Decimal(row.tax_amount or 0)
     effective_status = row.status
-    if row.status in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID} and row.due_date < date.today() and paid < due:
-        effective_status = PAYMENT_OVERDUE
+    if row.status != INVOICE_DRAFT:
+        derived = compute_invoice_payment_status(invoice_total=due, paid_total=paid)
+        remaining = due - paid
+        if row.status == INVOICE_CLOSED or derived == INVOICE_CLOSED:
+            effective_status = INVOICE_CLOSED
+        elif (
+            remaining > 0
+            and row.due_date < date.today()
+            and row.status not in {INVOICE_CLOSED, PAYMENT_RECEIVED}
+        ):
+            # Overdue is authoritative for the detail Finance actually sees:
+            # due date passed + open balance + not settled. This must hold for
+            # every stored status (INVOICE_RAISED / PAYMENT_PENDING /
+            # PARTIALLY_PAID / PAYMENT_OVERDUE) - a persisted PAYMENT_OVERDUE
+            # must never fall back to the payment-derived PAYMENT_PENDING.
+            effective_status = PAYMENT_OVERDUE
+        elif paid > 0:
+            effective_status = PARTIALLY_PAID
+        else:
+            effective_status = derived
     payments = list(db.scalars(select(ProjectInvoicePayment).where(
         ProjectInvoicePayment.invoice_id == row.id
     ).order_by(ProjectInvoicePayment.payment_date.asc(), ProjectInvoicePayment.id.asc())).all())
+    bad_debt = _bad_debt_row(db, row.id)
+    approved_bad_debt = _approved_bad_debt_remaining(db, row.id)
+    cash_balance = max(Decimal("0"), due - paid)
+    collectible_balance = max(Decimal("0"), cash_balance - approved_bad_debt)
+    bad_debt_payload = None if bad_debt is None else {
+        "id": bad_debt.id,
+        "status": bad_debt.status,
+        "proposed_amount": float(bad_debt.proposed_amount),
+        "approved_amount": float(bad_debt.approved_amount) if bad_debt.approved_amount is not None else None,
+        "recovered_amount": float(bad_debt.recovered_amount or 0),
+        "net_bad_debt": float(approved_bad_debt),
+        "reason": bad_debt.reason,
+        "collection_attempts": bad_debt.collection_attempts,
+        "last_followup_date": bad_debt.last_followup_date.isoformat() if bad_debt.last_followup_date else None,
+        "finance_remarks": bad_debt.finance_remarks,
+        "proposed_at": bad_debt.proposed_at.isoformat(),
+        "proposed_by_name": _user_display_name(db, bad_debt.proposed_by_id),
+        "reviewed_at": bad_debt.reviewed_at.isoformat() if bad_debt.reviewed_at else None,
+        "reviewed_by_name": _user_display_name(db, bad_debt.reviewed_by_id),
+        "decision_reason": bad_debt.decision_reason,
+        # Dual-approval progress (Vinod Sir AND Chethan) for the Billing/Management UI.
+        "approvals": _bad_debt_approval_payload(db, bad_debt),
+    }
     return {
         "id": row.id,
         "invoice_number": row.invoice_number,
@@ -1387,9 +2567,30 @@ def _invoice_payload(db: Session, row: ProjectInvoice) -> dict:
         "tax_amount": float(row.tax_amount or 0),
         "total_amount": float(due),
         "paid_amount": float(paid),
-        "balance": float(max(Decimal("0"), due - paid)),
+        "balance": float(cash_balance),
+        "collectible_balance": float(collectible_balance),
+        "can_close_invoice": (
+            row.status in {INVOICE_RAISED, PAYMENT_PENDING, PARTIALLY_PAID, PAYMENT_OVERDUE, PAYMENT_RECEIVED}
+            and paid <= due
+            and collectible_balance == 0
+        ),
+        "days_overdue": max((date.today() - row.due_date).days, 0) if cash_balance > 0 and row.due_date < date.today() else 0,
+        "bad_debt": bad_debt_payload,
+        # V8.7 presentation + authorised signature state (read by Finance Billing/Preview).
+        "theme": row.theme,
+        "signed": bool(row.signed),
+        "signed_by_id": row.signed_by_id,
+        "signed_by_name": _user_display_name(db, row.signed_by_id),
+        "signed_at": row.signed_at.isoformat() if row.signed_at else None,
+        "signature_invalidated_at": (
+            row.signature_invalidated_at.isoformat() if row.signature_invalidated_at else None
+        ),
         "currency": row.currency,
         "tax_percent": float(row.tax_percent) if row.tax_percent is not None else None,
+        **{
+            field: float(getattr(row, field)) if getattr(row, field) is not None else None
+            for field in GST_SPLIT_FIELDS
+        },
         "payment_terms": row.payment_terms,
         "po_wo_reference": row.po_wo_reference,
         "fx_snapshot_id": row.fx_snapshot_id,
@@ -1483,6 +2684,7 @@ def _project_summary(db: Session, project: FinanceProject, workflow: ProjectWork
     progress = round((delivered / len(packages)) * 100, 1) if packages else (100.0 if workflow.operational_completed_at else 0.0)
     client = project.client
     pm = project.master_profile.project_manager if project.master_profile else None
+    displayed_status = management_billing_status(db, workflow)
     tl_id = db.scalar(select(OrthoProjectMember.user_id).where(
         OrthoProjectMember.project_id == project.id,
         OrthoProjectMember.member_role == "team_leader",
@@ -1495,35 +2697,41 @@ def _project_summary(db: Session, project: FinanceProject, workflow: ProjectWork
         "project_name": project.project_name,
         "client_id": client.client_code if client else None,
         "client_name": (client.client_name or "") if client else (project.client_name or ""),
-        "workflow_status": workflow.status,
+        "workflow_status": displayed_status,
         "project_manager_id": pm.id if pm else None,
         "project_manager_name": pm.full_name if pm else None,
         "team_leader_id": tl.id if tl else None,
         "team_leader_name": tl.full_name if tl else None,
-        "current_stage": workflow.status,
+        "current_stage": displayed_status,
         "progress_percent": progress,
         "operational_completed_at": workflow.operational_completed_at.isoformat() if workflow.operational_completed_at else None,
         "rework_count": len(reworks),
         "latest_rework_status": reworks[-1].status if reworks else None,
         "latest_rework_cycle_type": reworks[-1].cycle_type if reworks else None,
         "invoice_count": len(invoices),
-        "invoice_balance": sum(item["balance"] for item in (_invoice_payload(db, invoice) for invoice in invoices)),
-        "has_overdue_invoice": any(_invoice_payload(db, invoice)["status"] == PAYMENT_OVERDUE for invoice in invoices),
+        "invoice_balance": sum(item["collectible_balance"] for item in (_invoice_payload(db, invoice) for invoice in invoices)),
+        "has_overdue_invoice": any(
+            payload["status"] == PAYMENT_OVERDUE and payload["collectible_balance"] > 0
+            for payload in (_invoice_payload(db, invoice) for invoice in invoices)
+        ),
     }
 
 
 def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
     query = _project_query().join(ProjectWorkflow, ProjectWorkflow.project_id == FinanceProject.id)
+    query = exclude_hidden_projects(db, query)
     if role == "bd":
         query = query.where(ProjectWorkflow.bd_owner_user_id == actor.id)
-    elif role == "ortho":
+    elif role == "bd_employee":
+        query = query.where(FinanceProject.id.in_(_employee_feedback_project_ids(db, actor)))
+    elif is_technical_pm_role(role):
         query = query.join(FinanceProjectMasterProfile).where(FinanceProjectMasterProfile.project_manager_id == actor.id)
     projects = list(db.scalars(query.order_by(FinanceProject.updated_at.desc(), FinanceProject.id.desc())).unique().all())
     workflows = {row.project_id: row for row in db.scalars(select(ProjectWorkflow).where(
         ProjectWorkflow.project_id.in_([project.id for project in projects])
     )).all()} if projects else {}
     rows = [_project_summary(db, project, workflows[project.id]) for project in projects if project.id in workflows]
-    if role == "ortho":
+    if is_technical_pm_role(role):
         rows = [_pm_restricted_project_view(row) for row in rows]
     statuses = [row["workflow_status"] for row in rows]
     summary = {
@@ -1541,7 +2749,7 @@ def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
     if role in MANAGEMENT_ROLES:
         payload["department_overview"] = {
             "bd": {
-                "clients": int(db.scalar(select(func.count(FinanceClient.id))) or 0),
+                "clients": int(db.scalar(exclude_hidden_clients(db, select(func.count(FinanceClient.id)))) or 0),
                 "projects": len(rows),
                 "pending_finance_approvals": statuses.count("pending_finance_approval"),
                 "returned_projects": statuses.count("finance_returned"),
@@ -1549,7 +2757,7 @@ def lifecycle_dashboard(db: Session, *, actor: User, role: str) -> dict:
             },
             "finance": {
                 "project_approvals": statuses.count("pending_finance_approval"),
-                "clients": int(db.scalar(select(func.count(FinanceClient.id))) or 0),
+                "clients": int(db.scalar(exclude_hidden_clients(db, select(func.count(FinanceClient.id)))) or 0),
                 "projects": len(rows),
                 "payment_pending": summary["payment_pending"],
                 "overdue": summary["overdue"],
@@ -1617,7 +2825,9 @@ def project_360(db: Session, *, actor: User, role: str, project_id: int) -> dict
     workflow = _workflow(db, project_id)
     if role == "bd" and workflow.bd_owner_user_id != actor.id:
         raise PermissionError("Project is not assigned to this BD user")
-    if role == "ortho" and (not project.master_profile or project.master_profile.project_manager_id != actor.id):
+    if role == "bd_employee" and not _can_manage_feedback(db, actor, workflow):
+        raise PermissionError("Project is not assigned to this BD Employee")
+    if is_technical_pm_role(role) and (not project.master_profile or project.master_profile.project_manager_id != actor.id):
         raise PermissionError("Project is not assigned to this Project Manager")
     summary = _project_summary(db, project, workflow)
     member_rows = list(db.scalars(select(OrthoProjectMember).where(
@@ -1681,6 +2891,7 @@ def project_360(db: Session, *, actor: User, role: str, project_id: int) -> dict
                 "correction_description": row.correction_description,
                 "classification_status": row.classification_status,
                 "classified_as": row.classified_as,
+                "source": row.source or "client_portal",
                 "responded_at": row.responded_at.isoformat(),
             }
             for row in feedback_responses
@@ -1727,7 +2938,7 @@ def project_360(db: Session, *, actor: User, role: str, project_id: int) -> dict
         ],
         "invoices": [_invoice_payload(db, row) for row in invoices],
     }
-    if role == "ortho":
+    if is_technical_pm_role(role):
         return _pm_restricted_project_view(payload)
     return payload
 

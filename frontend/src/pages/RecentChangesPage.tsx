@@ -148,6 +148,11 @@ export function RecentChangesPage() {
         eyebrow="COMPLETE MONTHLY TRACEABILITY"
         title="IT Recent Changes & Monthly Activity"
         description="The selected reporting month controls where each activity appears. The actual system-recorded date and time remain visible separately, and activity remarks stay attached only to that record."
+        meta={<>
+          <span className="nk-meta-chip"><CalendarDays size={14} /> Reporting month {selectedMonth}</span>
+          <span className="nk-meta-chip"><FileClock size={14} /> Server-recorded date & time preserved</span>
+          <span className="nk-meta-chip"><Search size={14} /> {data ? `${data.summary.total_activities} activities · ${data.filters.users.length} users in scope` : 'Loading activity scope'}</span>
+        </>}
       />
       {error && <div className="error-message">{error}</div>}
 

@@ -1,16 +1,17 @@
-import { ArrowRightLeft, FileUp, Laptop, Monitor, PlusCircle, Search } from 'lucide-react'
+import { ArrowRightLeft, CalendarDays, FileUp, Laptop, Monitor, PlusCircle, Search } from 'lucide-react'
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch, uploadExcel } from '../lib/api'
+import { indiaDateInput } from '../lib/date'
 import { custodyActionAllowed, custodyGuidance, defaultCustodyAction } from '../lib/assetCustody'
 import { DEPARTMENT_OPTIONS, MANUAL_ENTRY_VALUE } from '../lib/assetOptions'
 import { isFullAccessRole } from '../lib/roles'
 import { monthLabel } from '../lib/itMonth'
 import type { Asset, ITHandoverRecord } from '../types'
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() { return indiaDateInput() }
 
 const initialForm = {
   asset_id: '', device_category: 'laptop', employee_name: '', dc_number: '', department: '', work_mode: 'office',
@@ -271,7 +272,7 @@ export function HandoverReturnPage() {
   const currentCustodyActionAllowed = custodyActionAllowed(selectedAsset, form.action_type)
 
   return <>
-    <DashboardHeader eyebrow="CUSTODY & ASSIGNMENT CONTROL" title="Laptop & Desktop Handover / Return" description={`Records saved now are reported in ${monthLabel(selectedMonth)}. Handover, Transfer and Return are custody movements only; repair and component work remain in their dedicated IT workflows.`} />
+    <DashboardHeader eyebrow="CUSTODY & ASSIGNMENT CONTROL" title="Laptop & Desktop Handover / Return" description={`Records saved now are reported in ${monthLabel(selectedMonth)}. Handover, Transfer and Return are custody movements only; repair and component work remain in their dedicated IT workflows.`} meta={<><span className="nk-meta-chip"><CalendarDays size={14} /> Reported in {monthLabel(selectedMonth)}</span><span className="nk-meta-chip"><ArrowRightLeft size={14} /> Handover · Transfer · Return are custody movements</span><span className="nk-meta-chip"><Laptop size={14} /> {canEdit ? 'Custody actions enabled for your role' : 'Read-only custody view'}</span></>} />
     {message && <div className="success-message">{message}</div>}{error && <div className="error-message">{error}</div>}
 
     {canEdit && <section className="panel activity-entry-panel">

@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { FilePlus2, RefreshCcw, Send, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { DashboardHeader } from '../../../components/DashboardHeader'
@@ -17,7 +18,7 @@ type ExpenseForm = {
   phase_key: string
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 const blank = (): ExpenseForm => ({ expense_date: today(), category: 'Travel', purpose: '', amount: '', payment_source: 'EMPLOYEE_PAID', remarks: '', phase_key: 'ORIGINAL' })
 
 export function EmployeeProjectCostsPage() {
@@ -116,7 +117,7 @@ export function EmployeeProjectCostsPage() {
   }
 
   return <div className="commercial-page">
-    <DashboardHeader eyebrow="EMPLOYEE · PROJECT COSTS" title="Project Cost Entries" description="Record project-specific out-of-pocket or company-paid costs against only the Project IDs assigned to you. These entries are separate from the existing advance/reimbursement claim workflow." actions={<button className="commercial-button secondary" onClick={loadProjects}><RefreshCcw size={15}/> Refresh</button>}/>
+    <DashboardHeader eyebrow="EMPLOYEE · PROJECT COSTS" title="Project Cost Entries" description="Record project-specific out-of-pocket or company-paid costs against only the Project IDs assigned to you. These entries are separate from the existing advance/reimbursement claim workflow." actions={<button className="commercial-button secondary" onClick={loadProjects}><RefreshCcw size={15}/> Refresh</button>} meta={<><span className="nk-meta-chip"><FilePlus2 size={14}/> Record costs against your assigned Project IDs only</span><span className="nk-meta-chip"><ShieldCheck size={14}/> Separate from the advance / reimbursement workflow</span><span className="nk-meta-chip"><Send size={14}/> Submitted entries feed project cost review</span></>}/>
     {error && <div className="commercial-alert error">{error}</div>}
     {notice && <div className="commercial-alert success">{notice}</div>}
 

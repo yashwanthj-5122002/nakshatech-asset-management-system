@@ -37,6 +37,8 @@ function durationState(ticket: SupportTicketSummary, nowMs: number): { value: st
 
 export function TicketListPage() {
   const { user } = useAuth()
+  const ticketRoot = user?.role === "bd_employee" ? "/bd-employee/tickets" : "/tickets"
+  const ticketCreate = user?.role === "bd_employee" ? "/bd-employee/support/new" : "/support/new"
   const [tickets, setTickets] = useState<SupportTicketSummary[]>([])
   const [query, setQuery] = useState('')
   const [progressFilter, setProgressFilter] = useState<'all' | TicketProgressState>('all')
@@ -89,14 +91,14 @@ export function TicketListPage() {
         : 'Simple work status: red is not started, yellow is ongoing, and green is completed. Priority remains visible for queue urgency.'
 
   return <>
-    <DashboardHeader eyebrow="TICKET OPERATIONS" title={title} description={description} />
+    <DashboardHeader eyebrow="TICKET OPERATIONS" title={title} description={description} meta={<><span className="nk-meta-chip"><TicketCheck size={14}/> Raise, track and resolve support tickets</span><span className="nk-meta-chip"><Search size={14}/> Search ticket, employee, asset or component</span><span className="nk-meta-chip"><Filter size={14}/> Priority and work-status filters</span></>} />
     <section className="panel-card ticket-list-panel ticket-simple-list-panel">
       <div className="ticket-list-toolbar">
         <label className="ticket-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search ticket, employee, asset tag, component, or issue" /></label>
         <label><Filter size={16} /><select value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as 'all' | TicketPriority)}><option value="all">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Moderate</option><option value="low">Low</option></select></label>
         <label><Filter size={16} /><select value={progressFilter} onChange={event => setProgressFilter(event.target.value as 'all' | TicketProgressState)}><option value="all">All work statuses</option><option value="not_started">Not Started</option><option value="ongoing">Ongoing</option><option value="completed">Completed</option></select></label>
         {oversightView && <label><Filter size={16} /><select value={departmentFilter} onChange={event => setDepartmentFilter(event.target.value as 'all' | TicketDepartment)}><option value="all">All departments</option><option value="it">IT</option><option value="drone">Drone</option><option value="software_team">Software Team</option><option value="management">Management</option></select></label>}
-        {employeeView && <Link className="primary-button" to="/support/new">Raise Ticket</Link>}
+        {employeeView && <Link className="primary-button" to={ticketCreate}>Raise Ticket</Link>}
       </div>
       {error && <div className="error-message">{error}</div>}
       {filtered.length === 0 ? <div className="empty-state"><TicketCheck size={30} /><span>No tickets match the current filters.</span></div> : <div className="table-wrap"><table className="data-table ticket-table ticket-priority-queue ticket-progress-queue"><thead><tr>{!employeeView && <th>Queue #</th>}<th>Ticket</th>{!employeeView && <th>Raised By</th>}<th>Asset / Component</th><th>Priority</th><th>Work Status</th>{!employeeView && <th>SLA</th>}<th>Raised At</th><th>Waiting / Resolution</th><th>Branch</th><th>Updated At</th></tr></thead><tbody>{filtered.map(ticket => {
@@ -105,7 +107,7 @@ export function TicketListPage() {
         const progress = ticketProgressFromStatus(ticket.status)
         return <tr key={ticket.id} className={`ticket-queue-row progress-row-${progress} ${!employeeView ? `sla-row-${sla.state}` : ''}`}>
           {!employeeView && <td className="ticket-queue-position"><strong>#{ticket.queue_position ?? '—'}</strong></td>}
-          <td><Link to={`/tickets/${ticket.id}`}><strong>{ticket.ticket_code}</strong><small>{ticket.title}</small></Link></td>
+          <td><Link to={`${ticketRoot}/${ticket.id}`}><strong>{ticket.ticket_code}</strong><small>{ticket.title}</small></Link></td>
           {!employeeView && <td><strong>{ticket.requester_name}</strong><small>{ticket.requester_email}</small></td>}
           <td><strong>{ticket.asset_number || 'No asset'}</strong><small>{ticket.problem_label || ticket.category || departmentLabels[ticket.department]}</small>{ticket.component_asset_tag && ticket.component_asset_tag !== ticket.asset_number && <small>Component tag: {ticket.component_asset_tag}</small>}</td>
           <td><span className={`ticket-priority priority-${ticket.priority}`}>{priorityLabel(ticket.priority)}</span><small>{slaLabel(ticket.sla_target_minutes)}</small></td>

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import get_db
+from app.core.departments import TECHNICAL_PM_ROLES
 from app.core.roles import role_is_allowed
 from app.modules.commercial.fx_service import FxUnavailableError
 from app.modules.commercial.models import (
@@ -24,6 +25,7 @@ from app.modules.commercial.schemas import (
     CommercialEstimateDecision,
     CommercialEstimateInput,
     FxPreviewRequest,
+    ProjectExpenseCancellation,
     ProjectExpenseDecision,
     ProjectExpenseDeclarationInput,
     ProjectExpenseInput,
@@ -39,6 +41,7 @@ from app.modules.commercial.service import (
     record_billing_basis,
     create_estimate_revision,
     create_project_expense,
+    cancel_project_expense,
     create_vendor_invoice,
     currencies_payload,
     decide_estimate_revision,
@@ -138,6 +141,20 @@ def _authorize_attachment(
 ) -> None:
     validate_attachment_owner(db, project_id=project_id, owner_type=owner_type, owner_id=owner_id)
     role = _service_role(auth)
+    if role == "bd_employee":
+        if auth.user.role != "bd_employee":
+            raise HTTPException(403, "BD employee access required")
+        if owner_type != "ESTIMATE_REVISION":
+            raise HTTPException(403, "Employee access limited to own commercial estimates")
+        from app.modules.bd_employee.direct_router import _owned_project
+        from app.modules.commercial.models import ProjectCommercialEstimateRevision
+        _owned_project(db, auth.user, project_id)
+        revision = db.get(ProjectCommercialEstimateRevision, owner_id)
+        if revision is None or revision.project_id != project_id:
+            raise HTTPException(404, "Project commercial estimate not found")
+        if write and revision.is_locked:
+            raise HTTPException(409, "Locked commercial estimate cannot be changed")
+        return
 
     if owner_type == "EXPENSE":
         row = db.get(ProjectExpense, owner_id)
@@ -207,7 +224,13 @@ def project_estimates(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "bd", "finance", "management", "admin")
+    if _role(auth) == "bd_employee":
+        if auth.user.role != "bd_employee":
+            raise HTTPException(403, "BD employee access required")
+        from app.modules.bd_employee.direct_router import _owned_project
+        _owned_project(db, auth.user, project_id)
+    else:
+        _roles(auth, "bd", "finance", "management", "admin")
     try:
         return list_estimates(db, project_id=project_id)
     except Exception as exc:
@@ -276,7 +299,8 @@ def estimate_revision_queue(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "finance", "admin")
+    # Management may inspect the queue (read-only oversight); only Finance/Admin decide.
+    _roles(auth, "finance", "admin", "management")
     allowed = {"PENDING_APPROVAL", "RETURNED", "APPROVED", "REJECTED"}
     normalized = queue_status.strip().upper()
     if normalized not in allowed:
@@ -310,7 +334,7 @@ def pm_billing_basis(
     auth: CurrentAuth = Depends(get_current_auth),
 ):
     """Assigned Project Manager only. Returns billing type, unit and milestone NAMES: never a rate, value, FX or margin."""
-    _roles(auth, "ortho", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "admin")
     try:
         return pm_billing_basis_view(db, actor=auth.user, project_id=project_id)
     except Exception as exc:
@@ -325,7 +349,7 @@ def confirm_pm_billing_basis(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "ortho", "admin")
+    _roles(auth, *TECHNICAL_PM_ROLES, "admin")
     try:
         row = record_billing_basis(db, actor=auth.user, project_id=project_id, payload=payload)
         _audit(request, db, auth, "COMMERCIAL_PM_BILLING_BASIS_CONFIRMED", "project_billing_basis", row.id, {"project_id": project_id, "entry_no": row.entry_no})
@@ -400,6 +424,30 @@ def update_expense(
         _audit(request, db, auth, "PROJECT_EXPENSE_UPDATED", "project_expense", row.id, {"project_id": row.project_id, "amount_inr": float(row.amount)})
         db.commit()
         return next(item for item in list_project_expenses(db, actor=auth.user, role=_service_role(auth), project_id=row.project_id) if item["id"] == row.id)
+    except Exception as exc:
+        db.rollback()
+        raise _error(exc) from exc
+
+
+@router.post("/expenses/{expense_id}/cancel")
+def cancel_expense(
+    expense_id: int,
+    payload: ProjectExpenseCancellation,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: CurrentAuth = Depends(get_current_auth),
+):
+    try:
+        row = cancel_project_expense(
+            db, actor=auth.user, role=_service_role(auth), expense_id=expense_id, payload=payload,
+        )
+        _audit(request, db, auth, "PROJECT_EXPENSE_CANCELLED", "project_expense", row.id, {
+            "project_id": row.project_id, "expense_code": row.expense_code, "reason": payload.reason,
+        })
+        db.commit()
+        return next(item for item in list_project_expenses(
+            db, actor=auth.user, role=_service_role(auth), project_id=row.project_id,
+        ) if item["id"] == row.id)
     except Exception as exc:
         db.rollback()
         raise _error(exc) from exc
@@ -567,7 +615,7 @@ def commercial_analytics(
     db: Session = Depends(get_db),
     auth: CurrentAuth = Depends(get_current_auth),
 ):
-    _roles(auth, "management", "admin")
+    _roles(auth, "management", "admin", "finance")
     try:
         return management_analytics(
             db,

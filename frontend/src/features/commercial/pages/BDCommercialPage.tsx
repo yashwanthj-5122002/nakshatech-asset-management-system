@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { CircleDollarSign, RefreshCcw, Save, Send, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -15,7 +16,7 @@ import '../commercial-workflow.css'
 
 type BDDashboard = { projects: SimpleProject[] }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => indiaDateInput()
 const PROJECT_FLOW_STATES = ['draft', 'finance_returned', 'pending_finance_approval']
 
 /**
@@ -118,7 +119,7 @@ export function BDCommercialPage() {
   }
 
   return <div className="commercial-page">
-    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · COMMERCIAL REVISIONS" title="Commercial Estimates" description="Revision 1 is entered on the Create Project form and approved by Finance together with the project. After approval it is a locked baseline; scope, value or rate changes are created here as new revisions." actions={<button className="commercial-button secondary" onClick={loadProjects}><RefreshCcw size={15}/> Refresh</button>}/>
+    <DashboardHeader eyebrow="BUSINESS DEVELOPMENT · COMMERCIAL REVISIONS" title="Commercial Estimates" description="Revision 1 is entered on the Create Project form and approved by Finance together with the project. After approval it is a locked baseline; scope, value or rate changes are created here as new revisions." actions={<button className="commercial-button secondary" onClick={loadProjects}><RefreshCcw size={15}/> Refresh</button>} meta={<><span className="nk-meta-chip"><ShieldCheck size={14}/> Approved Revision 1 is a locked baseline</span><span className="nk-meta-chip"><CircleDollarSign size={14}/> Scope, value or rate changes become new revisions</span><span className="nk-meta-chip"><Send size={14}/> Finance approves revisions with the project</span></>}/>
     {error && <div className="commercial-alert error">{error}</div>}
     {notice && <div className="commercial-alert success">{notice}</div>}
     <div className="commercial-grid">

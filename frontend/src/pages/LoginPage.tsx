@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import { Component, lazy, Suspense, type ChangeEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { NakshaGeoTourOverlay } from '../components/NakshaGeoTourOverlay'
 import { useAuth } from '../context/AuthContext'
 import { roleHomePath } from '../lib/roles'
 import '../management-auth.css'
@@ -17,20 +16,37 @@ import '../login-globe.css'
 
 const GEO_TOUR_REPLAY_DELAY_MS = 9000
 
+const LazyNakshaGeoTourOverlay = lazy(async () => {
+  const module = await import('../components/NakshaGeoTourOverlay')
+  return { default: module.NakshaGeoTourOverlay }
+})
+
 const LazyNakshaInteractiveGlobe = lazy(async () => {
   const module = await import('../components/NakshaInteractiveGlobe')
   return { default: module.NakshaInteractiveGlobe }
 })
 
-class LoginGlobeLoadBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false }
+class LoginGlobeLoadBoundary extends Component<{ children: ReactNode }, { failed: boolean; supported: boolean | null }> {
+  state = { failed: false, supported: null as boolean | null }
+
+  componentDidMount() {
+    // Check before mounting Three.js: unsupported graphics must never take down sign-in.
+    let supported = false
+    try {
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('webgl2')
+      supported = Boolean(context)
+      context?.getExtension('WEBGL_lose_context')?.loseContext()
+    } catch { /* A restricted browser can reject graphics context creation. */ }
+    this.setState({ supported })
+  }
 
   static getDerivedStateFromError() {
     return { failed: true }
   }
 
   render() {
-    if (this.state.failed) {
+    if (this.state.failed || this.state.supported === false) {
       return (
         <div className="naksha-login-globe-fallback" role="status">
           <strong>Interactive globe unavailable</strong>
@@ -38,17 +54,15 @@ class LoginGlobeLoadBoundary extends Component<{ children: ReactNode }, { failed
         </div>
       )
     }
-    return this.props.children
+    return this.state.supported ? this.props.children : null
   }
 }
 
 function LoginGlobeSlot() {
   return (
-    <LoginGlobeLoadBoundary>
-      <Suspense fallback={<div className="naksha-login-globe-fallback naksha-login-globe-fallback--loading" aria-hidden="true" />}>
-        <LazyNakshaInteractiveGlobe />
-      </Suspense>
-    </LoginGlobeLoadBoundary>
+    <Suspense fallback={<div className="naksha-login-globe-fallback naksha-login-globe-fallback--loading" aria-hidden="true" />}>
+      <LazyNakshaInteractiveGlobe />
+    </Suspense>
   )
 }
 
@@ -152,12 +166,17 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
   }, [employeeMode])
 
   useEffect(() => {
+    const routeNotice = (location.state as { notice?: string } | null)?.notice
+    if (routeNotice) {
+      setNotice(routeNotice)
+      return
+    }
     const message = sessionStorage.getItem('management_password_changed')
     if (message) {
       setNotice(message)
       sessionStorage.removeItem('management_password_changed')
     }
-  }, [])
+  }, [location.state])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -191,30 +210,33 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
       <div className="final-login-shell final-login-shell--globe" ref={shellRef}>
         <header className="final-login-header">
           <Link className="final-login-brand" to="/" aria-label="Return to NakshaTech Asset Management welcome page">
-            <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" />
-            <span className="final-login-brand-divider" aria-hidden="true" />
-            <span className="final-login-product-name">Asset Management System</span>
+            <span className="naksha-brand-stack">
+              <img src="/nakshatech-horizontal-light.png" alt="NakshaTech" />
+              <span className="naksha-brand-tagline">INSPIRING GEOSPATIAL STANDARDS</span>
+            </span>
           </Link>
         </header>
 
         <section className="final-login-copy" aria-labelledby="login-page-title">
           <h1 id="login-page-title">
-            <span>One Platform.</span>
-            <strong>Complete Asset Control.</strong>
+            <span>0ne Platform.</span>
+            <strong>MANY SOLUTIONS.</strong>
           </h1>
           <span className="final-login-copy-rule" aria-hidden="true" />
-          <p>Track assets, ownership, operations, requests, and lifecycle activity across NakshaTech.</p>
+          <p>.'</p>
         </section>
 
-        {showGeoTour
-          ? <NakshaGeoTourOverlay key={geoTourRun} onComplete={() => setShowGeoTour(false)} />
-          : <LoginGlobeSlot />}
+        <LoginGlobeLoadBoundary>
+          {showGeoTour
+            ? <Suspense fallback={null}><LazyNakshaGeoTourOverlay key={geoTourRun} onComplete={() => setShowGeoTour(false)} /></Suspense>
+            : <LoginGlobeSlot />}
+        </LoginGlobeLoadBoundary>
 
         <section className="final-login-panel-zone" aria-label={employeeMode ? 'Legacy Employee Support login' : 'NakshaTech organization login'}>
           <form className="final-login-panel" ref={panelRef} onSubmit={submit}>
             <Link className="final-login-back" to="/">
               <ArrowLeft size={17} aria-hidden="true" />
-              <span>Back to welcome</span>
+              <span>Back 2 Welcome Page</span>
             </Link>
 
             <div className="final-login-heading">
@@ -223,21 +245,15 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
               <p>
                 {employeeMode
                   ? 'Legacy Employee Support access is retained for backward compatibility.'
-                  : 'Use your NakshaTech email and password. Your workspace opens automatically from your assigned account role.'}
+                  : ''
+                 }
               </p>
             </div>
 
-            <div className="final-login-notice" role="status">
-              <ShieldCheck size={18} aria-hidden="true" />
-              <span>
-                {employeeMode
-                  ? 'This compatibility login keeps the existing Employee Support access mode available for old bookmarks and workflows.'
-                  : 'One secure login for Management, Admin, IT, Software Team, Drone, Finance, HR, Business Development, Ortho, LiDAR, Civil, Laser Scanning, BIM, Mobile Mapping and Employees. Access permissions are read from your authenticated account — no manual department selection.'}
-              </span>
-            </div>
+           
 
             <label className="final-login-field" htmlFor="login-email">
-              <span>Official Email or Employee ID</span>
+              <span>Official Email / Employee ID</span>
               <div className="final-login-input-shell">
                 <User size={19} aria-hidden="true" />
                 <input
@@ -302,7 +318,7 @@ export function LoginPage({ mode = 'privileged' }: { mode?: 'privileged' | 'empl
               <Link to="/register">Create employee account with organization email</Link>
             </div>
 
-            <footer>© {new Date().getFullYear()} NakshaTech. All rights reserved.</footer>
+            <footer>© {new Date().getFullYear()} NakshaTech .  All rights reserved.</footer>
           </form>
         </section>
       </div>

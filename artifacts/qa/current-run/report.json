@@ -1,0 +1,3963 @@
+{
+  "tested_at": "2026-11-11T13:39:19.341428+05:30",
+  "scope": "All 99 backend test files; frontend type check, production build, 17 verification scripts; local health probes.",
+  "backend": {
+    "total": 636,
+    "counts": {
+      "passed": 554,
+      "failed": 77,
+      "skipped": 5
+    },
+    "test_modules": {
+      "backend.tests.test_advance_payment_notifications_phase4": {
+        "passed": 8
+      },
+      "backend.tests.test_agent_monitor_excel_export": {
+        "passed": 2
+      },
+      "backend.tests.test_allocation_member_validation_v8_4": {
+        "passed": 9
+      },
+      "backend.tests.test_asset_inventory_lifecycle_integrity": {
+        "passed": 4
+      },
+      "backend.tests.test_asset_report_validation": {
+        "passed": 7
+      },
+      "backend.tests.test_bad_debt_dual_approval_v8_5": {
+        "passed": 8
+      },
+      "backend.tests.test_bad_debt_lifecycle_v8_1": {
+        "passed": 11
+      },
+      "backend.tests.test_batch3_complete": {
+        "passed": 1
+      },
+      "backend.tests.test_batch4_complete": {
+        "passed": 1
+      },
+      "backend.tests.test_batch4_custody_endpoint_boundary": {
+        "passed": 2
+      },
+      "backend.tests.test_batch4_management_decision_response": {
+        "passed": 1
+      },
+      "backend.tests.test_bd_finance_pm_notifications_v7_0_14": {
+        "passed": 3
+      },
+      "backend.tests.test_bd_manual_feedback_action_center": {
+        "passed": 4
+      },
+      "backend.tests.test_bd_ortho_manager_login_v7_0_7": {
+        "passed": 3
+      },
+      "backend.tests.test_bd_ortho_v7": {
+        "passed": 13
+      },
+      "backend.tests.test_business_history_permissions": {
+        "passed": 10
+      },
+      "backend.tests.test_client_advance_api_phase2": {
+        "passed": 5
+      },
+      "backend.tests.test_client_advance_request_form": {
+        "passed": 18
+      },
+      "backend.tests.test_client_advance_schema_phase1": {
+        "passed": 2
+      },
+      "backend.tests.test_client_advance_settlement_phase5": {
+        "passed": 4
+      },
+      "backend.tests.test_client_project_crm_v6_1": {
+        "passed": 2
+      },
+      "backend.tests.test_client_project_master_v6": {
+        "failed": 1,
+        "passed": 1
+      },
+      "backend.tests.test_commercial_cost_layer_v8_1": {
+        "passed": 6
+      },
+      "backend.tests.test_commercial_workflow_alignment_v8_1": {
+        "passed": 18
+      },
+      "backend.tests.test_department_isolation": {
+        "passed": 5
+      },
+      "backend.tests.test_employee_master_management": {
+        "passed": 2
+      },
+      "backend.tests.test_employee_master_registration": {
+        "passed": 7
+      },
+      "backend.tests.test_employee_password_regression": {
+        "passed": 3
+      },
+      "backend.tests.test_end_to_end": {
+        "passed": 18,
+        "failed": 9
+      },
+      "backend.tests.test_finance_bad_debt_revenue": {
+        "passed": 9
+      },
+      "backend.tests.test_finance_client_management_v4": {
+        "passed": 2
+      },
+      "backend.tests.test_finance_client_management_v5": {
+        "passed": 2
+      },
+      "backend.tests.test_finance_expense_claims": {
+        "passed": 4
+      },
+      "backend.tests.test_finance_kpi_reconciliation": {
+        "passed": 9
+      },
+      "backend.tests.test_finance_reporting_v2": {
+        "passed": 3
+      },
+      "backend.tests.test_finance_revenue_targets": {
+        "passed": 2
+      },
+      "backend.tests.test_finance_sales_revenue": {
+        "passed": 4
+      },
+      "backend.tests.test_finance_settlement_v3": {
+        "passed": 3
+      },
+      "backend.tests.test_finance_visibility_filtering": {
+        "passed": 5
+      },
+      "backend.tests.test_global_notification_foundation": {
+        "passed": 2
+      },
+      "backend.tests.test_hardening_v7_0_23": {
+        "passed": 4
+      },
+      "backend.tests.test_hrms_company_policy": {
+        "passed": 2
+      },
+      "backend.tests.test_hrms_web_attendance": {
+        "passed": 2
+      },
+      "backend.tests.test_invoice_company_address": {
+        "passed": 11
+      },
+      "backend.tests.test_invoice_document_generation": {
+        "passed": 4
+      },
+      "backend.tests.test_invoice_generation_v2": {
+        "passed": 14
+      },
+      "backend.tests.test_invoice_layout_pagination": {
+        "passed": 6
+      },
+      "backend.tests.test_invoice_payment_status": {
+        "passed": 4
+      },
+      "backend.tests.test_invoice_reference_themes": {
+        "passed": 15
+      },
+      "backend.tests.test_invoice_template_edit_isolation": {
+        "passed": 2
+      },
+      "backend.tests.test_invoice_three_templates": {
+        "passed": 7
+      },
+      "backend.tests.test_it_work_role_permissions": {
+        "passed": 4
+      },
+      "backend.tests.test_item_daily_activity_flow_v8_3": {
+        "failed": 9,
+        "passed": 6
+      },
+      "backend.tests.test_item_multi_session_production_v8_3": {
+        "passed": 4,
+        "failed": 8
+      },
+      "backend.tests.test_management_authentication": {
+        "passed": 3
+      },
+      "backend.tests.test_module_route_contracts": {
+        "passed": 3
+      },
+      "backend.tests.test_multi_department_workflow_v8_1": {
+        "passed": 17,
+        "skipped": 4
+      },
+      "backend.tests.test_new_joiner_onboarding": {
+        "passed": 7
+      },
+      "backend.tests.test_notification_popup_experience": {
+        "passed": 23
+      },
+      "backend.tests.test_notification_recipient_isolation": {
+        "passed": 13
+      },
+      "backend.tests.test_obsolete_sample_workflow_retirement": {
+        "passed": 3
+      },
+      "backend.tests.test_ortho_item_visibility_v8_3": {
+        "passed": 13,
+        "failed": 1
+      },
+      "backend.tests.test_payables_workflow": {
+        "passed": 2
+      },
+      "backend.tests.test_physical_file_workflow_v8_4": {
+        "passed": 9,
+        "failed": 14
+      },
+      "backend.tests.test_production_e2e_final_v8_3": {
+        "failed": 2,
+        "passed": 1,
+        "skipped": 1
+      },
+      "backend.tests.test_production_file_tracking_v8_2": {
+        "passed": 14,
+        "failed": 12
+      },
+      "backend.tests.test_production_master_excel_allocation_v8_3": {
+        "passed": 22,
+        "failed": 11
+      },
+      "backend.tests.test_production_tracking_v8_1": {
+        "passed": 14
+      },
+      "backend.tests.test_project_activation_v6_1_5": {
+        "passed": 1
+      },
+      "backend.tests.test_project_activation_v6_1_6": {
+        "passed": 2
+      },
+      "backend.tests.test_project_activation_v6_1_7": {
+        "passed": 3
+      },
+      "backend.tests.test_project_completion_v7_0_19": {
+        "passed": 6
+      },
+      "backend.tests.test_project_data_handovers_v7_0_17": {
+        "passed": 4
+      },
+      "backend.tests.test_project_monitoring_v7_0_18": {
+        "passed": 4
+      },
+      "backend.tests.test_project_scope_allocation_v8_6": {
+        "passed": 3
+      },
+      "backend.tests.test_project_selector_v6_1_3": {
+        "passed": 1
+      },
+      "backend.tests.test_project_tracking_sales_workflow": {
+        "passed": 13
+      },
+      "backend.tests.test_project_workstreams_v7_0_15": {
+        "passed": 4
+      },
+      "backend.tests.test_purchase_approval_email_channel": {
+        "passed": 4
+      },
+      "backend.tests.test_purchase_approval_two_management_visibility": {
+        "passed": 1
+      },
+      "backend.tests.test_ready_delivery_ux_v8_4": {
+        "failed": 7
+      },
+      "backend.tests.test_rental_asset_return_integration_guards": {
+        "passed": 2
+      },
+      "backend.tests.test_rental_asset_vendor_return": {
+        "passed": 4
+      },
+      "backend.tests.test_reporting_v7_0_22": {
+        "passed": 3
+      },
+      "backend.tests.test_sample_requests_v7_0_16": {
+        "failed": 2,
+        "passed": 1
+      },
+      "backend.tests.test_standalone_invoice_generation": {
+        "passed": 5
+      },
+      "backend.tests.test_technical_routing_v7_0_21": {
+        "passed": 5,
+        "failed": 1
+      },
+      "backend.tests.test_technical_team_directory_v7_0_20": {
+        "passed": 7
+      },
+      "backend.tests.test_ticket_attachment_validation": {
+        "passed": 3
+      },
+      "backend.tests.test_ticket_description_validation": {
+        "passed": 3
+      },
+      "backend.tests.test_ticket_global_notifications": {
+        "passed": 2
+      },
+      "backend.tests.test_ticket_simplified_workflow": {
+        "passed": 3
+      },
+      "backend.tests.test_ticket_sla": {
+        "passed": 3
+      },
+      "backend.tests.test_travel_km_email_notifications": {
+        "passed": 2
+      },
+      "backend.tests.test_travel_km_live_tracking": {
+        "passed": 2
+      },
+      "backend.tests.test_travel_km_smart_verification": {
+        "passed": 3
+      },
+      "backend.tests.test_travel_km_workflow": {
+        "passed": 2
+      },
+      "backend.tests.test_uat_2026_plan": {
+        "passed": 4
+      },
+      "backend.tests.test_uat_client_advance_e2e": {
+        "passed": 2
+      }
+    },
+    "failures": [
+      {
+        "module": "backend.tests.test_client_project_master_v6",
+        "test": "test_v6_client_project_master_assignment_and_employee_safe_visibility",
+        "message": "assert None == 2\n +  where 2 = <app.models.entities.User object at 0x0000019309A63790>.id"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_exact_company_excel_and_dashboard_exports",
+        "message": "assert 'NakshaTech Asset Details' in 'attachment; filename=\"NakshaTech Active Asset Details.xlsx\"'"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_printer_import_dashboard_export_and_replacement_guard",
+        "message": "assert 422 == 400\n +  where 422 = <Response [422 Unprocessable Entity]>.status_code"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_work_and_replacement_workflows",
+        "message": "AssertionError: assert 'not_required' == 'pending'\n  \n  - pending\n  + not_required"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_purchase_permission_approval_conversion_and_excel",
+        "message": "AssertionError: {\"detail\":\"Approval Recipient Name and Approval Email are mandatory for a Purchase Request\"}\nassert 422 == 200\n +  where 422 = <Response [422 Unprocessable Entity]>.status_code"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_drone_import_commit_is_separate_from_it_assets",
+        "message": "IndexError: list index out of range"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_employee_registration_one_time_authenticator_then_password_login_and_ticket_routing",
+        "message": "AssertionError: {\"detail\":\"This organization email is not eligible for self-registration. Contact HR / Software Team.\"}\nassert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_pending_registration_can_resume_authenticator_but_active_login_is_password_only",
+        "message": "KeyError: 'development_otp'"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_employee_password_reset_and_software_ticket_handling",
+        "message": "AssertionError: {\"detail\":\"This organization email is not eligible for self-registration. Contact HR / Software Team.\"}\nassert 403 == 200\n +  where 403 = <Response [403 Forbidden]>.status_code"
+      },
+      {
+        "module": "backend.tests.test_end_to_end",
+        "test": "test_batch3b_handover_return_consistency_and_guardrails",
+        "message": "assert 422 == 409\n +  where 422 = <Response [422 Unprocessable Entity]>.status_code"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_production_timestamps_and_duration",
+        "message": "assert 1.2 == 1.16"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_qc_timestamps_and_duration",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_duplicate_complete_does_not_double_count",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_production_to_qc_gate",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_qc_to_qa_gate",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_qc_reject_preserves_history_then_pass",
+        "message": "ValueError: Production must finish the rejected file's correction before review restarts"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_qa_reject_preserves_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_ready_for_delivery_gate",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_delivery_gate_and_no_auto_finance",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_multiple_sessions_accumulate_then_final_completion_counts_one_file",
+        "message": "assert 1.9 == 1.2"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_qc_reject_allows_production_rework_without_double_counting_file",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_actual_below_planned_still_finalizes",
+        "message": "assert 1.2 == 0.9"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_actual_above_planned_is_preserved",
+        "message": "assert 1.2 == 1.6"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_multi_employee_activity_attributed_to_exact_employee",
+        "message": "assert 1.7 == 1.2"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_qc_and_qa_gates_and_reject_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_workbook_area_rollup_and_activity_history_and_legacy_sheets",
+        "message": "assert 1.9 == 1.2"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_ready_for_delivery_and_delivery_after_full_chain",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_ortho_item_visibility_v8_3",
+        "test": "test_no_duplicate_file_or_quantity_counting",
+        "message": "assert 1.2 == 1.16"
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_d_reduction_never_deletes_history",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_j_complete_records_duration_and_counts_one_file",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_k_cross_midnight_duration_is_positive",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_l_qc_ready_per_file_before_siblings_complete",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_m_n_o_p_s_t_qc_reject_rework_preserves_history_and_one_file",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_q_r_qa_pass_and_reject",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_u_ready_blocked_until_all_qa_pass",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_w_x_delivery_requires_qa_pass_then_is_explicit",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_y_z_pm_completion_requires_delivery_and_finance_stays_open",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_aa_daily_activity_is_file_based_with_attempts",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_ab_employee_productivity_counts_distinct_files",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_ac_report_no_of_files_matches_physical_count",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_ad_ortho_tracking_workbook_agree",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_physical_file_workflow_v8_4",
+        "test": "test_ag_legacy_multi_session_activity_remains_readable",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_e2e_final_v8_3",
+        "test": "test_full_file_level_e2e_and_read_model_consistency",
+        "message": "assert 5.2 == 3.0"
+      },
+      {
+        "module": "backend.tests.test_production_e2e_final_v8_3",
+        "test": "test_operational_completion_blocked_until_all_files_delivered",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_team_lead_can_personally_perform_production",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_production_start_end_timestamps_and_duration",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_overnight_session_duration",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_employee_files_attribution_and_aggregation",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_employee_productivity_summary",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_delay_category_system_malfunction_and_affected_file",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_qc_start_end_duration_pass",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_qc_reject_preserves_history_then_pass",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_qa_start_end_duration_and_reject_rework",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_delivery_after_qa_pass",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_full_chain_rollups",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_workbook_exact_project_and_sheet_names",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_reimport_preserves_work_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_production_complete_auto_files_and_actual_km",
+        "message": "assert 1.2 == 1.16"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_qa_gate_after_qc_pass",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_qc_reject_history_and_notification",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_qa_reject_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_ready_when_all_qa_pass_and_tl_confirms",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_pm_can_import_and_monitor",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_area_master_exact_26_and_file_level_values",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_file_activity_targets_and_deadlines",
+        "message": "assert 1.2 == 1.16"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_employee_productivity_counts",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_workbook_is_a_live_snapshot",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_ready_succeeds_once_and_repeat_is_idempotent_without_duplicate_notifications",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_ready_payload_flags_drive_the_button_state",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_package_display_stage_is_derived_not_legacy_not_started",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_deliver_blocked_before_ready_then_works_and_is_not_repeatable",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_deliver_blocked_when_a_file_has_not_passed_qa",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_project_delivered_counter_updates_only_after_explicit_delivery",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_ready_delivery_ux_v8_4",
+        "test": "test_pm_operational_completion_requires_delivery_and_finance_stays_open",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_sample_requests_v7_0_16",
+        "test": "test_sample_request_notifies_only_reserved_demo_technical_accounts",
+        "message": "assert 0 == 2"
+      },
+      {
+        "module": "backend.tests.test_sample_requests_v7_0_16",
+        "test": "test_multi_team_submission_revision_and_client_approval_finance_handoff",
+        "message": "assert 0 == 1"
+      },
+      {
+        "module": "backend.tests.test_technical_routing_v7_0_21",
+        "test": "test_phase7_sample_actions_and_notifications_use_real_directory_members_after_activation",
+        "message": "assert 0 == 1"
+      }
+    ],
+    "skipped": [
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_four_department_pm_uat_accounts_exist_and_ortho_is_untouched",
+        "reason": "lidar@nakshatech.com is not seeded in this environment (SEED_OPERATIONS_TEST_USERS_ENABLED path not configured for it)"
+      },
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_sixty_department_test_employee_accounts_exist_and_are_generic_employee_role",
+        "reason": "Multi-department test employee seed is not enabled in this environment"
+      },
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_multi_department_seed_functions_are_idempotent",
+        "reason": "Multi-department test account seeding is not enabled in this environment"
+      },
+      {
+        "module": "backend.tests.test_multi_department_workflow_v8_1",
+        "test": "test_existing_fifteen_ortho_employee_fixtures_normalized_to_ortho_department",
+        "reason": "V8.1 Ortho employee test seed is not enabled in this environment"
+      },
+      {
+        "module": "backend.tests.test_production_e2e_final_v8_3",
+        "test": "test_no_contradictory_item_states_anywhere",
+        "reason": "No file-tracked areas in this database"
+      }
+    ]
+  },
+  "priority_findings": [
+    {
+      "priority": "high",
+      "finding": "Final production completion records the full planned quantity while build_item_rows sums all closed production sessions. Earlier partial quantities are therefore added again.",
+      "example": "test_full_file_level_e2e_and_read_model_consistency expected 3.0, got 5.2.",
+      "locations": [
+        "backend/app/modules/operations/production_items.py:1018",
+        "backend/app/modules/operations/production_items.py:1383"
+      ]
+    },
+    {
+      "priority": "high",
+      "finding": "27 tests fail because the completion policy now requires planned quantity, while older file fixtures omit it. Confirm the mandatory-planning contract and align imports, validation, and fixtures.",
+      "location": "backend/app/modules/operations/production_items.py:74"
+    },
+    {
+      "priority": "medium",
+      "finding": "26 full-run failures hit end <= start. Immediate sequential UTC reads on this Windows interpreter often return the same timestamp. These failures receive a separate rerun using the original SQLite settings.",
+      "location": "backend/app/modules/operations/production_items.py:932"
+    },
+    {
+      "priority": "medium",
+      "finding": "Legacy end-to-end fixtures conflict with current registration eligibility, approval-recipient fields, validation responses, export filename and replacement approval behavior. Drone import also returns no batch in one test."
+    },
+    {
+      "priority": "medium",
+      "finding": "Three sample-request notification tests and the legacy Finance-owned PM-assignment test conflict with newer workflow behavior; review expectations before changing business rules."
+    }
+  ],
+  "frontend": {
+    "checks": [
+      {
+        "script": "test:finance-command-center",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-finance-command-center.log"
+      },
+      {
+        "script": "test:finance-command-center:advance-alerts",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-finance-command-center-advance-alerts.log"
+      },
+      {
+        "script": "test:finance-command-center:advance-settlement",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-finance-command-center-advance-settlement.log"
+      },
+      {
+        "script": "test:finance-command-center:invoice-document",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-finance-command-center-invoice-document.log"
+      },
+      {
+        "script": "test:finance-bad-debt",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-finance-bad-debt.log"
+      },
+      {
+        "script": "test:sales-revenue-drilldown",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-sales-revenue-drilldown.log"
+      },
+      {
+        "script": "test:finance-generate-invoice",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-finance-generate-invoice.log"
+      },
+      {
+        "script": "test:notification-popup",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-notification-popup.log"
+      },
+      {
+        "script": "test:critical-action-visibility",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-critical-action-visibility.log"
+      },
+      {
+        "script": "test:bd-client-feedback",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-bd-client-feedback.log"
+      },
+      {
+        "script": "test:india-dates",
+        "exitCode": 0,
+        "log": "../artifacts/qa/current-run/test-india-dates.log"
+      },
+      {
+        "script": "verify-dashboard-drawer-layout-focus.mjs",
+        "exitCode": 1
+      },
+      {
+        "script": "verify-dashboard-drawer-visual-toggle.mjs",
+        "exitCode": 1
+      },
+      {
+        "script": "verify-dashboard-drawer-visuals.mjs",
+        "exitCode": 0
+      },
+      {
+        "script": "verify-dashboard-drilldown.mjs",
+        "exitCode": 1
+      },
+      {
+        "script": "verify-dashboard-visual-analytics.mjs",
+        "exitCode": 0
+      },
+      {
+        "script": "verify-reporting-month-race-fix.mjs",
+        "exitCode": 0
+      }
+    ],
+    "passed": 14,
+    "failed": 3,
+    "lint": "passed",
+    "build": {
+      "exitCode": 0
+    },
+    "build_warning": "Large JavaScript chunks: main bundle 2,766.60 kB; world geography 1,427.47 kB; three.js 595.30 kB (minified).",
+    "failure_analysis": [
+      {
+        "script": "verify-dashboard-drawer-layout-focus.mjs",
+        "finding": "Requires a literal header class; component now uses a template literal with conditional classes. Source-check mismatch, not demonstrated UI breakage."
+      },
+      {
+        "script": "verify-dashboard-drawer-visual-toggle.mjs",
+        "finding": "Requires a literal header-actions class; component retains it within a template literal. Source-check mismatch, not demonstrated UI breakage."
+      },
+      {
+        "script": "verify-dashboard-drilldown.mjs",
+        "finding": "Forbids every asset-register Link, including the empty-state Open Asset Register action; KPI drawer handlers remain present. Overbroad check."
+      }
+    ]
+  },
+  "source_checks": {
+    "python_files_parsed": 338,
+    "syntax_errors": [],
+    "backend_test_files": 99,
+    "application_modules": [
+      "admin",
+      "agent_monitor",
+      "asset_return",
+      "auth",
+      "backup",
+      "batch3",
+      "batch4",
+      "business",
+      "commercial",
+      "data_quality",
+      "drone",
+      "employee_portal",
+      "finance",
+      "hrms",
+      "it",
+      "it_activity",
+      "local_backup",
+      "management",
+      "management_clients",
+      "management_projects",
+      "naksha_copilot",
+      "notifications",
+      "operations",
+      "payables",
+      "reports",
+      "travel_km",
+      "work"
+    ],
+    "direct_test_imports_by_module": {
+      "admin": [],
+      "agent_monitor": [
+        "backend/tests/test_agent_monitor_excel_export.py"
+      ],
+      "asset_return": [
+        "backend/tests/test_asset_report_validation.py",
+        "backend/tests/test_rental_asset_return_integration_guards.py",
+        "backend/tests/test_rental_asset_vendor_return.py"
+      ],
+      "auth": [],
+      "backup": [
+        "backend/tests/test_global_notification_foundation.py",
+        "backend/tests/test_ticket_global_notifications.py",
+        "backend/tests/test_ticket_sla.py"
+      ],
+      "batch3": [
+        "backend/tests/test_batch3_complete.py",
+        "backend/tests/test_batch4_complete.py"
+      ],
+      "batch4": [
+        "backend/tests/test_batch4_complete.py",
+        "backend/tests/test_batch4_management_decision_response.py",
+        "backend/tests/test_it_work_role_permissions.py",
+        "backend/tests/test_purchase_approval_email_channel.py",
+        "backend/tests/test_purchase_approval_two_management_visibility.py",
+        "backend/tests/test_rental_asset_return_integration_guards.py"
+      ],
+      "business": [
+        "backend/tests/test_business_history_permissions.py",
+        "backend/tests/test_finance_visibility_filtering.py"
+      ],
+      "commercial": [
+        "backend/tests/test_advance_payment_notifications_phase4.py",
+        "backend/tests/test_allocation_member_validation_v8_4.py",
+        "backend/tests/test_client_advance_api_phase2.py",
+        "backend/tests/test_client_advance_request_form.py",
+        "backend/tests/test_client_advance_schema_phase1.py",
+        "backend/tests/test_client_advance_settlement_phase5.py",
+        "backend/tests/test_commercial_cost_layer_v8_1.py",
+        "backend/tests/test_commercial_workflow_alignment_v8_1.py",
+        "backend/tests/test_department_isolation.py",
+        "backend/tests/test_finance_visibility_filtering.py",
+        "backend/tests/test_item_daily_activity_flow_v8_3.py",
+        "backend/tests/test_item_multi_session_production_v8_3.py",
+        "backend/tests/test_multi_department_workflow_v8_1.py",
+        "backend/tests/test_ortho_item_visibility_v8_3.py",
+        "backend/tests/test_physical_file_workflow_v8_4.py",
+        "backend/tests/test_production_e2e_final_v8_3.py",
+        "backend/tests/test_production_file_tracking_v8_2.py",
+        "backend/tests/test_production_master_excel_allocation_v8_3.py",
+        "backend/tests/test_production_tracking_v8_1.py",
+        "backend/tests/test_project_tracking_sales_workflow.py",
+        "backend/tests/test_ready_delivery_ux_v8_4.py",
+        "backend/tests/test_uat_client_advance_e2e.py"
+      ],
+      "data_quality": [
+        "backend/tests/test_rental_asset_return_integration_guards.py"
+      ],
+      "drone": [
+        "backend/tests/test_finance_expense_claims.py",
+        "backend/tests/test_global_notification_foundation.py",
+        "backend/tests/test_ticket_global_notifications.py",
+        "backend/tests/test_ticket_sla.py"
+      ],
+      "employee_portal": [
+        "backend/tests/test_department_isolation.py",
+        "backend/tests/test_employee_master_management.py",
+        "backend/tests/test_employee_master_registration.py",
+        "backend/tests/test_employee_password_regression.py",
+        "backend/tests/test_end_to_end.py",
+        "backend/tests/test_global_notification_foundation.py",
+        "backend/tests/test_invoice_document_generation.py",
+        "backend/tests/test_invoice_template_edit_isolation.py",
+        "backend/tests/test_management_authentication.py",
+        "backend/tests/test_new_joiner_onboarding.py",
+        "backend/tests/test_standalone_invoice_generation.py",
+        "backend/tests/test_ticket_attachment_validation.py",
+        "backend/tests/test_ticket_description_validation.py",
+        "backend/tests/test_ticket_global_notifications.py",
+        "backend/tests/test_ticket_simplified_workflow.py",
+        "backend/tests/test_ticket_sla.py"
+      ],
+      "finance": [
+        "backend/tests/test_advance_payment_notifications_phase4.py",
+        "backend/tests/test_bad_debt_dual_approval_v8_5.py",
+        "backend/tests/test_bad_debt_lifecycle_v8_1.py",
+        "backend/tests/test_bd_finance_pm_notifications_v7_0_14.py",
+        "backend/tests/test_bd_manual_feedback_action_center.py",
+        "backend/tests/test_bd_ortho_v7.py",
+        "backend/tests/test_business_history_permissions.py",
+        "backend/tests/test_client_advance_api_phase2.py",
+        "backend/tests/test_client_advance_request_form.py",
+        "backend/tests/test_client_advance_schema_phase1.py",
+        "backend/tests/test_client_advance_settlement_phase5.py",
+        "backend/tests/test_client_project_crm_v6_1.py",
+        "backend/tests/test_client_project_master_v6.py",
+        "backend/tests/test_commercial_cost_layer_v8_1.py",
+        "backend/tests/test_commercial_workflow_alignment_v8_1.py",
+        "backend/tests/test_department_isolation.py",
+        "backend/tests/test_finance_bad_debt_revenue.py",
+        "backend/tests/test_finance_client_management_v4.py",
+        "backend/tests/test_finance_client_management_v5.py",
+        "backend/tests/test_finance_expense_claims.py",
+        "backend/tests/test_finance_kpi_reconciliation.py",
+        "backend/tests/test_finance_reporting_v2.py",
+        "backend/tests/test_finance_revenue_targets.py",
+        "backend/tests/test_finance_sales_revenue.py",
+        "backend/tests/test_finance_settlement_v3.py",
+        "backend/tests/test_finance_visibility_filtering.py",
+        "backend/tests/test_invoice_document_generation.py",
+        "backend/tests/test_invoice_generation_v2.py",
+        "backend/tests/test_invoice_payment_status.py",
+        "backend/tests/test_invoice_template_edit_isolation.py",
+        "backend/tests/test_multi_department_workflow_v8_1.py",
+        "backend/tests/test_production_file_tracking_v8_2.py",
+        "backend/tests/test_production_tracking_v8_1.py",
+        "backend/tests/test_project_activation_v6_1_5.py",
+        "backend/tests/test_project_activation_v6_1_6.py",
+        "backend/tests/test_project_activation_v6_1_7.py",
+        "backend/tests/test_project_completion_v7_0_19.py",
+        "backend/tests/test_project_data_handovers_v7_0_17.py",
+        "backend/tests/test_project_monitoring_v7_0_18.py",
+        "backend/tests/test_project_selector_v6_1_3.py",
+        "backend/tests/test_project_tracking_sales_workflow.py",
+        "backend/tests/test_project_workstreams_v7_0_15.py",
+        "backend/tests/test_standalone_invoice_generation.py",
+        "backend/tests/test_technical_routing_v7_0_21.py",
+        "backend/tests/test_travel_km_email_notifications.py",
+        "backend/tests/test_travel_km_live_tracking.py",
+        "backend/tests/test_travel_km_smart_verification.py",
+        "backend/tests/test_travel_km_workflow.py",
+        "backend/tests/test_uat_client_advance_e2e.py"
+      ],
+      "hrms": [
+        "backend/tests/test_hrms_company_policy.py",
+        "backend/tests/test_hrms_web_attendance.py"
+      ],
+      "it": [
+        "backend/tests/test_batch3_complete.py",
+        "backend/tests/test_batch4_complete.py",
+        "backend/tests/test_batch4_custody_endpoint_boundary.py",
+        "backend/tests/test_batch4_management_decision_response.py",
+        "backend/tests/test_global_notification_foundation.py",
+        "backend/tests/test_purchase_approval_email_channel.py",
+        "backend/tests/test_purchase_approval_two_management_visibility.py",
+        "backend/tests/test_ticket_global_notifications.py",
+        "backend/tests/test_ticket_sla.py"
+      ],
+      "it_activity": [
+        "backend/tests/test_batch3_complete.py",
+        "backend/tests/test_batch4_complete.py",
+        "backend/tests/test_batch4_custody_endpoint_boundary.py",
+        "backend/tests/test_batch4_management_decision_response.py",
+        "backend/tests/test_global_notification_foundation.py",
+        "backend/tests/test_purchase_approval_email_channel.py",
+        "backend/tests/test_purchase_approval_two_management_visibility.py",
+        "backend/tests/test_ticket_global_notifications.py",
+        "backend/tests/test_ticket_sla.py"
+      ],
+      "local_backup": [],
+      "management": [],
+      "management_clients": [],
+      "management_projects": [],
+      "naksha_copilot": [
+        "backend/tests/test_end_to_end.py",
+        "backend/tests/test_rental_asset_return_integration_guards.py"
+      ],
+      "notifications": [
+        "backend/tests/test_advance_payment_notifications_phase4.py",
+        "backend/tests/test_bad_debt_dual_approval_v8_5.py",
+        "backend/tests/test_batch4_complete.py",
+        "backend/tests/test_bd_finance_pm_notifications_v7_0_14.py",
+        "backend/tests/test_global_notification_foundation.py",
+        "backend/tests/test_new_joiner_onboarding.py",
+        "backend/tests/test_notification_popup_experience.py",
+        "backend/tests/test_notification_recipient_isolation.py",
+        "backend/tests/test_obsolete_sample_workflow_retirement.py",
+        "backend/tests/test_production_master_excel_allocation_v8_3.py",
+        "backend/tests/test_project_completion_v7_0_19.py",
+        "backend/tests/test_project_data_handovers_v7_0_17.py",
+        "backend/tests/test_project_workstreams_v7_0_15.py",
+        "backend/tests/test_ready_delivery_ux_v8_4.py",
+        "backend/tests/test_sample_requests_v7_0_16.py",
+        "backend/tests/test_technical_routing_v7_0_21.py",
+        "backend/tests/test_ticket_global_notifications.py",
+        "backend/tests/test_ticket_sla.py"
+      ],
+      "operations": [
+        "backend/tests/test_advance_payment_notifications_phase4.py",
+        "backend/tests/test_allocation_member_validation_v8_4.py",
+        "backend/tests/test_bad_debt_dual_approval_v8_5.py",
+        "backend/tests/test_bad_debt_lifecycle_v8_1.py",
+        "backend/tests/test_bd_finance_pm_notifications_v7_0_14.py",
+        "backend/tests/test_bd_manual_feedback_action_center.py",
+        "backend/tests/test_bd_ortho_v7.py",
+        "backend/tests/test_client_advance_api_phase2.py",
+        "backend/tests/test_client_advance_request_form.py",
+        "backend/tests/test_client_advance_settlement_phase5.py",
+        "backend/tests/test_commercial_cost_layer_v8_1.py",
+        "backend/tests/test_commercial_workflow_alignment_v8_1.py",
+        "backend/tests/test_department_isolation.py",
+        "backend/tests/test_finance_bad_debt_revenue.py",
+        "backend/tests/test_finance_kpi_reconciliation.py",
+        "backend/tests/test_finance_sales_revenue.py",
+        "backend/tests/test_finance_visibility_filtering.py",
+        "backend/tests/test_hardening_v7_0_23.py",
+        "backend/tests/test_invoice_company_address.py",
+        "backend/tests/test_invoice_document_generation.py",
+        "backend/tests/test_invoice_generation_v2.py",
+        "backend/tests/test_invoice_layout_pagination.py",
+        "backend/tests/test_invoice_payment_status.py",
+        "backend/tests/test_invoice_reference_themes.py",
+        "backend/tests/test_invoice_template_edit_isolation.py",
+        "backend/tests/test_invoice_three_templates.py",
+        "backend/tests/test_item_daily_activity_flow_v8_3.py",
+        "backend/tests/test_item_multi_session_production_v8_3.py",
+        "backend/tests/test_multi_department_workflow_v8_1.py",
+        "backend/tests/test_ortho_item_visibility_v8_3.py",
+        "backend/tests/test_physical_file_workflow_v8_4.py",
+        "backend/tests/test_production_e2e_final_v8_3.py",
+        "backend/tests/test_production_file_tracking_v8_2.py",
+        "backend/tests/test_production_master_excel_allocation_v8_3.py",
+        "backend/tests/test_production_tracking_v8_1.py",
+        "backend/tests/test_project_completion_v7_0_19.py",
+        "backend/tests/test_project_data_handovers_v7_0_17.py",
+        "backend/tests/test_project_monitoring_v7_0_18.py",
+        "backend/tests/test_project_scope_allocation_v8_6.py",
+        "backend/tests/test_project_tracking_sales_workflow.py",
+        "backend/tests/test_project_workstreams_v7_0_15.py",
+        "backend/tests/test_ready_delivery_ux_v8_4.py",
+        "backend/tests/test_reporting_v7_0_22.py",
+        "backend/tests/test_sample_requests_v7_0_16.py",
+        "backend/tests/test_standalone_invoice_generation.py",
+        "backend/tests/test_technical_routing_v7_0_21.py",
+        "backend/tests/test_technical_team_directory_v7_0_20.py",
+        "backend/tests/test_uat_client_advance_e2e.py"
+      ],
+      "payables": [
+        "backend/tests/test_payables_workflow.py"
+      ],
+      "reports": [],
+      "travel_km": [
+        "backend/tests/test_client_project_master_v6.py",
+        "backend/tests/test_project_selector_v6_1_3.py",
+        "backend/tests/test_travel_km_email_notifications.py",
+        "backend/tests/test_travel_km_live_tracking.py",
+        "backend/tests/test_travel_km_smart_verification.py",
+        "backend/tests/test_travel_km_workflow.py"
+      ],
+      "work": []
+    },
+    "note": "Direct imports show test references only; transitive/API coverage is not measured."
+  },
+  "route_inventory": {
+    "http_operations": 519,
+    "by_endpoint_module": {
+      "app.api.router": 20,
+      "app.main": 1,
+      "app.modules.agent_monitor.excel_export": 1,
+      "app.modules.agent_monitor.router": 15,
+      "app.modules.asset_return.mutation_guards": 8,
+      "app.modules.asset_return.router": 18,
+      "app.modules.backup.router": 5,
+      "app.modules.batch3.router": 8,
+      "app.modules.batch4.router": 9,
+      "app.modules.business.router": 4,
+      "app.modules.commercial.router": 28,
+      "app.modules.data_quality.router": 1,
+      "app.modules.drone.router": 30,
+      "app.modules.employee_portal.router": 45,
+      "app.modules.finance.advance_router": 9,
+      "app.modules.finance.router": 46,
+      "app.modules.finance.standalone_invoice_router": 7,
+      "app.modules.hrms.router": 25,
+      "app.modules.it_activity.router": 18,
+      "app.modules.local_backup.router": 2,
+      "app.modules.management_clients.router": 8,
+      "app.modules.management_projects.router": 8,
+      "app.modules.naksha_copilot.router": 2,
+      "app.modules.notifications.router": 10,
+      "app.modules.operations.completion_router": 4,
+      "app.modules.operations.handover_router": 5,
+      "app.modules.operations.hardening_router": 4,
+      "app.modules.operations.lifecycle_router": 33,
+      "app.modules.operations.monitoring_router": 3,
+      "app.modules.operations.pilot_router": 7,
+      "app.modules.operations.reporting_router": 4,
+      "app.modules.operations.router": 23,
+      "app.modules.operations.technical_directory_router": 4,
+      "app.modules.operations.technical_routing_router": 2,
+      "app.modules.operations.workflow_router": 54,
+      "app.modules.payables.router": 11,
+      "app.modules.travel_km.router": 25,
+      "app.routers.management_project_tracking": 5,
+      "app.routers.project_tracking_sales": 4,
+      "app.uat_2026_router": 3
+    },
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/health",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/management/accounts",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/privileged/accounts",
+        "module": "app.api.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/login",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/me",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/profile",
+        "module": "app.api.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/auth/profile",
+        "module": "app.api.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/assets/{asset_id}",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/work-records",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/component-replacements",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/replacements",
+        "module": "app.api.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/monthly-snapshots/finalize",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/monthly-changes.xlsx",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/printers.xlsx",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/external-hdds.xlsx",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/replacement-history.xlsx",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/upload-template.xlsx",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drones",
+        "module": "app.api.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drones/{drone_id}/location",
+        "module": "app.api.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/dashboard",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/assets",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/assets",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/assets/{asset_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/drone/assets/{asset_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/projects",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/projects",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/kits",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/kits",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/import/preview",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/import/template-preview",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/import/batches",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/import/{batch_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/import/{batch_id}/commit",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/search",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/attributes",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/audit",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/reports/source-template.xlsx",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/projects/{project_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/drone/projects/{project_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/operations",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/operations/{operation_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/operations/dispatch",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/operations/assign",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/operations/return",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/operations/transfer",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/movements",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/drone/work-records",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/drone/work-records",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/drone/work-records/{record_id}",
+        "module": "app.modules.drone.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/backups/status",
+        "module": "app.modules.backup.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/backups/history",
+        "module": "app.modules.backup.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/backups/export.xlsx",
+        "module": "app.modules.backup.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/backups/run",
+        "module": "app.modules.backup.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/backups/files/{run_id}/{file_type}",
+        "module": "app.modules.backup.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/local-backup/health",
+        "module": "app.modules.local_backup.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/local-backup/export.xlsx",
+        "module": "app.modules.local_backup.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/handover-records",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/custody-employees",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/handover-records",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/purchase-requests/summary",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/purchase-requests.xlsx",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/purchase-requests",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/purchase-requests/{request_id}",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/purchase-requests",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/it-activity/purchase-requests/{request_id}/resubmit",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/purchase-requests/{request_id}/approval-email",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/purchase-requests/{request_id}/approval-email/resend",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/purchase-requests/{request_id}/decision",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/purchase-approval-email/{token}",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/purchase-approval-email/{token}",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/purchases",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/imports/handover.xlsx",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/imports/purchases.xlsx",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/monthly.xlsx",
+        "module": "app.modules.it_activity.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/capabilities",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/branches",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/register/request-otp",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/register/verify-otp",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/register/complete",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/mfa/confirm",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/privileged/complete-setup",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/management/complete-setup",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/management/change-password",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/mfa/verify-login",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/forgot-password/request-otp",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/forgot-password/verify-otp",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/forgot-password/reset",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/my-branches",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/select-branch",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/audit/page-view",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/ticket-catalog",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/ticket-priority-preview",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/ticket-assets",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/tickets",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/tickets/{ticket_id}/attachments",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/tickets/{ticket_id}/attachments/{attachment_id}/content",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/tickets",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/tickets/{ticket_id}",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/tickets/{ticket_id}/messages",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/tickets/{ticket_id}",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/notifications/{notification_id}/read",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software/users",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software/audit",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/software/users/{user_id}/reset-authenticator",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/onboarding/requests",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/onboarding/requests",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/onboarding/requests/{request_id}/submit",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/onboarding/requests/{request_id}/it-approve",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/onboarding/requests/{request_id}/management-approve",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/onboarding/requests/{request_id}/reject",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/employee-master/status",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/employee-master",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/management/employee-master/preview",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/management/employee-master/import",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/management/employee-master/publication",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/management/employee-master/imported",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software/employee-master",
+        "module": "app.modules.employee_portal.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/data-quality/summary",
+        "module": "app.modules.data_quality.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/naksha-copilot/status",
+        "module": "app.modules.naksha_copilot.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/naksha-copilot/ask",
+        "module": "app.modules.naksha_copilot.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/export.xlsx",
+        "module": "app.modules.agent_monitor.excel_export"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/status",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/user-switch-history",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/inventory",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/inventory/history",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/ports",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/boot-sessions",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/sessions",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/users",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/user-usage",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/user-switches",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/activity-summary",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/events",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/software-team/agents/{agent_id}/heartbeats",
+        "module": "app.modules.agent_monitor.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/payables/me",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/payables",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/payables/{payable_id}",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/payables",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/payables/{payable_id}",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/payables/{payable_id}/bill-document",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/payables/{payable_id}/submit",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/payables/{payable_id}/decision",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/payables/{payable_id}/payments",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/payables/{payable_id}/documents/{document_id}",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/payables/{payable_id}/audit",
+        "module": "app.modules.payables.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications/global",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications/global/unread-count",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/notifications/global/refresh-ticket-sla",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/notifications/global/read-all",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications/global/popup-queue",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications/global/pending-count",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications/global/{notification_id}",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/notifications/global/{notification_id}/read",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/notifications/global/settings/notification-settings",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/notifications/global/settings/notification-settings",
+        "module": "app.modules.notifications.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/business/overview",
+        "module": "app.modules.business.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/business/records",
+        "module": "app.modules.business.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/business/verify",
+        "module": "app.modules.business.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/business/records/{record_id}/history",
+        "module": "app.modules.business.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/sales-revenue",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/revenue-targets",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/revenue-targets",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/client-master/import.xlsx",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/client-master/export.xlsx",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/project-master/export.xlsx",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/clients",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/clients",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/clients/{client_id}",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/clients/{client_id}/tracking",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/clients/{client_id}/report.xlsx",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/clients/{client_id}/projects",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/clients/{client_id}/projects",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/clients/{client_id}/projects/{project_id}",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/project-master/users",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/projects",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/report-projects",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/finance/projects/{project_id}/status",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/projects/{project_id}/tracking",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/projects/{project_id}/report.xlsx",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/projects/{project_id}/schedule",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/claims",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/claims/{claim_id}",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/claims/{claim_id}/submit",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims/{claim_id}",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/claims/{claim_id}/admin-decision",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/claims/{claim_id}/finance-decision",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/claims/{claim_id}/mark-paid",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/dashboard",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/reports",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/reports/export.xlsx",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/claims/{claim_id}/attachments",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/finance/claims/{claim_id}/attachments/{attachment_id}",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims/{claim_id}/attachments/{attachment_id}/content",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims/{claim_id}/settlement",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/claims/{claim_id}/settlement",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/settlements/{settlement_id}/attachments",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/finance/settlements/{settlement_id}/attachments/{attachment_id}",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/settlements/{settlement_id}/attachments/{attachment_id}/content",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/settlements/{settlement_id}/submit",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/settlements/{settlement_id}/admin-decision",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/settlements/{settlement_id}/finance-decision",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims/{claim_id}/documents/report.pdf",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims/{claim_id}/documents/all-bills.zip",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/claims/{claim_id}/documents/a4-pack.pdf",
+        "module": "app.modules.finance.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/advance-payments/summary",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/advance-payments/projects",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/advance-payments/{project_id}/history",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/advance-payments/{project_id}/transactions",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/advance-payments/{project_id}/collection",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/advance-payments/{project_id}/apply-to-invoice",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/advance-payments/{project_id}/followups",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/advance-payments/refresh-notifications",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/advance-payments/{project_id}",
+        "module": "app.modules.finance.advance_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/generated-invoices",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/generated-invoices",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/generated-invoices/{invoice_id}/edit",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/finance/generated-invoices/{invoice_id}",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/generated-invoices/{invoice_id}",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/generated-invoices/{invoice_id}/document",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/generated-invoices/{invoice_id}/document.pdf",
+        "module": "app.modules.finance.standalone_invoice_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking-sales/access",
+        "module": "app.routers.project_tracking_sales"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking-sales/dashboard",
+        "module": "app.routers.project_tracking_sales"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking-sales/projects/{project_id}",
+        "module": "app.routers.project_tracking_sales"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking-sales/export/{file_type}",
+        "module": "app.routers.project_tracking_sales"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/client-register",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/management/client-register",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/management/client-register/{client_id}",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/management/client-register/projects/{project_id}/approve",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/client-register/project-tracking",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/client-register/project-tracking/{project_id}",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/client-register/additional-project-requests",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/management/client-register/additional-project-requests",
+        "module": "app.modules.management_clients.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/management-projects",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/management-projects/tracking",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/management-projects/{project_id}/tracking",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/management-projects/summary",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/management-projects/assignment-options",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/management-projects",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/finance/management-projects/{project_id}/assign-pm",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/finance/management-projects/additional-project-requests",
+        "module": "app.modules.management_projects.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/currencies",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/fx/preview",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/projects/{project_id}/estimates",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/commercial/projects/{project_id}/estimates/baseline",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/estimates/baseline/submit",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/estimates/revisions",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/estimates/revisions/queue",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/estimates/revisions/{revision_id}/decision",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/projects/{project_id}/pm-billing-basis",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/pm-billing-basis",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/projects/{project_id}/billing-recommendation",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/expenses",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/expenses",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/commercial/expenses/{expense_id}",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/expenses/{expense_id}/cancel",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/expenses/{expense_id}/submit",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/expenses/{expense_id}/finance-decision",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/expenses/{expense_id}/reimburse",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/expenses/declaration",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/vendor-invoices",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/vendor-invoices",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/vendor-invoices/{vendor_invoice_id}/payments",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/projects/{project_id}/cost-summary",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/management/analytics",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commercial/projects/{project_id}/attachments",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/projects/{project_id}/attachments",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commercial/attachments/{attachment_id}/content",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/commercial/attachments/{attachment_id}",
+        "module": "app.modules.commercial.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/projects",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/claims",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/travel-km/claims/{claim_id}/email-routing",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/projects/{project_id}/geofence",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/travel-km/projects/{project_id}/geofence",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/tracking/start",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/tracking/point",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/tracking/stop",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/claims/{claim_id}/tracking",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/claims/{claim_id}/verification",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/claims/{claim_id}",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/travel-km/claims/{claim_id}/end",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/travel-km/claims/{claim_id}/revise",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/attachments",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/claims/{claim_id}/attachments/{attachment_id}/preview",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/claims/{claim_id}/attachments/{attachment_id}/download",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/submit",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/email/retry",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/admin-decision",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/hr-decision",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/finance-decision",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/travel-km/claims/{claim_id}/finance-payment",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/dashboard",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/travel-km/reports.xlsx",
+        "module": "app.modules.travel_km.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/me/attendance",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/me/check-in",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/me/check-out",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/me/absence",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/me/leave",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/me/leave",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/hrms/me/leave/{leave_id}",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/me/leave/{leave_id}/request-cancellation",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/hr/leave/{leave_id}/cancellation-decision",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/me/leave/{leave_id}/cancel",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/me/balance",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/hr/policy",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/hrms/hr/policy",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/hr/employees/classifications",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/hrms/hr/employees/classifications/bulk",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/hr/employees/{user_id}/balance",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/holidays",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/hr/leave-notifications",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/hr/leave-notifications/{leave_id}/read",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/hr/employees/{user_id}/leave-history",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/hrms/hr/overview",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/hr/leave/{leave_id}/decision",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/hr/absence/{explanation_id}/decision",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/hrms/hr/entitlement",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/hrms/hr/holidays",
+        "module": "app.modules.hrms.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/bd/dashboard",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/bd/opportunities",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/bd/opportunities/{opportunity_id}/stage",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/bd/opportunities/{opportunity_id}/link-project",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/bd/opportunities/{opportunity_id}/project-manager",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/project-workstreams/dashboard",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/operations/bd/opportunities/{opportunity_id}/workstreams",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/project-workstreams/{workstream_id}/status",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/ortho/dashboard",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/ortho/projects",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/projects/activate",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/projects/{project_id}/members",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/operations/ortho/projects/{project_id}/team",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/projects/{project_id}/team/emails",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/projects/{project_id}/work-packages",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/ortho/work-packages/{work_package_id}/assignments",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/work-packages/{work_package_id}/daily-update",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/work-packages/{work_package_id}/work-action",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/work-packages/{work_package_id}/submit-qc",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/work-packages/{work_package_id}/qc",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/work-packages/{work_package_id}/qa",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/ortho/projects/{project_id}/final-delivery",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/corporate-summary",
+        "module": "app.modules.operations.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/project-handovers/dashboard",
+        "module": "app.modules.operations.handover_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/bd/project-handovers",
+        "module": "app.modules.operations.handover_router"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/operations/bd/project-handovers/{handover_id}",
+        "module": "app.modules.operations.handover_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/project-handovers/{handover_id}/submit",
+        "module": "app.modules.operations.handover_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/project-handovers/{handover_id}/decision",
+        "module": "app.modules.operations.handover_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/project-monitoring/dashboard",
+        "module": "app.modules.operations.monitoring_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/project-monitoring/workstreams/{workstream_id}/progress",
+        "module": "app.modules.operations.monitoring_router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/operations/bd/project-monitoring/handovers/{handover_id}/schedule",
+        "module": "app.modules.operations.monitoring_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/project-completion/dashboard",
+        "module": "app.modules.operations.completion_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/project-completion/workstreams/{workstream_id}/complete",
+        "module": "app.modules.operations.completion_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/bd/project-completion/projects/{project_id}/deliver",
+        "module": "app.modules.operations.completion_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/finance/project-completion/projects/{project_id}/status",
+        "module": "app.modules.operations.completion_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/technical-team-directory/dashboard",
+        "module": "app.modules.operations.technical_directory_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/technical-team-directory/departments/{department_code}/members",
+        "module": "app.modules.operations.technical_directory_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/technical-team-directory/members/{member_id}",
+        "module": "app.modules.operations.technical_directory_router"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/operations/technical-team-directory/members/{member_id}",
+        "module": "app.modules.operations.technical_directory_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/technical-team-routing/status",
+        "module": "app.modules.operations.technical_routing_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/technical-team-routing/activate",
+        "module": "app.modules.operations.technical_routing_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/reporting/dashboard",
+        "module": "app.modules.operations.reporting_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/reporting/powerbi/semantic-model",
+        "module": "app.modules.operations.reporting_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/reporting/powerbi/projects.csv",
+        "module": "app.modules.operations.reporting_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/reporting/powerbi/departments.csv",
+        "module": "app.modules.operations.reporting_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/hardening/overview",
+        "module": "app.modules.operations.hardening_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/hardening/audit",
+        "module": "app.modules.operations.hardening_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/hardening/notifications",
+        "module": "app.modules.operations.hardening_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/hardening/smtp-check",
+        "module": "app.modules.operations.hardening_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/bd/dashboard",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/bd/project-register",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/bd/project-tracking",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/bd/client-register",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/bd/clients",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/bd/projects",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/operations/workflow/bd/projects/{project_id}",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/bd/projects/{project_id}/submit-finance",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/bd/projects/{project_id}/assign-pm",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/finance/dashboard",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/finance/reports/export.xlsx",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/finance/projects/{project_id}/review",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/finance/projects/{project_id}/close",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/ortho/dashboard",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/team",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/rework-cycles/{cycle_id}/team",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/rework-cycles/{cycle_id}/work-packages",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/work-packages",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/daily-activity",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/production-complete",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/qc",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/qa",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/deliver",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/complete",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/stage",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/general",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/history",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/production-tracking",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/production-tracking/export.xlsx",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items/generate",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items/import",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/items/assign",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/workflow/ortho/items/{work_package_item_id}",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/start",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/complete",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/rework",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/review/{stage}/rework/bulk",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/items/{work_package_item_id}/activity/start",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/activities/{activity_id}/stop",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/items/{work_package_item_id}/delivery",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/ortho/items/{work_package_item_id}/activities",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/timeline",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/master-import/preview",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/master-import/commit",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/allocation-options",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/area-files",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/assign-files",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/assign-files",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/work-packages/{work_package_id}/ready-for-delivery",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/cld-review/{stage}/{action}",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/cld-ready-for-delivery",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/workflow/ortho/projects/{project_id}/cld-deliver",
+        "module": "app.modules.operations.workflow_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/public/feedback/{token}",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/public/feedback/{token}",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/public/feedback/{token}/attachments",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/dashboard",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/projects/{project_id}",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/projects/{project_id}/feedback-requests",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/projects/{project_id}/feedback-responses/manual",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/feedback-requests/{request_id}/reminders",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/feedback-responses/{response_id}/confirm-acceptance",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/feedback-responses/{response_id}/classification",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/rework-cycles/{cycle_id}/stage",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/rework-cycles/{cycle_id}/sync",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/rework-cycles/{cycle_id}/resubmit",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/feedback-requests/{request_id}/no-feedback-recommendation",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/feedback-requests/{request_id}/deemed-acceptance",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/change-requests/{change_request_id}/decision",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/projects/{project_id}/invoices/auto-fill",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/projects/{project_id}/invoices",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/draft-details",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/document",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/document.pdf",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/raise",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/payments",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/overdue",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/bad-debts",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/sign",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/bad-debt",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/bad-debt/decision",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/bad-debt/recovery",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/invoices/{invoice_id}/close",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/lifecycle/projects/{project_id}/messages",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/lifecycle/projects/{project_id}/messages",
+        "module": "app.modules.operations.lifecycle_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/pilots",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/operations/pilots/{project_id}",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/pilots",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/pilots/{project_id}/deliver",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/pilots/{project_id}/feedback",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/pilots/{project_id}/defer",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/operations/pilots/{project_id}/link-paid",
+        "module": "app.modules.operations.pilot_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/uat/2026/status",
+        "module": "app.uat_2026_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/uat/2026/load",
+        "module": "app.uat_2026_router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/uat/2026/remove",
+        "module": "app.uat_2026_router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking/dashboard",
+        "module": "app.routers.management_project_tracking"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking/projects/{project_id}",
+        "module": "app.routers.management_project_tracking"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking/projects/{project_id}/items",
+        "module": "app.routers.management_project_tracking"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking/projects/{project_id}/activity",
+        "module": "app.routers.management_project_tracking"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/project-tracking/export/{file_type}",
+        "module": "app.routers.management_project_tracking"
+      },
+      {
+        "method": "GET",
+        "path": "/",
+        "module": "app.main"
+      },
+      {
+        "method": "POST",
+        "path": "/api/assets",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/imports/assets.xlsx",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/imports/printers.xlsx",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/imports/external-hdds.xlsx",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/it-activity/purchases",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/it-activity/summary",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/batch3/reconciliation",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/batch3/replacements/{replacement_id}/lifecycle",
+        "module": "app.modules.batch3.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/control-center",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/control-center.xlsx",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/management/executive-dashboard",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/management/approvals/{workflow}/{record_id}/decision",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/replacements",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/replacements/{replacement_id}",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/replacements/{replacement_id}/resubmit",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/work-records/{work_id}",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/work-records/{work_id}/decision",
+        "module": "app.modules.batch4.router"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/assets/{asset_id}",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/assets/{asset_id}/status",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "POST",
+        "path": "/api/assets/{asset_id}/assign",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "POST",
+        "path": "/api/assets/{asset_id}/return",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/assets/{asset_id}/archive",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/assets/{asset_id}",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "POST",
+        "path": "/api/component-replacements",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "POST",
+        "path": "/api/work-records",
+        "module": "app.modules.asset_return.mutation_guards"
+      },
+      {
+        "method": "GET",
+        "path": "/api/assets",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/dashboard/summary",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/dashboard/it",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/dashboard/it/assets",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/assets/{asset_id}/vendor-return",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/asset-vendor-returns",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/spare-monitors",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "POST",
+        "path": "/api/component-replacements/batch",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/returned-assets.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/it-dashboard-assets.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/monthly-assets.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/monthly-summary.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/nakshatech-assets.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/assets.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/dashboard.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/complete-monthly.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/complete-yearly.xlsx",
+        "module": "app.modules.asset_return.router"
+      },
+      {
+        "method": "GET",
+        "path": "/api/reports/months",
+        "module": "app.modules.asset_return.router"
+      }
+    ]
+  },
+  "live_health": [
+    {
+      "url": "http://localhost:8100/api/health",
+      "status": "unavailable",
+      "passed": false,
+      "error": "Unable to connect to the remote server"
+    },
+    {
+      "url": "http://localhost:3100/",
+      "status": "unavailable",
+      "passed": false,
+      "error": "Unable to connect to the remote server"
+    },
+    {
+      "url": "http://localhost:8088/api/health",
+      "status": "unavailable",
+      "passed": false,
+      "error": "Unable to connect to the remote server"
+    }
+  ],
+  "limitations": [
+    "The completed backend run disabled SQLite disk-flush durability only on conftest's UUID-named disposable database in the system temporary directory. Transactions and schema isolation remained active. Crash durability was not tested.",
+    "The local Docker Compose status command returned no running services. Default frontend, backend and nginx ports were unavailable.",
+    "No interactive browser, visual, mobile, or real PostgreSQL workflow verification was completed.",
+    "Frontend source-string verifiers do not establish working browser behavior.",
+    "The backend suite uses disposable SQLite databases; external delivery, MinIO, Redis, backup restoration and cPanel deployment are not established by this run.",
+    "Line/branch coverage was not measured; coverage.py and pytest-cov are not installed.",
+    "Some test modules lack direct imports of application modules; transitive/API coverage requires separate measurement.",
+    "The assigned-PM happy-path assertion in test_unassigned_pm_project_access_rejected_at_project_360 ends with 'if False else True', so that assertion does not verify access."
+  ],
+  "application_changes": "None. This run only added QA evidence under artifacts/qa/current-run and generated ignored frontend build outputs.",
+  "timing_recheck_original_sqlite_settings": {
+    "counts": {
+      "passed": 4,
+      "failed": 22
+    },
+    "failures": [
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_duplicate_complete_does_not_double_count",
+        "message": "assert 1.2 == 1.16"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_production_to_qc_gate",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_qc_to_qa_gate",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_qa_reject_preserves_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_ready_for_delivery_gate",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_daily_activity_flow_v8_3",
+        "test": "test_delivery_gate_and_no_auto_finance",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_qc_reject_allows_production_rework_without_double_counting_file",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_qc_and_qa_gates_and_reject_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_item_multi_session_production_v8_3",
+        "test": "test_ready_for_delivery_and_delivery_after_full_chain",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_e2e_final_v8_3",
+        "test": "test_operational_completion_blocked_until_all_files_delivered",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_team_lead_can_personally_perform_production",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_employee_files_attribution_and_aggregation",
+        "message": "ValueError: Cannot complete this file: planned quantity is missing. Ask the Project Manager to correct the source data."
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_delay_category_system_malfunction_and_affected_file",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_qc_start_end_duration_pass",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_delivery_after_qa_pass",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_file_tracking_v8_2",
+        "test": "test_workbook_exact_project_and_sheet_names",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_qa_gate_after_qc_pass",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_qc_reject_history_and_notification",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_qa_reject_history",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_ready_when_all_qa_pass_and_tl_confirms",
+        "message": "ValueError: End time must be after the start time"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_area_master_exact_26_and_file_level_values",
+        "message": "assert 1.2 == 1.16"
+      },
+      {
+        "module": "backend.tests.test_production_master_excel_allocation_v8_3",
+        "test": "test_employee_productivity_counts",
+        "message": "ValueError: End time must be after the start time"
+      }
+    ],
+    "note": "Same full collection; only the 26 timing failures selected. Four passed, 19 retained equal/invalid-time failures, two exposed quantity differences and one exposed missing planned quantity."
+  },
+  "latest_result_per_backend_test": {
+    "counts": {
+      "passed": 558,
+      "failed": 73,
+      "skipped": 5
+    },
+    "note": "Combines the complete 636-test run with the latest results for the 26 timing rechecks; this is not a second complete suite run."
+  },
+  "patch_utilities": {
+    "total": 10,
+    "failed": 0,
+    "limitation": "The installer source-snapshot smoke test returns without assertions when the optional repo snapshot directory is absent."
+  }
+}

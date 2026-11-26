@@ -1,0 +1,218 @@
+--- a/frontend/src/components/WelcomeAssetScene.tsx
++++ b/frontend/src/components/WelcomeAssetScene.tsx
+@@ -25,6 +25,10 @@
+ const CYCLE_SECONDS = 3.45
+ // Dragging roughly 520px turns the scene 360 degrees around its upright axis.
+ const YAW_RADIANS_PER_PIXEL = (Math.PI * 2) / 520
++// A short press still selects a department; press-and-hold starts the 360-degree spin.
++const PRESS_HOLD_DELAY_MS = 220
++const HOLD_SPIN_SECONDS_PER_TURN = 3.2
++const DRAG_THRESHOLD_PX = 8
+ const HOLD = .48
+ const START_PHASE = (1 - HOLD) * (.4 + .31) + HOLD / 2
+ function armExtension(cycle: number): number {
+@@ -240,6 +244,10 @@
+     let yaw = 0
+     let targetYaw = 0
+     let dragging = false
++    let manualDragging = false
++    let holdSpinning = false
++    let holdTimer: number | null = null
++    let activePointerId: number | null = null
+     let keyboardInspection = false
+     let previousX = 0
+     let pressX = 0
+@@ -256,6 +264,8 @@
+     }
+     const labelPosition = new THREE.Vector3()
+     const shouldAnimate = () => contextAvailable && visible && !document.hidden && !latest.current.paused && !latest.current.reducedMotion
++    // Explicit press-and-hold works even when the decorative animation is paused.
++    const shouldRender = () => shouldAnimate() || (holdSpinning && contextAvailable && visible && !document.hidden && !latest.current.reducedMotion)
+     const inspecting = () => dragging || keyboardInspection || Boolean(latest.current.highlighted || latest.current.selected)
+     const paint = () => {
+       if (disposed || !contextAvailable) return
+@@ -298,26 +308,32 @@
+       }))
+       renderer.render(scene, camera)
+       canvas.dataset.viewYaw = yaw.toFixed(4)
+-      canvas.dataset.animation = shouldAnimate() ? 'running' : 'resting'
++      canvas.dataset.animation = holdSpinning ? 'hold-spinning' : shouldAnimate() ? 'running' : 'resting'
+       canvas.dataset.extension = extension.toFixed(4)
+       canvas.dataset.spin = spin.toFixed(4)
+     }
+     const loop = (time: number) => {
+       frame = 0
+-      // Cap decorative rendering at 30 fps to keep input responsive on smaller devices.
+-      if (time - previousTime >= 32) {
+-        if (shouldAnimate() && !inspecting()) elapsed += Math.min((time - previousTime) / 1000, .1)
++      // Higher frame rate while the user is holding the cube; 30 fps for ambient motion.
++      if (time - previousTime >= (holdSpinning ? 16 : 32)) {
++        const dt = Math.min((time - previousTime) / 1000, .1)
++        if (shouldAnimate() && !inspecting()) elapsed += dt
++        if (holdSpinning && !latest.current.reducedMotion) {
++          // Exactly one upright revolution per HOLD_SPIN_SECONDS_PER_TURN.
++          targetYaw += dt * (Math.PI * 2) / HOLD_SPIN_SECONDS_PER_TURN
++          yaw = targetYaw
++        }
+         previousTime = time
+         paint()
+       }
+-      if (shouldAnimate()) frame = requestAnimationFrame(loop)
++      if (shouldRender()) frame = requestAnimationFrame(loop)
+     }
+     const sync = () => {
+       if (frame) cancelAnimationFrame(frame)
+       frame = 0
+       previousTime = performance.now()
+       paint()
+-      if (shouldAnimate()) frame = requestAnimationFrame(loop)
++      if (shouldRender()) frame = requestAnimationFrame(loop)
+     }
+     invalidate.current = sync
+     const resize = () => {
+@@ -330,36 +346,81 @@
+       camera.updateProjectionMatrix()
+       sync()
+     }
++    const clearHoldTimer = () => {
++      if (holdTimer !== null) window.clearTimeout(holdTimer)
++      holdTimer = null
++    }
++    const stopPointerInteraction = () => {
++      clearHoldTimer()
++      dragging = false
++      manualDragging = false
++      holdSpinning = false
++      pressedNode = null
++      const pointerId = activePointerId
++      activePointerId = null
++      if (pointerId !== null && interaction.hasPointerCapture(pointerId)) {
++        interaction.releasePointerCapture(pointerId)
++      }
++      interaction.classList.remove('is-dragging')
++      sync()
++    }
+     const move = (event: PointerEvent) => {
+-      if (dragging) {
+-        // No angle clamp: users can turn the scene through 360 degrees repeatedly.
+-        targetYaw += (event.clientX - previousX) * YAW_RADIANS_PER_PIXEL
++      if (dragging && event.pointerId === activePointerId) {
++        const dx = event.clientX - previousX
+         previousX = event.clientX
+-        if (!shouldAnimate()) { yaw = targetYaw; paint() }
+-      }
+-      // Do not reset to a mouse-dependent angle after dragging.
++        // Moving beyond the threshold switches from automatic spin to manual drag.
++        if (!manualDragging && Math.hypot(event.clientX - pressX, event.clientY - pressY) >= DRAG_THRESHOLD_PX) {
++          manualDragging = true
++          holdSpinning = false
++          clearHoldTimer()
++        }
++        if (manualDragging) {
++          targetYaw += dx * YAW_RADIANS_PER_PIXEL
++          if (!shouldRender()) { yaw = targetYaw; paint() }
++        }
++      }
+       if (!dragging && !(event.target as Element).closest('button')) latest.current.onHighlight(pick(event))
+     }
+     const down = (event: PointerEvent) => {
+-      if (event.button !== 0 || (event.target as Element).closest('button')) return
++      const target = event.target instanceof Element ? event.target : null
++      if (dragging || event.button !== 0 || target?.closest('button, a, input, select, textarea, [role="button"]')) return
+       dragging = true
++      manualDragging = false
++      holdSpinning = false
++      activePointerId = event.pointerId
+       previousX = event.clientX
+       pressX = event.clientX
+       pressY = event.clientY
+       pressedNode = pick(event)
+       interaction.setPointerCapture(event.pointerId)
+       interaction.classList.add('is-dragging')
++      if (!latest.current.reducedMotion) {
++        holdTimer = window.setTimeout(() => {
++          holdTimer = null
++          if (!dragging || manualDragging || disposed || !contextAvailable || !visible || document.hidden) return
++          holdSpinning = true
++          targetYaw = yaw
++          sync()
++        }, PRESS_HOLD_DELAY_MS)
++      }
+     }
+     const up = (event: PointerEvent) => {
+-      if (dragging && event.type === 'pointerup' && pressedNode && Math.hypot(event.clientX - pressX, event.clientY - pressY) < 8) latest.current.onSelect(pressedNode)
+-      dragging = false
+-      pressedNode = null
+-      if (interaction.hasPointerCapture(event.pointerId)) interaction.releasePointerCapture(event.pointerId)
+-      interaction.classList.remove('is-dragging')
++      if (event.pointerId !== activePointerId) return
++      const selectedNode = event.type === 'pointerup' && dragging && !manualDragging && !holdSpinning &&
++        Math.hypot(event.clientX - pressX, event.clientY - pressY) < DRAG_THRESHOLD_PX ? pressedNode : null
++      stopPointerInteraction()
++      if (selectedNode) latest.current.onSelect(selectedNode)
++    }
++    const lostCapture = (event: PointerEvent) => {
++      if (event.pointerId === activePointerId) stopPointerInteraction()
+     }
+     const leave = () => {
+-      // Keep the manually selected rotation after the pointer leaves.
+       latest.current.onHighlight(null)
++    }
++    const windowBlur = () => { if (dragging) stopPointerInteraction() }
++    const visibilityChanged = () => {
++      if (document.hidden && dragging) stopPointerInteraction()
++      else sync()
+     }
+     const keydown = (event: KeyboardEvent) => {
+       if (event.target !== interaction || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+@@ -390,18 +451,21 @@
+     interaction.addEventListener('pointermove', move)
+     interaction.addEventListener('pointerup', up)
+     interaction.addEventListener('pointercancel', up)
++    interaction.addEventListener('lostpointercapture', lostCapture)
+     interaction.addEventListener('pointerleave', leave)
+     interaction.addEventListener('keydown', keydown)
+     interaction.addEventListener('focusin', focus)
+     interaction.addEventListener('focusout', blur)
+     canvas.addEventListener('webglcontextlost', contextLost)
+     canvas.addEventListener('webglcontextrestored', contextRestored)
+-    document.addEventListener('visibilitychange', sync)
++    document.addEventListener('visibilitychange', visibilityChanged)
++    window.addEventListener('blur', windowBlur)
+     resize()
+     latest.current.onReady(true)
+     return () => {
+       disposed = true
+       invalidate.current = null
++      clearHoldTimer()
+       if (frame) cancelAnimationFrame(frame)
+       observer.disconnect()
+       visibility.disconnect()
+@@ -409,13 +473,15 @@
+       interaction.removeEventListener('pointermove', move)
+       interaction.removeEventListener('pointerup', up)
+       interaction.removeEventListener('pointercancel', up)
++      interaction.removeEventListener('lostpointercapture', lostCapture)
+       interaction.removeEventListener('pointerleave', leave)
+       interaction.removeEventListener('keydown', keydown)
+       interaction.removeEventListener('focusin', focus)
+       interaction.removeEventListener('focusout', blur)
+       canvas.removeEventListener('webglcontextlost', contextLost)
+       canvas.removeEventListener('webglcontextrestored', contextRestored)
+-      document.removeEventListener('visibilitychange', sync)
++      document.removeEventListener('visibilitychange', visibilityChanged)
++      window.removeEventListener('blur', windowBlur)
+       disposables.forEach(object => object.dispose())
+       renderer.dispose()
+     }
+--- a/frontend/src/components/MetalRosetteHero.tsx
++++ b/frontend/src/components/MetalRosetteHero.tsx
+@@ -117,7 +117,7 @@
+       <div className="rosette-hero__toolbar">
+         <div className="rosette-hero__detail" id="rosette-division-detail" aria-live="polite" aria-atomic="true">
+           <span className="rosette-hero__detail-icon"><ActiveIcon size={20} strokeWidth={1.5} aria-hidden="true" /></span>
+-          <div><strong>{activeDivision ? `${activeDivision.label} · ${activeDivision.detail}` : 'NakshaTech'}</strong><p>{webgl ? 'Drag to rotate · Select a division' : 'Select a division'}</p></div>
++          <div><strong>{activeDivision ? `${activeDivision.label} · ${activeDivision.detail}` : 'NakshaTech'}</strong><p>{webgl ? 'Hold to spin 360° · Drag to rotate · Select a division' : 'Select a division'}</p></div>
+         </div>
+         <div className="rosette-hero__controls">
+           {webgl && <Move3D className="rosette-hero__drag-icon" size={18} aria-hidden="true" />}

@@ -7,7 +7,7 @@ import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../context/AuthContext'
 import { useITMonthUrl } from '../context/ITMonthContext'
 import { apiFetch } from '../lib/api'
-import { formatIndiaDateTime } from '../lib/date'
+import { formatIndiaDateTime, indiaDateInput } from '../lib/date'
 import { isFullAccessRole } from '../lib/roles'
 import { monthLabel, withITMonth } from '../lib/itMonth'
 import type {
@@ -77,7 +77,7 @@ export function WorkFormPage() {
   const [form, setForm] = useState({
     module: defaultModule, asset_id: '', title: '', work_type: 'Inspection', project: '',
     assigned_to: '', technician: user?.full_name || '', priority: 'medium', issue_description: '',
-    details: '', start_date: new Date().toISOString().slice(0, 10), expected_completion_date: '',
+    details: '', start_date: indiaDateInput(), expected_completion_date: '',
   })
   const [assetSearch, setAssetSearch] = useState('')
   const [showAssetResults, setShowAssetResults] = useState(false)
@@ -85,7 +85,7 @@ export function WorkFormPage() {
     asset_id: searchParams.get('asset') || '',
     change_type: 'replacement' as ChangeType,
     technician: user?.full_name || '',
-    replacement_date: new Date().toISOString().slice(0, 10),
+    replacement_date: indiaDateInput(),
     approved_by: '', remarks: '',
   })
   const [changeRows, setChangeRows] = useState<ChangeRow[]>([newChangeRow()])
@@ -254,6 +254,11 @@ export function WorkFormPage() {
         eyebrow="CONTROLLED WORKFLOW"
         title="Work Records & Component Changes"
         description={`Identify every system by CPU / Asset Tag and Workstation. IT controls operational completion; activity saved here is reported in ${monthLabel(selectedMonth)} with actual server date and time preserved.`}
+        meta={<>
+          <span className="nk-meta-chip"><History size={14} /> Reported in {monthLabel(selectedMonth)}</span>
+          <span className="nk-meta-chip"><ClipboardPlus size={14} /> {mode === 'work' ? 'Normal work record' : 'Component changes'} · {defaultModule === 'drone' ? 'Drone module' : 'IT module'}</span>
+          <span className="nk-meta-chip"><Repeat2 size={14} /> {records.length} work records · {componentRecords.length} component changes</span>
+        </>}
       />
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}

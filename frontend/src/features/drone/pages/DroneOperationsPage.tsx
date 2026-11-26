@@ -1,3 +1,4 @@
+import { indiaDateInput } from '../../../lib/date'
 import { ArrowRightLeft, ClipboardCheck, PackageCheck, RotateCcw, Send, UserCheck } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -9,7 +10,7 @@ type OperationTab = 'dispatch' | 'return' | 'transfer' | 'assign'
 type SelectedItem = { asset_id?: number; kit_id?: number; quantity: number }
 type ReturnState = { checked: boolean; quantity: number; condition: string; next_status: string; remarks: string }
 
-const today = new Date().toISOString().slice(0, 10)
+const today = indiaDateInput()
 
 function itemKey(item: SelectedItem) {
   return item.asset_id ? `asset-${item.asset_id}` : `kit-${item.kit_id}`
@@ -158,6 +159,11 @@ export function DroneOperationsPage() {
       eyebrow="CONTROLLED DRONE OPERATIONS"
       title="Dispatch, Return, Transfer & Assignment"
       description="Every transaction updates current custody, project allocation, movement history, work records and the live Drone dashboard in one controlled operation."
+      meta={<>
+        <span className="nk-meta-chip"><ArrowRightLeft size={14} /> Dispatch · Return · Transfer · Assign</span>
+        <span className="nk-meta-chip"><ClipboardCheck size={14} /> Custody, project, movement and work records update together</span>
+        <span className="nk-meta-chip"><UserCheck size={14} /> Every transaction recorded with its performer</span>
+      </>}
     />
     <div className="operation-tab-bar">
       <button className={tab === 'dispatch' ? 'active' : ''} onClick={() => setTab('dispatch')}><Send size={17} /> Dispatch</button>
