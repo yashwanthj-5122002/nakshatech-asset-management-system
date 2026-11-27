@@ -1,0 +1,14 @@
+# Administrator-approved restart mechanism.
+#
+# Install as root only after reviewing it:
+#   sudo install -m 0440 -o root -g root \
+#     /home/crmnakshatech/erp-releases/releases/<sha>/deploy/sudoers/nakshatech-crm-deploy \
+#     /etc/sudoers.d/nakshatech-crm-deploy
+#   sudo visudo -cf /etc/sudoers.d/nakshatech-crm-deploy
+#
+# This grants ONLY restart/status/is-active for the single CRM unit. It does not
+# grant shell, package management, file editing or any other elevated action.
+# Ubuntu 24.04 provides systemctl at /usr/bin/systemctl.
+crmnakshatech ALL=(root) NOPASSWD: /usr/bin/systemctl restart nakshatech-crm.service
+crmnakshatech ALL=(root) NOPASSWD: /usr/bin/systemctl status nakshatech-crm.service
+crmnakshatech ALL=(root) NOPASSWD: /usr/bin/systemctl is-active nakshatech-crm.service

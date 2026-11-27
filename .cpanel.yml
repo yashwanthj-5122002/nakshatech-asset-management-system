@@ -1,0 +1,17 @@
+---
+# Safe, optional native cPanel "Deploy HEAD Commit" tasks.
+#
+# GitHub Actions (.github/workflows/deploy-production.yml) remains the primary
+# automatic deployment mechanism. This file intentionally never publishes code,
+# never deletes files, never touches public_html and never restarts services; it
+# only prepares the private release workspace and prints the reviewed manual
+# procedure. No Docker is involved.
+deployment:
+  tasks:
+    - /bin/mkdir -p /home/crmnakshatech/erp-releases/incoming
+    - /bin/mkdir -p /home/crmnakshatech/erp-releases/releases
+    - /bin/mkdir -p /home/crmnakshatech/erp-releases/shared
+    - /bin/chmod 700 /home/crmnakshatech/erp-releases /home/crmnakshatech/erp-releases/incoming /home/crmnakshatech/erp-releases/releases /home/crmnakshatech/erp-releases/shared
+    - /bin/echo "NakshaTech ERP native cPanel deployment workspace is ready."
+    - /bin/echo "GitHub Actions is the primary automatic deployment mechanism; nothing was published by this task."
+    - /bin/echo "For a reviewed manual release run: PRODUCTION_DEPLOY_ENABLED=true bash scripts/deploy-production.sh <sha> (add APPROVED_SCHEMA_SHA=<sha> only when the release changes migrations)"

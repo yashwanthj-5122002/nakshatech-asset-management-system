@@ -1,0 +1,110 @@
+name: nakshatech_crm_production
+x-defaults: &defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}
+services:
+  db:
+    <<: *defaults
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  redis:
+    <<: *defaults
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, "yes"]
+    volumes: [redis_data:/data]
+    networks: [private]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  minio:
+    <<: *defaults
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
+    volumes: [minio_data:/data]
+    networks: [private]
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  backend:
+    <<: *defaults
+    image: nakshatech-backend:${RELEASE_SHA:?required}
+    build: ./backend
+    env_file: ["${PRODUCTION_ENV_FILE:?required}"]
+    environment:
+      ENVIRONMENT: production
+      APP_ENV: production
+      API_PREFIX: /api
+      SEED_DEFAULT_USERS: "false"
+      SEED_OPERATIONS_TEST_USERS_ENABLED: "false"
+      ENABLE_TEST_EMPLOYEE_SEED: "false"
+      ENABLE_UAT_2026_CONTROLS: "false"
+      LOCAL_TEST_AUTH_BYPASS: "false"
+      DOCS_ENABLED: "false"
+      BACKUP_ROOT: /backups
+    command: [uvicorn, app.batch4_main:app, --host, 0.0.0.0, --port, "8000", --proxy-headers, --forwarded-allow-ips, "*"]
+    volumes: [uploads:/app/uploads, backups:/backups]
+    networks: [private, outbound]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  frontend:
+    <<: *defaults
+    image: nakshatech-frontend:${RELEASE_SHA:?required}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    networks: [private]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost/]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  nginx:
+    <<: *defaults
+    image: nginx:1.28-alpine
+    ports: ["127.0.0.1:${PRODUCTION_HTTP_PORT:-18090}:80"]
+    volumes: [./nginx/production.conf:/etc/nginx/conf.d/default.conf:ro]
+    networks: [private, ingress]
+    depends_on:
+      backend: {condition: service_healthy}
+      frontend: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost/api/health]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+networks:
+  private: {internal: true}
+  outbound: {}
+  ingress: {}
+volumes:
+  postgres_data: {}
+  redis_data: {}
+  minio_data: {}
+  uploads: {}
+  backups: {}
