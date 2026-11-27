@@ -2,8 +2,14 @@ name: ERP quality checks
 on: [push, pull_request]
 permissions:
   contents: read
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '26.13.1'
+
 jobs:
-  regression:
+  backend:
+    name: Backend regression
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -17,35 +23,79 @@ jobs:
     env:
       TEST_POSTGRES_URL: postgresql+psycopg://qa:qa-ci-tests-only@127.0.0.1:5432/qa
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: backend/requirements.txt
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: python -m pip install -r backend/requirements.txt
       - run: python -m pytest backend/tests _pt_patch/tests --junitxml=artifacts/backend.xml
-      - run: python -m pip install pip-audit
-      - run: python -m pip_audit -r backend/requirements.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: backend-qa-results
+          path: artifacts/backend.xml
+
+  frontend:
+    name: Frontend lint, build and E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-        working-directory: frontend
-      - run: npm audit --audit-level=high
         working-directory: frontend
       - run: npm run lint && npm run test:checks && npm run build
         working-directory: frontend
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
       - run: npx playwright install --with-deps chromium
         working-directory: frontend
       - run: npm run test:e2e
         working-directory: frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: qa-results
-          path: |
-            artifacts/backend.xml
-            frontend/test-results/
+          name: frontend-qa-results
+          path: frontend/test-results/
+
+  security:
+    name: Backend and frontend security audits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install pip-audit && python -m pip_audit -r backend/requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npm audit --audit-level=high
+        working-directory: frontend
+
+  # Preserve the original required regression status while running jobs independently.
+  regression:
+    needs: [backend, frontend, security]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every quality job to pass
+        if: needs.backend.result != 'success' || needs.frontend.result != 'success' || needs.security.result != 'success'
+        run: |
+          echo "Backend=${{ needs.backend.result }} Frontend=${{ needs.frontend.result }} Security=${{ needs.security.result }}"
+          exit 1
