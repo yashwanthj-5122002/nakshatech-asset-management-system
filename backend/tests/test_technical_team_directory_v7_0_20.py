@@ -10,6 +10,7 @@ from app.modules.operations.technical_directory_schemas import (
     TechnicalDirectoryMemberCreate,
     TechnicalDirectoryMemberUpdate,
 )
+from app.modules.operations.service import TECHNICAL_DEPARTMENT_ROLE_MAP
 from app.modules.operations.technical_directory_service import (
     LIVE_TECHNICAL_ROUTING_ENABLED,
     TECHNICAL_ROUTING_MODE,
@@ -35,14 +36,17 @@ def _user(db, *, email: str, role: str, employee_id: str, name: str = "Test User
     return row
 
 
-def test_phase6_is_uat_locked_and_lists_six_peer_departments():
+def test_phase6_is_uat_locked_and_lists_every_registered_peer_department():
     with SessionLocal() as db:
         payload = directory_dashboard_payload(db, effective_role="admin")
         assert payload["routing_mode"] == "uat_demo_locked"
         assert payload["live_technical_routing_enabled"] is False
         assert payload["go_live_activation_available"] is False
+        # Survey is the intentionally integrated seventh technical department; the
+        # expected set comes from the authoritative registry, never a hardcoded count.
+        assert {item["department_code"] for item in payload["departments"]} == set(TECHNICAL_DEPARTMENT_ROLE_MAP)
         assert {item["department_code"] for item in payload["departments"]} == {
-            "ortho", "lidar", "civil", "laser_scanning", "bim", "mobile_mapping"
+            "ortho", "lidar", "civil", "laser_scanning", "bim", "survey", "mobile_mapping"
         }
         assert LIVE_TECHNICAL_ROUTING_ENABLED is False
         assert TECHNICAL_ROUTING_MODE == "uat_demo_locked"
@@ -155,7 +159,7 @@ def test_management_and_bd_are_read_only_dashboard_viewers():
         bd = directory_dashboard_payload(db, effective_role="bd")
         assert management["viewer_mode"] == "read_only"
         assert bd["viewer_mode"] == "read_only"
-        assert len(management["departments"]) == 6
-        assert len(bd["departments"]) == 6
+        assert len(management["departments"]) == len(TECHNICAL_DEPARTMENT_ROLE_MAP)
+        assert len(bd["departments"]) == len(TECHNICAL_DEPARTMENT_ROLE_MAP)
         assert all(item["eligible_users"] == [] for item in management["departments"])
         assert all(item["eligible_users"] == [] for item in bd["departments"])

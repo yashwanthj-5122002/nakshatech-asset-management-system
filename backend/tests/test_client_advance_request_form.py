@@ -11,7 +11,7 @@ Covers the write path added to the commercial layer:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -33,6 +33,12 @@ from app.modules.operations.models import ProjectWorkflow
 from app.modules.operations.schemas import WorkflowProjectCreate
 from app.modules.operations.workflow_service import create_bd_project, submit_project_to_finance
 from app.core.database import SessionLocal
+
+# Deterministic, calendar-independent advance dates: the fixture must stay in the
+# future on every run so the ledger keeps reporting the "requested" state instead
+# of drifting into "pending"/"overdue" as real time passes.
+ADVANCE_EXPECTED_DATE = date.today() + timedelta(days=30)
+ADVANCE_FINAL_DATE = date.today() + timedelta(days=60)
 
 
 # -------------------------------------------------------------------------------------------- helpers
@@ -71,8 +77,8 @@ def commercial(**overrides) -> ProjectCommercialInput:
         advance_payment_type="percentage_advance",
         advance_percent=Decimal("25"),
         advance_amount=Decimal("500000"),
-        expected_advance_date=date(2026, 11, 15),
-        final_advance_date=date(2026, 12, 15),
+        expected_advance_date=ADVANCE_EXPECTED_DATE,
+        final_advance_date=ADVANCE_FINAL_DATE,
     )
     values.update(overrides)
     return ProjectCommercialInput(**values)
@@ -167,8 +173,8 @@ def test_create_project_persists_advance_request_on_revision1():
         assert Decimal(row.advance_amount) == Decimal("500000.00")
         assert Decimal(row.advance_base_amount) == Decimal("2000000.00")
         assert row.advance_currency_code == "INR"
-        assert row.expected_advance_date == date(2026, 11, 15)
-        assert row.final_advance_date == date(2026, 12, 15)
+        assert row.expected_advance_date == ADVANCE_EXPECTED_DATE
+        assert row.final_advance_date == ADVANCE_FINAL_DATE
         # commercial value untouched by the advance request
         assert Decimal(row.estimated_amount) == Decimal("2000000.00")
         assert Decimal(row.expected_tax) == Decimal("360000.00")
@@ -274,8 +280,8 @@ def test_estimate_payload_returns_advance_fields_for_repopulation():
         assert payload["advance_amount"] == 500000.0
         assert payload["advance_base_amount"] == 2000000.0
         assert payload["advance_currency_code"] == "INR"
-        assert payload["expected_advance_date"] == "2026-11-15"
-        assert payload["final_advance_date"] == "2026-12-15"
+        assert payload["expected_advance_date"] == ADVANCE_EXPECTED_DATE.isoformat()
+        assert payload["final_advance_date"] == ADVANCE_FINAL_DATE.isoformat()
 
 
 # --------------------------------------------- 4: Submit to Finance preserves the advance fields
@@ -298,9 +304,12 @@ def test_submit_to_finance_preserves_advance_fields_and_does_not_block():
 
     with SessionLocal() as db:
         workflow = db.scalar(select(ProjectWorkflow).where(ProjectWorkflow.project_id == project_id))
-        assert workflow.status == "pending_finance_approval"
+        # BD submission is a Finance review-only handoff; the revision is locked
+        # for billing immediately (internal legacy APPROVED state, no approval).
+        assert workflow.status == "finance_approved"
         row = rev1(db, project_id)
-        assert row.status == "PENDING_APPROVAL"
+        assert row.status == "APPROVED" and row.is_locked is True
+        assert row.approved_by_id is None and row.approved_at is None
         # advance fields survive the submission untouched
         assert row.advance_required is True
         assert row.advance_payment_type == "percentage_advance"
@@ -390,8 +399,8 @@ def test_advance_summary_reflects_saved_request_with_project_value_unchanged():
         # expected_advance_date is still in the future, so the ledger reports "requested"
         # (it becomes "pending" from the expected date, then overdue after the final date).
         assert row["status"] == "requested"
-        assert row["expected_date"] == "2026-11-15"
-        assert row["final_date"] == "2026-12-15"
+        assert row["expected_date"] == ADVANCE_EXPECTED_DATE.isoformat()
+        assert row["final_date"] == ADVANCE_FINAL_DATE.isoformat()
         # project value stays the full contract value (gross incl. 18% tax)
         assert Decimal(str(row["project_value"])) == Decimal("2360000.00")
 
@@ -419,3 +428,27 @@ def test_advance_request_does_not_change_tax_or_workflow_value():
         assert Decimal(a.expected_gross) == Decimal(b.expected_gross)
         assert Decimal(a.estimated_inr) == Decimal(b.estimated_inr)
         assert Decimal(workflow_a.commercial_value) == Decimal(workflow_b.commercial_value)
+
+
+def test_advance_status_date_boundaries_are_deterministic():
+    from app.modules.finance.advance_service import derive_advance_status
+
+    expected = date(2026, 11, 30)
+    final = date(2026, 12, 15)
+    cases = (
+        (expected - timedelta(days=1), "0", "requested"),
+        (expected, "0", "pending"),
+        (final, "0", "pending"),
+        (final + timedelta(days=1), "0", "overdue"),
+        (expected, "25", "partial_received"),
+        (final, "25", "partial_received"),
+        (final + timedelta(days=1), "25", "overdue"),
+        (final + timedelta(days=1), "100", "received"),
+    )
+    for as_of, received, status in cases:
+        assert derive_advance_status(
+            advance_required=True, terms_exist=True,
+            expected_inr=Decimal("100"), received_inr=Decimal(received),
+            adjusted_inr=Decimal("0"), expected_date=expected, final_date=final,
+            invoice_closed=False, as_of=as_of,
+        ) == status, (as_of, received)

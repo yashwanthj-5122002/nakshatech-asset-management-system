@@ -58,7 +58,12 @@ from app.modules.finance.models import FinanceClient, FinanceProject, FinancePro
 from app.modules.operations.lifecycle_models import ProjectInvoice
 from app.modules.operations.lifecycle_schemas import InvoiceDraftCreate, InvoiceRaise
 from app.modules.operations.lifecycle_service import READY_FOR_BILLING, create_invoice_draft, raise_invoice
-from app.modules.operations.models import ProjectWorkflow, ProjectWorkflowEvent
+from app.modules.operations.models import (
+    OrthoProjectProfile,
+    OrthoWorkPackage,
+    ProjectWorkflow,
+    ProjectWorkflowEvent,
+)
 from app.modules.operations.schemas import WorkflowFinanceReview, WorkflowProjectCreate
 from app.modules.operations.workflow_service import (
     create_bd_project,
@@ -255,7 +260,13 @@ def test_fx_outage_on_create_rolls_the_whole_project_back():
 
 
 # ---------------------------------------- 4-7: submit with project, Finance approval lock, return/resubmit, revisions
-def test_submission_sends_revision1_with_project_and_finance_approval_locks_it():
+def test_submission_locks_revision1_for_billing_without_a_finance_decision():
+    """Current approved workflow: BD submission is a Finance REVIEW-ONLY handoff.
+
+    Revision 1 is locked for billing in the same transaction (the legacy internal
+    APPROVED billing state), but it is NOT a Finance approval: no approver, no
+    approval timestamp, no FX verifier, and Finance cannot approve or return it.
+    """
     with SessionLocal() as db:
         bd = make_user(db, "bd.align4@nakshatech.com", "bd")
         finance = make_user(db, "fin.align4@nakshatech.com", "finance")
@@ -264,24 +275,29 @@ def test_submission_sends_revision1_with_project_and_finance_approval_locks_it()
         submit_project_to_finance(db, actor=bd, project_id=project.id)
         db.flush()
         rev = rev1_rows(db, project.id)[0]
-        assert workflow.status == "pending_finance_approval" and rev.status == "PENDING_APPROVAL" and rev.submitted_at is not None
-        # Finance cannot approve Revision 1 separately from the project
-        with pytest.raises(ValueError, match="approved together with the project"):
-            decide_estimate_revision(db, actor=finance, revision_id=rev.id, payload=CommercialEstimateDecision(decision="approve", comments="ok"))
-        assert list_estimate_queue(db) == []           # Revision 1 is not an independent queue item
-
-        finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="Commercials verified"))
-        db.flush()
-        assert rev.status == "APPROVED" and rev.is_locked is True and rev.approved_by_id == finance.id and rev.approved_at is not None
+        assert workflow.status == "finance_approved"                 # legacy PM-ready internal status
+        assert rev.status == "APPROVED" and rev.is_baseline is True and rev.is_locked is True
+        assert rev.submitted_at is not None
+        # Review-only: the locked baseline carries no Finance signature at all.
+        assert rev.approved_by_id is None and rev.approved_at is None
         snapshot = db.get(ProjectFxSnapshot, rev.fx_snapshot_id)
-        assert snapshot.fx_locked is True and snapshot.verified_by_id == finance.id
+        assert snapshot.fx_locked is True and snapshot.verified_by_id is None
+        # Revision 1 is not an independent Finance queue item, and Finance cannot
+        # approve or return a BD-origin project (review-only access).
+        assert list_estimate_queue(db) == []
+        with pytest.raises(PermissionError, match="review-only"):
+            finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback="Commercials verified"))
+        with pytest.raises(PermissionError, match="review-only"):
+            finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="return", feedback="Not accepted"))
         events = [e.event_type for e in db.scalars(select(ProjectWorkflowEvent).where(ProjectWorkflowEvent.project_id == project.id)).all()]
-        assert "commercial_revision1_submitted" in events and "commercial_revision1_approved_baseline" in events
+        assert "bd_submitted_for_finance_visibility" in events
+        assert "commercial_revision1_submitted" in events
+        assert "commercial_bd_review_only_baseline_locked" in events
         with pytest.raises(ValueError, match="baseline is locked"):
             upsert_baseline_estimate(db, actor=bd, project_id=project.id, payload=commercial(estimated_amount=Decimal("9999")))
 
 
-def test_finance_return_keeps_ids_and_history_and_bd_can_correct_and_resubmit():
+def test_locked_revision1_cannot_be_returned_or_overwritten_and_ids_are_preserved():
     with SessionLocal() as db:
         bd = make_user(db, "bd.align5@nakshatech.com", "bd")
         finance = make_user(db, "fin.align5@nakshatech.com", "finance")
@@ -291,35 +307,32 @@ def test_finance_return_keeps_ids_and_history_and_bd_can_correct_and_resubmit():
         rev = rev1_rows(db, project.id)[0]
         original_rev_id, original_project_id, original_client_id = rev.id, project.id, project.client_id
 
-        # while under review BD cannot silently change the commercial terms
-        with pytest.raises(ValueError, match="under Finance review"):
+        # The submitted baseline is locked for billing: BD cannot silently change it.
+        with pytest.raises(ValueError, match="baseline is locked"):
             upsert_baseline_estimate(db, actor=bd, project_id=project.id, payload=commercial(estimated_amount=Decimal("1")))
-
-        finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="return", feedback="Payment terms unclear"))
+        # Finance has review-only access: no return decision either.
+        with pytest.raises(PermissionError, match="review-only"):
+            finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="return", feedback="Payment terms unclear"))
         db.flush()
-        assert workflow.status == "finance_returned"
-        assert rev.status == "RETURNED" and rev.decision_comments == "Payment terms unclear"
+        assert workflow.status == "finance_approved"
+        assert rev.status == "APPROVED" and rev.is_locked is True and rev.decision_comments
         assert db.scalar(select(func.count(FinanceProject.id))) == 1 and rev.id == original_rev_id
 
-        # BD corrects BOTH project data and commercial terms on the same record and resubmits
-        update_bd_project(
+        # Later commercial changes are a NEW revision; identity and history stay intact.
+        rev2 = create_estimate_revision(
             db, actor=bd, project_id=project.id,
-            payload=project_payload(client, "P-1005", project_name="Corrected name", commercial=commercial(
-                estimated_amount=Decimal("2200000"), taxable_base_amount=Decimal("2200000"), payment_terms="50% advance, 50% on delivery")),
+            payload=revision_input(estimated_amount=Decimal("2200000"), taxable_base_amount=Decimal("2200000")),
         )
         db.flush()
-        assert project.id == original_project_id and project.client_id == original_client_id and project.project_name == "Corrected name"
+        assert project.id == original_project_id and project.client_id == original_client_id
         rows = rev1_rows(db, project.id)
-        assert len(rows) == 1 and rows[0].id == original_rev_id
-        assert rows[0].status == "DRAFT" and Decimal(rows[0].estimated_amount) == Decimal("2200000.00")
-        assert Decimal(rows[0].previous_amount) == Decimal("2000000.00")          # earlier value preserved as history
-
-        submit_project_to_finance(db, actor=bd, project_id=project.id)
-        finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback=None))
-        db.flush()
-        assert rows[0].status == "APPROVED" and rows[0].is_locked
+        revision1 = [row for row in rows if row.revision_no == 1]
+        assert len(revision1) == 1 and revision1[0].id == original_rev_id
+        assert Decimal(revision1[0].estimated_amount) == Decimal("2000000.00") and revision1[0].is_locked is True
+        assert rev2.revision_no == 2 and rev2.is_baseline is False
+        assert Decimal(rev2.previous_amount) == Decimal("2000000.00")     # earlier value preserved as history
         events = [e.event_type for e in db.scalars(select(ProjectWorkflowEvent).where(ProjectWorkflowEvent.project_id == project.id).order_by(ProjectWorkflowEvent.id)).all()]
-        for needed in ("submitted_to_finance", "commercial_revision1_returned", "finance_returned", "bd_project_corrected", "commercial_revision1_approved_baseline"):
+        for needed in ("bd_submitted_for_finance_visibility", "commercial_revision1_submitted", "commercial_bd_review_only_baseline_locked"):
             assert needed in events
 
 
@@ -330,7 +343,6 @@ def test_change_after_approval_creates_revision2_and_never_overwrites_revision1(
         client = make_client(db, bd, "ALIGN-F")
         project, workflow = create_bd_project(db, actor=bd, payload=project_payload(client, "P-1006", commercial=commercial(estimated_amount=Decimal("2000000"), taxable_base_amount=Decimal("2000000"))))
         submit_project_to_finance(db, actor=bd, project_id=project.id)
-        finance_review_project(db, actor=finance, project_id=project.id, payload=WorkflowFinanceReview(decision="approve", feedback=None))
         db.flush()
         rev1 = rev1_rows(db, project.id)[0]
         before = (rev1.id, Decimal(rev1.estimated_amount), rev1.status, rev1.approved_at)
@@ -359,7 +371,8 @@ def test_first_submission_requires_revision1_but_legacy_resubmission_is_allowed(
         workflow.submission_count = 1
         workflow.status = "finance_returned"
         submit_project_to_finance(db, actor=bd, project_id=project.id)
-        assert workflow.status == "pending_finance_approval"
+        # Review-only handoff uses the legacy PM-ready internal status.
+        assert workflow.status == "finance_approved"
         assert rev1_rows(db, project.id) == []
 
 
@@ -540,14 +553,41 @@ def test_fixed_price_recommendation_uses_pm_completion_or_acceptance():
         project, _ = make_project(db, owner=bd, code="P-FIX", pm=pm)
         upsert_baseline_estimate(db, actor=bd, project_id=project.id, payload=commercial(estimated_amount=Decimal("1000000"), taxable_base_amount=Decimal("1000000")))
         freeze_baseline_on_finance_approval(db, actor=bd, project_id=project.id)
-        record_billing_basis(db, actor=pm, project_id=project.id, payload=BillingBasisInput(completion_percent=Decimal("60")))
+        # Completion is calculated from delivered work packages (never typed in):
+        # 3 of 5 delivered packages => 3 / 5 = 60 %.
+        db.add(OrthoProjectProfile(project_id=project.id, created_by_id=bd.id, total_area=Decimal("100")))
+        db.flush()
+        for index in range(5):
+            db.add(OrthoWorkPackage(
+                project_id=project.id,
+                package_code=f"PKG-{index}",
+                package_name=f"Block {index}",
+                area=Decimal("20"),
+                area_unit="ha",
+                created_by_id=bd.id,
+                current_stage="delivered" if index < 3 else "qa",
+                production_state="completed",
+                qc_state="approved",
+                qa_state="approved" if index < 3 else "pending",
+            ))
+        db.flush()
+        record_billing_basis(db, actor=pm, project_id=project.id, payload=BillingBasisInput())
         rec = billing_recommendation(db, project_id=project.id)["recommendation"]
         assert rec["method"] == "FIXED_PRICE" and rec["base_amount"] == 600000.0 and rec["completion_percent"] == 60.0
         record_billing_basis(db, actor=pm, project_id=project.id, payload=BillingBasisInput(delivery_accepted=True, acceptance_reference="Final acceptance"))
         rec = billing_recommendation(db, project_id=project.id)["recommendation"]
         assert rec["base_amount"] == 1000000.0 and rec["completion_percent"] == 100.0
-        with pytest.raises(ValueError, match="completion percentage or that delivery"):
-            record_billing_basis(db, actor=pm, project_id=project.id, payload=BillingBasisInput(pm_remarks="nothing concrete"))
+        # Completion is never user-typed: a project without any work packages must
+        # still report the explicit "cannot be calculated" error instead of a guess.
+        empty_project, _ = make_project(db, owner=bd, code="P-FIX-EMPTY", pm=pm)
+        upsert_baseline_estimate(db, actor=bd, project_id=empty_project.id, payload=commercial(
+            estimated_amount=Decimal("1000000"), taxable_base_amount=Decimal("1000000")))
+        freeze_baseline_on_finance_approval(db, actor=bd, project_id=empty_project.id)
+        with pytest.raises(ValueError, match="Completion cannot be calculated until work packages are recorded"):
+            record_billing_basis(
+                db, actor=pm, project_id=empty_project.id,
+                payload=BillingBasisInput(pm_remarks="nothing concrete"),
+            )
 
 
 def test_milestone_recommendation_follows_the_pm_confirmed_milestone():

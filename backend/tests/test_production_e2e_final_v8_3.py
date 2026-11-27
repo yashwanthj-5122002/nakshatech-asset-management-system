@@ -153,14 +153,9 @@ def test_full_file_level_e2e_and_read_model_consistency():
         assert pkg_payload["cumulative_completed"] == 5.0        # 3 + 2
         assert pkg_payload["progress_percent"] == 100.0
         assert pkg_payload["stage_bucket"] == "delivered"
-        # Workflow % = completed APPLICABLE stages / profile stages. The file workflow covers
-        # the core Production→QC→QA→Delivery stages; the department profile may add more.
-        from app.modules.operations.production_stages import stage_profile_for_department
-        profile = stage_profile_for_department(ctx["workflow"].performing_department_code)
-        core_done = len({"production", "qc", "qa", "delivery"} & set(profile))
-        expected_workflow = round(core_done * 100.0 / len(profile), 2)
+        # Unused optional LiDAR stages are excluded from workflow progress.
+        expected_workflow = 100.0
         assert pkg_payload["workflow_progress_percent"] == expected_workflow
-        assert pkg_payload["workflow_progress_percent"] > 0        # never 0 % when core stages complete
 
         # Production Tracking agrees with /ortho (no read-model disagreement)
         assert trow["actual_quantity"] == 5.0

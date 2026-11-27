@@ -22,6 +22,10 @@ VALID_NOTIFICATION_CATEGORIES = {"approval", "ticket", "system"}
 # Other roles keep their existing category, listing and popup policies.
 REVIEWED_APPROVAL_ROLES = frozenset({"finance", "management"})
 
+# Accounts in these states can sign in to finish onboarding, so they must still
+# receive role notifications (e.g. the Management approval inbox).
+PENDING_ONBOARDING_STATUSES = ("pending_mfa", "pending_password_change")
+
 # These exact events belonged exclusively to the rejected V7 Sample Request
 # workflow. Keep the list narrow so no current workflow notification is
 # suppressed by a prefix or a broad category rule.
@@ -91,15 +95,20 @@ def resolve_recipient_users(
     if roles:
         conditions.append(User.role.in_(roles))
 
-    from sqlalchemy import or_
+    from sqlalchemy import and_, or_
 
     users = list(
         db.scalars(
             select(User)
             .where(
                 or_(*conditions),
-                User.is_active.is_(True),
-                User.account_status == "active",
+                # Queue notifications for authorized onboarding accounts so pending
+                # approvals remain available after activation. Other inactive or
+                # restricted account states never qualify.
+                or_(
+                    and_(User.is_active.is_(True), User.account_status == "active"),
+                    User.account_status.in_(PENDING_ONBOARDING_STATUSES),
+                ),
             )
             .order_by(User.id.asc())
         ).all()

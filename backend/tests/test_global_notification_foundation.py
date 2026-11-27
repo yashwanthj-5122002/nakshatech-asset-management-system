@@ -102,28 +102,50 @@ def test_role_fanout_dedupe_and_private_read_state() -> None:
     app, TestingSession, ids = _build_test_context()
 
     with TestingSession() as db:
+        # A legitimate, currently supported approval event: the reviewed popup
+        # policy verifies the underlying pending purchase request, so the fixture
+        # must create that real record instead of a synthetic "approval_required".
+        request = it_activity_models.ITPurchaseRequest(
+            request_code="ITPR-1000",
+            reporting_month="2026-11",
+            requesting_department="Software",
+            requested_employee="QA Employee",
+            item_type="hardware",
+            item_name="Workstation",
+            business_reason="Approval queue foundation test",
+            priority="high",
+            status="pending_approval",
+            requested_by_user_id=ids["it"],
+            requested_by_name="IT User",
+            requested_by_email="it@example.com",
+            requested_by_role="it",
+        )
+        db.add(request)
+        db.flush()
+        dedupe_key = f"approval:purchase_request:{request.id}:submitted:2026-11-27T09:00:00"
+
         first = create_global_notification(
             db,
-            event_type="approval_required",
+            event_type="approval.purchase_request.submitted",
             category="approval",
             title="Management approval required",
-            message="ITW-1000 is ready for review.",
-            target_url="/work?focus=ITW-1000",
+            message="ITPR-1000 is ready for review.",
+            target_url="/it/purchase-requests?month=2026-11",
             recipient_roles=["management"],
-            dedupe_key="approval:itw-1000:submitted",
+            dedupe_key=dedupe_key,
         )
         db.commit()
         assert len(first) == 2
 
         duplicate = create_global_notification(
             db,
-            event_type="approval_required",
+            event_type="approval.purchase_request.submitted",
             category="approval",
             title="Management approval required",
-            message="ITW-1000 is ready for review.",
-            target_url="/work?focus=ITW-1000",
+            message="ITPR-1000 is ready for review.",
+            target_url="/it/purchase-requests?month=2026-11",
             recipient_roles=["management"],
-            dedupe_key="approval:itw-1000:submitted",
+            dedupe_key=dedupe_key,
         )
         db.commit()
         assert duplicate == []
@@ -135,7 +157,7 @@ def test_role_fanout_dedupe_and_private_read_state() -> None:
         assert listed.status_code == 200, listed.text
         assert len(listed.json()) == 1
         notification_id = listed.json()[0]["id"]
-        assert listed.json()[0]["target_url"] == "/work?focus=ITW-1000"
+        assert listed.json()[0]["target_url"] == "/it/purchase-requests?month=2026-11"
         assert client.get("/api/notifications/global/unread-count").json() == {"unread_count": 1}
 
         marked = client.post(f"/api/notifications/global/{notification_id}/read")
@@ -200,3 +222,32 @@ def test_notification_access_is_user_scoped_and_target_url_is_internal() -> None
         response = client.get(f"/api/notifications/global/{notification_id}")
         assert response.status_code == 200, response.text
         assert response.json()["event_type"] == "ticket_updated"
+
+
+def test_notification_fanout_accepts_only_active_or_onboarding_accounts():
+    from app.modules.notifications.service import resolve_recipient_users
+
+    _, TestingSession, _ = _build_test_context()
+    with TestingSession() as db:
+        cases = (
+            ("active", True, True),
+            ("active", False, False),
+            ("pending_mfa", False, True),
+            ("pending_password_change", False, True),
+            ("disabled", True, False),
+            ("disabled_privileged_access", False, False),
+            ("suspended", True, False),
+        )
+        users = []
+        for index, (account_status, is_active, eligible) in enumerate(cases):
+            user = User(
+                email=f"state-{index}@example.com", full_name=f"State {index}",
+                password_hash="unused", role="management",
+                account_status=account_status, is_active=is_active,
+            )
+            db.add(user)
+            users.append((user, eligible))
+        db.flush()
+        for user, eligible in users:
+            recipients = resolve_recipient_users(db, recipient_user_ids=[user.id])
+            assert [row.id for row in recipients] == ([user.id] if eligible else [])

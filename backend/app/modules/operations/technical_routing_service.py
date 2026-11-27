@@ -184,7 +184,10 @@ def routing_status_payload(db: Session) -> dict:
     if live:
         message = "Phase 7 production routing is ACTIVE. Real Technical Team Directory users now own technical PM, sample, handover, progress and completion workflows."
     elif not all_ready:
-        message = "Prepare all six technical departments with PM, Sample, Handover and Completion coverage before production activation."
+        message = (
+            f"Prepare all {len(readiness)} technical departments with PM, Sample, Handover "
+            "and Completion coverage before production activation."
+        )
     elif blocker_total:
         message = "Finish the listed UAT/demo technical work before cutover. Phase 7 uses a clean-boundary activation and will not mix active demo and live workflows."
     else:
@@ -223,7 +226,10 @@ def activate_live_routing(
         missing = ", ".join(
             item["department_label"] for item in status["department_readiness"] if not item["live_ready"]
         )
-        raise ValueError(f"All six technical directories must be live-ready before cutover. Not ready: {missing}")
+        raise ValueError(
+            f"All {len(status['department_readiness'])} technical directories must be live-ready "
+            f"before cutover. Not ready: {missing}"
+        )
     if any(status["blockers"].values()):
         b = status["blockers"]
         raise ValueError(
