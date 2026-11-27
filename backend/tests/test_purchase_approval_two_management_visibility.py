@@ -21,8 +21,13 @@ from app.modules.it_activity.approval_email import (
     issue_purchase_approval_email,
 )
 from app.modules.it_activity.models import ITPurchaseRequest
-from app.modules.it_activity.schemas import PurchaseRequestCreate
-from app.modules.it_activity.service import create_purchase_request
+from app.modules.it_activity.schemas import (
+    PurchaseRequestCreate, PurchaseRequestDecision, PurchaseRequestResubmit,
+)
+from app.modules.it_activity.service import (
+    create_purchase_request, decide_purchase_request, resubmit_purchase_request,
+)
+from app.modules.notifications.service import list_popup_notifications, pending_count_for_user
 
 
 @pytest.fixture
@@ -90,6 +95,28 @@ def test_selected_email_approval_is_visible_to_both_management_users_and_first_d
         chethan = _user(db, "chethan.uat@nakshatech.com", "management", "Chethan UAT")
         vinod = _user(db, "vinod.uat@nakshatech.com", "management", "Vinod UAT")
         request = _purchase_request(db, it_user)
+
+        def pending_events(manager):
+            rows = list_popup_notifications(db, user_id=manager.id, effective_role="management")
+            assert pending_count_for_user(db, user_id=manager.id, effective_role="management") == len(rows)
+            return [row["event_type"] for row in rows]
+
+        for manager in (chethan, vinod):
+            assert pending_events(manager) == ["approval.purchase_request.submitted"]
+
+        for manager in (chethan, vinod):
+            decide_purchase_request(
+                db, request.id,
+                PurchaseRequestDecision(action="send_back", management_remarks="Revise the request"),
+                manager,
+            )
+            assert pending_events(chethan) == pending_events(vinod) == []
+            request = resubmit_purchase_request(
+                db, request.id, PurchaseRequestResubmit.model_validate(request, from_attributes=True),
+                it_user,
+            )
+            assert pending_events(chethan) == ["approval.purchase_request.resubmitted"]
+            assert pending_events(vinod) == ["approval.purchase_request.resubmitted"]
         issued = issue_purchase_approval_email(
             db,
             request,
@@ -130,6 +157,8 @@ def test_selected_email_approval_is_visible_to_both_management_users_and_first_d
         vinod = db.scalar(select(User).where(User.email == "vinod.uat@nakshatech.com"))
         assert chethan is not None
         assert vinod is not None
+
+        assert pending_events(chethan) == pending_events(vinod) == []
 
         chethan_view = management_control_center_endpoint("2026-08", db, chethan)
         vinod_view = management_control_center_endpoint("2026-08", db, vinod)

@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.entities import User
+from app.modules.it_activity.models import ITPurchaseRequest, ITPurchaseRequestHistory
 from app.modules.management_clients.models import ManagementAdditionalProjectRequest, ManagementClientIntake
 from app.modules.management_projects.models import ManagementProjectLink
 from app.modules.notifications.models import GlobalNotification
@@ -27,7 +28,11 @@ FINANCE_APPROVAL_EVENTS = frozenset({
     "workflow.project.submitted_finance",
     "management.additional_project.requested",
 })
-MANAGEMENT_APPROVAL_EVENTS = frozenset({
+PURCHASE_APPROVAL_EVENTS = frozenset({
+    "approval.purchase_request.submitted",
+    "approval.purchase_request.resubmitted",
+})
+MANAGEMENT_APPROVAL_EVENTS = PURCHASE_APPROVAL_EVENTS | frozenset({
     "lifecycle.management_approval_requested",
     "lifecycle.bad_debt.proposed",
     "lifecycle.no_feedback_authorization_required",
@@ -120,6 +125,29 @@ def _pending_uncached(db: Session, row: GlobalNotification, viewer: User, role: 
             row, r"mgmt_add_project_request_(\d+)")
         request = db.get(ManagementAdditionalProjectRequest, request_id) if request_id else None
         return bool(request and request.status == "PENDING" and request.created_project_id is None)
+
+    if role == "management" and event in PURCHASE_APPROVAL_EVENTS:
+        request_id = _dedupe_id(row, r"approval:purchase_request:(\d+):(?:submitted|resubmitted):.+")
+        request = db.get(ITPurchaseRequest, request_id) if request_id else None
+        if not request or request.status != "pending_approval" or request.requested_by_user_id == viewer.id:
+            return False
+
+        latest_resubmission = db.scalar(
+            select(ITPurchaseRequestHistory.created_at)
+            .where(
+                ITPurchaseRequestHistory.request_id == request.id,
+                ITPurchaseRequestHistory.action == "resubmitted",
+            )
+            .order_by(ITPurchaseRequestHistory.id.desc())
+            .limit(1)
+        )
+        # A send-back followed by resubmission must not revive earlier popups.
+        if latest_resubmission is None:
+            return event == "approval.purchase_request.submitted"
+        return (
+            event == "approval.purchase_request.resubmitted"
+            and _utc(row.created_at) >= _utc(latest_resubmission)
+        )
 
     if role == "management" and event == "lifecycle.management_approval_requested":
         project_id = _dedupe_id(row, r"lifecycle:management-approval:(\d+)")

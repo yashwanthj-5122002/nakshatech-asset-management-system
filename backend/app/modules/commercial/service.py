@@ -1812,7 +1812,12 @@ def record_billing_basis(db: Session, *, actor: User, project_id: int, payload: 
         if any(inv.billed_milestone_id == milestone.id for inv in invoices):
             raise ValueError("This milestone has already been invoiced")
     elif revision is not None and billing_type == "fixed_price":
-        completion = _automatic_completion_percent(db, project, workflow)
+        # Accepted final delivery is authoritative full completion of the fixed
+        # price scope; otherwise completion is calculated from delivered work.
+        completion = (
+            Decimal("100") if payload.delivery_accepted
+            else _automatic_completion_percent(db, project, workflow)
+        )
         if completion is None:
             raise ValueError("Completion cannot be calculated until work packages are recorded")
     else:

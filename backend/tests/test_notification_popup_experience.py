@@ -103,6 +103,50 @@ def _client_for(app, TestingSession, user_id: int) -> TestClient:
     return TestClient(app)
 
 
+def _seed_pending_finance_approval(TestingSession, *, owner_id: int, code: str) -> int:
+    """Create the REAL pending Finance approval the reviewed popup policy verifies.
+
+    Finance/Management popups are gated on the authoritative business record, not on
+    a stored notification flag, so a fixture must exist for the row to qualify.
+    """
+    from app.modules.finance.models import FinanceClient, FinanceProject
+    from app.modules.operations.models import ProjectWorkflow
+
+    with TestingSession() as db:
+        client = FinanceClient(
+            client_code=f"C-{code}", client_name="Acme Pvt Ltd", contact_person_name="Client Contact",
+            contact_person_phone="9999999999", country="India", source_team="bd_team",
+            source_person_name="BD", is_active=True, created_by_id=owner_id,
+        )
+        db.add(client)
+        db.flush()
+        project = FinanceProject(
+            project_code=code, project_name="Finance review project", client_id=client.id,
+            client_name=client.client_name, is_active=True, created_by_id=owner_id,
+        )
+        db.add(project)
+        db.flush()
+        db.add(ProjectWorkflow(
+            project_id=project.id, bd_owner_user_id=owner_id, status="pending_finance_approval",
+            scope_text="Survey and deliver", priority="medium", currency="INR",
+            created_by_id=owner_id, updated_by_id=owner_id,
+        ))
+        create_global_notification(
+            db,
+            event_type="workflow.project.submitted_finance",
+            title=f"Finance review required: {code}",
+            message=f"BD submitted {code}",
+            category="approval",
+            target_url=f"/finance?project={project.id}",
+            recipient_roles=["finance"],
+            requires_action=True,
+            metadata={"project_id": project.id, "project_name": code,
+                      "client_name": client.client_name},
+        )
+        db.commit()
+        return project.id
+
+
 def _seed(TestingSession, *, recipients, event_type, dedupe=None, **kwargs) -> None:
     with TestingSession() as db:
         create_global_notification(
@@ -120,18 +164,7 @@ def _seed(TestingSession, *, recipients, event_type, dedupe=None, **kwargs) -> N
 # ---------------------------------------------------------------------------
 def test_bd_to_finance_creates_finance_notification_only() -> None:
     app, TestingSession, ids = _build()
-    _seed(
-        TestingSession,
-        recipients=[ids[FINANCE]],
-        event_type="workflow.project.submitted_finance",
-        title="Finance review required: GIS4456",
-        message="BD submitted GIS4456",
-        category="approval",
-        target_url="/finance",
-        severity="info",
-        requires_action=True,
-        metadata={"project_name": "GIS4456", "client_name": "ABC Pvt Ltd"},
-    )
+    _seed_pending_finance_approval(TestingSession, owner_id=ids[BD], code="GIS4456")
 
     finance = _client_for(app, TestingSession, ids[FINANCE])
     rows = finance.get("/api/notifications/global/popup-queue").json()
@@ -164,7 +197,7 @@ def test_notification_stays_pending_after_read() -> None:
     """Read != Resolved: clicking Later leaves the item pending in the bell."""
 
     app, TestingSession, ids = _build()
-    _seed(TestingSession, recipients=[ids[FINANCE]], event_type="approval.y", requires_action=True)
+    _seed_pending_finance_approval(TestingSession, owner_id=ids[BD], code="GIS4457")
 
     client = _client_for(app, TestingSession, ids[FINANCE])
     listed = client.get("/api/notifications/global").json()
@@ -186,29 +219,27 @@ def test_finance_approval_resolves_notification() -> None:
     """Resolution is driven by the real workflow action, not by the popup."""
 
     app, TestingSession, ids = _build()
-    _seed(TestingSession, recipients=[ids[FINANCE]], event_type="approval.z", requires_action=True)
+    project_id = _seed_pending_finance_approval(TestingSession, owner_id=ids[BD], code="GIS4458")
 
     client = _client_for(app, TestingSession, ids[FINANCE])
     assert client.get("/api/notifications/global/pending-count").json()["pending_count"] == 1
 
-    # The approval service runs in the same transaction as the real action.
+    from app.modules.operations.schemas import WorkflowFinanceReview
+    from app.modules.operations.workflow_service import finance_review_project
+
     with TestingSession() as db:
-        resolved = resolve_notifications(
-            db,
-            recipient_user_ids=[ids[FINANCE]],
-            event_type="approval.z",
-            resolved_by_id=ids[FINANCE],
-            resolution_note="Approved by Finance",
+        finance_review_project(
+            db, actor=db.get(User, ids[FINANCE]), project_id=project_id,
+            payload=WorkflowFinanceReview(decision="approve", feedback="Reviewed"),
         )
         db.commit()
-    assert resolved == 1
 
     assert client.get("/api/notifications/global/pending-count").json()["pending_count"] == 0
     assert client.get("/api/notifications/global/popup-queue").json() == []
     with TestingSession() as db:
         row = db.scalar(select(GlobalNotification))
         assert row.resolved_at is not None
-        assert row.resolution_note == "Approved by Finance"
+        assert row.resolution_note == "Finance approve"
 
 
 def test_resolve_never_creates_new_rows() -> None:
@@ -273,13 +304,13 @@ def test_reminder_cycle_does_not_create_duplicate_rows() -> None:
     for _ in range(10):
         _seed(
             TestingSession,
-            recipients=[ids[FINANCE]],
-            event_type="finance.advance_payment.overdue",
-            dedupe="advance_overdue_project_1_2026-10-05",
+            recipients=[ids[PM]],
+            event_type="workflow.project.pm_assigned",
+            dedupe="pm_assignment_pending_project_1_2026-10-05",
             is_reminder=True,
             requires_action=True,
         )
-    client = _client_for(app, TestingSession, ids[FINANCE])
+    client = _client_for(app, TestingSession, ids[PM])
     for _ in range(10):
         assert len(client.get("/api/notifications/global/popup-queue").json()) == 1
     with TestingSession() as db:
@@ -290,17 +321,17 @@ def test_resolved_overdue_item_stops_qualifying() -> None:
     app, TestingSession, ids = _build()
     _seed(
         TestingSession,
-        recipients=[ids[FINANCE]],
-        event_type="finance.advance_payment.overdue",
-        dedupe="advance_overdue_project_1_2026-10-05",
+        recipients=[ids[PM]],
+        event_type="workflow.project.pm_assigned",
+        dedupe="pm_assignment_pending_project_1_2026-10-05",
         is_reminder=True,
         requires_action=True,
     )
-    client = _client_for(app, TestingSession, ids[FINANCE])
+    client = _client_for(app, TestingSession, ids[PM])
     assert len(client.get("/api/notifications/global/popup-queue").json()) == 1
 
     with TestingSession() as db:  # the payment/advance condition cleared
-        resolve_reminders(db, dedupe_key_prefixes=["advance_overdue_project_1_"])
+        resolve_reminders(db, dedupe_key_prefixes=["pm_assignment_pending_project_1_"])
         db.commit()
 
     assert client.get("/api/notifications/global/popup-queue").json() == []
@@ -312,10 +343,12 @@ def test_resolved_overdue_item_stops_qualifying() -> None:
 # ---------------------------------------------------------------------------
 def test_popup_queue_only_returns_own_notifications() -> None:
     app, TestingSession, ids = _build()
-    _seed(TestingSession, recipients=[ids[FINANCE]], event_type="approval.own")
-    _seed(TestingSession, recipients=[ids[PM]], event_type="approval.other")
-    finance = _client_for(app, TestingSession, ids[FINANCE])
-    assert len(finance.get("/api/notifications/global/popup-queue").json()) == 1
+    _seed(TestingSession, recipients=[ids[PM]], event_type="workflow.project.pm_assigned")
+    _seed(TestingSession, recipients=[ids[BD]], event_type="workflow.project.finance_return")
+    pm = _client_for(app, TestingSession, ids[PM])
+    assert len(pm.get("/api/notifications/global/popup-queue").json()) == 1
+    assert _client_for(app, TestingSession, ids[BD]).get("/api/notifications/global/popup-queue").json()
+    assert _client_for(app, TestingSession, ids[PM]).get("/api/notifications/global/popup-queue").json()[0]["event_type"] == "workflow.project.pm_assigned"
 
 
 def test_other_users_notification_is_not_enumerable() -> None:
@@ -428,13 +461,13 @@ def test_popup_queue_is_ordered_and_capped() -> None:
     for index in range(7):
         _seed(
             TestingSession,
-            recipients=[ids[FINANCE]],
-            event_type=f"approval.q{index}",
+            recipients=[ids[PM]],
+            event_type="workflow.project.pm_assigned",
             title=f"Item {index}",
         )
     with TestingSession() as db:
         rows = list_popup_notifications(
-            db, user_id=ids[FINANCE], effective_role="finance", limit=3
+            db, user_id=ids[PM], effective_role="pm", limit=3
         )
     assert [row["title"] for row in rows] == ["Item 0", "Item 1", "Item 2"]
 

@@ -194,7 +194,12 @@ def test_workflow_progress_counts_only_applicable_stages():
         inspection_status = None
         upload_status = None
     assert package_workflow_progress(P(), "ortho") == 50.0  # 2 of 4 universal stages
-    assert package_workflow_progress(P(), "lidar") == 25.0  # 2 of 8 LiDAR stages
+    assert package_workflow_progress(P(), "lidar") == 50.0  # 2 of 4 configured stages
+    configured = P()
+    configured.import_status = "not_started"
+    assert package_workflow_progress(configured, "lidar") == 40.0  # configured import is mandatory
+    configured.import_status = "completed"
+    assert package_workflow_progress(configured, "lidar") == 60.0
 
 
 def test_project_weighted_progress_uses_quantity_not_naive_average():

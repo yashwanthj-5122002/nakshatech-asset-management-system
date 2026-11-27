@@ -23,7 +23,9 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies import CurrentAuth, get_current_auth
 from app.core.database import Base, get_db
 from app.models.entities import User
+from app.modules.finance.models import FinanceClient, FinanceProject
 from app.modules.notifications.models import GlobalNotification  # noqa: F401
+from app.modules.operations.models import ProjectWorkflow
 from app.modules.notifications.router import router as notification_router
 from app.modules.notifications.service import create_global_notification, resolve_notifications
 from app.services.ticket_notification_service import (
@@ -116,6 +118,37 @@ def _bell(client: TestClient) -> list[dict]:
     response = client.get("/api/notifications/global")
     assert response.status_code == 200
     return response.json()
+
+
+def _raise_pending_finance_project(TestingSession, *, owner_id: int, code: str) -> int:
+    """Authoritative pending Finance approval (the reviewed popup policy verifies it)."""
+    with TestingSession() as db:
+        client = FinanceClient(
+            client_code=f"C-{code}", client_name="Acme Pvt Ltd", contact_person_name="Client Contact",
+            contact_person_phone="9999999999", country="India", source_team="bd_team",
+            source_person_name="BD", is_active=True, created_by_id=owner_id,
+        )
+        db.add(client)
+        db.flush()
+        project = FinanceProject(
+            project_code=code, project_name="Finance review project", client_id=client.id,
+            client_name=client.client_name, is_active=True, created_by_id=owner_id,
+        )
+        db.add(project)
+        db.flush()
+        db.add(ProjectWorkflow(
+            project_id=project.id, bd_owner_user_id=owner_id, status="pending_finance_approval",
+            scope_text="Survey and deliver", priority="medium", currency="INR",
+            created_by_id=owner_id, updated_by_id=owner_id,
+        ))
+        create_global_notification(
+            db, event_type="workflow.project.submitted_finance", category="approval",
+            title=f"Finance review required: {code}", message=f"BD submitted {code}",
+            target_url=f"/finance?project={project.id}", recipient_roles=["finance"],
+            requires_action=True, metadata={"project_id": project.id, "project_name": code},
+        )
+        db.commit()
+        return project.id
 
 
 def _raise_it_ticket(TestingSession, *, ticket_id: int, code: str, priority: str = "high") -> None:
@@ -227,18 +260,16 @@ def test_qc_assignment_is_isolated_from_qa_and_other_departments() -> None:
 
 def test_finance_approval_notification_is_role_scoped_not_global() -> None:
     app, TestingSession, ids = _build()
-    with TestingSession() as db:
-        create_global_notification(
-            db, event_type="workflow.project.submitted_finance", category="approval",
-            title="Finance review required: GIS4456", message="BD submitted GIS4456",
-            target_url="/finance", recipient_roles=["finance"], requires_action=True,
-            metadata={"project_name": "GIS4456"},
-        )
-        db.commit()
+    _raise_pending_finance_project(TestingSession, owner_id=ids[BD], code="GIS4456")
 
-    assert len(_popup(_client(app, TestingSession, ids[FINANCE]))) == 1
+    finance_items = _popup(_client(app, TestingSession, ids[FINANCE]))
+    assert len(finance_items) == 1
+    assert finance_items[0]["event_type"] == "workflow.project.submitted_finance"
     for email in (BD, PM_ASSIGNED, IT_USER, MANAGEMENT, EMPLOYEE_A, QC_ASSIGNED):
-        leaked = _popup(_client(app, TestingSession, ids[email]))
+        other = _client(app, TestingSession, ids[email])
+        assert _popup(other) == [], f"{email} must not receive Finance's approval popup"
+        assert _bell(other) == [], f"{email} must not receive Finance's approval bell item"
+        assert other.get("/api/notifications/global/pending-count").json()["pending_count"] == 0
 
 
 # ---------------------------------------------------------------------------

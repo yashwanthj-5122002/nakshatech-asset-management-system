@@ -166,8 +166,11 @@ def test_uat_client_advance_request_save_draft_reload_submit_and_read_side():
     with SessionLocal() as db:
         workflow = db.scalar(select(ProjectWorkflow).where(ProjectWorkflow.project_id == project_id))
         row = _rev1(db, project_id)
-        assert workflow.status == "pending_finance_approval"
-        assert row.status == "PENDING_APPROVAL"
+        # Finance is review-only for BD-origin projects: submission locks Revision 1
+        # for billing immediately and never waits in a Finance approval queue.
+        assert workflow.status == "finance_approved"
+        assert row.status == "APPROVED" and row.is_locked is True
+        assert row.approved_by_id is None and row.approved_at is None
         _assert_uat_advance_terms(row)
         assert Decimal(row.estimated_amount) == CONTRACT_VALUE
 

@@ -32,14 +32,13 @@ from app.modules.operations.technical_routing_service import (
     routing_status_payload,
 )
 
-DEPARTMENTS = {
-    "ortho": "ortho",
-    "lidar": "lidar",
-    "civil": "civil",
-    "laser_scanning": "laser_scanning",
-    "bim": "bim",
-    "mobile_mapping": "mobile_mapping",
-}
+# Survey is the seventh, intentionally integrated technical department. Department
+# membership is derived from the authoritative technical registry so adding a
+# department can never leave these tests silently behind.
+from app.modules.operations.service import TECHNICAL_DEPARTMENT_ROLE_MAP  # noqa: E402
+
+DEPARTMENTS = dict(TECHNICAL_DEPARTMENT_ROLE_MAP)
+assert "survey" in DEPARTMENTS
 
 
 def _user(db, *, email: str, role: str, employee_id: str, name: str | None = None) -> User:
@@ -137,7 +136,7 @@ def test_phase7_install_default_is_safe_demo_locked_and_activation_requires_all_
         assert status["routing_mode"] == ROUTING_MODE_DEMO
         assert status["live_technical_routing_enabled"] is False
         assert status["can_activate"] is False
-        with pytest.raises(ValueError, match="All six technical directories"):
+        with pytest.raises(ValueError, match="technical directories must be live-ready"):
             activate_live_routing(db, actor=admin, confirmation=ACTIVATION_CONFIRMATION, note=None)
         assert db.get(TechnicalRoutingControl, 1) is None
 
