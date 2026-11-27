@@ -7,11 +7,11 @@ import '../operations.css'
 import './bd-my-team.css'
 
 type CountName = 'prospects'|'clients'|'closed'|'contacted'|'responded'|'activities'|'enquiries'|'pending_followups'|'overdue_followups'
-type Metrics = Record<CountName,number> & {confirmed_projects:null;confirmed_sales_value:null}
+type Metrics = Record<CountName,number> & {confirmed_projects:number;confirmed_sales_value:number|null}
 type EmployeeRow = Metrics & {user_id:number;employee_id:string;name:string;email:string;active:boolean}
 type TeamResponse = {
   start_date:string;end_date:string;employee_count:number;employees:EmployeeRow[];
-  summary:Metrics;official_attribution:'not_linked'
+  summary:Metrics;official_attribution:'verified_project_value'|'partial'|'not_linked'
 }
 type Lead = {id:number;company_name:string;source:string;contact_person:string|null;contact_email:string|null;service_interest:string|null;status:string;next_followup_date:string|null;created_at:string}
 type ContactEvent = {id:number;prospect_id:number;company_name:string;channel:string;outcome:string;remarks:string|null;contacted_at:string}
@@ -35,6 +35,10 @@ function dateRange(period:Period, customStart:string, customEnd:string) {
   if(period==='30days') {first.setDate(first.getDate()-29);return {start:isoDate(first),end}}
   if(period==='year') return {start:isoDate(new Date(first.getFullYear(),0,1)),end}
   return {start:customStart,end:customEnd}
+}
+function salesValue(value:number|null|undefined):string {
+  if(value===null||value===undefined)return 'Not fully linked'
+  return new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2}).format(value)
 }
 function displayStatus(value:string):string {return value.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}
 function displayDate(value:string|null):string {if(!value)return '—';return value.slice(0,10)}
@@ -102,7 +106,7 @@ export function BDMyTeamPage(){
         <label>Time Period<select value={period} onChange={e=>setPeriod(e.target.value as Period)}><option value="today">Today</option><option value="week">This Week</option><option value="month">This Month</option><option value="30days">Last 30 Days</option><option value="year">This Year</option><option value="custom">Custom Date Range</option></select></label>
         {period==='custom'&&<><label>From<input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)}/></label><label>To<input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)}/></label></>}
       </div>
-      <p className="bdmt-hint">Total Clients counts unique prospect company names added in the selected period. Closed counts those prospects currently marked Won or Not Interested, not officially closed projects.</p>
+      <p className="bdmt-hint">Prospects includes all leads added in the period, even if converted. Total Clients counts actual registered BD clients created in the period. Closed is a prospect status, not a confirmed project sale.</p>
     </section>
 
     {error&&<div className="operations-alert error" role="alert">{error}</div>}
@@ -111,15 +115,15 @@ export function BDMyTeamPage(){
       <section className="operations-stats-grid" aria-label="Team performance summary">
         <StatCard icon={UsersRound} label="Prospects Added" value={summary?.prospects??0} note="New prospects in selected period"/>
         <StatCard icon={ContactRound} label="Clients Contacted" value={summary?.contacted??0} note="Unique prospects contacted" tone="teal"/>
-        <StatCard icon={UsersRound} label="Total Clients" value={summary?.clients??0} note="Unique prospect companies in period" tone="green"/>
+        <StatCard icon={UsersRound} label="Total Clients" value={summary?.clients??0} note="Registered BD clients in period" tone="green"/>
         <StatCard icon={LockKeyhole} label="Closed" value={summary?.closed??0} note="Current status: Won or Not Interested" tone="orange"/>
-        <StatCard icon={IndianRupee} label="Total Sales" value="Not linked" note="Official sales attribution not linked" tone="purple"/>
+        <StatCard icon={IndianRupee} label="Total Sales" value={salesValue(summary?.confirmed_sales_value)} note="Confirmed BD project value, not payments" tone="purple"/>
       </section>
       <section className="operations-panel bdmt-register">
         <header><div><span className="operations-kicker">TEAM PERFORMANCE</span><h2>Employee Overview</h2><p>{team.employee_count} employee{team.employee_count===1?'':'s'} · {range.start} to {range.end}</p></div></header>
         <label className="bdmt-search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employee name or ID" aria-label="Search employee name or ID"/></label>
         <div className="bdmt-table-scroll"><table className="bdmt-table"><thead><tr><th>Employee</th><th>Prospects</th><th>Contacted</th><th>Total Clients</th><th>Closed</th><th>Total Sales</th><th>Details</th></tr></thead><tbody>
-          {listed.map(row=><tr key={row.user_id}><td><strong>{row.employee_id}</strong><small>{row.name}</small>{!row.active&&<small className="bdmt-inactive">Inactive</small>}</td><td>{row.prospects}</td><td>{row.contacted}</td><td>{row.clients}</td><td>{row.closed}</td><td className="bdmt-unlinked">Not linked</td><td><button type="button" className="operations-button secondary" onClick={()=>showEmployee(row.employee_id)} aria-expanded={openEmployee===row.employee_id}>{openEmployee===row.employee_id?'Hide':'View'}</button></td></tr>)}
+          {listed.map(row=><tr key={row.user_id}><td><strong>{row.employee_id}</strong><small>{row.name}</small>{!row.active&&<small className="bdmt-inactive">Inactive</small>}</td><td>{row.prospects}</td><td>{row.contacted}</td><td>{row.clients}</td><td>{row.closed}</td><td className={row.confirmed_sales_value===null?'bdmt-unlinked':undefined}>{salesValue(row.confirmed_sales_value)}</td><td><button type="button" className="operations-button secondary" onClick={()=>showEmployee(row.employee_id)} aria-expanded={openEmployee===row.employee_id}>{openEmployee===row.employee_id?'Hide':'View'}</button></td></tr>)}
           {!listed.length&&<tr><td colSpan={7} className="bdmt-no-data">No matching employees found.</td></tr>}
         </tbody></table></div>
       </section>
@@ -136,7 +140,7 @@ export function BDMyTeamPage(){
           </div>
         </div>}
       </section>}
-      <p className="bdmt-footnote">Total Clients counts potential-client companies from employee prospect records, not registered Finance clients. Closed is a current lead status, not an official project closure. Total Sales remains Not linked until verified ERP order values are attributed to employees.</p>
+      <p className="bdmt-footnote">Prospects includes converted leads. Total Clients counts actual registered BD clients credited to the employee. Closed is a current lead status. Total Sales is submitted, finalized BD project commercial value (INR), not invoice collections or realized revenue; unavailable values are never guessed.</p>
     </>}
   </div>
 }
