@@ -18,6 +18,7 @@ const checks = [
   'verify-dashboard-drilldown',
   'verify-dashboard-visual-analytics',
   'verify-reporting-month-race-fix',
+  'verify-organisation-policies-acknowledgement',
 ]
 const failures = []
 for (const name of checks) {

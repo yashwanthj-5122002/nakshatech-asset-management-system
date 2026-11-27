@@ -147,6 +147,25 @@ export function OrganisationPoliciesPage() {
     setLibrary(result)
   }, [])
 
+  // Re-read every acknowledgement-derived view right after a write so the
+  // Pending / Acknowledged filters, progress counts, "My Acknowledgements"
+  // and the HR compliance dashboard can never lag behind the acknowledgement
+  // row that was just committed to the database.
+  const refreshAcknowledgementData = useCallback(async () => {
+    if (isHR) {
+      const result = await apiFetch<{ rows: ComplianceRow[] }>(
+        `${BASE}/compliance`
+      )
+      setReportRows(result.rows)
+      return
+    }
+
+    const result = await apiFetch<{ records: AckRecord[] }>(
+      `${BASE}/my-acknowledgements`
+    )
+    setHistory(result.records)
+  }, [isHR])
+
   useEffect(() => {
     if (isHR || isEmployee) {
       void reload().catch(err => setError(errorText(err)))
@@ -426,6 +445,7 @@ export function OrganisationPoliciesPage() {
     ) return
 
     const version = selected.published
+    let recorded = false
 
     await perform(async () => {
       await apiFetch(`${BASE}/${selected.id}/acknowledge`, {
@@ -436,9 +456,19 @@ export function OrganisationPoliciesPage() {
         }),
       })
 
+      recorded = true
       setConfirmed(false)
 
     }, 'Acknowledgement recorded successfully.')
+
+    if (!recorded) return
+
+    // perform() already reloaded the library, which moves the policy from
+    // Pending to Acknowledged and refreshes the filter counts. Refresh the
+    // remaining acknowledgement views as well.
+    await refreshAcknowledgementData().catch(() => {
+      // Non-critical: both views re-read from the database when opened.
+    })
   }
 
   async function saveReminderSettings() {
@@ -1022,16 +1052,28 @@ export function OrganisationPoliciesPage() {
                           <>
                             <h3>
                               <CheckCircle2 size={20} />
-                              Acknowledged
+                              Acknowledgement
                             </h3>
-                            <p>
-                              Recorded on {
-                                formatDate(selected.acknowledged_at)
-                              }
+
+                            <p className="op-ack-status">
+                              <CheckCircle2 size={15} />
+                              Acknowledged Successfully
                             </p>
+
                             <p>
-                              No further reminders will be sent
-                              for this policy version.
+                              <strong>Acknowledged on:</strong>{' '}
+                              {formatDate(selected.acknowledged_at)}
+                            </p>
+
+                            <p>
+                              <strong>Policy version:</strong> {view.number}
+                            </p>
+
+                            <p className="op-muted">
+                              This acknowledgement is permanently recorded
+                              against your account for this exact policy
+                              version. No further reminders will be sent
+                              for it.
                             </p>
                           </>
                         ) : (

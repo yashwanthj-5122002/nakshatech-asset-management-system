@@ -135,7 +135,7 @@ def test_finance_project_approval_freezes_baseline_and_later_revision_updates_su
         )
         db.flush()
 
-        assert baseline.status == "APPROVED"
+        assert baseline.status == "finance_approved"
         assert baseline.is_locked is True
         assert baseline.approved_by_id == finance.id
         assert workflow.status == "finance_approved"

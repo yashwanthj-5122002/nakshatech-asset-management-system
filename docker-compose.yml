@@ -173,7 +173,7 @@ services:
     command: npm run dev -- --host 0.0.0.0 --port 3100
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.30.8-alpine
     restart: unless-stopped
     ports:
       - "8090:80"

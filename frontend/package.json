@@ -16,6 +16,7 @@
     "test:sales-revenue-drilldown": "node scripts/verify-sales-revenue-kpi-drilldown.mjs",
     "test:finance-generate-invoice": "node scripts/verify-finance-generate-invoice-standalone.mjs",
     "test:notification-popup": "node scripts/verify-notification-popup.mjs",
+  "test:organisation-policies": "node scripts/verify-organisation-policies-acknowledgement.mjs",
     "test:critical-action-visibility": "node scripts/verify-critical-action-visibility.mjs",
     "test:bd-client-feedback": "node scripts/verify-bd-client-feedback-action-center.mjs",
     "test:india-dates": "node scripts/verify-india-dates.mjs",

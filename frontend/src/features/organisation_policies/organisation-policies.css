@@ -342,6 +342,21 @@
   font-size: 13px;
 }
 
+.op-ack-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  margin-top: 12px !important;
+  padding: 7px 13px;
+  border-radius: 20px;
+  border: 1px solid #c6ecd8;
+  background: #e7f7ef;
+  color: #147b51;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .op-progress {
   height: 11px;
   border-radius: 20px;

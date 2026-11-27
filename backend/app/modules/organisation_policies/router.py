@@ -23,6 +23,7 @@ from sqlalchemy import (
     LargeBinary, String, Text, UniqueConstraint,
     select, update, text,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, Session
 
 from app.api.dependencies import CurrentAuth, get_current_auth
@@ -186,7 +187,7 @@ def policy_actor(
     user = auth.user
 
     if (
-        user.role not in {"hr", "employee", "bd_employee"}
+        user.role not in POLICY_ROLES
         or auth.effective_role != user.role
         or not user.is_active
         or user.account_status != "active"
@@ -213,7 +214,7 @@ def hr_only(
 def employee_only(
     user: User = Depends(policy_actor),
 ) -> User:
-    if user.role not in {"employee", "bd_employee"}:
+    if user.role not in EMPLOYEE_ROLES:
         raise HTTPException(
             status_code=403,
             detail="Only employees can acknowledge policies.",
@@ -338,8 +339,12 @@ def policy_data(db, policy, user):
 
     acknowledged_at = None
 
-    if user.role == "employee":
-        if policy.archived_at or current is None:
+    # Every role that may acknowledge must receive the acknowledgement that is
+    # already stored for the current published version. Deriving this from the
+    # database keeps Pending / Acknowledged filters, progress counts and the HR
+    # compliance dashboard in sync after refresh, re-login or restart.
+    if user.role in EMPLOYEE_ROLES:
+        if policy.archived_at is not None or current is None:
             raise HTTPException(404, "Policy not found.")
 
         ack = db.get(Ack, (user.id, current.id))
@@ -590,7 +595,7 @@ def publish_version(db, policy, version, user, notify=True):
             ),
             category="system",
             target_url=f"/organisation-policies?policy={policy.id}",
-            recipient_roles=["employee"],
+            recipient_roles=list(EMPLOYEE_ROLES),
             dedupe_key=publication_key(version.id),
         )
 
@@ -905,7 +910,7 @@ def import_default_policies(
             ),
             category="system",
             target_url="/organisation-policies",
-            recipient_roles=["employee"],
+            recipient_roles=list(EMPLOYEE_ROLES),
             dedupe_key=(
                 "organisation-policy:initial:"
                 + "-".join(str(v) for v in created)
@@ -941,7 +946,7 @@ def list_policies(
 ):
     query = select(Policy).order_by(Policy.id)
 
-    if user.role == "employee":
+    if user.role in EMPLOYEE_ROLES:
         query = query.where(
             Policy.archived_at.is_(None),
             Policy.current_version_id.is_not(None),
@@ -1288,7 +1293,7 @@ def view_document(
 ):
     policy = get_policy(db, policy_id)
 
-    if user.role == "employee":
+    if user.role in EMPLOYEE_ROLES:
         if (
             policy.archived_at is not None
             or policy.current_version_id != version_id
@@ -1305,7 +1310,7 @@ def view_document(
     if version is None or version.pdf_data is None:
         raise HTTPException(404, "PDF document not found.")
 
-    if user.role == "employee" and version.published_at is None:
+    if user.role in EMPLOYEE_ROLES and version.published_at is None:
         raise HTTPException(404, "Document not found.")
 
     return Response(
@@ -1350,17 +1355,38 @@ def acknowledge_policy(
         )
 
     ack = db.get(Ack, (user.id, current.id))
+    created = False
 
     if ack is None:
-        ack = Ack(
+        candidate = Ack(
             user_id=user.id,
             version_id=current.id,
             declaration=DECLARATION,
             acknowledged_at=utc_now(),
         )
-        db.add(ack)
-        db.flush()
 
+        try:
+            # Savepoint keeps the caller's transaction usable when a concurrent
+            # submission already stored the same (employee, version) pair, so a
+            # repeated request stays idempotent instead of raising a conflict.
+            with db.begin_nested():
+                db.add(candidate)
+                db.flush()
+        except IntegrityError:
+            if candidate in db.new:
+                db.expunge(candidate)
+            db.expire_all()
+            ack = db.get(Ack, (user.id, current.id))
+            if ack is None:
+                raise HTTPException(
+                    409,
+                    "Acknowledgement could not be recorded. Refresh and retry.",
+                )
+        else:
+            ack = candidate
+            created = True
+
+    if created:
         audit(
             db, request, user, "acknowledge", policy.id,
             {"version_id": current.id},
@@ -1377,7 +1403,12 @@ def acknowledge_policy(
     # the outstanding grouped policy reminders as well.
     clear_completed_reminders(db, user.id)
 
-    result = {"acknowledged_at": stamp(ack.acknowledged_at)}
+    result = {
+        "policy_id": policy.id,
+        "version_id": current.id,
+        "acknowledged_at": stamp(ack.acknowledged_at),
+        "already_acknowledged": not created,
+    }
 
     db.commit()
     return result
